@@ -39,7 +39,7 @@ registerHooks({
       };
     if (specifier === '@/lib/auth/staff')
       return {
-        url: "data:text/javascript,export class StaffAuthorizationError extends Error{constructor(message,status){super(message);this.status=status}};export async function requireStaffApi(){if(!globalThis.loyaltyRouteActor)throw new StaffAuthorizationError('Authentication required.',401);return globalThis.loyaltyRouteActor;}",
+        url: "data:text/javascript,export class StaffAuthorizationError extends Error{constructor(message,status){super(message);this.status=status}};export async function requireStaffApi(permission){if(permission!=='commercial_policy.manage')throw new Error('Wrong commercial permission');if(!globalThis.loyaltyRouteActor)throw new StaffAuthorizationError('Authentication required.',401);return globalThis.loyaltyRouteActor;}",
         shortCircuit: true,
       };
     if (specifier === '@/lib/auth/customer')

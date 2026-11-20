@@ -62,15 +62,15 @@ export async function sendStaffInvitationEmail(options: {
 
   await current.EMAIL.send({
     to: options.email,
-    subject: `Your HastaBazaar ${roleLabel} invitation`,
+    subject: `Your Hastabazaar ${roleLabel} invitation`,
     text: [
-      `You have been invited to join HastaBazaar as ${roleLabel}.`,
+      `You have been invited to join Hastabazaar as ${roleLabel}.`,
       '',
       `Sign in with ${options.email} at ${adminUrl}`,
       `This invitation expires on ${expiry}.`,
       '',
       'If you were not expecting this invitation, you can ignore this email.',
     ].join('\n'),
-    html: `<!doctype html><html><body style="margin:0;background:#f5f7fb;color:#14284a;font-family:Arial,sans-serif"><div style="max-width:560px;margin:0 auto;padding:40px 20px"><div style="background:#fff;border:1px solid #dfe5ef;border-radius:18px;padding:32px"><p style="margin:0 0 8px;color:#245fc2;font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase">HastaBazaar</p><h1 style="margin:0 0 16px;font-size:26px">You’re invited to the operations team</h1><p style="font-size:16px;line-height:1.6">You have been invited as <strong>${escapeHtml(roleLabel)}</strong>.</p><p style="font-size:16px;line-height:1.6">Sign in using <strong>${escapeHtml(options.email)}</strong>. The invitation expires on ${escapeHtml(expiry)}.</p><p style="margin:28px 0"><a href="${escapeHtml(adminUrl)}" style="display:inline-block;background:#245fc2;color:#fff;text-decoration:none;border-radius:10px;padding:13px 20px;font-weight:700">Open staff workspace</a></p><p style="margin:0;color:#68758a;font-size:13px;line-height:1.5">If you were not expecting this invitation, you can ignore this email.</p></div></div></body></html>`,
+    html: `<!doctype html><html><body style="margin:0;background:#f5f7fb;color:#14284a;font-family:Arial,sans-serif"><div style="max-width:560px;margin:0 auto;padding:40px 20px"><div style="background:#fff;border:1px solid #dfe5ef;border-radius:18px;padding:32px"><p style="margin:0 0 8px;color:#245fc2;font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase">Hastabazaar</p><h1 style="margin:0 0 16px;font-size:26px">You’re invited to the operations team</h1><p style="font-size:16px;line-height:1.6">You have been invited as <strong>${escapeHtml(roleLabel)}</strong>.</p><p style="font-size:16px;line-height:1.6">Sign in using <strong>${escapeHtml(options.email)}</strong>. The invitation expires on ${escapeHtml(expiry)}.</p><p style="margin:28px 0"><a href="${escapeHtml(adminUrl)}" style="display:inline-block;background:#245fc2;color:#fff;text-decoration:none;border-radius:10px;padding:13px 20px;font-weight:700">Open staff workspace</a></p><p style="margin:0;color:#68758a;font-size:13px;line-height:1.5">If you were not expecting this invitation, you can ignore this email.</p></div></div></body></html>`,
   });
 }

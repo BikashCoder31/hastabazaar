@@ -3,21 +3,24 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
-import test from 'node:test';
+import test, { after } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
-import { assertHostedAuthReadinessContext, inspectHostedAuthSchema, prepareHostedAuthSchema } from '../scripts/staging/hosted-auth-readiness.mjs';
+import { assertHostedAuthReadinessContext, inspectHostedAuthSchema } from '../scripts/staging/hosted-auth-readiness.mjs';
+import { hostedAuthProjectFixture } from './helpers/hosted-auth-project-fixture';
 import { createHostedSessionForUser, getHostedIdentity, passwordRecord, verifyPassword } from '../lib/auth/hosted-session';
 
 const project = resolve(fileURLToPath(new URL('../', import.meta.url)));
 const environment = { HASTABAZAAR_RUNTIME_ENV: 'local_staging', NODE_ENV: 'development',
   APP_ORIGIN: 'http://localhost:4173', HASTABAZAAR_MAIL_MODE: 'capture',
   HASTABAZAAR_PAYMENT_MODE: 'simulated', HASTABAZAAR_RECIPIENT_DOMAIN: 'local.hastabazaar.test' };
-const repository = fileURLToPath(new URL('../', import.meta.url));
-const recovery = join(repository, '.staging', 'recovery', 'hosted-auth-readiness-tests');
-void test('in-memory recovery files belong to the helper module repository independently of CLI context', () => {
-  const helperRepository = fileURLToPath(new URL('../scripts/staging/../../', import.meta.url));
-  assert.equal(recovery, join(helperRepository, '.staging', 'recovery', 'hosted-auth-readiness-tests'));
+const isolatedProject = await hostedAuthProjectFixture();
+const { recovery, prepareHostedAuthSchema } = isolatedProject;
+after(() => isolatedProject.dispose());
+void test('recovery files belong to the helper temporary project independently of CLI context', () => {
+  const helperRepository = resolve(fileURLToPath(new URL('../../', isolatedProject.moduleUrl)));
+  assert.notEqual(helperRepository, project);
+  assert.equal(recovery, join(helperRepository, '.staging', 'recovery'));
 });
 function fixture(path = ':memory:') {
   const db = new DatabaseSync(path);
@@ -210,6 +213,8 @@ void test('prepared tables support unchanged real password/session validation an
   await withBackup(async (path) => {
     try {
       await prepareHostedAuthSchema(sqlite, path);
+      sqlite.exec(`CREATE TABLE user_roles(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, role TEXT NOT NULL);
+        INSERT INTO user_roles VALUES('fictional','customer');`);
       const password = `SIMULATED-${randomUUID()}`;
       const record = await passwordRecord(password);
       assert.equal(await verifyPassword(password, record.hash, record.salt), true);

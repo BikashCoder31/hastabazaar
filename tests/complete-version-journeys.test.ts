@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {actionableOrderFixture} from './helpers/order-response-fixture';
+import {processOrderResponseFollowup} from '../lib/orders/response-followup';
+import {currentResponseNotice} from '../lib/orders/response-notifications';
+import {isCurrentOperationalNotice} from '../lib/operations/event-catalog';
+import {transitionSellerFulfillment} from '../lib/db/repositories/fulfillment';
+import {prepareSellerParcels,listParcels,operateParcel} from '../lib/operations/parcels';
+import {createCustomerReturnRequest,reviewReturnAsAdmin} from '../lib/db/repositories/returns';
+import {executeFixtureRefund} from './helpers/execute-fixture-refund';
+import {getCustomerRefundWorkspace} from '../lib/payments/refund-workspace';
+
+/** No launcher/connection arguments or live transports; every source is fictional. */
+void test('native variant publication→manual receipt→exact6/12 response→delivery→one-SA refund preserves money and suppresses stale notices',async()=>{
+ const f=await actionableOrderFixture({secondOffer:true}),realNow=Date.now;let now=f.releasedAt;
+ try{
+  assert.ok(f.sqlite.prepare('PRAGMA database_list').all().every(row=>row.file===''));
+  assert.equal(f.sqlite.prepare("SELECT COUNT(*) n FROM user_roles WHERE role='super_admin'").get()!.n,1);
+  Date.now=()=>now;
+  const advance=(value:number)=>{now=value;f.setClock(value);},hour=3600000,ids=f.rows.map(row=>String(row.id)),sellerId=String(f.rows[0].sellerId);
+  const originals=f.sqlite.prepare('SELECT s.order_item_id,s.offer_id,s.snapshot_json,i.line_total_paisa FROM order_item_offer_snapshots s JOIN order_items i ON i.id=s.order_item_id WHERE i.order_id=? ORDER BY s.offer_id').all(f.orderId);
+  assert.deepEqual(originals.map(row=>row.offer_id),['large','medium']);assert.deepEqual(originals.map(row=>row.line_total_paisa),[100000,80000]);
+  assert.equal(f.sqlite.prepare('SELECT payment_status FROM orders WHERE id=?').get(f.orderId)!.payment_status,'paid');
+  const event=(kind:string)=>f.sqlite.prepare('SELECT id,scope_json FROM order_response_events WHERE order_id=? AND kind=? ORDER BY created_at,id LIMIT 1').get(f.orderId,kind)!;
+  const notices=(eventId:string)=>f.sqlite.prepare("SELECT template_key template,related_id relatedId,related_type relatedType,recipient_user_id userId,audience_role audience,channel,request_id requestId FROM notification_messages WHERE template_key='business.order.response' AND related_id=?").all(eventId) as unknown as Parameters<typeof isCurrentOperationalNotice>[1][];
+  const checkOversight=(eventId:string)=>{const rows=notices(eventId).filter(row=>row.userId==='reviewer');assert.deepEqual(rows.map(row=>row.channel).sort(),['email','in_app']);};
+  checkOversight(String(event('released').id));
+  advance(f.releasedAt+5*hour);const first={orderId:f.orderId,sellerId,actorId:'registered-owner',action:'start_packing' as const,itemIds:[ids[0]],note:'PRIVATE-T34 original seller preparation evidence.',requestId:'t34-start-first',now};await assert.rejects(transitionSellerFulfillment(f.db,{...first,actorId:'foreign'}));await transitionSellerFulfillment(f.db,first);await transitionSellerFulfillment(f.db,first);
+  advance(f.releasedAt+6*hour-1);assert.equal((await processOrderResponseFollowup(f.db)).reminders,0);advance(f.releasedAt+6*hour);assert.equal((await processOrderResponseFollowup(f.db)).reminders,1);assert.equal((await processOrderResponseFollowup(f.db)).reminders,0);const reminder=event('reminder');assert.deepEqual(JSON.parse(String(reminder.scope_json)),[ids[1]]);checkOversight(String(reminder.id));for(const notice of notices(String(reminder.id)))assert.equal(await isCurrentOperationalNotice(f.db,notice,now),true);
+  advance(f.releasedAt+12*hour);assert.equal((await processOrderResponseFollowup(f.db)).escalations,1);assert.equal((await processOrderResponseFollowup(f.db)).escalations,0);const escalation=event('escalation');assert.deepEqual(JSON.parse(String(escalation.scope_json)),[ids[1]]);checkOversight(String(escalation.id));assert.equal(await currentResponseNotice(f.db,String(reminder.id)),false);
+  await transitionSellerFulfillment(f.db,{...first,itemIds:[ids[1]],requestId:'t34-start-second',now});await transitionSellerFulfillment(f.db,{...first,action:'ready_for_pickup',itemIds:ids,requestId:'t34-ready-all',now});assert.equal(await currentResponseNotice(f.db,String(escalation.id)),false);for(const notice of [...notices(String(reminder.id)),...notices(String(escalation.id))])assert.equal(await isCurrentOperationalNotice(f.db,notice,now),false);
+  await prepareSellerParcels(f.db,{orderId:f.orderId,actorId:'reviewer',requestId:'t34-native-parcel',now});for(const action of ['assign','dispatch','deliver']){const parcel=(await listParcels(f.db,f.orderId))[0];await operateParcel(f.db,{jobId:parcel.id,actorId:'reviewer',action,version:parcel.version,note:'Record fictional actual physical progress under the original parcel.',requestId:'t34-parcel-'+action,now,...(action==='assign'?{method:'courier',courierName:'Fictional T34 carrier',trackingCode:'FICTIONAL-T34-DELIVERY'}:{})});}
+  const affected=f.sqlite.prepare('SELECT id,line_total_paisa FROM order_items WHERE id=?').get(ids[0])!,returned=await createCustomerReturnRequest(f.db,{orderNumber:f.order.orderNumber,customerId:'customer',receiptTokenHash:null,orderItemId:ids[0],quantity:1,reason:'defective',requestedResolution:'refund',detail:'The original delivered fictional item has a documented defect.',locale:'en-NP',idempotencyKey:'t34-original-return',evidence:[],now});await reviewReturnAsAdmin(f.db,{returnRequestId:returned.id,actorId:'reviewer',actorRole:'super_admin',action:'approve',responsibility:'platform',outcome:'refund',itemRefundPaisa:Number(affected.line_total_paisa),note:'Approve only the actual original fictional entitlement, before any payment.',publicMessageEn:'Refund entitlement approved; verified funding and payment remain separate.',publicMessageNe:'फिर्ता रकम स्वीकृत भयो। भुक्तानी बाँकी छ।',requestId:'t34-original-refund-authorized',now});const refundId=String(f.sqlite.prepare('SELECT id FROM refunds WHERE return_request_id=?').get(returned.id)!.id),paid=await executeFixtureRefund(f.db,{actorId:'reviewer',kind:'return_refund',sourceId:refundId,customerId:'customer'});assert.equal(f.sqlite.prepare('SELECT state FROM refund_obligations WHERE id=?').get(paid.obligationId)!.state,'completed');assert.equal(f.sqlite.prepare('SELECT status FROM refunds WHERE id=?').get(refundId)!.status,'paid');const own=await getCustomerRefundWorkspace(f.db,'customer');assert.equal(own.find(row=>row.id===paid.obligationId)?.state,'completed');assert.equal((await getCustomerRefundWorkspace(f.db,'foreign')).some(row=>row.id===paid.obligationId),false);
+  assert.deepEqual(f.sqlite.prepare('SELECT s.order_item_id,s.offer_id,s.snapshot_json,i.line_total_paisa FROM order_item_offer_snapshots s JOIN order_items i ON i.id=s.order_item_id WHERE i.order_id=? ORDER BY s.offer_id').all(f.orderId),originals);assert.equal(f.sqlite.prepare("SELECT COUNT(*) n FROM notification_messages WHERE body_en LIKE '%PRIVATE-T34%'").get()!.n,0);assert.deepEqual(f.sqlite.prepare('PRAGMA foreign_key_check').all(),[]);
+ }finally{Date.now=realNow;f.dispose();}
+});

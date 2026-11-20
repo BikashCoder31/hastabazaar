@@ -1,5 +1,7 @@
+import {ProductOfferProvider,ProductOfferPrice} from '@/components/catalog/product-offer-selection';
+import {OfferAddToCart} from '@/components/commerce/offer-add-to-cart';
 import {getDeliveryRates} from '@/lib/db/repositories/delivery-rates';
-import { ProductDiscount } from '@/components/catalog/product-discount';
+
 import {publicUrl,productStructuredData,publishedRating,safeJsonLd} from '@/lib/seo/discovery';
 import { env } from 'cloudflare:workers';
 import type { Metadata } from 'next';
@@ -14,7 +16,7 @@ import {
   Store,
 } from 'lucide-react';
 
-import { AddToCart } from '@/components/commerce/add-to-cart';
+
 import { ProductDelivery } from '@/components/commerce/product-delivery';
 import { phaseOneMarketplacePolicy } from '@/lib/marketplace/policy';
 import { productReturnDisclosure } from '@/lib/returns/presentation';
@@ -23,7 +25,7 @@ import { SiteFooter } from '@/components/layout/site-footer';
 import { SiteHeader } from '@/components/layout/site-header';
 import { requireDatabase } from '@/lib/db/d1';
 import { getPublishedProductBySlug, getUnavailablePublishedProductBySlug } from '@/lib/db/repositories/products';
-import { getCustomerUser } from '@/lib/auth/customer';
+import { getCustomerReadContext } from '@/lib/auth/customer';
 import {
   getReviewableOrderItem,
   isWishlisted,
@@ -35,6 +37,7 @@ import {ReviewPhotos,PublicSellerReply} from '@/components/commerce/review-attac
 import {getReviewExtras} from '@/lib/db/repositories/review-extras';
 import { signInPath } from '@/app/auth';
 import { RecentlyViewed } from '@/components/catalog/recently-viewed';
+import { formatNepalDateOnly } from '@/lib/dates/nepal-calendar';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,13 +62,6 @@ export async function generateMetadata({
     title: product.nameEn,
     description: product.descriptionEn.slice(0, 155),
   };
-}
-
-function money(paisa: number): string {
-  return new Intl.NumberFormat('en-NP', {
-    style: 'currency',
-    currency: 'NPR',
-  }).format(paisa / 100);
 }
 
 export default async function ProductPage({
@@ -98,7 +94,7 @@ export default async function ProductPage({
     );
   }
   const deliveryRates=await getDeliveryRates(database);
-  const customer = await getCustomerUser();
+  const { customer, authenticated } = await getCustomerReadContext();
   const [reviews, saved, reviewable, myReview, rating] = await Promise.all([
     listPublishedReviews(database, product.id),
     customer ? isWishlisted(database, customer.userId, product.id) : false,
@@ -121,7 +117,7 @@ export default async function ProductPage({
         >
           <ArrowLeft className="size-4" /> Back to collection
         </Link>
-        <div className="mt-7 grid gap-10 lg:grid-cols-[minmax(0,1.05fr)_minmax(22rem,0.95fr)] xl:gap-16">
+        <ProductOfferProvider productId={product.id} offerSet={product.offerSet}>
           <div className="min-w-0 lg:sticky lg:top-40 lg:self-start">
             <ProductGallery
               key={product.id}
@@ -134,24 +130,14 @@ export default async function ProductPage({
             <h1 className="mt-3 font-heading text-3xl leading-tight tracking-tight sm:text-4xl">
               {product.nameEn}
             </h1>
-            <p className="mt-5 font-heading text-3xl">
-              {money(product.pricePaisa)}
-            </p>
-            <ProductDiscount pricePaisa={product.pricePaisa} originalPaisa={product.compareAtPricePaisa} />
-            <p
-              className={`mt-4 inline-flex rounded-full px-3 py-1.5 text-sm font-semibold ${product.inventoryQuantity > 0 ? 'bg-emerald-50 text-emerald-800' : 'bg-muted text-muted-foreground'}`}
-            >
-              {product.inventoryQuantity > 0
-                ? `${product.inventoryQuantity} available`
-                : 'Currently unavailable'}
-            </p>
+            <ProductOfferPrice pricePaisa={product.pricePaisa} compareAtPricePaisa={product.compareAtPricePaisa} priceFrom={product.priceFrom} purchasable={product.purchasable} inventoryQuantity={product.inventoryQuantity}/>
             <div className="mt-5">
               <Link
                 href={`/makers/${product.sellerId}`}
                 className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline"
               >
                 <Store className="size-4" />
-                {product.participationRoute === 'managed_maker' ? 'Made by' : 'By'} {product.tradingName}
+                {product.participationRoute === 'managed_maker' ? 'Supplied by' : 'Sold by'} {product.makerName ?? product.tradingName}
               </Link>
               {reviews.length ? (
                 <Link
@@ -175,24 +161,21 @@ export default async function ProductPage({
                 </details>
               </div>
             </section>
-            <AddToCart
-              productId={product.id}
-              available={product.inventoryQuantity}
-            />
+            <OfferAddToCart productId={product.id} available={product.inventoryQuantity} purchasable={product.purchasable}/>
             <div className="mt-3">
               <WishlistButton
                 productId={product.id}
                 initialSaved={saved}
                 signInPath={
-                  customer
+                  authenticated
                     ? undefined
                     : signInPath(`/products/${product.slug}`)
                 }
               />
             </div>
-            <section aria-label="Delivery estimate" className="mt-5 rounded-2xl border bg-secondary/30 p-4 sm:p-5">
+            {product.purchasable ? <section aria-label="Delivery estimate" className="mt-5 rounded-2xl border bg-secondary/30 p-4 sm:p-5">
               <ProductDelivery rates={deliveryRates} preparationDays={product.preparationDays} madeToOrder={Boolean(product.madeToOrder)} />
-            </section>
+            </section> : null}
             <h2 className="mt-8 border-t pt-7 font-heading text-2xl">
               Product description
             </h2>
@@ -203,16 +186,21 @@ export default async function ProductPage({
               <div>
                 <dt className="font-semibold">{product.participationRoute === 'managed_maker' ? 'Maker and company seller' : product.producer ? 'Maker or brand' : 'Seller'}</dt>
                 <dd className="mt-1 text-muted-foreground">
-                  {product.participationRoute === 'managed_maker' ? 'Made by ' : product.producer ? product.producer + ' · sold by ' : 'Sold by '}
+                  {product.participationRoute === 'managed_maker' ? 'Supplied by ' : product.producer ? product.producer + ' · sold by ' : 'Sold by '}
                   <Link
                     href={`/makers/${product.sellerId}`}
                     className="font-semibold text-primary hover:underline"
                   >
-                    {product.tradingName}
+                    {product.makerName ?? product.tradingName}
                   </Link>
-                  {product.participationRoute === 'managed_maker' ? <span className="mt-2 block">Sold by {product.storeName ?? 'company store — terms review pending'}{product.legalSellerName ? ` · ${product.legalSellerName}` : ''}</span> : null}
+                  {product.participationRoute === 'managed_maker' ? <span className="mt-2 block">{product.legalSellerName ? `Sold and invoiced by ${product.legalSellerName}` : 'Seller and invoice identity require review'}</span> : <span className="mt-2 block">Through Hastabazaar</span>}
                 </dd>
               </div>
+              <div>
+                <dt className="font-semibold">Platform SKU</dt>
+                <dd className="mt-1 break-all text-muted-foreground">{product.sku || '—'}</dd>
+              </div>
+
               <div>
                 <dt className="font-semibold">Origin</dt>
                 <dd className="mt-1 text-muted-foreground">{product.originDisclosure}</dd>
@@ -246,10 +234,10 @@ export default async function ProductPage({
               <div>
                 <dt className="font-semibold">Preparation</dt>
                 <dd className="mt-1 text-muted-foreground">
-                  {product.madeToOrder ? 'Made to order · ' : ''}
+                  {!product.purchasable ? 'Ordering is not available yet.' : <>{product.madeToOrder ? 'Made to order · ' : ''}
                   {product.preparationDays === 0
                     ? 'Ready to dispatch'
-                    : `${product.preparationDays} day${product.preparationDays === 1 ? '' : 's'} before dispatch`}
+                    : `${product.preparationDays} day${product.preparationDays === 1 ? '' : 's'} before dispatch`}</>}
                 </dd>
               </div>
               {product.careInstructions ? (
@@ -276,32 +264,24 @@ export default async function ProductPage({
                   </dd>
                 </div>
               ) : null}
-              {product.manufacturedAt ? (
+              {product.manufacturedAt != null ? (
                 <div>
                   <dt className="font-semibold">Manufactured</dt>
                   <dd className="mt-1 text-muted-foreground">
-                    {new Date(product.manufacturedAt).toLocaleDateString(
-                      'en-NP',
-                    )}
+                    {formatNepalDateOnly(product.manufacturedAt)}
                   </dd>
                 </div>
               ) : null}
-              {product.expiresAt ? (
+              {product.expiresAt != null ? (
                 <div>
                   <dt className="font-semibold">Expiry</dt>
                   <dd className="mt-1 text-muted-foreground">
-                    {new Date(product.expiresAt).toLocaleDateString('en-NP')}
+                    {formatNepalDateOnly(product.expiresAt)}
                   </dd>
                 </div>
               ) : null}
-              {product.licenceReference ? (
-                <div>
-                  <dt className="font-semibold">Licence reference</dt>
-                  <dd className="mt-1 text-muted-foreground">
-                    {product.licenceReference}
-                  </dd>
-                </div>
-              ) : null}
+
+              {([['brand','Brand'],['model','Model'],['condition','Condition'],['unitContents','What one purchase contains'],['packQuantity','Pieces in one sales unit'],['sizeGuide','Size guide'],['warrantyProvider','Warranty provider'],['warrantyDuration','Warranty duration'],['warrantyTerms','Warranty terms']] as const).map(([key,label])=>{const value=product.offerSet?.details?.[key];return value?<div key={key}><dt className="font-semibold">{label}</dt><dd className="mt-1 whitespace-pre-line text-muted-foreground">{Array.isArray(value)?value.join(', '):value}</dd></div>:null;})}
             </dl>
             {product.originStory ? <section className="mt-7 rounded-2xl border bg-secondary/20 p-6"><h2 className="font-heading text-2xl">The story behind this product</h2><p className="mt-3 whitespace-pre-line leading-7 text-muted-foreground">{product.originStory}</p></section> : null}
             <div className="mt-6 grid gap-3 text-sm text-muted-foreground sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
@@ -319,7 +299,7 @@ export default async function ProductPage({
               ) : null}
             </div>
           </div>
-        </div>
+        </ProductOfferProvider>
         <section id="reviews" className="mt-14 border-t pt-10">
           <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_24rem]">
             <div>
@@ -365,10 +345,11 @@ export default async function ProductPage({
               )}
             </div>
             <div>
-              {reviewable ? (
+              {reviewable && customer ? (
                 <>
                   <h2 className="font-heading text-2xl">Review this item</h2>
                   <ReviewForm
+                    actorId={customer.userId}
                     productId={product.id}
                     orderItemId={reviewable.orderItemId}
                     orderNumber={reviewable.orderNumber}

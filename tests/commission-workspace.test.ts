@@ -3,10 +3,13 @@ import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import * as rates from '../lib/db/repositories/commission-rates';
-import { commissionDatabase } from './helpers/commission-database';
+import { commissionDatabase, historicalCommissionDatabase } from './helpers/commission-database';
 import * as reporting from '../lib/db/repositories/commission-reporting';
 import { createCodOrder } from '../lib/db/repositories/orders';
-import { seedCheckoutBuyer } from './helpers/checkout-contact';
+import { seedCheckoutBuyer,readyCheckoutSeller } from './helpers/checkout-contact';
+import {addCommissionRegressionOffer} from './helpers/commission-regression-offer';
+import {getCart} from '../lib/db/repositories/cart';
+import {getCommissionSetting} from '../lib/db/repositories/marketplace-settings';
 import {
   parseNepalDateTime,
   percentToBasisPoints,
@@ -39,7 +42,8 @@ void test('recovering Commission preserves the existing configured and accepted 
     assert.equal((await rates.getSellerCommissionTerms(f.database, 'seller-a', now)).basisPoints, 1200);
     assert.equal((await rates.getCommissionRateState(f.database, now)).current.basisPoints, 1200);
     const change = await rates.scheduleCommissionRate(f.database, schedule({ basisPoints: 1400 }));
-    assert.equal((await rates.getSellerCommissionTerms(f.database, 'seller-a', now + 17 * day)).basisPoints, 1200);
+    assert.equal((await rates.getSellerCommissionTerms(f.database, 'seller-a', now + 17 * day)).basisPoints, 1400);
+    assert.equal(await rates.getCommissionCheckoutAcceptance(f.database,'seller-a',await (await import('../lib/db/repositories/marketplace-settings')).getCommissionSetting(f.database,now+17*day),now+17*day),null);
     await rates.acceptCommissionRate(f.database, {sellerId:'seller-a',userId:'user-a',rateId:change.id,now:now+day});
     assert.equal((await rates.getSellerCommissionTerms(f.database, 'seller-a', now + 15 * day)).basisPoints, 1200);
     assert.equal((await rates.getSellerCommissionTerms(f.database, 'seller-a', now + 17 * day)).basisPoints, 1400);
@@ -47,8 +51,8 @@ void test('recovering Commission preserves the existing configured and accepted 
   } finally { await f.dispose(); }
 });
 
-void test('schedules apply only after the effective date and explicit seller acceptance', async () => {
-  const f = await commissionDatabase();
+void test('schedules use the common effective date and unaccepted sellers are held instead of retaining the old rate', async () => {
+  const f = await historicalCommissionDatabase(true);
   try {
     const created = await rates.scheduleCommissionRate(f.database, schedule());
     assert.equal(
@@ -88,7 +92,7 @@ void test('schedules apply only after the effective date and explicit seller acc
           now + 17 * day,
         )
       ).basisPoints,
-      900,
+      1200,
     );
     const state = await rates.getCommissionRateState(
       f.database,
@@ -102,7 +106,7 @@ void test('schedules apply only after the effective date and explicit seller acc
 });
 
 void test('invalid schedules, insufficient notice, unauthorized staff and stale revisions are rejected', async () => {
-  const f = await commissionDatabase();
+  const f = await historicalCommissionDatabase(true);
   try {
     for (const overrides of [
       { basisPoints: -1 },
@@ -139,7 +143,7 @@ void test('invalid schedules, insufficient notice, unauthorized staff and stale 
 });
 
 void test('schedule retry is idempotent; cancellation is audited and keeps accepted sellers on their previous rate', async () => {
-  const f = await commissionDatabase();
+  const f = await historicalCommissionDatabase(true);
   try {
     const created = await rates.scheduleCommissionRate(f.database, schedule());
     assert.equal(
@@ -214,8 +218,8 @@ void test('schedule retry is idempotent; cancellation is audited and keeps accep
   }
 });
 
-void test('a later unaccepted schedule preserves the earlier accepted effective rate and effective schedules cannot be cancelled', async () => {
-  const f = await commissionDatabase();
+void test('a later effective schedule requires its own acceptance and effective schedules cannot be cancelled', async () => {
+  const f = await historicalCommissionDatabase(true);
   try {
     const created = await rates.scheduleCommissionRate(f.database, schedule());
     await rates.acceptCommissionRate(f.database, {
@@ -243,7 +247,7 @@ void test('a later unaccepted schedule preserves the earlier accepted effective 
           later + 20 * day,
         )
       ).basisPoints,
-      1200,
+      800,
     );
     await assert.rejects(() =>
       rates.cancelCommissionRate(f.database, {
@@ -280,7 +284,7 @@ void test('Nepal datetime and percentage parsing reject invalid or ambiguous inp
 });
 
 void test('earnings use ledger snapshots, sum split reversals once, and exclude cancelled items from pending totals', async () => {
-  const f = await commissionDatabase();
+  const f = await historicalCommissionDatabase(true);
   try {
     await seedReport(f.database);
     const report = await reporting.getCommissionReport(f.database, {});
@@ -348,10 +352,13 @@ void test('earnings use ledger snapshots, sum split reversals once, and exclude 
   }
 });
 
-void test('checkout snapshots per-seller accepted rates and later changes leave historical amounts intact', async () => {
-  const f = await commissionDatabase();
+void test('checkout snapshots per-seller accepted rates and later changes leave historical amounts intact', async context => {
+  let clock=now+day;
+  context.mock.method(Date, 'now', () => clock);
+  const f = await historicalCommissionDatabase(true);
   try {
     await seedCheckoutBuyer(f.database);
+    for(const suffix of ['a','b'])await readyCheckoutSeller(f,`seller-${suffix}`,`user-${suffix}`,'owner',now);
     const change = await rates.scheduleCommissionRate(f.database, schedule());
     await rates.acceptCommissionRate(f.database, {
       sellerId: 'seller-a',
@@ -361,8 +368,7 @@ void test('checkout snapshots per-seller accepted rates and later changes leave 
     });
     await executeStatements(
       f.database,
-      `INSERT INTO categories(id,slug,name_en,is_active,sort_order,created_at,updated_at) VALUES ('cat','craft','Craft',1,1,1,1);
-      INSERT INTO carts(id,anonymous_token_hash,currency,created_at,updated_at) VALUES ('cart','token','NPR',1,1);`,
+      `INSERT INTO categories(id,slug,name_en,is_active,sort_order,created_at,updated_at) VALUES ('cat','craft','Craft',1,1,1,1);`,
     );
     for (const suffix of ['a', 'b']) {
       await f.database
@@ -376,13 +382,10 @@ void test('checkout snapshots per-seller accepted rates and later changes leave 
           `Craft ${suffix}`,
         )
         .run();
-      await f.database
-        .prepare(
-          "INSERT INTO cart_items(id,cart_id,product_id,quantity,created_at,updated_at) VALUES (?,'cart',?,1,1,1)",
-        )
-        .bind(`cart-${suffix}`, `product-${suffix}`)
-        .run();
+      await addCommissionRegressionOffer(f,{productId:`product-${suffix}`,reviewerId:'owner',tokenHash:'token',now:clock});
     }
+    assert.equal((await getCart(f.database,'token')).hasUnavailableItems,false);
+    clock=now+17*day;
     const input = {
       customerAuthSubject: 'checkout-buyer',
       customerEmail: 'buyer@example.test',
@@ -399,6 +402,21 @@ void test('checkout snapshots per-seller accepted rates and later changes leave 
         locality: 'Ward 1',
       },
     };
+    const setting=await getCommissionSetting(f.database,clock);
+    assert.ok(await rates.getCommissionCheckoutAcceptance(f.database,'seller-a',setting,clock));
+    assert.equal(await rates.getCommissionCheckoutAcceptance(f.database,'seller-b',setting,clock),null);
+    const heldCart=await getCart(f.database,'token');
+    assert.equal(heldCart.items.find(item=>item.sellerId==='seller-a')?.productStatus,'published');
+    assert.equal(heldCart.items.find(item=>item.sellerId==='seller-b')?.productStatus,'archived');
+    const stock=f.sqlite.prepare('SELECT * FROM offer_stock ORDER BY offer_id').all();
+    const cartLines=f.sqlite.prepare('SELECT * FROM cart_offer_lines ORDER BY id').all();
+    await assert.rejects(()=>createCodOrder(f.database,'token','receipt',input,clock,'checkout-buyer'),/cart items changed availability/);
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM orders').get()?.n,0);
+    assert.deepEqual(f.sqlite.prepare('SELECT * FROM offer_stock ORDER BY offer_id').all(),stock);
+    assert.deepEqual(f.sqlite.prepare('SELECT * FROM cart_offer_lines ORDER BY id').all(),cartLines);
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM offer_stock_reservations').get()?.n,0);
+    await rates.acceptCommissionRate(f.database,{sellerId:'seller-b',userId:'user-b',rateId:change.id,now:now+17*day});
+    assert.equal((await getCart(f.database,'token')).hasUnavailableItems,false);
     await createCodOrder(f.database, 'token', 'receipt', input, now + 17 * day, 'checkout-buyer');
     const items = (
       await f.database
@@ -410,7 +428,12 @@ void test('checkout snapshots per-seller accepted rates and later changes leave 
     assert.equal(items[0].commission_bps, 1200);
     assert.equal(items[0].commission_paisa, 12000);
     assert.equal(items[0].commission_rule_version, change.id);
-    assert.equal(items[1].commission_bps, 900);
+    assert.equal(items[1].commission_bps, 1200);
+    assert.equal(items[1].commission_paisa, 12000);
+    assert.equal(items[1].commission_rule_version, change.id);
+    assert.equal(items.length,2);
+    assert.equal(f.sqlite.prepare('SELECT SUM(available) n FROM offer_stock').get()?.n,18);
+    assert.equal(f.sqlite.prepare('SELECT SUM(reserved) n FROM offer_stock').get()?.n,2);
     const terms = JSON.parse(
       String(
         (
@@ -422,6 +445,9 @@ void test('checkout snapshots per-seller accepted rates and later changes leave 
     );
     assert.equal(terms.sellerCommissionTerms['seller-a'].version, change.id);
     assert.equal(terms.sellerCommissionTerms['seller-a'].acceptedAt, now + day);
+    assert.equal(terms.sellerCommissionTerms['seller-b'].version,change.id);
+    assert.equal(terms.sellerCommissionTerms['seller-b'].acceptedAt,clock);
+    const originalPolicy=f.sqlite.prepare('SELECT * FROM order_policy_acceptances').all();
     await rates.scheduleCommissionRate(
       f.database,
       schedule({
@@ -442,6 +468,7 @@ void test('checkout snapshots per-seller accepted rates and later changes leave 
       ).results,
       items,
     );
+    assert.deepEqual(f.sqlite.prepare('SELECT * FROM order_policy_acceptances').all(),originalPolicy);
   } finally {
     await f.dispose();
   }
@@ -557,7 +584,7 @@ void test('release manifest includes the commission workspace migration after th
 });
 
 void test('returned-to-origin seller parcels do not remain pending commission', async () => {
-  const f = await commissionDatabase();
+  const f = await historicalCommissionDatabase(true);
   try {
     await seedReport(f.database);
     await executeStatements(
@@ -582,7 +609,7 @@ void test('returned-to-origin seller parcels do not remain pending commission', 
 });
 
 void test('completed Managed Maker items do not require independent commission ledger entries', async () => {
-  const f = await commissionDatabase();
+  const f = await historicalCommissionDatabase(true);
   try {
     await seedReport(f.database);
     await f.database.prepare("UPDATE orders SET status='delivered',payment_status='paid' WHERE id='order-2'").run();
@@ -596,7 +623,7 @@ void test('completed Managed Maker items do not require independent commission l
 });
 
 void test('seller fee notices can cross the server-to-client component boundary as plain objects', async () => {
-  const f = await commissionDatabase();
+  const f = await historicalCommissionDatabase(true);
   try {
     await rates.scheduleCommissionRate(f.database, schedule());
     const notices = await rates.getSellerCommissionNotices(
@@ -606,7 +633,7 @@ void test('seller fee notices can cross the server-to-client component boundary 
     assert.equal(notices.length, 1);
     assert.equal(Object.getPrototypeOf(notices[0]), Object.prototype);
     assert.equal(notices[0].basisPoints, 1200);
-    assert.match(notices[0].termsText, /Seller Commission Fee Schedule/);
+    assert.match(notices[0].termsText, /Selling fee schedule/);
   } finally {
     await f.dispose();
   }

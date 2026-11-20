@@ -26,14 +26,15 @@ function money(paisa: number): string {
 export default async function ProductReviewQueuePage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string }>;
+  searchParams: Promise<{ view?: string;seller?:string }>;
 }) {
-  const publishedOnly = (await searchParams).view === 'published';
+  const params=await searchParams,publishedOnly=params.view==='published',sellerId=params.seller?.slice(0,100);
   await requireStaffPage('/admin/products', 'product.review');
   const products = await listProductsForReview(
     requireDatabase(env as unknown as { DB?: D1Database }),
     100,
     publishedOnly,
+    sellerId,
   );
   return (
     <div className="space-y-7">
@@ -47,11 +48,12 @@ export default async function ProductReviewQueuePage({
           require a separate publish action.
         </p>
       </div>
-      <nav className="flex gap-4">
-        <Link href="/admin/products" className="section-link">
+      <nav className="flex flex-wrap gap-4">
+        <Link href="/admin/products/intakes" className="section-link">Product intake and assistance</Link>
+        <Link href={sellerId?`/admin/products?seller=${encodeURIComponent(sellerId)}`:'/admin/products'} className="section-link">
           Review queue
         </Link>
-        <Link href="/admin/products?view=published" className="section-link">
+        <Link href={`/admin/products?view=published${sellerId?'&seller='+encodeURIComponent(sellerId):''}`} className="section-link">
           Published products
         </Link>
       </nav>

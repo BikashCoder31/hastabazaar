@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { copyReleaseManifestInputs } from './helpers/copy-release-manifest-inputs';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -22,9 +23,21 @@ interface Manifest {
   requiredTriggers: Record<string, string[]>;
 }
 
+// The prospective bundle has its own exact inventory assertions in
+// order-refund-migration-registration.test.mjs. Keep this historical oracle
+// independent of either generator so an orphaned SQL file still fails.
+const orderRefundOptIn = new Set([
+  'mariadb-order-item-pricing-snapshots.sql',
+  'mariadb-seller-shipment-delivery-allocations.sql',
+  'mariadb-priced-return-effects.sql',
+  'mariadb-seller-dispatch-evidence.sql',
+  'mariadb-refund-route-reservations.sql',
+  'mariadb-priced-order-acceptance-lock.sql',
+]);
+
 // Omitting a maintained companion must fail even if the checked-in manifest
 // and the generator omit the same file. Expectations come from the SQL inventory.
-void test('release generator covers the maintained non-reset SQL inventory', async (t) => {
+void test('historical release generation covers its maintained non-reset SQL inventory', async (t) => {
   const sqlRoot = fileURLToPath(
     new URL('../deployment/babal/', import.meta.url),
   );
@@ -46,6 +59,7 @@ void test('release generator covers the maintained non-reset SQL inventory', asy
       { cwd: root, env: { ...process.env, HASTABAZAAR_RELEASE_ID: release } },
     );
   try {
+    await copyReleaseManifestInputs(root);
     for (const name of sqlNames) {
       const destination = join(root, 'deployment/babal', name);
       await mkdir(dirname(destination), { recursive: true });
@@ -56,7 +70,7 @@ void test('release generator covers the maintained non-reset SQL inventory', asy
     const manifest = JSON.parse(first) as Manifest;
     const names = manifest.migrations.map(({ path }) => path);
     const expectedPaths = sqlNames
-      .filter((name) => name !== 'mariadb-reset-empty-import.sql')
+      .filter((name) => name !== 'mariadb-reset-empty-import.sql' && !orderRefundOptIn.has(name))
       .map((name) => 'deployment/babal/' + name);
 
     await t.test(
@@ -65,7 +79,7 @@ void test('release generator covers the maintained non-reset SQL inventory', asy
         assert.deepEqual(
           [...names].sort(),
           expectedPaths,
-          'Every maintained non-reset SQL file must be discoverable for release preparation',
+          'Every historical non-reset SQL file must be discoverable for release preparation',
         );
         assert.equal(
           new Set(names).size,
@@ -80,7 +94,8 @@ void test('release generator covers the maintained non-reset SQL inventory', asy
         for (const migration of manifest.migrations) {
           assert.equal(
             migration.usage,
-            migration.path === 'deployment/babal/mariadb-schema.sql'
+            // Defaults activate only a fresh database, never a populated upgrade.
+            ['deployment/babal/mariadb-schema.sql', 'deployment/babal/mariadb-fresh-bootstrap-defaults.sql'].includes(migration.path)
               ? 'empty-database-only'
               : 'additive-maintenance',
             migration.path,
@@ -118,6 +133,11 @@ void test('release generator covers the maintained non-reset SQL inventory', asy
       'form, privacy, contact, and COD readiness objects are discoverable',
       () => {
         const columns: Record<string, string[]> = {
+          marketplace_fee_waiver_control: ['id', 'revision'],
+          marketplace_fee_waiver_campaigns: ['id', 'revision', 'created_at', 'updated_at'],
+          marketplace_fee_waiver_revisions: ['campaign_id', 'revision', 'state', 'name', 'description', 'starts_at', 'ends_at', 'created_by', 'request_id', 'created_at'],
+          marketplace_fee_waiver_requests: ['request_id', 'actor_id', 'auth_subject', 'command_json', 'response_json', 'created_at'],
+          order_item_marketplace_fees: ['order_item_id', 'standard_bps', 'base_paisa', 'standard_paisa', 'waived_paisa', 'net_paisa', 'campaign_id', 'campaign_revision', 'created_at'],
           loyalty_config: ['scheduled_revision', 'scheduled_for', 'scheduled_unpause'],
           loyalty_revisions: ['weekly_points_json', 'grace_enabled'],
           loyalty_daily_claims: ['cycle_day', 'cycle_number', 'grace_used', 'grace_applied', 'cycle_reset_reason'],

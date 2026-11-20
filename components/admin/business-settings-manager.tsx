@@ -1,5 +1,9 @@
 'use client';
+import Link from 'next/link';
+import {notifySessionReference,useSessionReference} from '@/hooks/use-session-reference';
 import { FormGuide } from '@/components/forms/form-guide';
+import {useCommercialScope,CommercialRecovery} from '@/components/admin/commercial-recovery';
+import {FinanceAccessNotice} from '@/components/admin/finance-access-notice';
 import { companyDetails, companyPanDisplay } from '@/lib/content/company-details';
 
 import type { ProductWatermarkPolicy } from '@/lib/products/watermark-policy';
@@ -26,9 +30,10 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredMultipartAnswers } from '@/lib/forms/submission';
+import { configuredMultipartAnswers } from '@/lib/forms/client-submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 import { validateBusinessSettingValue } from '@/lib/configuration/definitions';
+import { businessSettingPublicationLimitation,assertBusinessSettingPublicationReady } from '@/lib/configuration/capabilities';
 import type {
   EffectiveBusinessSetting,
   BusinessSettingVersion,
@@ -92,6 +97,11 @@ function scalarString(value: unknown): string {
 }
 
 function displayValue(key: BusinessSettingKey, value: unknown): string {
+  if (key === 'platform_service_fee_policy' && value && typeof value === 'object') {
+    const policy = value as { enabled: boolean; amountPaisa: number };
+    return `${policy.enabled ? 'Enabled' : 'Disabled'} · NPR ${(policy.amountPaisa / 100).toFixed(2)} per order`;
+  }
+  if ((key === 'independent_seller_commission_bps' || key === 'managed_sale_linked_platform_retention_bps') && value === null) return 'Not configured — no current rate is assumed';
   if (
     (key === 'independent_seller_commission_bps' ||
       key === 'new_seller_reserve_bps') &&
@@ -142,7 +152,10 @@ function displayValue(key: BusinessSettingKey, value: unknown): string {
 }
 
 function parseEditorValue(key: BusinessSettingKey, value: unknown): unknown {
-  if (numericKeys.has(key)) return Number(value);
+  if (numericKeys.has(key)) {
+    if (value === null || value === undefined || typeof value === 'string' && value.trim() === '') throw new RangeError('Enter an explicit numeric value.');
+    return Number(value);
+  }
   if (listKeys.has(key)) {
     return scalarString(value)
       .split(',')
@@ -179,15 +192,16 @@ function settingGroup(key:BusinessSettingKey) {
 }
 const affectedAreaLabels:Record<string,string> = { maker_onboarding:'Maker registration',admin_review:'Seller review',managed_makers:'Managed Makers',seller:'Sellers',maker:'Makers',orders:'Orders',settlements:'Payouts and settlements',product_photos:'Product photos',seller_preview:'Seller product previews',catalogue:'Product catalogue',products:'Products',checkout:'Checkout',rider:'Private rider operations',finance:'Finance records',assignments:'Delivery assignments',remittance:'Remittance records',returns:'Returns',homepage:'Homepage',shop:'Shop',analytics:'Analytics',account:'Customer accounts' };
 
-export function BusinessSettingsManager({
+type BusinessSettingsManagerProps={actorId:string;initialKey?:BusinessSettingKey;initialSettings:readonly BusinessSettingsAdminItem[];asOf:number;simulationAllowed?:boolean};
+export function BusinessSettingsManager(props:BusinessSettingsManagerProps){return <BusinessSettingsManagerScope key={JSON.stringify([props.actorId,props.initialKey??null])} {...props}/>;}
+function BusinessSettingsManagerScope({
+  actorId,
+  simulationAllowed=false,
   initialSettings,
   asOf,
   initialKey,
-}: {
-  initialKey?: BusinessSettingKey;
-  initialSettings: readonly BusinessSettingsAdminItem[];
-  asOf: number;
-}) {
+}:BusinessSettingsManagerProps) {
+  const commercial=useCommercialScope(actorId);
   const [settings] = useState(() => initialSettings.filter((item) =>
     item.key !== 'homepage_hero_slides' && item.key !== 'homepage_occasion_slides'));
   const [selectedKey, setSelectedKey] = useState<BusinessSettingKey>(
@@ -208,20 +222,25 @@ export function BusinessSettingsManager({
   const [busy, setBusy] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const latestAttemptKey = useRef<string | null>(null);
-  const [failedAttemptKey, setFailedAttemptKey] = useState<string | null>(null);
+  const [failedInMemory, setFailedAttemptKey] = useState<string | null>(null);
   const catalog = usePublishedFormConfig('staff.business-settings-manager');
   useEffect(() => {
     const timer = window.setTimeout(() => {
       try {
-        const raw = window.sessionStorage.getItem('admin-setting-feedback');
+        const raw = window.sessionStorage.getItem('admin-setting-feedback:'+actorId);
         if (!raw) return;
         const saved = JSON.parse(raw) as {key?:unknown;message?:unknown};
-        window.sessionStorage.removeItem('admin-setting-feedback');
+        window.sessionStorage.removeItem('admin-setting-feedback:'+actorId);
         if (saved.key === selectedKey && typeof saved.message === 'string') setMessage(saved.message);
       } catch { /* The authoritative history still confirms the result. */ }
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [selectedKey]);
+  }, [selectedKey,actorId]);
+  const pendingPointer='admin-setting-pending:'+actorId+':'+selectedKey;
+  const storedPointer=useSessionReference(pendingPointer);
+  const validPointer=storedPointer&&storedPointer.startsWith(sessionAttemptKey('staff.business-settings-manager',actorId+':'))&&storedPointer.length<500?storedPointer:null;
+  const storedAttempt=useSessionReference(validPointer??'');
+  const failedAttemptKey=failedInMemory??(storedAttempt?validPointer:null);
 
   if (!selected) {
     return (
@@ -232,8 +251,10 @@ export function BusinessSettingsManager({
   }
 
   let valueError = '';
+  let publicationLimitation: string | null = null;
   try { validateBusinessSettingValue(selected.key, parseEditorValue(selected.key, editorValue)); }
   catch (cause) { valueError = cause instanceof Error ? cause.message : 'Review the proposed value.'; }
+  if (!valueError){const value=parseEditorValue(selected.key,editorValue);publicationLimitation=businessSettingPublicationLimitation(selected.key,value);if(['managed_maker_active_model','managed_maker_program_mode'].includes(selected.key))try{assertBusinessSettingPublicationReady(selected.key,value as never,{simulationAllowed});}catch(error){publicationLimitation=(error as Error).message;}}
   const visibleSettings = settings.filter(item => query.trim().toLowerCase().split(/\s+/).filter(Boolean).every(term => (item.label+' '+item.description+' '+settingGroup(item.key)).toLowerCase().includes(term)));
   const drafts = selected.history.filter((item) => item.status === 'draft');
   const scheduled = selected.history.filter(
@@ -244,7 +265,7 @@ export function BusinessSettingsManager({
     if (busy || key === selected.key) return;
     const dirty = JSON.stringify(editorValue) !== JSON.stringify(editorValueFor(selected.effective.value)) || reason.trim() !== '' || effectiveFrom !== '';
     if (dirty && !window.confirm('You have unsaved setting changes. Discard them and open another setting?')) return;
-    window.history.replaceState(null, '', '/admin/business-settings?setting='+encodeURIComponent(key));
+    const destination=new URL(window.location.href);destination.searchParams.set('setting',key);if(destination.pathname==='/admin/programs')destination.hash='program-settings';window.history.replaceState(null,'',destination.pathname+destination.search+destination.hash);
     setEffectiveFrom('');
     setHasError(false);
     const next = settings.find((item) => item.key === key);
@@ -260,8 +281,9 @@ export function BusinessSettingsManager({
     if (!catalog.canSubmit || !catalog.config || !formRef.current)
       throw new Error('Form configuration is unavailable. Please try again.');
     const data = new FormData(formRef.current);
-    const attemptKey = sessionAttemptKey('staff.business-settings-manager', `${action}:${subjectId}`);
+    const attemptKey = sessionAttemptKey('staff.business-settings-manager', `${actorId}:${action}:${subjectId}`);
     latestAttemptKey.current = attemptKey;
+    sessionStorage.setItem(pendingPointer,attemptKey);
     data.set('requestId', getOrCreateSessionAttempt(attemptKey));
     const { version, ...answers } = configuredMultipartAnswers(data, catalog.config);
     return { sourceFormId: 'staff.business-settings-manager',
@@ -300,7 +322,7 @@ export function BusinessSettingsManager({
     try {
       const response = await fetch('/api/admin/business-settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json',...commercial.headers },
         body: JSON.stringify({
           action,
           key: selected.key,
@@ -312,11 +334,13 @@ export function BusinessSettingsManager({
         }),
       });
       const result = (await response.json().catch(() => null)) as SettingsResponse | null;
+      if(!commercial.current())return;commercial.observe(response);
       verifyResponse(response, result, action, 'Setting could not be saved.');
       if (latestAttemptKey.current) clearSessionAttempt(latestAttemptKey.current);
+      sessionStorage.removeItem(pendingPointer);notifySessionReference(pendingPointer);
       const savedMessage = action === 'draft' ? 'Draft saved. It has not changed the active setting.' : (typeof result?.version?.effectiveFrom === 'number' && typeof result.version.publishedAt === 'number' && result.version.effectiveFrom > result.version.publishedAt ? 'Change scheduled. The current value stays active until its effective date.' : 'Changes saved and published. Review the current value and history below.');
       setMessage(savedMessage);
-      try { window.sessionStorage.setItem('admin-setting-feedback', JSON.stringify({key:selected.key,message:savedMessage})); } catch { /* Reload the authoritative record even when storage is unavailable. */ }
+      try { window.sessionStorage.setItem('admin-setting-feedback:'+actorId, JSON.stringify({key:selected.key,message:savedMessage})); } catch { /* Reload the authoritative record even when storage is unavailable. */ }
       window.location.reload();
     } catch (error) {
       setHasError(true);
@@ -325,7 +349,7 @@ export function BusinessSettingsManager({
         error instanceof Error ? error.message : 'Setting could not be saved.',
       );
     } finally {
-      setBusy(false);
+      if(commercial.current())setBusy(false);
     }
   }
 
@@ -343,7 +367,7 @@ export function BusinessSettingsManager({
         `/api/admin/business-settings/changes/${encodeURIComponent(version.id)}`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json',...commercial.headers },
           body: JSON.stringify({
             action,
             expectedRevision: version.revision,
@@ -356,8 +380,10 @@ export function BusinessSettingsManager({
         },
       );
       const result = (await response.json().catch(() => null)) as SettingsResponse | null;
+      if(!commercial.current())return;commercial.observe(response);
       verifyResponse(response, result, action, 'Change could not be completed.');
       if (latestAttemptKey.current) clearSessionAttempt(latestAttemptKey.current);
+      sessionStorage.removeItem(pendingPointer);notifySessionReference(pendingPointer);
       setMessage('Change recorded. Refreshing the authoritative history…');
       window.location.reload();
     } catch (error) {
@@ -369,14 +395,18 @@ export function BusinessSettingsManager({
           : 'Change could not be completed.',
       );
     } finally {
-      setBusy(false);
+      if(commercial.current())setBusy(false);
     }
   }
 
+  const recovery=failedAttemptKey?<CommercialRecovery actorId={actorId} kind="business-setting" attemptKey={failedAttemptKey} onDenied={commercial.deny} onReauthorized={commercial.reauthorize} onRecovered={()=>{if(!commercial.current())return;clearSessionAttempt(failedAttemptKey);sessionStorage.removeItem(pendingPointer);notifySessionReference(pendingPointer);setFailedAttemptKey(null);window.location.reload();}}/>:null;
+  if(commercial.accessDenied)return <div className="space-y-3"><FinanceAccessNotice message={message}/>{recovery}</div>;
   return (
     <form ref={formRef} data-form-id="staff.business-settings-manager"
       className="grid gap-6 xl:grid-cols-[18rem_minmax(0,1fr)]"
       onSubmit={(event) => event.preventDefault()}>
+      {recovery}
+      {simulationAllowed&&selected.key==='managed_maker_active_model'&&editorValue==='managed_fixed_supplier_price_v1'?<p className="col-span-full rounded border p-3">Simulation only: fixed supplier-price configuration does not authorize live activation or real settlement. Each maker, agreement and product keeps its independent native checks.</p>:null}
       <FormGuide formId="staff.business-settings-manager" />
 
       <fieldset disabled={busy} className="contents">
@@ -422,6 +452,7 @@ export function BusinessSettingsManager({
           </CardContent>
         </Card>
 
+        {(selected.key === 'independent_seller_commission_bps' || selected.key === 'managed_sale_linked_platform_retention_bps') ? <Card><CardHeader><CardTitle>Selling fee policy</CardTitle></CardHeader><CardContent><p>Registered Seller and sale-linked Managed Maker rates share one publication and common start.</p><Link href="/admin/commission#rate-management" className="section-link">Review the common fee schedule</Link></CardContent></Card> : (
         <Card>
           <CardHeader>
             <CardTitle>Edit configuration</CardTitle>
@@ -431,6 +462,7 @@ export function BusinessSettingsManager({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
+            {publicationLimitation ? <output className="block rounded-xl border p-3 text-sm">{publicationLimitation} You may retain a draft for review.</output> : null}
             {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={['setting']} /> : null}
             {!catalog.canSubmit ? <output aria-live="polite" className="block text-sm">{catalog.message || 'Loading form configuration…'}</output> : null}
             <SettingValueEditor
@@ -472,7 +504,9 @@ export function BusinessSettingsManager({
               <h3 className="text-sm font-semibold">Change preview</h3>
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
                 <div className="min-w-0"><h4 className="mb-2 text-sm font-semibold">Current value</h4><SettingValuePreview value={selected.effective.value} summary={displayValue(selected.key, selected.effective.value)} /></div>
-                <div className="min-w-0"><h4 className="mb-2 text-sm font-semibold">Proposed value</h4><SettingValuePreview value={parseEditorValue(selected.key, editorValue)} summary={displayValue(selected.key, parseEditorValue(selected.key, editorValue))} /></div>
+                <div className="min-w-0"><h4 className="mb-2 text-sm font-semibold">Proposed value</h4>{valueError
+                  ? <p className="text-sm text-muted-foreground">Enter a valid value to preview this change.</p>
+                  : <SettingValuePreview value={parseEditorValue(selected.key, editorValue)} summary={displayValue(selected.key, parseEditorValue(selected.key, editorValue))} />}</div>
               </div>
               <p className="mt-3 text-sm font-semibold">Affected areas</p>
               <p className="mt-1 text-sm text-muted-foreground">{selected.affectedSurfaces.map(area=>affectedAreaLabels[area]??area.replaceAll('_',' ')).join(', ')}</p>
@@ -493,7 +527,7 @@ export function BusinessSettingsManager({
             <div className="flex flex-wrap gap-2">
             <Button
               type="button"
-              disabled={busy || !catalog.canSubmit || reason.trim().length < 8 || Boolean(valueError)}
+              disabled={busy || !catalog.canSubmit || reason.trim().length < 8 || Boolean(valueError) || Boolean(publicationLimitation)}
               onClick={() => saveSetting('save')}
             >
               {busy ? 'Saving…' : effectiveFrom ? 'Save and schedule' : 'Save changes'}
@@ -509,6 +543,7 @@ export function BusinessSettingsManager({
             </div>
           </CardContent>
         </Card>
+        )}
 
         <Card>
           <CardHeader>
@@ -521,7 +556,7 @@ export function BusinessSettingsManager({
           <CardContent className="space-y-3">
             {selected.history.length ? (
               selected.history.map((version) => (
-                <div key={version.id} className="rounded-xl border p-4">
+                <div key={version.id} id={'setting-version-'+version.id} className="scroll-mt-6 rounded-xl border p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="font-semibold">
@@ -536,11 +571,11 @@ export function BusinessSettingsManager({
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {version.status === 'draft' ? (
+                      {!['independent_seller_commission_bps','managed_sale_linked_platform_retention_bps'].includes(selected.key) && version.status === 'draft' ? (
                         <Button
                           size="sm"
                           type="button"
-                          disabled={busy || !catalog.canSubmit || reason.trim().length < 8 || Boolean(valueError)}
+                          disabled={busy || !catalog.canSubmit || reason.trim().length < 8 || Boolean(valueError) || Boolean(businessSettingPublicationLimitation(selected.key, version.value))}
                           onClick={() =>
                             changeVersion(
                               version,
@@ -551,7 +586,7 @@ export function BusinessSettingsManager({
                           Publish / schedule
                         </Button>
                       ) : null}
-                      {version.status === 'pending_approval' ? (
+                      {!['independent_seller_commission_bps','managed_sale_linked_platform_retention_bps'].includes(selected.key) && version.status === 'pending_approval' ? (
                         <>
                           <Button
                             size="sm"
@@ -572,7 +607,7 @@ export function BusinessSettingsManager({
                           </Button>
                         </>
                       ) : null}
-                      {version.status === 'published' ? (
+                      {!['independent_seller_commission_bps','managed_sale_linked_platform_retention_bps'].includes(selected.key) && version.status === 'published' ? (
                         <Button
                           size="sm"
                           variant="outline"
@@ -621,6 +656,16 @@ function SettingValueEditor({
   value: unknown;
   onChange: (value: unknown) => void;
 }) {
+  if (settingKey === 'platform_service_fee_policy') {
+    const policy = value as { enabled: boolean; amountPaisa: number };
+    return <div className="space-y-4">
+      <label className="flex min-h-11 items-center gap-3"><input className="size-4 accent-primary" type="checkbox" checked={policy.enabled} onChange={event => onChange({ ...policy, enabled: event.target.checked })} />Enable Platform service fee</label>
+      <div className="space-y-2"><Label htmlFor="service-fee-amount">Amount per order (NPR)</Label>
+        <Input id="service-fee-amount" type="number" min={0} max={1000} step="0.01" value={Number.isFinite(policy.amountPaisa) ? policy.amountPaisa / 100 : ''}
+          onChange={event => onChange({ ...policy, amountPaisa: event.target.value === '' ? NaN : Math.round(Number(event.target.value) * 100) })} /></div>
+      <p className="text-sm text-muted-foreground">When disabled, new orders pay no Platform service fee. The amount is kept for re-enabling. Changes apply to newly reviewed orders only. Existing orders keep their saved charge and refund terms. Non-refundable except where required by law.</p>
+    </div>;
+  }
   if (numericKeys.has(settingKey)) {
     return (
       <div className="space-y-2">
@@ -710,7 +755,7 @@ function SettingValueEditor({
       <div className="space-y-2"><Label htmlFor="watermark-position">Position</Label><NativeSelect id="watermark-position" className="w-full" value={policy.position} onChange={event => update({ position: event.target.value as ProductWatermarkPolicy['position'] })}>{(['bottom-right','bottom-left','top-right','top-left'] as const).map(position => <NativeSelectOption key={position} value={position}>{position.replaceAll('-', ' ')}</NativeSelectOption>)}</NativeSelect></div>
       <div className="space-y-2"><Label htmlFor="watermark-size">Width (% of photo, 8–35)</Label><Input id="watermark-size" type="number" min={8} max={35} step={1} value={policy.sizePercent} onChange={event => update({ sizePercent: Number(event.target.value) })}/></div>
       <div className="space-y-2"><Label htmlFor="watermark-opacity">Opacity (%, 10–80)</Label><Input id="watermark-opacity" type="number" min={10} max={80} step={1} value={policy.opacityPercent} onChange={event => update({ opacityPercent: Number(event.target.value) })}/></div>
-      <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">Customer copies carry the HastaBazaar wordmark. Originals stay private. Saving updates existing uploaded product photos as well as new uploads; videos, category images, homepage media, and customer reviews are unaffected. Sellers see the current customer photo before submitting.</p>
+      <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">Customer copies carry the Hastabazaar wordmark. Originals stay private. Saving updates existing uploaded product photos as well as new uploads; videos, category images, homepage media, and customer reviews are unaffected. Sellers see the current customer photo before submitting.</p>
     </div>;
   }
   if (settingKey === 'official_social_links') {

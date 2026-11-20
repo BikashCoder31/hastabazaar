@@ -1,0 +1,8 @@
+import {offerGuard} from './offer-support';
+export interface ProductAvailabilityState {revision:number|null;ownerPaused:boolean;ownerWithdrawn:boolean;staffWithdrawn:boolean;lastEventId:string|null}
+export async function productAvailabilityState(db:D1Database,productId:string):Promise<ProductAvailabilityState>{
+ const row=await db.prepare('SELECT revision,owner_paused AS ownerPaused,owner_withdrawn AS ownerWithdrawn,staff_withdrawn AS staffWithdrawn,last_event_id AS lastEventId FROM product_availability_states WHERE product_id=?').bind(productId).first<{revision:number;ownerPaused:number;ownerWithdrawn:number;staffWithdrawn:number;lastEventId:string}>();
+ return row?{...row,ownerPaused:Boolean(row.ownerPaused),ownerWithdrawn:Boolean(row.ownerWithdrawn),staffWithdrawn:Boolean(row.staffWithdrawn)}:{revision:null,ownerPaused:false,ownerWithdrawn:false,staffWithdrawn:false,lastEventId:null};
+}
+export function availabilityStateGuard(db:D1Database,productId:string,state:ProductAvailabilityState){return offerGuard(db,state.revision===null?'NOT EXISTS(SELECT 1 FROM product_availability_states WHERE product_id=?)':'EXISTS(SELECT 1 FROM product_availability_states WHERE product_id=? AND revision=? AND last_event_id=?)',state.revision===null?[productId]:[productId,state.revision,state.lastEventId]);}
+export function productAvailabilitySql(alias:string,ordering=false){if(!/^[a-z_]+$/.test(alias))throw new Error('Invalid availability alias.');return `NOT EXISTS(SELECT 1 FROM product_availability_states availability WHERE availability.product_id=${alias}.id AND (availability.owner_withdrawn=1 OR availability.staff_withdrawn=1${ordering?' OR availability.owner_paused=1':''}))`;}

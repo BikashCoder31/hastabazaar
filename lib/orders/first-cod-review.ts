@@ -1,3 +1,5 @@
+import {prepareInitialResponseNotices} from './response-notifications';
+import {prepareOrderResponseRelease} from './response-workflow';
 import { staffMutationGuard } from '../db/repositories/staff-mutation-guard';
 
 export const FIRST_COD_THRESHOLD_PAISA = 500000;
@@ -165,6 +167,7 @@ export async function confirmFirstCodReview(
           o.requestId,
           o.now,
         ),
+      ...prepareOrderResponseRelease(db,o.orderId),...await prepareInitialResponseNotices(db,o.orderId),
       db
         .prepare('DELETE FROM operation_transaction_guards WHERE id=?')
         .bind(guardId),

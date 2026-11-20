@@ -1,3 +1,4 @@
+import { validateSellerDocumentContent } from '@/lib/documents/document-content';
 import { env } from 'cloudflare:workers';
 import { requireCustomerApi,CustomerAuthorizationError } from '@/lib/auth/customer';
 import { getManagedMakerAuthority,ManagedMakerAuthorizationError } from '@/lib/managed-commerce/maker-authority';
@@ -11,7 +12,7 @@ import { FormValidationError } from '@/lib/forms/validation';
 import { registeredTransitionFormId,registeredTransitionKeys } from '@/lib/managed-commerce/transition-contract';
 import { submitRegisteredSellerTransition,resubmitRegisteredSellerTransition,validateRegisteredTransitionInput,RouteTransitionError } from '@/lib/managed-commerce/route-transition';
 import { resolveRuntimeEnvironment,assertSimulationAllowed } from '@/lib/staging/environment';
-import { validateSellerDocument,validateSellerDocumentContent,type SellerApplicationDocument } from '@/lib/sellers/application';
+import { validateSellerDocument,type SellerApplicationDocument } from '@/lib/sellers/application';
 
 export const dynamic='force-dynamic';
 const reply=(body:unknown,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'private, no-store',Vary:'Cookie'}});
@@ -26,7 +27,8 @@ export async function GET() {
   try {
     const user=await requireCustomerApi();const db=database();const profile=await ownedProfile(db,user.userId);
     const [terms,documents,transitions]=await Promise.all([getRegisteredSellerTerms(db),
-      db.prepare(`SELECT id,kind,original_name AS name,status FROM seller_documents WHERE seller_id=? AND kind IN ('business_registration','pan_certificate','vat_certificate','bank_verification') ORDER BY uploaded_at DESC,id`).bind(profile.sellerId).all(),
+      db.prepare(`SELECT id,kind,original_name AS name,status FROM seller_documents WHERE seller_id=? AND kind IN ('business_registration','pan_certificate','vat_certificate','bank_verification')
+        AND (kind<>'pan_certificate' OR instr(object_key,?)=1) ORDER BY uploaded_at DESC,id`).bind(profile.sellerId,`private/seller-documents/${profile.sellerId}/transition-`).all(),
       db.prepare(`SELECT id,status,version,legal_name AS legalName,registration_authority AS registrationAuthority,registration_number AS registrationNumber,
         tax_mode AS taxMode,tax_registration_number AS taxRegistrationNumber,json_extract(registered_terms_snapshot_json,'$.payoutAccountReference') AS payoutAccountReference,effective_at AS effectiveAt,review_reason AS reviewReason FROM seller_route_transition_applications WHERE seller_id=? ORDER BY created_at DESC,id LIMIT 50`).bind(profile.sellerId).all(),
     ]);
@@ -85,7 +87,7 @@ export async function POST(request:Request) {
         const document={id,kind,objectKey:`private/seller-documents/${profile.sellerId}/${id}`,originalName:file.name.slice(0,180),mimeType:file.type,sizeBytes:file.size};
         documents.push(document);uploads.push({file,document});references.push(id);
       } else if(existing)references.push(existing);
-      else throw new RangeError(`Provide the required ${field==='businessRegistration'?'company registration':field==='panCertificate'?'PAN':field==='bankVerification'?'receiving-account evidence':'VAT'} certificate.`);
+       else throw new RangeError(`Provide the required ${field==='businessRegistration'?'business registration':field==='panCertificate'?'business PAN':field==='bankVerification'?'receiving-account evidence':'VAT'} certificate.`);
     }
     const input={sellerId:profile.sellerId,actorId:user.userId,legalName:formText(data,'legalName'),registrationAuthority:formText(data,'registrationAuthority'),registrationNumber:formText(data,'registrationNumber'),
       taxMode:taxMode as 'PAN'|'VAT'|'BOTH',taxRegistrationNumber:formText(data,'taxRegistrationNumber'),payoutAccountReference:formText(data,'payoutAccountReference'),evidenceReferences:references,documents,agreementVersion:terms.agreementVersion,

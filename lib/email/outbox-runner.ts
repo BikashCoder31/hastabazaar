@@ -7,20 +7,23 @@ export async function processEmailOutbox(
   db: D1Database,
   mail: OrderMailService,
   origin: string,
-  options: { limit?: number; now?: number } = {},
+  options: { limit?: number; now?: number; deadlineMs?:number } = {},
 ) {
   const limit = Math.max(1, Math.min(options.limit ?? 12, 40));
   const business = await deliverBusinessEmails(db, mail, origin, {
-    limit: Math.min(6, limit),
+    // Reserve capacity for orders even while business notices remain queued.
+    limit: Math.min(20, Math.ceil(limit / 2)),
     now: options.now,
+    deadlineMs:options.deadlineMs,
   });
   const businessProcessed =
     business.accepted + business.failed + business.cancelled;
   const remaining = Math.max(0, limit - businessProcessed);
-  const orders = remaining
+  const orders = remaining && (options.deadlineMs===undefined||Date.now()<options.deadlineMs)
     ? await deliverOrderEmails(db, mail, origin, {
         limit: remaining,
         now: options.now,
+        deadlineMs:options.deadlineMs,
       })
     : { sent: 0, failed: 0, cancelled: 0 };
   return Object.freeze({
@@ -34,6 +37,7 @@ export async function processEmailOutbox(
 export async function runScheduledEmailOutbox(options: {
   limit?: number;
   now?: number;
+  deadlineMs?:number;
 } = {}) {
   const config = env as unknown as {
     DB?: D1Database;

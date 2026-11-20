@@ -76,7 +76,8 @@ export async function deliverContactCode(
       `${message.channel === 'phone' ? 'SMS' : 'Email'} verification is not configured. Please try again later.`,
       503,
     );
-  if (simulated && !fictionalEmail(message.email))
+  if (simulated && (!fictionalEmail(message.email) ||
+      (message.sellerRegistration && !fictionalEmail(message.contact))))
     throw new ContactVerificationError(
       'Local capture requires a fictional recipient account.',
       503,
@@ -139,7 +140,8 @@ export async function deliverContactCode(
       );
     return;
   }
-  const text = `Your HastaBazaar ${message.channel === 'email' ? 'email' : 'phone'} verification code is ${message.code}. It expires in 10 minutes and can be used only once.`;
+  const contactLabel = message.sellerRegistration ? 'seller registration email' : message.channel;
+  const text = `Your Hastabazaar ${contactLabel} verification code is ${message.code}. It expires in 10 minutes and can be used only once.`;
   if (message.channel === 'phone') {
     if (!environment.SMS?.configured)
       throw new ContactVerificationError(
@@ -159,7 +161,7 @@ export async function deliverContactCode(
       );
     await environment.EMAIL.send({
       to: message.contact,
-      subject: 'Verify your HastaBazaar email',
+      subject: message.sellerRegistration ? 'Verify your Hastabazaar seller registration email' : 'Verify your Hastabazaar email',
       text,
       html: `<p>${text}</p>`,
     });
@@ -171,6 +173,7 @@ export async function readLocalContactCaptures(
   environment: ContactDeliveryEnvironment,
   actor: ContactActor,
   now = Date.now(),
+  sellerEmail?: string,
 ) {
   if (!localCapture(environment))
     throw new ContactVerificationError('Local capture is unavailable.', 403);
@@ -186,9 +189,11 @@ export async function readLocalContactCaptures(
     FROM local_contact_captures p JOIN account_contact_challenges c ON c.token_hash=p.token_hash JOIN users u ON u.id=p.user_id
     WHERE p.user_id=? AND u.auth_subject=? AND c.auth_subject=u.auth_subject AND u.status='active'
     AND c.consumed_at IS NULL AND c.delivered_at IS NOT NULL AND c.attempts<5 AND c.expires_at>? AND p.expires_at>?
-    AND ((c.channel='email' AND c.contact_snapshot=lower(u.email)) OR (c.channel='phone' AND c.contact_snapshot=u.phone))
+    AND ${sellerEmail === undefined
+      ? "((c.channel='email' AND c.contact_snapshot=lower(u.email) AND c.contact_value=c.contact_snapshot) OR (c.channel='phone' AND c.contact_snapshot=u.phone))"
+      : "(c.channel='email' AND c.contact_snapshot=lower(u.email) AND c.contact_value=?)"}
     ORDER BY c.created_at DESC LIMIT 2`)
-      .bind(actor.userId, actor.authSubject, now, now)
+      .bind(actor.userId, actor.authSubject, now, now, ...(sellerEmail === undefined ? [] : [sellerEmail]))
       .all<{
         channel: 'email' | 'phone';
         contact: string;

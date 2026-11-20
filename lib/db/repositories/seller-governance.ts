@@ -1,3 +1,4 @@
+import { formAnswerSourceSql } from '../../forms/answer-proof';
 import { staffMutationGuard } from './staff-mutation-guard';
 import { buildFormAnswerInsert } from './form-answers';
 import { digestFormRequest } from '@/lib/forms/submission';
@@ -177,7 +178,7 @@ export async function applySellerRestriction(
           AND subject_id=? AND actor_id=? LIMIT 1`)
         .bind(`${options.requestId}:audit`, options.sellerId, options.actorId)
         .first<{ nextJson: string | null }>();
-      const answer = await database.prepare(`SELECT 1 AS valid FROM form_answer_sets
+      const answer = await database.prepare(`SELECT 1 AS valid FROM ${formAnswerSourceSql(database)} original_answers
         WHERE form_id='staff.seller-governance' AND request_id=? AND config_version_id=?
           AND subject_type='seller' AND subject_id=? AND actor_id=? LIMIT 1`)
         .bind(options.requestId, options.form.versionId, options.sellerId, options.actorId).first();

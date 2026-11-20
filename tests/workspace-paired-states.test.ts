@@ -1,0 +1,58 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {productPublicationFixture} from './helpers/product-publication-fixture';
+import {readyRegisteredSeller} from './helpers/ready-registered-seller';
+import {getProductPublicationReview,reviewProductPublication,rebaseProductWorkspace} from '../lib/products/publication';
+import {saveProductWorkspace,submitProductIntake} from '../lib/products/intake-workspace';
+import {confirmOfferStock,getOfferStock,pauseOfferStock} from '../lib/products/offer-inventory';
+import {getPublicOfferSet} from '../lib/products/public-offers';
+import {getPublishedProductBySlug,listPublishedProducts,listHomepageLatestProducts} from '../lib/db/repositories/products';
+import {listPublishedProductsByMaker,listWishlist,setWishlistItem} from '../lib/db/repositories/customers';
+import {listReviewTasks} from '../lib/workflows/review-tasks';
+import {readSellerWorkspaceTasks} from '../lib/seller/workspace-tasks';
+
+void test('one native product source stays consistent across seller tasks, admin approval/publication and customer stock/private-draft states',async()=>{
+ const f=await productPublicationFixture('',Date.now()-60_000,true);try{
+  assert.ok(f.sqlite.prepare('PRAGMA database_list').all().every(row=>row.file===''),'Only an isolated in-memory fixture is allowed.');
+  await readyRegisteredSeller(f,true);
+  let review=await getProductPublicationReview(f.db,'reviewer',f.sent.caseId);
+  const source=(await listReviewTasks(f.db,'delegate')).find(row=>row.sourceId===f.sent.caseId)!;assert.ok(source);assert.equal(source.status,'awaiting_review');
+  let seller=await readSellerWorkspaceTasks(f.db,'registered-owner',{now:f.now+10,view:'all',limit:100});
+  const task=seller.tasks.find(row=>row.sourceId===f.sent.caseId)!;assert.ok(task);assert.equal(task.group,'waiting');assert.equal(task.sellerActionRequired,false);
+  assert.equal(await getPublicOfferSet(f.db,review.productId,f.now+10),null);
+  const checks={sameItem:true,accurateCover:true,eligibilityEvidence:[]};
+  await reviewProductPublication(f.db,{actorId:'reviewer',requestId:'paired-approve-only',expectedRevision:String(review.revision),now:f.now+11},{caseId:f.sent.caseId,versionId:review.candidate.versionId,expectedCaseRevision:String(review.caseRevision),action:'approve_only',reason:'Verify this exact fictional cup while keeping actual publication a separate decision.',checks});
+  review=await getProductPublicationReview(f.db,'reviewer',f.sent.caseId);
+  assert.equal(await getPublicOfferSet(f.db,review.productId,f.now+12),null,'Approval alone must not publish.');
+  assert.equal((await listReviewTasks(f.db,'delegate')).some(row=>row.id===source.id),false,'Reviewer-only staff must not acquire publication authority.');
+  const publishing=(await listReviewTasks(f.db,'reviewer')).find(row=>row.id===source.id)!;assert.equal(publishing.sourceStatus,'ready_for_decision');assert.equal(publishing.startedAt,source.startedAt);assert.equal(publishing.nextActor,'Permitted publisher');
+  seller=await readSellerWorkspaceTasks(f.db,'registered-owner',{now:f.now+12,view:'all',limit:100});assert.equal(seller.tasks.find(row=>row.key===task.key)?.group,'waiting');
+  const publishedDecision=await reviewProductPublication(f.db,{actorId:'reviewer',requestId:'paired-publish-approved',expectedRevision:String(review.revision),now:f.now+13},{caseId:f.sent.caseId,versionId:review.candidate.versionId,expectedCaseRevision:String(review.caseRevision),action:'publish_approved',reason:'Publish the separately approved fictional source without changing its saved facts.',checks});
+  assert.equal((await listReviewTasks(f.db,'reviewer')).find(row=>row.id===source.id)?.status,'completed');
+  seller=await readSellerWorkspaceTasks(f.db,'registered-owner',{now:f.now+14,view:'all',limit:100});assert.equal(seller.tasks.find(row=>row.key===task.key)?.group,'history');
+  assert.equal((await readSellerWorkspaceTasks(f.db,'registered-owner',{now:f.now+14})).tasks.some(row=>row.key===task.key),false);
+  const published=await getPublicOfferSet(f.db,review.productId,f.now+14);assert.ok(published);assert.equal(published.orderable,false,'Publishing stock intent must not confirm physical stock.');
+  await confirmOfferStock(f.db,{actorId:'registered-owner',requestId:'paired-confirm-count',expectedRevision:null,now:f.now+15},{offerId:'cup',available:5,reason:'Record the actual count of this independent fictional cup stock.',independentStockConfirmed:true});
+  const available=await getPublicOfferSet(f.db,review.productId,f.now+16);assert.ok(available);assert.equal(available.orderable,true);assert.equal(available.display.pricePaisa,80000);
+  const slug=String(f.sqlite.prepare('SELECT slug FROM products WHERE id=?').get(review.productId)!.slug);
+  await setWishlistItem(f.db,{userId:'customer',productId:review.productId,saved:true,now:f.now+17});
+  const nextDraft=await saveProductWorkspace(f.db,{actorId:'registered-owner',requestId:'paired-private-next-edit',expectedRevision:String(f.attached.revision),now:f.now+18},{...f.input,answers:{...f.input.answers,nameEn:'PRIVATE-NEXT-PRODUCT-NAME'},offers:{...f.input.offers,offers:f.input.offers.offers.map(offer=>({...offer,price:'5555',stockIntent:'999',sku:'PRIVATE-NEXT-SKU'}))}});
+  const detail=await getPublishedProductBySlug(f.db,slug);assert.ok(detail);assert.equal(detail.nameEn,'Fictional new cup');assert.equal(detail.pricePaisa,80000);
+  const publicRows=[await listPublishedProducts(f.db,{}),await listHomepageLatestProducts(f.db),await listPublishedProductsByMaker(f.db,'registered'),await listWishlist(f.db,'customer')];
+  assert.ok(publicRows.every(rows=>rows.some(row=>row.slug===slug&&row.pricePaisa===80000)),'All native public projections use the original product slug and published price.');
+  assert.doesNotMatch(JSON.stringify([detail,publicRows,seller]),/PRIVATE-NEXT|Private review note|Private licence reference|private\/fictional/);
+  const closed=await getProductPublicationReview(f.db,'reviewer',f.sent.caseId);
+  const nextInput={draftId:f.attached.id,versionId:nextDraft.versionId,intent:'review' as const,note:'Review the next fictional candidate while the original published item remains available.',expectedCaseRevision:String(closed.caseRevision),replaceVersionId:f.sent.versionId};
+  const nextContext={actorId:'registered-owner',requestId:'paired-submit-next',expectedRevision:String(nextDraft.revision),now:f.now+21};
+  await assert.rejects(submitProductIntake(f.db,{...nextContext,now:f.now+19},nextInput),/rebase|public version/i);
+  await rebaseProductWorkspace(f.db,{actorId:'registered-owner',requestId:'paired-compare-published',expectedRevision:String(publishedDecision.revision),now:f.now+20},{draftId:f.attached.id,publicVersionId:publishedDecision.versionId,expectedDraftRevision:String(nextDraft.revision),retainDraft:true});
+  const next=await submitProductIntake(f.db,nextContext,nextInput);
+  assert.notEqual(next.caseId,f.sent.caseId);
+  const nextTasks=await listReviewTasks(f.db,'reviewer');assert.equal(nextTasks.find(row=>row.id===source.id)?.status,'completed');assert.equal(nextTasks.find(row=>row.id===source.id)?.startedAt,source.startedAt);assert.equal(nextTasks.find(row=>row.sourceId===next.caseId)?.status,'awaiting_review');
+  const pendingPublic=await getPublishedProductBySlug(f.db,slug);assert.equal(pendingPublic?.nameEn,'Fictional new cup');assert.equal(pendingPublic?.pricePaisa,80000,'Submitting a new candidate must not replace the current public product.');
+  const stock=await getOfferStock(f.db,'cup');assert.equal(stock!.available,5);
+  await pauseOfferStock(f.db,{actorId:'registered-owner',requestId:'paired-pause-stock',expectedRevision:String(stock!.revision),now:f.now+22},{offerId:'cup',paused:true,reason:'Pause ordering while preserving the actual original published product and stock.'});
+  assert.equal((await getPublicOfferSet(f.db,review.productId,f.now+23))?.orderable,false);
+  assert.ok(await getPublishedProductBySlug(f.db,slug),'A stock pause must not erase the published product.');
+ }finally{f.dispose();}
+});

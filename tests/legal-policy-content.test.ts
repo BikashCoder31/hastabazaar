@@ -59,9 +59,10 @@ void test('customer policy navigation excludes seller commercial terms and prese
   assert.match(hub, />\s*Legal & Policies\s*</);
   assert.match(
     hub,
-    /Find the policies that explain shopping, selling, delivery and\s+personal information on HastaBazaar\./,
+    /Find the policies that explain shopping, selling, delivery and\s+personal information on Hastabazaar\./,
   );
-  assert.match(hub, /mailto:support@hastabazaar\.com/);
+  assert.match(hub, /href=\{`mailto:\$\{companyDetails\.supportEmail\}`\}/);
+  assert.match(hub, /\{companyDetails\.supportEmail\}/);
   for (const policy of publicLegalPolicyNavigation) {
     assert.match(readFileSync(`app${policy.href}/page.tsx`, 'utf8'), /LegalPolicyPage/);
   }
@@ -73,7 +74,8 @@ void test('connected acceptance surfaces use the current policy wording and link
   assert.match(checkout, /href="\/terms"/);
   assert.doesNotMatch(checkout, /accept the Version 3/);
   const seller = readFileSync('components/seller/seller-application-form.tsx', 'utf8');
-  assert.match(seller, /registeredTerms\?\.percent/);
+  assert.match(seller, /registrationAnswer === 'yes' && registeredTerms/);
+  assert.match(seller, /\{registeredTerms\.percent\}% commission/);
   assert.doesNotMatch(seller, /9% commission/);
   assert.match(seller, /href="\/seller-agreement"/);
   assert.match(seller, /href="\/prohibited-products"/);

@@ -6,6 +6,7 @@ import {
 } from './email-otp';
 import { createHostedSessionForUser } from './hosted-session';
 import { normalizeNepalMobile } from './nepal-phone';
+import { normalizeSellerRegistrationEmail } from '@/lib/sellers/registration-email';
 
 export type ContactChannel = 'email' | 'phone';
 export type CheckoutContactPolicy = 'email_and_phone' | 'email_only';
@@ -29,6 +30,7 @@ export type ContactDelivery = {
   tokenHash: string;
   code: string;
   expiresAt: number;
+  sellerRegistration?: boolean;
 };
 export type ContactVerificationStatus = {
   email: string;
@@ -114,6 +116,15 @@ function contactSnapshot(current: Account, channel: ContactChannel) {
   return channel === 'email' ? current.email : current.rawPhone!;
 }
 
+function contactForVerification(current: Account, channel: ContactChannel, sellerEmail?: string) {
+  if (sellerEmail === undefined) return channel === 'email' ? current.email : current.phone;
+  const email = normalizeSellerRegistrationEmail(sellerEmail);
+  if (channel !== 'email' || !email) {
+    throw new ContactVerificationError('Enter a valid seller registration email.', 400);
+  }
+  return email;
+}
+
 function sessionGuards(db: D1Database, actor: ContactActor, current: Account, now: number) {
   // Only the HTTP route may identify a guarded local role fixture. Production
   // and every hosted caller must prove an unexpired originating session.
@@ -132,12 +143,13 @@ export async function requestContactVerification(
   channel: ContactChannel,
   deliver: (message: ContactDelivery) => Promise<void>,
   now = Date.now(),
+  sellerEmail?: string,
 ): Promise<{ verified: boolean; token?: string; expiresAt?: number }> {
   const current = await account(db, actor);
   const boundary = sessionGuards(db, actor, current, now);
-  if (channel === 'email' ? current.emailVerified : current.phoneVerified)
+  const contact = contactForVerification(current, channel, sellerEmail);
+  if (channel === 'email' ? contact === current.email && current.emailVerified : current.phoneVerified)
     return { verified: true };
-  const contact = channel === 'email' ? current.email : current.phone;
   if (!contact)
     throw new ContactVerificationError(
       'Save a valid Nepal mobile number in your profile first.',
@@ -207,6 +219,7 @@ export async function requestContactVerification(
       tokenHash: challenge.record.tokenHash,
       code: challenge.code,
       expiresAt: challenge.record.expiresAt,
+      ...(sellerEmail === undefined ? {} : { sellerRegistration: true }),
     });
     const result = await db
       .prepare(
@@ -249,9 +262,11 @@ export async function verifyContactVerification(
   token: string,
   code: string,
   now = Date.now(),
+  sellerEmail?: string,
 ): Promise<{ sessionToken?: string }> {
   const current = await account(db, actor);
   const boundary = sessionGuards(db, actor, current, now);
+  const selectedContact = contactForVerification(current, channel, sellerEmail);
   const tokenHash = emailOtpTokenHash(token);
   const record = await db
     .prepare(`SELECT token_hash AS tokenHash,code_hash AS codeHash,user_id AS userId,auth_subject AS authSubject,
@@ -263,7 +278,7 @@ export async function verifyContactVerification(
     !record ||
     record.deliveredAt === null ||
     record.snapshot !== contactSnapshot(current, channel) ||
-    record.contact !== (channel === 'email' ? current.email : current.phone)
+    record.contact !== selectedContact
   )
     throw new ContactVerificationError(
       'The code or contact is no longer valid. Request a new code.',
@@ -299,7 +314,7 @@ export async function verifyContactVerification(
     `SELECT CASE WHEN changes()=1 THEN 1 ELSE json_extract('invalid','$') END`,
   );
   try {
-    if (channel === 'email') {
+    if (channel === 'email' && selectedContact === current.email) {
       const sessionToken = await createHostedSessionForUser(
         db,
         actor.userId,
@@ -324,14 +339,14 @@ export async function verifyContactVerification(
       ...boundary,
       claim,
       checked,
-      db
+      ...(channel === 'phone' ? [db
         .prepare('DELETE FROM account_phone_verifications WHERE user_id=?')
         .bind(actor.userId),
       db
         .prepare(
           'INSERT INTO account_phone_verifications(user_id,phone,verified_at) VALUES (?,?,?)',
         )
-        .bind(actor.userId, record.contact, now),
+        .bind(actor.userId, record.contact, now)] : []),
       db
         .prepare('DELETE FROM local_contact_captures WHERE token_hash=?')
         .bind(tokenHash),

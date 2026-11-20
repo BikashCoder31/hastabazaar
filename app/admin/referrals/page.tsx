@@ -41,7 +41,7 @@ const linkClass =
 export default async function ReferralAdmin({
   searchParams,
 }: { searchParams?: Promise<Params> } = {}) {
-  const staff = await requireStaffPage('/admin/referrals');
+  const staff = await requireStaffPage('/admin/referrals', 'commercial_policy.manage');
   if (staff.role !== 'super_admin')
     return <p>Only the Super Admin can manage referral offers.</p>;
   const params = (await searchParams) ?? {};
@@ -208,6 +208,7 @@ export default async function ReferralAdmin({
             referrals; accepted orders keep their original offer.
           </p>
           <ReferralSettings
+            actorId={staff.id}
             key={JSON.stringify(campaign)}
             campaign={campaign}
           />

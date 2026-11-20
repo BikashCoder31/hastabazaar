@@ -1,3 +1,4 @@
+import {hasActorIntentMismatch} from '@/lib/http/actor-intent';
 import { env } from 'cloudflare:workers';
 import { requireStaffApi, StaffAuthorizationError } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
@@ -50,7 +51,8 @@ function failure(error: unknown) {
 }
 export async function GET(request: Request) {
   try {
-    const actor = await requireStaffApi('admin.invite');
+    const actor = await requireStaffApi('commercial_policy.manage');
+    if(hasActorIntentMismatch(request,actor.id))throw new StaffAuthorizationError('The signed-in account changed. Refresh this commercial view before using its retained fields.',403);
     if (actor.role !== 'super_admin') throw new IncentiveError('unauthorized');
     if (new URL(request.url).search) throw new IncentiveError('invalid');
     return json(
@@ -69,7 +71,8 @@ export async function POST(request: Request) {
   if (!isTrustedMutationRequest(request))
     return json({ error: 'Cross-site requests are not allowed.' }, 403);
   try {
-    const actor = await requireStaffApi('admin.invite');
+    const actor = await requireStaffApi('commercial_policy.manage');
+    if(hasActorIntentMismatch(request,actor.id))throw new StaffAuthorizationError('The signed-in account changed. Refresh this commercial view before using its retained fields.',403);
     if (actor.role !== 'super_admin') throw new IncentiveError('unauthorized');
     const body = await readBoundedJsonObject(request);
     if (

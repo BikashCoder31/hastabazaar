@@ -1,3 +1,6 @@
+import {AftercareFollowupSummary} from '@/components/commerce/aftercare-followup-summary';
+import {ReturnPhysicalSummary} from '@/components/commerce/return-physical-summary';
+import {OrderOfferDetails} from '@/components/commerce/order-offer-details';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -55,7 +58,7 @@ export default async function SellerReturnCasePage({
       <div className="mt-6 flex flex-wrap justify-between gap-4">
         <div>
           <p className="eyebrow">{item.referenceNumber}</p>
-          <h1 className="mt-2 font-heading text-4xl">{item.productName}</h1>
+          <h1 className="mt-2 font-heading text-4xl">{item.productName}</h1><OrderOfferDetails offer={item.offerSnapshot}/><ReturnPhysicalSummary value={item.physical}/><AftercareFollowupSummary value={item.followup} audience="seller"/>
           <p className="mt-2 text-sm text-muted-foreground">
             Order {item.orderNumber} · {item.quantity} item(s)
           </p>
@@ -110,7 +113,7 @@ export default async function SellerReturnCasePage({
         <aside className="rounded-2xl border bg-card p-6">
           <h2 className="font-heading text-2xl">Your response</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Share only facts relevant to the item and fulfilment. HastaBazaar
+            Share only facts relevant to the item and fulfilment. Hastabazaar
             makes the final decision.
           </p>
           <div className="mt-5">

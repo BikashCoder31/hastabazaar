@@ -1,7 +1,7 @@
 'use client';
 import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useLayoutEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,29 +9,49 @@ import { Label } from '@/components/ui/label';
 import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
+import {ACTOR_INTENT_HEADER} from '@/lib/http/actor-intent';
+import {FinanceAccessNotice} from './finance-access-notice';
 const BASE_KEYS=['action','note','requestId'];
-export function PayoutRequestActions({ id, role = 'admin' }: { id: string; role?: 'admin'|'super_admin' }) {
+type PayoutRequestActionProps={id:string;actorId:string;role?:'admin'|'super_admin'};
+export function PayoutRequestActions(props:PayoutRequestActionProps){
+  return <PayoutRequestActionScope key={JSON.stringify([props.actorId,props.id])} {...props}/>;
+}
+function PayoutRequestActionScope({ id, actorId, role = 'admin' }: PayoutRequestActionProps) {
   const router=useRouter();
-  const [pending,setPending]=useState(false),[error,setError]=useState(''),[retryPending,setRetryPending]=useState(false);
-  const attemptKey=sessionAttemptKey('staff.payout-request-action',id);
+  const active=useRef(true);useLayoutEffect(()=>{active.current=true;return()=>{active.current=false;};},[]);
+  const [pending,setPending]=useState(false),[error,setError]=useState(''),[retryPending,setRetryPending]=useState(false),[accessDenied,setAccessDenied]=useState(false),[retained,setRetained]=useState<Record<string,unknown>|null>(null);
+  const attemptKey=sessionAttemptKey('staff.payout-request-action',actorId+':'+id);
   useEffect(() => { const timer = window.setTimeout(() => setRetryPending(hasSessionAttempt(attemptKey)), 0); return () => window.clearTimeout(timer); }, [attemptKey]);
   const catalog=usePublishedFormConfig('staff.payout-request-action');
   const [fieldError,setFieldError]=useState('');
   const fieldId = useId();
   async function save(body:Record<string,unknown>){
-    if(pending)return;
+    if(pending||accessDenied)return;
+    setRetained(body);
     setPending(true);setError('');
     try{
       const requestId=getOrCreateSessionAttempt(attemptKey);setRetryPending(true);
-      const response=await fetch('/api/admin/payout-requests/'+encodeURIComponent(id),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...body,requestId})});
+      const response=await fetch('/api/admin/payout-requests/'+encodeURIComponent(id),{method:'POST',headers:{'content-type':'application/json',[ACTOR_INTENT_HEADER]:actorId},body:JSON.stringify({...body,requestId})});
       const result=await response.json().catch(()=>null) as {error?:string;code?:string;ok?:boolean}|null;
+      if(!active.current)return;
+      if(response.status===401||response.status===403)setAccessDenied(true);
       if(!response.ok){if(response.status===409&&result?.code==='stale_version')catalog.handleSubmissionResponse(response,result.code);throw new Error(result?.error||'The payout decision could not be saved.');}
       if(result?.ok!==true)throw new Error('The response could not be verified. Retry with the same request.');
       clearSessionAttempt(attemptKey);setRetryPending(false);router.refresh();
-    }catch(cause){setError(cause instanceof Error?cause.message:'The payout decision could not be saved.');}
-    finally{setPending(false);}
+    }catch(cause){if(active.current)setError(cause instanceof Error?cause.message:'The payout decision could not be saved.');}
+    finally{if(active.current)setPending(false);}
   }
+  async function checkOriginal(){
+    setPending(true);try{
+      const attempt=sessionStorage.getItem(attemptKey);if(!attempt)throw new Error('The original reference is unavailable. Refresh the current request.');
+      const response=await fetch('/api/admin/payout-requests/'+encodeURIComponent(id)+'?attempt='+encodeURIComponent(attempt),{headers:{[ACTOR_INTENT_HEADER]:actorId}}),result=await response.json() as {outcome?:{id:string}|null;currentStatus?:string;error?:string};
+      if(!active.current)return;if(!response.ok)throw new Error(result.error??'The original outcome could not be checked.');
+      if(!Object.hasOwn(result,'outcome')||!['submitted','prepared','rejected'].includes(result.currentStatus??'')||result.outcome&&result.outcome.id!==id)throw new Error('The original outcome could not be verified.');
+      setAccessDenied(false);if(result.outcome){clearSessionAttempt(attemptKey);setRetryPending(false);setRetained(null);router.refresh();}else if(result.currentStatus!=='submitted'){setError('The original request already has a recorded decision. Review its current history.');router.refresh();}else setError('No original decision is recorded yet. Review the retained same-actor fields before retrying.');
+    }catch(cause){if(active.current)setError(cause instanceof Error?cause.message:'The original outcome could not be checked.');}finally{if(active.current)setPending(false);}
+  }
+  if(accessDenied)return <FinanceAccessNotice message={error} busy={pending} onCheck={()=>void checkOriginal()}/>;
   return (
     <form
       data-form-id="staff.payout-request-action"
@@ -63,6 +83,7 @@ export function PayoutRequestActions({ id, role = 'admin' }: { id: string; role?
           <select
             id={fieldId + '-action'}
             name="action"
+            defaultValue={typeof retained?.action==='string'?retained.action:'prepare'}
             className="mt-2 w-full rounded-lg border bg-background p-2"
           >
             <option value="prepare">{role==='super_admin'?'Create approved payout':'Prepare for Super Admin approval'}</option>
@@ -74,6 +95,7 @@ export function PayoutRequestActions({ id, role = 'admin' }: { id: string; role?
           <Input
             id={fieldId + '-note'}
             name="note"
+            defaultValue={typeof retained?.note==='string'?retained.note:''}
             className="mt-2"
             required
             minLength={8}
@@ -92,7 +114,7 @@ export function PayoutRequestActions({ id, role = 'admin' }: { id: string; role?
         </p>
       ) : null}
       {fieldError?<p role="alert" className="mt-2 text-sm text-destructive">{fieldError}</p>:null}
-      {retryPending?<div className="mt-3 space-y-2 text-sm"><p>A previous decision may have succeeded. Check the payout request before another attempt.</p><Button type="button" variant="outline" disabled={pending} onClick={()=>{if(!window.confirm('Starting a new attempt may duplicate a prior successful action. Check the payout request first. Continue?'))return;clearSessionAttempt(attemptKey);setRetryPending(false);setError('');if(catalog.status==='stale')catalog.refresh();}}>Start a new attempt</Button></div>:null}
+      {retryPending?<div className="mt-3 space-y-2 text-sm"><p>A previous decision may have succeeded. Check the payout request before another attempt.</p><Button type="button" variant="outline" disabled={pending} onClick={()=>void checkOriginal()}>Check original saved outcome</Button>{retained?<Button type="button" variant="outline" disabled={pending} onClick={()=>retained?void save(retained):undefined}>Retry unchanged decision</Button>:null}<Button type="button" variant="outline" disabled={pending} onClick={()=>{if(!window.confirm('Starting a new attempt may duplicate a prior successful action. Check the payout request first. Continue?'))return;clearSessionAttempt(attemptKey);setRetryPending(false);setError('');if(catalog.status==='stale')catalog.refresh();}}>Start a new attempt</Button></div>:null}
     </form>
   );
 }

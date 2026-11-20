@@ -79,6 +79,20 @@ function request(path: string, body?: unknown, origin = 'http://localhost:3000')
 }
 const actor = (id: string, role: 'customer' | 'admin' | 'super_admin') => { globalThis.formCatalogRouteActor = { id, role }; };
 const count = (sqlite: DatabaseSync, table: string) => Number((sqlite.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }).count);
+
+void test('staff-only supported intake reads exactly its two customer contracts without borrowing a customer role',async()=>{
+ const sqlite=await fixture();try{const route=await import('../app/api/forms/[formId]/route');for(const id of ['commerce.complaint','commerce.return-request','commerce.checkout'])seedPublishedForm(sqlite,id);actor('admin','admin');sqlite.prepare("INSERT INTO staff_permission_profiles VALUES('admin','[\"support.manage\"]',1,'sa',1)").run();
+  const get=(id:string)=>route.GET(request('/api/forms/'+id),{params:Promise.resolve({formId:id})});
+  assert.equal((await get('commerce.complaint')).status,200);assert.equal((await get('commerce.return-request')).status,200);assert.equal((await get('commerce.checkout')).status,404);
+  sqlite.prepare("UPDATE staff_permission_profiles SET permissions_json='[\"order.manage\"]' WHERE user_id='admin'").run();assert.equal((await get('commerce.complaint')).status,404);
+  actor('customer','customer');assert.equal((await get('commerce.complaint')).status,200);
+ }finally{sqlite.close();}
+});
+void test('return action form read mirrors entitlement, logistics and followup permission union only',async()=>{
+ const sqlite=await fixture();try{const route=await import('../app/api/forms/[formId]/route');seedPublishedForm(sqlite,'staff.return-case-action');actor('admin','admin');sqlite.prepare("INSERT INTO staff_permission_profiles VALUES('admin','[]',1,'sa',1)").run();
+  for(const permission of ['order.manage','support.manage','refund.approve.standard','product.review',null]){sqlite.prepare('UPDATE staff_permission_profiles SET permissions_json=? WHERE user_id=?').run(JSON.stringify(permission?[permission]:[]),'admin');assert.equal((await route.GET(request('/api/forms/staff.return-case-action'),{params:Promise.resolve({formId:'staff.return-case-action'})})).status,['order.manage','support.manage','refund.approve.standard'].includes(permission??'')?200:404);}
+ }finally{sqlite.close();}
+});
 function seedPublishedForm(sqlite: DatabaseSync, id: string, config: unknown = { formId: id, fields: [] }) {
   sqlite.prepare(`INSERT INTO form_config_versions
     (id,form_id,version,revision,status,config_json,reason,created_by,created_at,
@@ -271,6 +285,7 @@ void test('every staff form keeps its page or receiver permission, including ret
   const sqlite = await fixture();
   try {
     const adminForms = [
+      'staff.team-governance',
       'staff.catalog', 'staff.exception-work', 'staff.governance-rule-create',
       'staff.governance-promotion-create', 'staff.managed-supply-decision',
       'staff.managed-payment-preparation', 'staff.managed-transition-decision',
@@ -282,12 +297,31 @@ void test('every staff form keeps its page or receiver permission, including ret
       'staff.product-review', 'staff.seller-registry-filter', 'staff.order-queue-filter', 'staff.order-email-filter',
     ];
     const superAdminForms = [
+      // Native workflows retain this generic config endpoint's default SA
+      // guard; this does not grant their separately authorized domain actions.
+      'staff.system-records-filter', 'staff.incoming-payment-filter',
+      'staff.refund-funding-filter', 'staff.team-people-filter',
+      'staff.commercial-combination-preview', 'staff.seller-document-review',
+      'staff.seller-document-change-permission', 'staff.protected-change-permission',
+      'staff.protected-identity-review', 'staff.protected-change-disposition',
+      'staff.order-preparation',
+      // These established native query/finance contracts have no generic Admin
+      // config grant; this inventory assertion preserves their current SA default.
+      'staff.case-intake-order','system.live-invoice-adjustment','system.managed-live-activation',
+      'system.managed-live-evidence','system.managed-live-finance','system.payout-finance',
+      'system.recovery-finance','system.refund-finance','staff.incident-review',
       'staff.activity-filter', 'staff.homepage-filter', 'staff.delivery-rate',
       'staff.governance-incident-create', 'staff.governance-incident-update',
       'staff.governance-backup-verify', 'staff.invoice-adjustment',
       'staff.managed-maker-activation', 'staff.managed-adjustment', 'staff.payout-2',
       'staff.referral-settings', 'staff.rider-control-1', 'staff.rider-control-2', 'commerce.gift-card-issue',
       'staff.homepage-visibility', 'staff.seller-governance',
+      // Native MFA handlers support Admin and Super Admin. This generic config
+      // endpoint has no per-form Admin grant for these fixed security controls,
+      // so its existing default Super Admin guard still applies to reads here.
+      'system.security-password-bootstrap', 'system.security-mfa-verify',
+      'system.security-mfa-setup', 'system.security-mfa-activation',
+      'system.security-recovery-codes', 'system.fee-terms-followup',
     ];
     const registered = Object.values(FORM_REGISTRY).filter((form) => form.audience === 'staff').map((form) => form.id).sort();
     assert.deepEqual([...adminForms, ...superAdminForms].sort(), registered);
@@ -300,11 +334,46 @@ void test('every staff form keeps its page or receiver permission, including ret
     for (const formId of superAdminForms) {
       assert.equal((await publicRoute.GET(request(`/api/forms/${formId}`), { params: Promise.resolve({ formId }) })).status, 404, formId);
     }
+    sqlite.prepare('INSERT INTO staff_permission_profiles VALUES(?,?,1,?,1)').run('admin',JSON.stringify(['system.incidents.manage']),'sa');
+    assert.equal((await publicRoute.GET(request('/api/forms/staff.incident-review'),{params:Promise.resolve({formId:'staff.incident-review'})})).status,200);
+    sqlite.prepare('UPDATE users SET status=? WHERE id=?').run('disabled','admin');
+    assert.equal((await publicRoute.GET(request('/api/forms/staff.incident-review'),{params:Promise.resolve({formId:'staff.incident-review'})})).status,404);
     actor('sa', 'super_admin');
     for (const formId of superAdminForms) {
       assert.equal((await publicRoute.GET(request(`/api/forms/${formId}`), { params: Promise.resolve({ formId }) })).status, 200, formId);
     }
   } finally { sqlite.close(); }
+});
+
+void test('optional product questions follow current draft ownership without approval or a published customization dependency', async () => {
+  const sqlite = await fixture();
+  try {
+    sqlite.exec("INSERT INTO seller_profiles VALUES ('unfinished-product-owner','seller','submitted')");
+    const route = await import('../app/api/forms/[formId]/route');
+    const get = () => route.GET(request('/api/forms/seller.product-submission'), { params: Promise.resolve({ formId: 'seller.product-submission' }) });
+    actor('seller', 'customer');
+    const response = await get();
+    assert.equal(response.status, 200);
+    assert.deepEqual((await response.json() as {config:{fields:unknown[]}}).config.fields, []);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM form_config_versions WHERE form_id='seller.product-submission'").get()?.n, 0);
+    actor('customer', 'customer');
+    assert.equal((await get()).status, 404);
+    actor('seller', 'customer');
+    sqlite.exec("UPDATE users SET status='disabled' WHERE id='seller'");
+    assert.equal((await get()).status, 404);
+  } finally { sqlite.close(); }
+});
+
+void test('started native seller application receives its optional core contract without a published editor and retains current audience checks',async()=>{
+ const sqlite=await fixture();try{
+  const route=await import('../app/api/forms/[formId]/route'),get=()=>route.GET(request('/api/forms/seller.application'),{params:Promise.resolve({formId:'seller.application'})});
+  actor('customer','customer');assert.equal((await get()).status,404);
+  await startSellerRegistration(globalThis.formCatalogRouteDb,{userId:'customer',requestId:'core-application-start',now:100});
+  const response=await get();assert.equal(response.status,200);const body=await response.json() as {config:{formId:string;fields:unknown[]}};assert.equal(body.config.formId,'seller.application');assert.deepEqual(body.config.fields,[]);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM form_config_versions WHERE form_id='seller.application'").get()!.n,0);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM user_roles WHERE user_id='customer' AND role='seller'").get()!.n,0);
+  sqlite.prepare("UPDATE users SET status='disabled' WHERE id='customer'").run();assert.equal((await get()).status,404);globalThis.formCatalogRouteActor=null;assert.equal((await get()).status,404);
+ }finally{sqlite.close();}
 });
 
 void test('application configs require explicit seller start and retain pending participant access without opening operations', async () => {
@@ -426,6 +495,7 @@ void test('well-formed draft conflicting with historical field identity remains 
 });
 
 const universalFormIds = [
+  'staff.fee-waivers',
   'identity.register', 'identity.login-password', 'identity.email-code-request',
   'identity.email-code-verify', 'identity.password-reset-request', 'identity.password-reset-complete',
   'account.profile', 'account.address', 'account.daily-reward', 'account.points-redemption',
@@ -436,30 +506,32 @@ const universalFormIds = [
   'staff.staff-permission-2', 'rider.code-verify', 'staff.homepage-hero-manager',
   'staff.homepage-occasion-manager', 'staff.homepage-visibility', 'staff.business-settings-manager',
   'staff.delivery-rate', 'staff.promo-code', 'staff.loyalty-settings', 'staff.referral-settings',
+  'system.backup-export', 'system.backup-key-recovery', 'system.backup-inspect',
+  'system.security-password-bootstrap', 'system.security-mfa-verify',
+  'system.security-mfa-setup', 'system.security-mfa-activation', 'system.security-recovery-codes',
 ] as const;
 
-void test('catalog simplification lists business forms with friendly names and excludes universal controls', async () => {
+void test('catalog lists exactly the seven canonical editors and retains native task history', async () => {
   const sqlite = await fixture();
   try {
     actor('sa', 'super_admin');
     seedPublishedForm(sqlite, 'seller.application');
     seedPublishedForm(sqlite, 'account.profile');
+    seedPublishedForm(sqlite, 'commerce.checkout');
     const index = await import('../app/api/admin/forms/route');
     const response = await index.GET();
     assert.equal(response.status, 200);
     const { forms } = await response.json() as { forms: { definition: { id: string }; presentation: { label: string; category: string }; publishedVersion: number }[] };
     const byId = new Map(forms.map((entry) => [entry.definition.id, entry]));
     for (const id of universalFormIds) assert.equal(byId.has(id), false, id);
-    for (const id of ['commerce.checkout', 'public.contact', 'public.feedback', 'public.footer-feedback',
-      'commerce.return-request', 'commerce.order-cancellation', 'commerce.complaint',
-      'seller.application', 'seller.maker-profile', 'seller.profile', 'seller.product-submission',
-      'rider.application', 'rider.report', 'seller.managed-supply-proposal', 'seller.payout-request',
-      'staff.catalog', 'staff.product-classification', 'staff.rider-control-1', 'staff.rider-control-2',
-      'commerce.gift-card-issue', 'staff.governance-rule-create']) assert.ok(byId.has(id), id);
+    assert.deepEqual([...byId.keys()].sort(),['public.contact','public.feedback','public.footer-feedback',
+      'seller.application','seller.maker-profile','seller.product-submission','seller.profile'].sort());
     assert.equal(byId.get('seller.application')?.presentation.label, 'Apply to sell');
     assert.equal(byId.get('seller.application')?.presentation.category, 'Applications & business profiles');
     assert.equal(byId.get('seller.application')?.publishedVersion, 1);
-    assert.equal(count(sqlite, 'form_config_versions'), 2);
+    const native=await(await import('../app/api/admin/forms/[formId]/route')).GET(request('/api/admin/forms/commerce.checkout'),{params:Promise.resolve({formId:'commerce.checkout'})});
+    assert.equal(native.status,200);const retained=await native.json() as {editable:boolean;versions:{version:number}[]};assert.equal(retained.editable,false);assert.equal(retained.versions[0].version,1);
+    assert.equal(count(sqlite, 'form_config_versions'), 3);assert.equal(count(sqlite,'audit_logs'),0);
   } finally { sqlite.close(); }
 });
 

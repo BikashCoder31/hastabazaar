@@ -2,6 +2,8 @@ import { StaffFormHistoryLinks } from '@/components/admin/staff-form-history-lin
 import { env } from 'cloudflare:workers';
 import Image from 'next/image';
 import Link from 'next/link';
+import {redirect} from 'next/navigation';
+import {HomepageAccessBoundary} from '@/components/admin/homepage-access-boundary';
 import { Eye, EyeOff, ImageIcon, PanelsTopLeft, Search } from 'lucide-react';
 
 import { HomepageHeroManager } from '@/components/admin/homepage-hero-manager';
@@ -49,7 +51,7 @@ export default async function HomepageProductControlsPage({
 }: {
   searchParams: Promise<{ q?: string; visibility?: string; page?: string }>;
 }) {
-  await requireStaffPage('/admin/homepage', 'business_settings.view');
+  const actor=await requireStaffPage('/admin/homepage', 'business_settings.view');
   const params = await searchParams;
   const query = params.q?.trim().slice(0, 100) ?? '';
   const visibility = ['visible', 'hidden'].includes(params.visibility ?? '')
@@ -86,13 +88,16 @@ export default async function HomepageProductControlsPage({
     label: 'Search products', placeholder: 'Search product, SKU, or seller' });
   const visibilityField = queryFieldPresentation('staff.homepage-filter', filterPresentation.config, 'visibility', { label: 'Homepage visibility' });
   const pageCount = Math.max(1, Math.ceil(result.total / result.pageSize));
+  const currentActor=await requireStaffPage('/admin/homepage','business_settings.view');
+  if(currentActor.id!==actor.id)redirect(pageHref(page,query,visibility));
 
   return (
-    <div className="space-y-7">
+    <HomepageAccessBoundary actorId={actor.id}><div className="space-y-7">
       <StaffFormHistoryLinks entries={[{kind:'homepage-hero-settings',label:'Homepage hero answers'},
         {kind:'homepage-occasion-settings',label:'Homepage occasion answers'},
         {kind:'homepage-visibility',label:'Product visibility answers'}]} />
       <HomepageHeroManager
+        actorId={actor.id}
         initialSlides={hero.value}
         initialMedia={heroMedia}
         history={heroHistory}
@@ -100,6 +105,7 @@ export default async function HomepageProductControlsPage({
       />
 
       <HomepageOccasionManager
+        actorId={actor.id}
         initialSlides={occasionSlides.value}
         history={occasionHistory}
         asOf={asOf}
@@ -229,6 +235,7 @@ export default async function HomepageProductControlsPage({
                     {product.inventoryQuantity}
                   </p>
                   <HomepageVisibilityControl
+                    actorId={actor.id}
                     productId={product.id}
                     productName={product.nameEn}
                     hidden={Boolean(product.homepageHidden)}
@@ -268,6 +275,6 @@ export default async function HomepageProductControlsPage({
           ) : null}
         </nav>
       ) : null}
-    </div>
+    </div></HomepageAccessBoundary>
   );
 }

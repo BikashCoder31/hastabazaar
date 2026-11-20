@@ -1,4 +1,5 @@
 import { recordStaffAuthorizationOutcome } from '@/lib/operations/authorization-audit';
+import {staffInvitationAcceptanceStatements} from '@/lib/operations/staff-invitation-grants';
 import { hasMailboxProof } from './mailbox-verification';
 import { env } from 'cloudflare:workers';
 import { redirect } from 'next/navigation';
@@ -204,6 +205,8 @@ async function acceptMatchingInvitation(
 
   const userId = existingUser?.id ?? crypto.randomUUID();
   const displayName = identity.fullName?.trim() || identity.email;
+  const acceptance=await staffInvitationAcceptanceStatements(database,{invitationId:invitation.id,userId,authSubject:identity.userId,email,now});
+  if(!acceptance)return null;
   const statements: D1PreparedStatement[] = [];
 
   if (!existingUser) {
@@ -235,39 +238,7 @@ async function acceptMatchingInvitation(
     );
   }
 
-  statements.push(
-    database
-      .prepare(
-        `INSERT OR IGNORE INTO user_roles (user_id, role, assigned_by, assigned_at)
-         SELECT ?, role, invited_by, ?
-         FROM staff_invitations
-         WHERE id = ? AND status = 'pending' AND expires_at > ?`,
-      )
-      .bind(userId, now, invitation.id, now),
-    database
-      .prepare(
-        `UPDATE staff_invitations
-         SET status = 'accepted', accepted_by = ?, accepted_at = ?
-         WHERE id = ? AND status = 'pending' AND expires_at > ?`,
-      )
-      .bind(userId, now, invitation.id, now),
-    database
-      .prepare(
-        `INSERT INTO audit_logs (
-          id, actor_id, action, subject_type, subject_id, reason,
-          previous_json, next_json, request_id, ip_hash, created_at
-        ) VALUES (?, ?, 'staff.invitation.accepted', 'staff_invitation', ?,
-          'Invited staff member authenticated and accepted access', NULL, ?,
-          NULL, NULL, ?)`,
-      )
-      .bind(
-        crypto.randomUUID(),
-        userId,
-        invitation.id,
-        JSON.stringify({ email, role: invitation.role }),
-        now,
-      ),
-  );
+  statements.push(...acceptance);
 
   await database.batch(statements);
   return findStaffBySubject(database, identity.userId);
@@ -297,25 +268,42 @@ export async function requireStaffPage(
   if (!staff || (permission && !can(staff, permission))) {
     redirect('/staff-access-denied');
   }
+  // Invitation acceptance can promote an identity during this request. Run the
+  // central assurance check again after that change before returning staff data.
+  await requireAuthenticatedUser(returnTo);
   return staff;
 }
 
 export async function requireStaffApi(
   permission: Permission,
+  options?: { intendedActorId?: string },
 ): Promise<StaffUser> {
-  const identity = await getAuthenticatedUser();
+  const identity = await getAuthenticatedUser({ readOnly: options !== undefined });
   if (!identity) {
     throw new StaffAuthorizationError('Authentication is required.', 401);
   }
 
   const database = databaseFromEnvironment();
-  const staff =
-    (await findStaffBySubject(database, identity.userId)) ??
-    (await acceptMatchingInvitation(database, identity));
+  const existing = await findStaffBySubject(database, identity.userId);
+  // An old rendered workspace may reject a new identity; it may never accept an
+  // invitation or bootstrap access for that identity as a side effect of rejection.
+  if (options && (!existing || (options.intendedActorId!==undefined&&existing.id !== options.intendedActorId) ||
+      existing.authSubject !== identity.userId)) {
+    throw new StaffAuthorizationError('Refresh the current staff workspace.', 403);
+  }
+  const staff = existing ?? (await acceptMatchingInvitation(database, identity));
 
   if (!staff || !can(staff, permission)) {
     if(staff)await recordStaffAuthorizationOutcome(database,{actorId:staff.id,permission,outcome:'denied'});
     throw new StaffAuthorizationError('Staff access is not permitted.', 403);
   }
+  const confirmedIdentity = await getAuthenticatedUser({ readOnly: options !== undefined });
+  if(!confirmedIdentity)throw new StaffAuthorizationError('Complete account security verification.',401);
+  if(options && confirmedIdentity.userId !== identity.userId)
+    throw new StaffAuthorizationError('Refresh the current staff workspace.',403);
+  if(options && !await database.prepare(`SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id
+    WHERE HEX(u.id)=HEX(?) AND HEX(u.auth_subject)=HEX(?) AND HEX(u.status)=HEX('active')
+      AND HEX(r.role)=HEX(?) LIMIT 1`).bind(staff.id,identity.userId,staff.role).first())
+    throw new StaffAuthorizationError('Refresh the current staff workspace.',403);
   return staff;
 }

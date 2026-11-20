@@ -12,7 +12,7 @@ import { ConfirmOperation } from '@/components/admin/confirm-operation';
 import { useAdminMutation } from '@/components/admin/use-admin-mutation';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 import type { GovernanceOverview } from '@/lib/db/repositories/operations';
 

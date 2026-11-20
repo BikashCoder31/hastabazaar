@@ -2,6 +2,11 @@
 @import '../components/delivery/map.css';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
+@source not '../.test-artifacts';
+@source not '../test-artifacts';
+@source not '../output';
+@source not '../outputs';
+@source not '../.superpowers';
 
 @custom-variant dark (&:is(.dark *));
 

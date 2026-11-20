@@ -1,4 +1,5 @@
 import type { FixtureBrowser } from './helpers/browser-fixture-types';
+import {paidCancellationPreview} from './helpers/paid-cancellation-preview';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { build } from 'esbuild';
@@ -10,8 +11,8 @@ async function cancellationClientBundle() {
     import {CustomerOrderCancellation} from './components/commerce/customer-order-cancellation';
     import {CancellationReviewControl} from './components/admin/cancellation-review-control';
     createRoot(document.getElementById('root')).render(<>
-      <CustomerOrderCancellation orderNumber="ORDER-1" />
-      <CancellationReviewControl reviewId="review-one" />
+      <CustomerOrderCancellation actorId="fixture-customer" viewerScope="fixture-customer" orderNumber="ORDER-1" />
+      <CancellationReviewControl actorId="fixture-staff" reviewId="review-one" />
     </>);
   ` }, bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' },
@@ -35,9 +36,9 @@ void test('native required validation focuses customer and staff controls before
   const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
   const page = await browser.newPage();
   const requests: Record<string, unknown>[] = [];
-  const customerKey = 'hastabazaar:profile-attempt:commerce.order-cancellation:ORDER-1';
-  const approveKey = 'hastabazaar:profile-attempt:staff.cancellation-review:review-one:approve';
-  const rejectKey = 'hastabazaar:profile-attempt:staff.cancellation-review:review-one:reject';
+  const customerKey = 'hastabazaar:profile-attempt:commerce.order-cancellation:["fixture-customer","ORDER-1"]';
+  const approveKey = 'hastabazaar:profile-attempt:staff.cancellation-review:["fixture-staff","review-one","approve"]';
+  const rejectKey = 'hastabazaar:profile-attempt:staff.cancellation-review:["fixture-staff","review-one","reject"]';
   const originalId = '11111111-1111-4111-8111-111111111111';
   const preview = { fingerprint: 'a'.repeat(64), reviewRequired: false, total: 1000, collected: 0,
     walletRestored: 0, discountRemoved: 0, delivery: 0, deliveryPricingPolicy: null };
@@ -48,12 +49,12 @@ void test('native required validation focuses customer and staff controls before
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ id: 'seller-one', name: 'Fictional maker', eligible: true, reviewRequired: false }] }) });
       if (request.method() === 'POST') {
         const body = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>; requests.push(body);
-        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body.action === 'preview' ? preview : body.action === 'reject' ? { ok: true } : { id: 'cancel-one', status: 'cancelled' }) });
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body.action === 'preview' ? preview : body.clientAttemptId ? {recorded:true,settlement:'confirmed',actorId:'fixture-staff',sourceId:'review-one',action:body.action,requestId:body.clientAttemptId} : { id: 'cancel-one', status: 'cancelled' }) });
       }
       return route.fulfill({ status: 200, contentType: 'text/html', body: '<div id="root"></div>' });
     });
     await page.goto('https://cancel-validation.test/');
-    await page.evaluate(({ keys, id }) => { for (const key of keys) sessionStorage.setItem(key, id); }, { keys: [customerKey, approveKey, rejectKey], id: originalId });
+    await page.evaluate(({ keys, id }) => { for (const key of keys) sessionStorage.setItem(key, id); }, { keys: [customerKey], id: originalId });
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
     await page.getByRole('button', { name: 'Cancel order or seller parcels', exact: true }).click();
     const customer = page.locator('form[data-form-id="commerce.order-cancellation"]');
@@ -74,7 +75,7 @@ void test('native required validation focuses customer and staff controls before
     await context.fill(''); await confirm.click();
     assert.equal(await context.evaluate((element) => element === document.activeElement && (element as HTMLInputElement).validity.valueMissing), true);
     assert.equal(requests.length, 1); assert.equal(await page.evaluate((key: string) => sessionStorage.getItem(key), customerKey), originalId);
-    await context.fill('Fictional customer context'); await confirm.click(); await page.getByText(/Selected parcels cancelled/).waitFor();
+    await context.fill('Fictional customer context'); await confirm.click(); await page.getByText(/Selected whole seller portions cancelled/).waitFor();
     assert.equal(requests.length, 2); assert.equal(requests[1].requestId, originalId); assert.equal(await page.evaluate((key: string) => sessionStorage.getItem(key), customerKey), null);
     const staff = page.locator('form[data-form-id="staff.cancellation-review"]');
     const staffContext = staff.getByLabel('Cancellation context');
@@ -83,7 +84,7 @@ void test('native required validation focuses customer and staff controls before
       await staff.getByRole('button', { name: action, exact: true }).click();
       assert.equal(await staffContext.evaluate((element) => element === document.activeElement && (element as HTMLInputElement).validity.valueMissing), true);
       assert.equal(requests.length, 2);
-      for (const key of [approveKey, rejectKey]) assert.equal(await page.evaluate((name: string) => sessionStorage.getItem(name), key), originalId);
+      for (const key of [approveKey, rejectKey]) assert.equal(await page.evaluate((name: string) => sessionStorage.getItem(name), key), null);
     }
     await staffContext.fill('Fictional staff context'); await staff.getByLabel('Decision reason').fill('short');
     await staff.getByRole('button', { name: 'Review current cancellation amounts', exact: true }).click();
@@ -93,12 +94,12 @@ void test('native required validation focuses customer and staff controls before
     const approve = staff.getByRole('button', { name: 'Approve reviewed cancellation', exact: true }); await approve.waitFor();
     await staffContext.fill(''); await approve.click();
     assert.equal(await staffContext.evaluate((element) => element === document.activeElement && (element as HTMLInputElement).validity.valueMissing), true); assert.equal(requests.length, 3);
-    assert.equal(await page.evaluate((key: string) => sessionStorage.getItem(key), approveKey), originalId);
-    await staffContext.fill('Fictional staff context'); await approve.click(); await staff.getByText('Decision saved.').waitFor();
+    assert.equal(await page.evaluate((key: string) => sessionStorage.getItem(key), approveKey), null);
+    await staffContext.fill('Fictional staff context'); await approve.click(); await staff.getByText('Original cancellation and settlement continuation confirmed.').waitFor();
     assert.equal(await page.evaluate((key: string) => sessionStorage.getItem(key), approveKey), null);
     assert.equal(requests[3].requestId, undefined, 'Native validation preserves the server-owned staff approval identity');
     await staff.getByRole('button', { name: 'Reject with reason', exact: true }).click();
-    await page.waitForFunction(() => sessionStorage.getItem('hastabazaar:profile-attempt:staff.cancellation-review:review-one:reject') === null);
+    await page.waitForFunction(() => sessionStorage.getItem('hastabazaar:profile-attempt:staff.cancellation-review:["fixture-staff","review-one"]') === '');
     assert.equal(requests.length, 5); assert.equal(requests[4].requestId, undefined);
   } finally { await browser.close(); }
 });
@@ -135,7 +136,7 @@ void test('mounted cancellation controls retain contextual attempts while server
           staffDecision.push(body);
           const status = staffDecision.length === 1 ? 503 : staffDecision.length === 2 ? 409 : 200;
           return route.fulfill({ status, contentType: 'application/json',
-            body: status === 200 ? JSON.stringify(body.action === 'reject' ? {ok:true} : {id:'review:review-one',status:'cancelled'}) : JSON.stringify({ error: `Staff ${status} retry` }) });
+            body: status === 200 ? JSON.stringify({recorded:true,settlement:'confirmed',actorId:'fixture-staff',sourceId:'review-one',action:body.action,requestId:body.clientAttemptId}) : JSON.stringify({ error: `Staff ${status} retry` }) });
         }
       }
       return route.fulfill({ status: 200, contentType: 'text/html', body: '<div id="root"></div>' });
@@ -173,52 +174,44 @@ void test('mounted cancellation controls retain contextual attempts while server
     await page.getByRole('button', { name: 'Start a new cancellation attempt' }).click();
     await page.locator('form[data-form-id="commerce.order-cancellation"]').getByRole('button', { name: 'Review cancellation amounts' }).click();
     await page.locator('form[data-form-id="commerce.order-cancellation"]').getByRole('button', { name: 'Confirm cancellation and revised amount' }).click();
-    await page.getByText(/Selected parcels cancelled/).waitFor();
+    await page.getByText(/Selected whole seller portions cancelled/).waitFor();
     assert.notEqual(customerConfirm[2].requestId, customerConfirm[0].requestId);
     await staff('Fictional staff review one');
-    await page.getByText('Staff 503 retry').waitFor();
+    await page.getByText('The original outcome is unconfirmed. Keep this reference and check again.').waitFor();
     assert.equal(staffDecision[0].formVersion, 2);
     assert.equal(staffDecision[0].requestId, undefined, 'server retains approval identity review:<reviewId>');
-    await mount();
-    await staff('Fictional changed staff review');
-    await page.getByText('Staff 409 retry').waitFor();
-    assert.equal(staffDecision[1].requestId, undefined);
-    const key = 'hastabazaar:profile-attempt:staff.cancellation-review:review-one:approve';
-    const savedId = await page.evaluate((name: string) => sessionStorage.getItem(name), key);
-    assert.match(String(savedId), /^[0-9a-f-]{36}$/i);
-    await page.evaluate(() => { window.confirm = () => false; });
-    await page.getByRole('button', { name: 'Start a new approval attempt' }).click();
-    assert.equal(await page.evaluate((name: string) => sessionStorage.getItem(name), key), savedId);
-    await page.evaluate(() => { window.confirm = () => true; });
-    await page.getByRole('button', { name: 'Start a new approval attempt' }).click();
-    assert.equal(await page.evaluate((name: string) => sessionStorage.getItem(name), key), null);
-    await staff('Fictional changed staff review');
-    await page.getByText('Decision saved.').waitFor();
-    assert.equal(await page.evaluate((name: string) => sessionStorage.getItem(name), key), null);
-    await page.locator('form[data-form-id="staff.cancellation-review"]').getByRole('button', { name: 'Reject with reason' }).click();
-    await page.getByText('Decision saved.').waitFor();
-    assert.equal(staffDecision[3].action, 'reject');
-    assert.equal(staffDecision[3].requestId, undefined, 'server retains rejection identity review-reject:<reviewId>');
-    assert.equal((staffDecision[3].customAnswers as { fieldId: string }[])[0].fieldId, 'context_note');
-    assert.equal(await page.evaluate(() => sessionStorage.getItem('hastabazaar:profile-attempt:staff.cancellation-review:review-one:reject')), null);
+    const retainedWire=JSON.stringify(staffDecision[0]);
+    await page.getByRole('button',{name:'Retry the same saved decision',exact:true}).click();
+    await page.getByText('The original outcome is unconfirmed. Keep this reference and check again.').waitFor();
+    assert.equal(JSON.stringify(staffDecision[1]),retainedWire);
+    assert.equal(await page.getByRole('button',{name:'Start a new approval attempt'}).count(),0);
+    await page.getByRole('button',{name:'Retry the same saved decision',exact:true}).click();
+    await page.getByText('Original cancellation and settlement continuation confirmed.').waitFor();
+    assert.equal(JSON.stringify(staffDecision[2]),retainedWire);
+    const key='hastabazaar:profile-attempt:staff.cancellation-review:["fixture-staff","review-one"]';
+    assert.equal(await page.evaluate((name:string)=>sessionStorage.getItem(name),key),'');
+    assert.equal(staffDecision[2].requestId,undefined,'Native core identity remains server-owned.');
+    assert.match(String(staffDecision[2].clientAttemptId),/^[a-f0-9-]{36}$/i);
     assert.equal(await page.evaluate(() => (window as Window & { __staleCalls?: number }).__staleCalls ?? 0), 0);
   } finally { await browser.close(); }
 });
 
 void test('cancellation clients reject malformed 2xx previews and retain uncertain decision attempts until exact success', async () => {
+  const paidPreview=await paidCancellationPreview();
   const modulePath = process.env.PLAYWRIGHT_MODULE ?? 'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
   const {chromium} = await import(modulePath) as {chromium:{launch(options:object):Promise<FixtureBrowser>}};
   const bundle = await cancellationClientBundle();
   const browser = await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe'});
-  const validPreview = {fingerprint:'b'.repeat(64),reviewRequired:false,total:1000,collected:0,
+  const basePreview = {fingerprint:'b'.repeat(64),reviewRequired:false,total:1000,collected:0,
     walletRestored:0,discountRemoved:0,delivery:0,deliveryPricingPolicy:null};
   try {
-    for (const kind of ['customer-cancel','customer-review','staff-approve','staff-reject'] as const) {
+    for (const kind of ['customer-cancel','customer-review'] as readonly string[]) {
       const page = await browser.newPage();
       const customer = kind.startsWith('customer');
+      const validPreview={...basePreview,reviewRequired:kind==='customer-review'};
       const action = kind === 'staff-reject' ? 'reject' : customer ? 'confirm' : 'approve';
-      const storageKey = customer ? 'hastabazaar:profile-attempt:commerce.order-cancellation:ORDER-1'
-        : `hastabazaar:profile-attempt:staff.cancellation-review:review-one:${action}`;
+      const storageKey = customer ? 'hastabazaar:profile-attempt:commerce.order-cancellation:["fixture-customer","ORDER-1"]'
+        : `hastabazaar:profile-attempt:staff.cancellation-review:${JSON.stringify(["fixture-staff","review-one",action])}`;
       const requests:Record<string,unknown>[]=[];
       let previewBody:unknown=validPreview;
       let successBody:unknown={};
@@ -248,11 +241,11 @@ void test('cancellation clients reject malformed 2xx previews and retain uncerta
         };
         let form=await mount();
         const previewButton=customer?'Review cancellation amounts':'Review current cancellation amounts';
-        const decisionButton=customer?'Confirm cancellation and revised amount':kind==='staff-reject'?'Reject with reason':'Approve reviewed cancellation';
+        const decisionButton=customer?kind==='customer-review'?'Request staff review':'Confirm cancellation and revised amount':kind==='staff-reject'?'Reject with reason':'Approve reviewed cancellation';
         if(action!=='reject') {
           for(const bad of [{},{...validPreview,fingerprint:''},{...validPreview,total:-1},
             {...validPreview,total:1.5},{...validPreview,deliveryPricingPolicy:'invented'},
-            ...(customer?[{...validPreview,reviewRequired:'yes'},{...validPreview,collected:1001}]:[])]) {
+            ...(customer?[{...validPreview,reviewRequired:'yes'},{...validPreview,collected:1001,reviewRequired:false}]:[])]) {
             previewBody=bad;await form.getByRole('button',{name:previewButton,exact:true}).click();
             await page.waitForTimeout(50);
             assert.equal(await form.count(),1,`${kind}: invalid preview must keep the form usable`);
@@ -260,12 +253,19 @@ void test('cancellation clients reject malformed 2xx previews and retain uncerta
             assert.equal(await form.getByText(/Remaining.*COD/).count(),0,`${kind}: invalid money cannot render`);
           }
         }
+        if(customer){
+          // Paid/excess money stays visible for genuine staff/Finance review; it is not an invalid amount.
+          previewBody=paidPreview;await form.getByRole('button',{name:previewButton,exact:true}).click();
+          await form.getByRole('button',{name:'Request staff review',exact:true}).waitFor();assert.equal(await form.getByRole('button',{name:'Confirm cancellation and revised amount',exact:true}).count(),0);
+          assert.equal(await form.getByText(/Already collected:/).count(),1);
+          form=await mount();
+        }
         for(const bad of [{},{id:'',status:'cancelled'},{id:'bad',status:'pending'},{ok:false}]) {
           successBody=bad;previewBody=validPreview;
           if(action!=='reject')await form.getByRole('button',{name:previewButton,exact:true}).click();
           await form.getByRole('button',{name:decisionButton,exact:true}).click();
           await page.waitForTimeout(60);
-          assert.equal(await page.getByText(/Selected parcels cancelled|Request saved\.|Decision saved\./).count(),0,`${kind}: wrong success shape cannot claim success`);
+          assert.equal(await page.getByText(/Selected whole seller portions cancelled|Request saved\.|Decision saved\./).count(),0,`${kind}: wrong success shape cannot claim success`);
           const id=await page.evaluate((key:string)=>sessionStorage.getItem(key),storageKey);
           assert.match(String(id),/^[0-9a-f-]{36}$/i,`${kind}: ambiguous success retains opaque attempt`);
           form=await mount();
@@ -275,7 +275,7 @@ void test('cancellation clients reject malformed 2xx previews and retain uncerta
           : action==='reject'?{ok:true}:{id:'review:review-one',status:'cancelled'};
         if(action!=='reject')await form.getByRole('button',{name:previewButton,exact:true}).click();
         await form.getByRole('button',{name:decisionButton,exact:true}).click();
-        await page.getByText(customer?kind==='customer-review'?/Request saved\./:/Selected parcels cancelled/:'Decision saved.').waitFor();
+        await page.getByText(customer?kind==='customer-review'?/Request saved\./:/Selected whole seller portions cancelled/:'Decision saved.').waitFor();
         assert.equal(await page.evaluate((key:string)=>sessionStorage.getItem(key),storageKey),null);
         if(customer)assert.equal(new Set(requests.map(request=>request.requestId)).size,1);
         else assert.ok(requests.every(request=>request.requestId===undefined),'staff identity remains server-owned');

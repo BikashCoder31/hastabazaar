@@ -1,183 +1,28 @@
-import { listStaffAccessHistory } from '@/lib/db/repositories/staff-access-history';
-import { StaffPermissionManager } from '@/components/admin/staff-permission-manager';
-import {
-  getStaffPermissionProfile,
-  listStaffPermissionChanges,
-} from '@/lib/db/repositories/staff-permissions';
-import { env } from 'cloudflare:workers';
-import { KeyRound, UsersRound } from 'lucide-react';
-
-import { StaffInvitationManager } from '@/components/admin/staff-invitation-manager';
-import { StatusBadge } from '@/components/admin/status-badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { requireStaffPage } from '@/lib/auth/staff';
-import { requireDatabase } from '@/lib/db/d1';
-import {
-  listStaffInvitations,
-  listStaffMembers,
-} from '@/lib/db/repositories/staff';
-import { isEmailDeliveryConfigured } from '@/lib/email/staff-invitation';
-
-export const dynamic = 'force-dynamic';
-
-const dateFormatter = new Intl.DateTimeFormat('en-NP', {
-  dateStyle: 'medium',
-  timeZone: 'Asia/Kathmandu',
-});
-
-export default async function TeamAccessPage() {
-  const staff = await requireStaffPage('/admin/team', 'admin.invite');
-  const database = requireDatabase(env as unknown as { DB?: D1Database });
-  const [members, invitations, changes, history] = await Promise.all([
-    listStaffMembers(database),
-    listStaffInvitations(database),
-    listStaffPermissionChanges(database),
-    listStaffAccessHistory(database, staff.id),
-  ]);
-
-  const superAdminIds = new Set(
-    members.filter((m) => m.role === 'super_admin').map((m) => m.id),
-  );
-  const permissionMembers = await Promise.all(
-    members
-      .filter((m) => m.role === 'admin' && !superAdminIds.has(m.id))
-      .map(async (m) => ({
-        ...(await getStaffPermissionProfile(database, m.id)),
-        displayName: m.displayName,
-        email: m.email,
-      })),
-  );
-  return (
-    <div className="space-y-7">
-      <div>
-        <p className="eyebrow">Super Admin control</p>
-        <h1 className="mt-2 font-heading text-4xl tracking-tight">
-          Team access
-        </h1>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          Staff access is invitation-only. Admins can review marketplace
-          operations; Super Admins can also control staff access and major
-          policy settings.
-        </p>
-      </div>
-
-      <StaffPermissionManager
-        actorId={staff.id}
-        members={permissionMembers}
-        {...changes}
-        history={history}
-        staffNames={Object.fromEntries(
-          members.map((member) => [member.id, member.displayName]),
-        )}
-      />
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <KeyRound className="size-5 text-primary" /> Create staff access
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <StaffInvitationManager
-            pendingInvitations={invitations
-              .filter((invitation) => invitation.status === 'pending')
-              .map(({ id, email }) => ({ id, email }))}
-          />
-          <p className="mt-5 text-xs leading-5 text-muted-foreground">
-            Invitations expire after 7 days.{' '}
-            {isEmailDeliveryConfigured() ? (
-              'The invited person will receive an email with the protected staff workspace address.'
-            ) : (
-              <>
-                Email delivery needs configuration, so share the protected{' '}
-                <strong>/admin</strong> address with the invited person
-                separately.
-              </>
-            )}
-          </p>
-        </CardContent>
-      </Card>
-
-      <Card className="py-0">
-        <div className="flex items-center gap-2 border-b px-4 py-4">
-          <UsersRound className="size-5 text-primary" />
-          <h2 className="font-heading text-base font-medium">Active staff</h2>
-        </div>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="pl-4">Name</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Access since</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {members.map((member) => (
-              <TableRow key={`${member.id}-${member.role}`}>
-                <TableCell className="pl-4 font-semibold">
-                  {member.displayName}
-                </TableCell>
-                <TableCell>{member.email}</TableCell>
-                <TableCell>
-                  <StatusBadge status={member.role} />
-                </TableCell>
-                <TableCell>
-                  {dateFormatter.format(new Date(member.assignedAt))}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </Card>
-
-      <Card className="py-0">
-        <div className="border-b px-4 py-4">
-          <h2 className="font-heading text-base font-medium">
-            Invitation history
-          </h2>
-        </div>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="pl-4">Email</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Created</TableHead>
-              <TableHead>Expires</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {invitations.map((invitation) => (
-              <TableRow key={invitation.id}>
-                <TableCell className="pl-4 font-semibold">
-                  {invitation.email}
-                </TableCell>
-                <TableCell className="capitalize">
-                  {invitation.role.replace('_', ' ')}
-                </TableCell>
-                <TableCell>
-                  <StatusBadge status={invitation.status} />
-                </TableCell>
-                <TableCell>
-                  {dateFormatter.format(new Date(invitation.createdAt))}
-                </TableCell>
-                <TableCell>
-                  {dateFormatter.format(new Date(invitation.expiresAt))}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </Card>
-    </div>
-  );
+import {env} from 'cloudflare:workers';
+import {requireStaffPage} from '@/lib/auth/staff';
+import {requireDatabase} from '@/lib/db/d1';
+import {getTeamWorkspace} from '@/lib/operations/team-governance';
+import {TeamWorkspace} from '@/components/admin/team-workspace';
+import {StaffPermissionManager} from '@/components/admin/staff-permission-manager';
+import {StaffInvitationManager} from '@/components/admin/staff-invitation-manager';
+import {AccountRecoveryAssistance} from '@/components/admin/account-recovery-assistance';
+import {listStaffMembers} from '@/lib/db/repositories/staff';
+import {getStaffPermissionProfile,listStaffPermissionChanges} from '@/lib/db/repositories/staff-permissions';
+import {listStaffAccessHistory} from '@/lib/db/repositories/staff-access-history';
+import {teamReadFence} from '@/lib/operations/team-read-fence';
+import {safeAdminReturnTo} from '@/lib/admin/return-context';
+export const dynamic='force-dynamic';
+export default async function TeamAccessPage(props?:{searchParams?:Promise<Record<string,string|string[]|undefined>>}){
+ const actor=await requireStaffPage('/admin/team'),db=requireDatabase(env as unknown as {DB?:D1Database});
+ const query=await(props?.searchParams??Promise.resolve({} as Record<string,string|string[]|undefined>)),pageFence=await teamReadFence(db,actor.id),model=await getTeamWorkspace(db,actor.id);
+ const returnTo=safeAdminReturnTo(query.returnTo);
+ if(model.mode==='own')return <TeamWorkspace model={model} actorId={actor.id} returnTo={returnTo}/>;
+ const [members,changes,history]=await Promise.all([listStaffMembers(db),listStaffPermissionChanges(db),listStaffAccessHistory(db,actor.id)]);
+ const superIds=new Set(members.filter(member=>member.role==='super_admin').map(member=>member.id));
+ const permissionMembers=await Promise.all(members.filter(member=>member.role==='admin'&&!superIds.has(member.id)).map(async member=>({...await getStaffPermissionProfile(db,member.id),displayName:member.displayName,email:member.email})));
+ const peoplePanel=<section className="space-y-5"><h2 className="font-heading text-xl">Secure access controls and history</h2><p className="text-sm">Compare Added / Removed / Retained access before applying each person&apos;s change. Saved templates do not update everyone automatically. Role removal is separate from the buyer account and protected account security.</p><StaffPermissionManager actorId={actor.id} members={permissionMembers} {...changes} history={history} staffNames={Object.fromEntries(members.map(member=>[member.id,member.displayName]))}/><section className="space-y-3" aria-label="Assisted account recovery"><h3 className="font-semibold">Protected assisted account recovery</h3>{permissionMembers.filter(member=>member.userId!==actor.id).map(member=><AccountRecoveryAssistance key={member.userId} actorId={actor.id} targetId={member.userId} displayName={member.displayName} email={member.email} targetRole="admin"/>)}</section><h3 className="font-semibold">Create exact staff access</h3><StaffInvitationManager actorId={actor.id} pendingInvitations={model.invitations.filter(invite=>invite.status==='pending').map(invite=>({id:String(invite.id),email:String(invite.email)}))}/><p className="text-sm">Invitations expire after seven days. Delivery and verified-account acceptance are separate; unreviewed old pending access cannot activate a broad legacy grant.</p></section>;
+ const value=(key:string)=>typeof query[key]==='string'?query[key] as string:undefined;
+ const tab=['people','coverage','calendar','identity','policies'].includes(value('tab')??'')?value('tab'):'people';
+ await pageFence();
+ return <TeamWorkspace model={model} actorId={actor.id} tab={tab} peoplePanel={peoplePanel} returnTo={returnTo} filters={{department:value('department'),status:value('status'),permission:value('permission')}}/>;
 }

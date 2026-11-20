@@ -38,7 +38,7 @@ export default async function ProfilePage({ searchParams }: {
             {customer.email}
           </p>
         </div>
-        <ProfileForm
+        <ProfileForm actorId={customer.userId}
           displayName={customer.displayName}
           phone={customer.phone}
           locale={customer.locale}

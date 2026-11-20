@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Operations · Business settings</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/39ae600ed082352c03509106609818ff">
+<link rel="stylesheet" href="/_blob/d1603bdfcb29428264731bbedb89e050">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&amp;family=Instrument+Sans:wght@400..700&amp;family=JetBrains+Mono:wght@500&amp;display=swap">
+<style>
+body{margin:0;background:#F7F3EC}
+a{color:#14213D}a:hover{color:#A8232E}
+.helpbtn{all:unset;cursor:pointer;width:28px;height:28px;border-radius:50%;border:1px solid #D3C5AD;display:inline-flex;align-items:center;justify-content:center;color:#46536F;transition:background-color 160ms ease,color 160ms ease,transform 160ms ease}
+.helpbtn:hover{background:#fff;color:#14213D}.helpbtn:active{transform:scale(.95)}
+.helpbtn:focus-visible,.stg:focus-visible,.pcard:focus-visible,.syncbtn:focus-visible{outline:2px solid #A8232E;outline-offset:2px}
+.pop{position:absolute;z-index:5;background:#fff;border:1px solid #E4DACA;border-radius:14px;box-shadow:0 18px 40px -18px rgba(20,33,61,.35);animation:popin 180ms cubic-bezier(.23,1,.32,1)}
+@keyframes popin{from{opacity:0;transform:translateY(-4px) scale(.98)}}
+.fbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;position:relative}
+.search{display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;border:1px solid #D3C5AD;border-radius:10px;background:#fff;flex:0 1 320px;color:#675B4E}
+.search input{all:unset;flex:1;font-size:14px;color:#14213D}
+.search:focus-within{border-color:#14213D;box-shadow:0 0 0 4px rgba(20,33,61,.08)}
+.token{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 6px 0 10px;border-radius:999px;background:#EDE4D3;font-size:13px;font-weight:600}
+.token button{all:unset;cursor:pointer;width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center}
+.token button:hover{background:#D3C5AD}
+.syncbtn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border-radius:8px;font-size:13px;color:#46536F;transition:background-color 160ms ease}
+.syncbtn:hover{background:#EDE4D3;color:#14213D}
+.syncbtn svg{transition:transform 600ms cubic-bezier(.23,1,.32,1)}
+.syncbtn.busy svg{animation:spin 700ms linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.syncline{height:2px;background:#E4DACA;overflow:hidden;position:relative}
+.syncline::after{content:"";position:absolute;inset:0;width:40%;background:#14213D;animation:slide 900ms linear infinite}
+@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
+.stages{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
+.stg{all:unset;box-sizing:border-box;cursor:pointer;position:relative;display:flex;flex-direction:column;gap:4px;padding:14px 16px 16px;border-radius:14px;background:#fff;border:1px solid #E4DACA;transition:border-color 160ms ease,transform 160ms ease,box-shadow 160ms ease}
+.stg:hover{border-color:#B9AC96;transform:translateY(-1px)}
+.stg:active{transform:scale(.98)}
+.stg.on{border-color:#14213D;box-shadow:0 0 0 1px #14213D,0 10px 24px -16px rgba(20,33,61,.5)}
+.stg:not(:last-child)::after{content:"";position:absolute;right:-11px;top:50%;width:8px;height:8px;border-top:1.5px solid #B9AC96;border-right:1.5px solid #B9AC96;transform:translateY(-50%) rotate(45deg)}
+.stg .bar{height:4px;border-radius:2px;margin-bottom:8px}
+.pcard{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;gap:6px;padding:14px;border-radius:12px;background:#FFFCF7;border:1px solid #E4DACA;transition:border-color 160ms ease,background-color 160ms ease}
+.pcard:hover{border-color:#B9AC96;background:#fff}
+.pcard.on{background:#fff;border-color:#14213D;box-shadow:0 0 0 1px #14213D}
+.step{padding:10px 12px;border-radius:12px;font-size:13px;display:flex;flex-direction:column;gap:2px}
+.step b{display:flex;gap:6px;align-items:center;font-size:13.5px}
+.step.done{background:#E1EEE5}.step.done b{color:#2C6A4A}
+.step.now{background:#fff;box-shadow:inset 0 0 0 2px #14213D}
+.step.todo{background:#EDE4D3;color:#675B4E}.step.todo b{color:#46536F}
+@media (prefers-reduced-motion:reduce){.pop{animation:none}.syncbtn.busy svg,.syncline::after{animation:none}.stg:hover{transform:none}}
+
+.smenu{display:flex;flex-direction:column;gap:2px}
+.smenu h4{font-size:12.5px;font-weight:650;color:#675B4E;padding:14px 12px 6px;margin:0}
+.sitem{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;gap:1px;padding:9px 12px;border-radius:10px;transition:background-color 140ms ease}
+.sitem:hover{background:#EDE4D3}
+.sitem.on{background:#fff;box-shadow:inset 0 0 0 1px #14213D}
+.sitem:focus-visible{outline:2px solid #A8232E;outline-offset:2px}
+.ba{display:grid;grid-template-columns:minmax(0,1fr) 28px minmax(0,1fr);align-items:stretch;gap:0}
+.ba .side-b,.ba .side-a{padding:16px 18px;border-radius:12px;display:flex;flex-direction:column;gap:4px}
+.ba .side-b{background:#EDE4D3}
+.ba .side-a{background:#fff;box-shadow:inset 0 0 0 2px #14213D}
+.numin{display:flex;align-items:center;border:1px solid #D3C5AD;border-radius:10px;background:#fff;height:46px;overflow:hidden}
+.numin:focus-within{border-color:#14213D;box-shadow:0 0 0 4px rgba(20,33,61,.08)}
+.numin input{all:unset;flex:1;padding:0 14px;font:600 16px 'Instrument Sans',system-ui;font-variant-numeric:tabular-nums;min-width:0}
+.numin span{padding:0 14px;color:#675B4E;font-size:14px;border-left:1px solid #E4DACA;height:100%;display:flex;align-items:center;background:#FFFCF7}
+</style>
+</helmet>
+<div class="hb shell" style="background: #F7F3EC; min-height: 100vh">
+  <aside class="side" style="background: #14213D; color: #C9D0DD; padding: 18px 12px; display: flex; flex-direction: column; gap: 18px; max-width: 236px; flex-basis: 220px">
+    <a href="#" style="display: flex; align-items: center; gap: 10px; padding: 0 6px; color: #fff"><img src="/_blob/65b39bff773bb375aa5d23ab420967a3" alt="" style="width: 34px; height: 34px; background: #FFFCF7; border-radius: 8px; padding: 2px"><span style="display: flex; flex-direction: column; line-height: 1.1"><span class="serif" style="font-size: 19px; font-weight: 600; color: #fff">Hastabazaar</span><span style="font-size: 12px; font-weight: 600; color: #E2B65C">Operations</span></span></a>
+    <nav class="navd" aria-label="Operations">
+      <a href="Admin-Overview.dc.html"><span class="ic s18 i-home"></span>Today<span class="cnt">7</span></a>
+      <a href="Admin-Orders.dc.html"><span class="ic s18 i-receipt"></span>Orders<span class="cnt q">3</span></a>
+      <a href="Admin-Care.dc.html"><span class="ic s18 i-message"></span>Care<span class="cnt q">2</span></a>
+      <a href="Admin-Sellers.dc.html"><span class="ic s18 i-store"></span>Sellers<span class="cnt q">9</span></a>
+      <a href="Admin-Moderation.dc.html"><span class="ic s18 i-package"></span>Catalog</a>
+      <a href="Admin-Payouts.dc.html"><span class="ic s18 i-wallet"></span>Money<span class="cnt q">2</span></a>
+      <a href="#"><span class="ic s18 i-percent"></span>Growth</a>
+      <a href="#"><span class="ic s18 i-chart"></span>Reports</a>
+      <a href="Admin-Settings.dc.html" class="on"><span class="ic s18 i-sliders"></span>Settings</a>
+    </nav>
+    <div style="margin-top: auto; display: flex; flex-direction: column; gap: 10px">
+      <a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; font-size: 14px; color: #C9D0DD"><span class="ic s18 i-arrow-ur"></span>Open marketplace</a>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; background: rgba(255,252,247,.07)">
+        <span class="avatar" style="width: 34px; height: 34px; background: #E2B65C; color: #14213D; font-size: 13px">NS</span>
+        <span style="flex: 1; line-height: 1.25"><b style="color: #fff; font-size: 14px; display: block">Nisha S.</b><span style="font-size: 12.5px">Super Admin</span></span>
+        <button class="btn btn-sm btn-icon" aria-label="Sign out" style="color: #C9D0DD; width: 32px; height: 32px"><span class="ic s18 i-logout"></span></button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main" style="display: flex; flex-direction: column; min-width: 0">
+    <div style="height: 68px; display: flex; align-items: center; gap: 12px; padding: 0 32px; position: relative">
+      <h1 class="serif" style="font-size: 28px">Settings</h1>
+      <button class="helpbtn" aria-label="How business settings work" aria-expanded="{{helpOpen}}" onClick="{{toggleHelp}}"><span class="ic s16 i-help"></span></button>
+      <sc-if value="{{helpOpen}}" hint-placeholder-val="{{ false }}">
+        <div class="pop" role="dialog" aria-label="How business settings work" style="top: 58px; left: 32px; width: 420px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; font-size: 14px; color: #2C3B5C">
+          <b style="font-size: 15px; color: #14213D">How business settings work</b>
+          <p>Pick a setting on the left. Type the new value and the preview shows exactly what changes, before anything is saved.</p>
+          <p>As Super Admin you save changes directly. Money and agreement settings start on a date you choose. Orders already placed keep the values saved with them.</p>
+          <a href="#" class="tlink" style="font-size: 13.5px">Full staff procedure</a>
+        </div>
+      </sc-if>
+      <div class="cmdk hide-m" style="margin-left: auto; width: 380px"><span class="ic s18 i-search"></span><span style="flex: 1">Jump to anything…</span><span class="kbd">⌘K</span></div>
+    </div>
+    <nav class="subtabs" aria-label="Settings sections">
+      <a href="#">Team &amp; roles</a><a href="#" class="on">Business</a><a href="#">Legal &amp; procedures</a><a href="#">Approval rules</a><a href="#">Forms</a><a href="#">Email delivery</a><a href="#">System health</a><a href="#">Backup &amp; transfer</a><a href="#">Security</a>
+    </nav>
+
+    <div style="display: grid; grid-template-columns: 290px minmax(0, 1fr); flex: 1">
+      <aside style="border-right: 1px solid #E4DACA; padding: 10px 12px 32px" aria-label="Business settings">
+        <label class="search" style="margin: 8px 0 4px; flex: none"><span class="ic s16 i-search"></span><input placeholder="Find a setting" aria-label="Find a setting"></label>
+        <nav class="smenu">
+          <sc-for list="{{groups}}" as="g" hint-placeholder-count="4">
+            <h4>{{g.name}}</h4>
+            <sc-for list="{{g.items}}" as="it" hint-placeholder-count="3">
+              <button class="{{it.cls}}" onClick="{{it.pick}}">
+                <span style="display: flex; justify-content: space-between; gap: 8px; font-size: 14px; font-weight: 600">{{it.label}}<sc-if value="{{it.pending}}" hint-placeholder-val="{{ false }}"><span class="badge warn" style="height: 18px; font-size: 11px">Draft</span></sc-if></span>
+                <span class="num" style="font-size: 13px; color: #46536F">{{it.now}}</span>
+              </button>
+            </sc-for>
+          </sc-for>
+        </nav>
+      </aside>
+
+      <main style="padding: 28px 40px 40px; display: flex; flex-direction: column; gap: 22px; max-width: 920px">
+        <div style="display: flex; gap: 16px; align-items: start">
+          <div style="flex: 1">
+            <h2 class="serif" style="font-size: 32px; line-height: 1.1; letter-spacing: -0.015em">{{c.label}}</h2>
+            <p style="font-size: 15px; color: #46536F; margin-top: 6px; max-width: 62ch">{{c.desc}}</p>
+          </div>
+          <span class="{{c.ctrlCls}}" style="white-space: nowrap"><span class="{{c.ctrlIcon}}"></span>{{c.ctrl}}</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 220px 1fr; gap: 16px; align-items: end">
+          <div class="field">
+            <label class="label" for="nv">New value</label>
+            <div class="numin"><input id="nv" inputmode="decimal" value="{{draft}}" onChange="{{setDraft}}"><span>{{c.unit}}</span></div>
+          </div>
+          <div class="field">
+            <label class="label" for="when">Starts</label>
+            <select id="when" class="input"><option>{{c.startDefault}}</option><option>Choose a date…</option></select>
+          </div>
+        </div>
+
+        <section aria-label="Before and after" style="display: flex; flex-direction: column; gap: 12px">
+          <h3 style="font-size: 15px; font-weight: 650">What changes</h3>
+          <div class="ba">
+            <div class="side-b"><span style="font-size: 13px; color: #675B4E; font-weight: 600">Now</span><b class="serif num" style="font-size: 30px; line-height: 1.1">{{c.now}}</b><span style="font-size: 13.5px; color: #46536F">{{c.exNow}}</span></div>
+            <span style="display: flex; align-items: center; justify-content: center; color: #A8232E"><span class="ic s18 i-arrow"></span></span>
+            <div class="side-a"><span style="font-size: 13px; color: #A8232E; font-weight: 600">{{c.afterLabel}}</span><b class="serif num" style="font-size: 30px; line-height: 1.1">{{c.next}}</b><span style="font-size: 13.5px; color: #46536F">{{c.exNext}}</span></div>
+          </div>
+          <ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 14px">
+            <sc-for list="{{c.notes}}" as="n" hint-placeholder-count="3">
+              <li style="display: flex; gap: 10px; align-items: start; color: {{n.color}}"><span class="{{n.icon}}" style="margin-top: 2px; flex: none"></span><span>{{n.text}}</span></li>
+            </sc-for>
+          </ul>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 13px; color: #46536F">Shows on:
+            <sc-for list="{{c.where}}" as="w" hint-placeholder-count="3"><span class="badge" style="height: 22px; font-size: 12px; background: #EDE4D3; color: #14213D">{{w}}</span></sc-for>
+          </div>
+        </section>
+
+        <div class="field">
+          <label class="label" for="why">Why are you changing this?</label>
+          <input id="why" class="input" placeholder="Required. Saved in the setting's history.">
+        </div>
+
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding-top: 18px; border-top: 1px solid #E4DACA">
+          <button class="btn btn-primary" disabled="{{unchanged}}">{{c.submit}}</button>
+          <button class="btn btn-ghost" onClick="{{reset}}">Discard</button>
+          <span style="margin-left: auto; font-size: 13.5px; color: #46536F; display: flex; gap: 6px; align-items: center"><span class="ic s16 i-lock"></span>Orders already placed keep their saved values.</span>
+        </div>
+
+        <section aria-label="History" style="display: flex; flex-direction: column; gap: 4px">
+          <h3 style="font-size: 15px; font-weight: 650; margin-bottom: 6px">History</h3>
+          <sc-for list="{{c.history}}" as="h" hint-placeholder-count="2">
+            <div style="display: grid; grid-template-columns: 110px 1fr auto; gap: 14px; padding: 10px 0; border-top: 1px solid #E4DACA; font-size: 14px"><b class="num">{{h.v}}</b><span style="color: #46536F">{{h.note}}</span><span class="num" style="color: #675B4E">{{h.when}}</span></div>
+          </sc-for>
+        </section>
+      </main>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1240}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { key: 'hold', drafts: { hold: '5' }, helpOpen: false }; }
+  renderVals() {
+    const s = this.state;
+    const f = (n) => Math.round(n).toLocaleString('en-IN');
+    const ok = (t) => ({ icon: 'ic s16 i-check', color: '#2C6A4A', text: t });
+    const info = (t) => ({ icon: 'ic s16 i-clock', color: '#2C3B5C', text: t });
+    const warn = (t) => ({ icon: 'ic s16 i-alert', color: '#A8232E', text: t });
+    const two = ['badge warn', 'ic s14 i-calendar', 'Starts on a date you pick'];
+    const one = ['badge ok', 'ic s14 i-check', 'Saves when you confirm'];
+    const day = (d) => (20 + d) > 30 ? (20 + d - 30) + ' Dec' : (20 + d) + ' Nov';
+    const S = {
+      commission: { g: 'Money', label: 'Seller commission', unit: '%', cur: 12, fmt: (v) => v + '%', ctl: two, desc: 'What Hastabazaar keeps from each sale by an independent seller. Sellers keep the rest.', where: ['Seller earnings', 'Payouts', 'Add product'],
+        ex: (v) => 'On a NPR 1,000 sale the seller gets NPR ' + f(1000 - v * 10), notes: (v, c) => [info('Sellers are told before it starts, as the seller agreement requires.'), v > c ? warn('Sellers earn less per sale. Expect questions from sellers.') : ok('Sellers earn more per sale.')], history: [['12%', 'Owner set 12% / 88% before launch', '16 Oct'], ['9%', 'First rate', '12 Oct']] },
+      fee: { g: 'Money', label: 'Customer marketplace fee', unit: 'NPR', cur: 0, fmt: (v) => v ? 'NPR ' + v + ' per order' : 'Off', ctl: two, desc: 'An extra charge once per order, on top of the items and delivery. Paused at launch so prices don’t feel higher.', where: ['Checkout', 'Order details', 'Invoices'],
+        ex: (v) => 'A NPR 485 order costs the customer NPR ' + f(485 + v), notes: (v) => v ? [warn('Checkout totals go up by NPR ' + v + '. You paused this so launch prices wouldn’t feel higher.'), info('Only new orders pay it. Not refunded unless the law requires it.')] : [ok('Checkout shows no marketplace fee line.')], history: [['Off', 'Paused so prices feel lower at launch', 'Before launch'], ['NPR 10', 'First set up', 'Earlier']] },
+      payday: { g: 'Money', label: 'Payout day', unit: 'day', text: true, cur: 'Wednesday', fmt: (v) => v, ctl: two, desc: 'The weekday payouts are prepared, with a 5 pm cut-off, Nepal time.', where: ['Seller earnings', 'Payouts'], ex: (v) => 'Next payout run: ' + v, notes: () => [info('Requests after 5 pm wait for the following week.')], history: [['Wednesday', 'Starting day', 'Launch']] },
+      hold: { g: 'Money', label: 'Hold after delivery', unit: 'days', cur: 7, fmt: (v) => v + ' days', ctl: two, desc: 'How long a seller waits after delivery before that sale can be paid out.', where: ['Seller earnings', 'Payouts', 'Order details'],
+        ex: (v) => 'Delivered 20 Nov → payable ' + day(v), notes: (v, c) => [v < c ? ok('Sellers are paid ' + (c - v) + ' day' + (c - v === 1 ? '' : 's') + ' sooner.') : v > c ? info('Sellers wait ' + (v - c) + ' more day' + (v - c === 1 ? '' : 's') + '.') : info('No change.'), v < 7 ? warn('Shorter than the 7-day return period. You may pay for orders that are later returned and have to recover the money.') : ok('Covers the full 7-day return period.')], history: [['7 days', 'Starting value', 'Launch']] },
+      minimum: { g: 'Money', label: 'Minimum payout', unit: 'NPR', cur: 0, fmt: (v) => 'NPR ' + f(v), ctl: two, desc: 'Sellers with less than this wait until they have earned more.', where: ['Seller earnings', 'Payouts'], ex: (v) => v ? 'A seller with NPR ' + f(Math.max(v - 200, 0)) + ' waits' : 'Any amount can be paid', notes: () => [info('Applies from the next payout day.')], history: [['NPR 0', 'Starting value', 'Launch']] },
+      reserve: { g: 'Money', label: 'New seller reserve', unit: '%', cur: 0, fmt: (v) => v + '%', ctl: two, desc: 'A share of a new seller’s first payouts held back for returns.', where: ['Payouts', 'Seller earnings'], ex: (v) => 'From a NPR 10,000 first payout, NPR ' + f(v * 100) + ' is held', notes: () => [info('Only sellers who join after it starts.')], history: [['0%', 'Starting value', 'Launch']] },
+      rider: { g: 'Riders', label: 'Rider cash hand-in', unit: 'working days', cur: 1, fmt: (v) => v + ' working day' + (v === 1 ? '' : 's'), ctl: two, desc: 'How soon riders must hand in the cash they collect.', where: ['Rider cash', 'Rider app'], ex: (v) => 'Collected Thursday → hand in by ' + (['Thursday', 'Friday', 'Sunday', 'Monday', 'Tuesday'][Math.min(v, 4)]), notes: () => [info('Riders work Sunday to Friday.')], history: [['1 working day', 'Starting value', 'Launch']] },
+      riderlimit: { g: 'Riders', label: 'Rider cash limit', unit: 'NPR', cur: 5000, fmt: (v) => 'NPR ' + f(v), ctl: two, desc: 'The most cash one rider can carry before handing it in.', where: ['Rider cash', 'Rider app'], ex: (v) => 'About ' + Math.max(1, Math.floor(v / 485)) + ' average orders', notes: () => [info('Riders over the limit get no new pickups until they hand in cash.')], history: [['NPR 5,000', 'Staging setup', '17 Sep']] },
+      openbox: { g: 'Delivery', label: 'Open-box districts', unit: 'districts', cur: 1, fmt: (v) => v + ' district' + (v === 1 ? '' : 's'), ctl: one, desc: 'Where customers may open clay items in front of the rider before paying.', where: ['Checkout', 'Rider app'], ex: () => 'Kathmandu', notes: () => [info('Categories: Clay.')], history: [['Kathmandu', 'Staging setup', '17 Sep']] },
+      watermark: { g: 'Storefront', label: 'Photo watermark', unit: '% opacity', cur: 28, fmt: (v) => v + '%', ctl: one, desc: 'The Hastabazaar mark printed on product photos.', where: ['Product pages', 'Shop'], ex: (v) => v ? 'Bottom right of every product photo' : 'No watermark', notes: () => [info('Takes effect straight away.')], history: [['28%', 'Starting value · bottom right, 18% size', 'Launch']] }
+    };
+    const order = ['commission', 'fee', 'payday', 'hold', 'minimum', 'reserve', 'rider', 'riderlimit', 'openbox', 'watermark'];
+    const draftOf = (k) => (s.drafts[k] !== undefined ? s.drafts[k] : String(S[k].cur));
+    const groups = [];
+    order.forEach((k) => { const d = S[k]; let g = groups.find((x) => x.name === d.g); if (!g) { g = { name: d.g, items: [] }; groups.push(g); } g.items.push({ label: d.label, now: d.fmt(d.cur), pending: draftOf(k) !== String(d.cur), cls: k === s.key ? 'sitem on' : 'sitem', pick: () => this.setState({ key: k }) }); });
+    const d = S[s.key];
+    const raw = draftOf(s.key);
+    const v = d.text ? raw : Math.max(0, Number(raw) || 0);
+    const changed = String(v) !== String(d.cur);
+    const c = {
+      label: d.label, desc: d.desc, unit: d.unit, ctrl: d.ctl[2], ctrlCls: d.ctl[0], ctrlIcon: d.ctl[1], where: d.where,
+      now: d.fmt(d.cur), next: changed ? d.fmt(v) : '—', afterLabel: changed ? 'After the change' : 'Type a new value',
+      exNow: d.ex(d.cur), exNext: changed ? d.ex(v) : 'The preview fills in as you type.',
+      notes: changed ? d.notes(v, d.cur) : [info('Nothing changes until you enter a new value.')],
+      startDefault: d.ctl === two ? 'From 1 Dec' : 'As soon as you save',
+      submit: d.ctl === two ? 'Schedule change' : 'Save change',
+      history: d.history.map(([hv, note, when]) => ({ v: hv, note, when }))
+    };
+    return {
+      groups, c, draft: raw, unchanged: !changed,
+      setDraft: (e) => { const val = e && e.target ? e.target.value : ''; this.setState({ drafts: { ...s.drafts, [s.key]: val } }); },
+      reset: () => { const dr = { ...s.drafts }; delete dr[s.key]; this.setState({ drafts: dr }); },
+      helpOpen: s.helpOpen, toggleHelp: () => this.setState({ helpOpen: !s.helpOpen })
+    };
+  }
+}
+</script>
+</body>
+</html>

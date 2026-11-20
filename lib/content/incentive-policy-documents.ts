@@ -51,7 +51,7 @@ For help, email support@hastabazaar.com with your account email and the affected
 
 ${companyPolicyIdentity}
 
-These terms apply to promo codes offered by HastaBazaar. Each campaign's conditions shown when you apply the code and confirm your order form part of the offer.
+These terms apply to promo codes offered by Hastabazaar. Each campaign's conditions shown when you apply the code and confirm your order form part of the offer.
 
 ## Offer details
 
@@ -71,7 +71,7 @@ The discount and its allocation to accepted order items are recorded with the or
 
 A refund covers the cash actually paid and restores shopping credit used for the affected items. Product tax and delivery refunds follow the Return, Exchange, Cancellation & Refund Policy. The promo discount itself is not refunded as cash or wallet credit.
 
-Cancelling an order does not automatically restore a code or reset its usage limit. Any replacement or renewed offer must be confirmed by HastaBazaar.
+Cancelling an order does not automatically restore a code or reset its usage limit. Any replacement or renewed offer must be confirmed by Hastabazaar.
 
 ## Changes and fair use
 
@@ -87,7 +87,7 @@ Email support@hastabazaar.com with the code, order number and issue. Complaints 
 
 ${companyPolicyIdentity}
 
-HastaBazaar gift codes currently provide promotional shopping credit issued by HastaBazaar. These terms do not describe a service for purchasing a paid gift card or depositing money.
+Hastabazaar gift codes currently provide promotional shopping credit issued by Hastabazaar. These terms do not describe a service for purchasing a paid gift card or depositing money.
 
 ## Redeeming a gift code
 

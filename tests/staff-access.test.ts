@@ -14,6 +14,7 @@ import {
 
 void test('job templates grant only their supported work and keep account access', () => {
   const bundles = [
+    ['Technical responder', ['system.health.view', 'system.incidents.manage']],
     ['Orders assistant', ['order.manage']],
     ['Customer support', ['support.manage']],
     ['Product reviewer', ['product.review']],
@@ -51,8 +52,8 @@ void test('job templates grant only their supported work and keep account access
     );
   }
   assert.deepEqual(
-    STAFF_ACCESS_RIGHTS.map((item) => item.permission),
-    configurableAdminPermissions,
+    STAFF_ACCESS_RIGHTS.map((item) => item.permission).sort(),
+    [...configurableAdminPermissions].sort(),
   );
   assert.equal(can({ role: 'admin' }, 'support.manage'), true);
 });

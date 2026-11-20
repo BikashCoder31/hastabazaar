@@ -1,13 +1,16 @@
 import type { RuntimeEnvironment } from '@/lib/staging/environment';
+import { currentFormVersionGuards } from '@/lib/forms/native-version';
 import { assertSimulationAllowed, SIMULATED_RECORD_LABEL } from '@/lib/staging/environment';
 import { buildFormAnswerInsert } from '@/lib/db/repositories/form-answers';
 import type { FormAnswerSnapshot } from '@/lib/forms/types';
 import { digestFormRequest, formRequestReplay, FormRequestConflictError } from '@/lib/forms/submission';
 import { decisionFormReplay } from './form-replay';
 import { staffMutationGuard } from '@/lib/db/repositories/staff-mutation-guard';
-import { getRegisteredSellerTerms, prepareSellerCommissionAcceptance } from '@/lib/db/repositories/marketplace-settings';
+import { getRegisteredSellerTerms, prepareSellerCommissionAcceptance, retainedRegisteredSellerTerms } from '@/lib/db/repositories/marketplace-settings';
 import { makerMutationGuards, getManagedMakerAuthority } from './maker-authority';
 import type { SellerApplicationDocument } from '@/lib/sellers/application';
+import { isPendingPayoutReference } from '../sellers/onboarding';
+import { checkoutCommitClock } from '../checkout/commit-policy-guards';
 
 export class RouteTransitionError extends Error {}
 type TransitionForm = {requestId:string;versionId:string;answers:FormAnswerSnapshot;digest?:string};
@@ -59,19 +62,22 @@ async function evidence(db:D1Database,sellerId:string,references:readonly string
   for(const reference of references) {
     const upload=uploads.find(document=>document.id===reference);
     const row=upload ? {id:upload.id,kind:upload.kind,objectKey:upload.objectKey,uploadedAt:now,sizeBytes:upload.sizeBytes} : await db.prepare(`SELECT id,kind,object_key AS objectKey,uploaded_at AS uploadedAt,size_bytes AS sizeBytes
-      FROM seller_documents WHERE id=? AND seller_id=? AND status IN ('pending','verified') AND uploaded_at<=?`).bind(required('Private document ID',reference,1),sellerId,now).first<Evidence>();
+      FROM seller_documents WHERE id=? AND seller_id=? AND status IN ('pending','verified') AND uploaded_at<=? AND (valid_until IS NULL OR valid_until>?)`).bind(required('Private document ID',reference,1),sellerId,now,now).first<Evidence>();
     if(!row||!row.objectKey.startsWith(`private/seller-documents/${sellerId}/`)||!kinds.includes(row.kind))
-      throw new RouteTransitionError('Required private registration, tax or receiving-account evidence is missing, rejected or belongs to another maker.');
+      throw new RouteTransitionError('Required private registration, tax or receiving-account evidence is missing, rejected, expired or belongs to another maker.');
+    if (row.kind==='pan_certificate' && !upload && !row.objectKey.startsWith(`private/seller-documents/${sellerId}/transition-`))
+      throw new RouteTransitionError('Upload a business PAN certificate for this transition. A retained personal PAN certificate cannot prove business registration.');
     documents.push(row);
   }
   if(kinds.some(kind=>documents.filter(document=>document.kind===kind).length!==1)||documents.length!==kinds.length)
     throw new RouteTransitionError('Provide exactly one private certificate of each required kind.');
   return documents.toSorted((a,b)=>a.kind.localeCompare(b.kind));
 }
-function evidenceGuards(db:D1Database,sellerId:string,documents:readonly Evidence[],verified=false) {
+function evidenceGuards(db:D1Database,sellerId:string,documents:readonly Evidence[],now:number,verified=false) {
+  const commitExpiry=verified?` AND valid_until>${checkoutCommitClock(db)}`:'';
   return documents.flatMap(document=>guard(db,`EXISTS(SELECT 1 FROM seller_documents WHERE id=? AND seller_id=? AND kind=?
-    AND object_key=? AND uploaded_at=? AND size_bytes=? AND ${verified?"status='verified'":"status IN ('pending','verified')"})`,
-    [document.id,sellerId,document.kind,document.objectKey,document.uploadedAt,document.sizeBytes]));
+    AND object_key=? AND uploaded_at=? AND size_bytes=? AND ${verified?"status='verified'":"status IN ('pending','verified')"} AND (valid_until IS NULL OR (valid_until>?${commitExpiry})))`,
+    [document.id,sellerId,document.kind,document.objectKey,document.uploadedAt,document.sizeBytes,now]));
 }
 function termsGuard(db:D1Database,snapshot:TermsSnapshot,now:number) {
   return guard(db,`COALESCE((SELECT id FROM business_setting_versions WHERE setting_key='independent_seller_commission_bps'
@@ -79,6 +85,7 @@ function termsGuard(db:D1Database,snapshot:TermsSnapshot,now:number) {
     [now,now,snapshot.commissionSettingVersionId??'']);
 }
 async function validatedSnapshot(db:D1Database,input:RegisteredTransitionInput):Promise<TermsSnapshot> {
+  if (isPendingPayoutReference(input.payoutAccountReference??'')) throw new RouteTransitionError('A reviewed receiving-account reference is required.');
   if(!['PAN','VAT','BOTH'].includes(input.taxMode))throw new RangeError('Select PAN, VAT, or both.');
   const terms=await getRegisteredSellerTerms(db,input.now);
   if(input.registeredTermsContext!==terms.context||input.agreementVersion!==terms.agreementVersion||input.agreementLanguage!=='en'||input.agreementAcceptedAt!==input.now)
@@ -137,7 +144,7 @@ async function submit(db:D1Database,input:RegisteredTransitionInput,correction?:
   if(input.documents?.some(document=>!accepted.evidence.some(item=>item.id===document.id)))throw new RouteTransitionError('Unexpected registration document upload.');
   for(const document of input.documents??[])statements.push(db.prepare(`INSERT INTO seller_documents(id,seller_id,kind,object_key,original_name,mime_type,size_bytes,status,uploaded_at)
     VALUES(?,?,?,?,?,?,?,'pending',?)`).bind(document.id,input.sellerId,document.kind,document.objectKey,document.originalName,document.mimeType,document.sizeBytes,input.now));
-  statements.push(...evidenceGuards(db,input.sellerId,accepted.evidence),...termsGuard(db,accepted,input.now));
+  statements.push(...evidenceGuards(db,input.sellerId,accepted.evidence,input.now),...termsGuard(db,accepted,input.now));
   if(correction) {
     if(!Number.isSafeInteger(correction.expectedVersion)||correction.expectedVersion<1)throw new RouteTransitionError('Reload the transition before correcting it.');
     statements.push(...guard(db,`EXISTS(SELECT 1 FROM seller_route_transition_applications WHERE id=? AND seller_id=? AND requested_by=? AND status='changes_requested' AND version=?)`,[id,input.sellerId,input.actorId,correction.expectedVersion]),
@@ -178,11 +185,11 @@ export async function reviewRouteTransition(db:D1Database,input:{applicationId:s
   const statements:D1PreparedStatement[]=[...authority.statements,...guard(db,`EXISTS(SELECT 1 FROM seller_route_transition_applications WHERE id=? AND version=? AND status='submitted' AND requested_by<>?)`,[row.id,row.version,input.actorId])];
   if(input.action==='approve') {
     const original=snapshot(row);const terms=await getRegisteredSellerTerms(db,input.now);
-    if(terms.context!==original.context)throw new RouteTransitionError('Seller terms changed. Request corrections and ask the maker to accept the current terms.');
+    if(!await retainedRegisteredSellerTerms(terms,original))throw new RouteTransitionError('Seller terms changed. Request corrections and ask the maker to accept the current terms.');
     const current=await evidence(db,row.sellerId,original.evidence.map(item=>item.id),row.taxMode,input.now);
     if(JSON.stringify(current)!==JSON.stringify(original.evidence))throw new RouteTransitionError('Private evidence changed. Request corrections before approval.');
-    statements.push(...activeMakerGuards(db,{sellerId:row.sellerId,actorId:row.requestedBy,now:input.now}),...evidenceGuards(db,row.sellerId,original.evidence),...termsGuard(db,original,input.now));
-    for(const document of original.evidence)statements.push(db.prepare(`UPDATE seller_documents SET status='verified',reviewed_at=?,reviewed_by=? WHERE id=? AND seller_id=?`).bind(input.now,input.actorId,document.id,row.sellerId));
+    statements.push(...activeMakerGuards(db,{sellerId:row.sellerId,actorId:row.requestedBy,now:input.now}),...evidenceGuards(db,row.sellerId,original.evidence,input.now),...termsGuard(db,original,input.now));
+    for(const document of original.evidence)statements.push(db.prepare(`UPDATE seller_documents SET status='verified',reviewed_at=?,reviewed_by=? WHERE id=? AND seller_id=? AND status='pending'`).bind(input.now,input.actorId,document.id,row.sellerId));
   }
   statements.push(db.prepare(`UPDATE seller_route_transition_applications SET status=?,reviewed_by=?,review_reason=?,effective_at=?,decision_request_id=?,version=version+1,updated_at=? WHERE id=? AND version=? AND status='submitted'`)
     .bind(status,input.actorId,reason,effectiveAt,input.requestId,input.now,row.id,row.version),
@@ -196,8 +203,7 @@ type ApplyInvocation={actorId:string;reason:string;requestId:string;digest:strin
 async function invocationStatements(db:D1Database,row:TransitionRow,now:number,status:string,invocation?:ApplyInvocation) {
   if(!invocation)return [];
   const authority=await staffMutationGuard(db,invocation.actorId,'seller.application.review',RouteTransitionError,'super_admin');
-  return [...authority.statements,...guard(db,`EXISTS(SELECT 1 FROM form_config_versions WHERE id=? AND form_id='staff.managed-transition-decision'
-    AND status='published' AND id=(SELECT id FROM form_config_versions WHERE form_id='staff.managed-transition-decision' AND status='published' ORDER BY version DESC LIMIT 1))`,[invocation.form.versionId]),
+  return [...authority.statements,...currentFormVersionGuards(db,'staff.managed-transition-decision',invocation.form.versionId),
     db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,next_json,request_id,created_at)
       VALUES (?,?,'seller_route_transition.apply_requested','seller_route_transition',?,?,?,?,?)`)
       .bind(crypto.randomUUID(),invocation.actorId,row.id,invocation.reason,JSON.stringify({catalogDigest:invocation.digest,status,simulationLabel:SIMULATED_RECORD_LABEL}),invocation.requestId,now),
@@ -205,7 +211,7 @@ async function invocationStatements(db:D1Database,row:TransitionRow,now:number,s
 }
 async function applyOne(db:D1Database,row:TransitionRow,now:number,invocation?:ApplyInvocation) {
   const original=snapshot(row);const terms=await getRegisteredSellerTerms(db,now);
-  if(terms.context!==original.context)throw new RouteTransitionError('Seller commission terms changed. The maker must renew acceptance before this transition can apply.');
+  if(!await retainedRegisteredSellerTerms(terms,original))throw new RouteTransitionError('Seller commission terms changed. The maker must renew acceptance before this transition can apply.');
   await owner(db,row.sellerId,row.requestedBy,now);
   const current=await evidence(db,row.sellerId,original.evidence.map(item=>item.id),row.taxMode,now);
   if(JSON.stringify(current)!==JSON.stringify(original.evidence))throw new RouteTransitionError('Registration or tax evidence changed. Renew the private evidence review.');
@@ -215,7 +221,7 @@ async function applyOne(db:D1Database,row:TransitionRow,now:number,invocation?:A
   const acceptance=await prepareSellerCommissionAcceptance(db,{sellerId:row.sellerId,actorId:row.requestedBy,context:original.context,requestId,
     now,language:'en',mode:'managed_transition',transitionId:row.id,acceptedAt:original.acceptedAt});
   await db.batch([...reviewer.statements,...activeMakerGuards(db,{sellerId:row.sellerId,actorId:row.requestedBy,now}),
-    ...evidenceGuards(db,row.sellerId,original.evidence,true),...termsGuard(db,original,now),
+    ...evidenceGuards(db,row.sellerId,original.evidence,now,true),...termsGuard(db,original,now),
     ...guard(db,`EXISTS(SELECT 1 FROM seller_route_transition_applications WHERE id=? AND version=? AND status='scheduled' AND effective_at<=?
       AND reviewed_by=? AND requested_by<>reviewed_by AND registered_terms_snapshot_json=?)`,[row.id,row.version,now,row.reviewedBy,row.snapshotJson]),
     db.prepare(`UPDATE seller_route_transition_applications SET status='applied',applied_at=?,version=version+1,updated_at=? WHERE id=? AND status='scheduled' AND version=?`).bind(now,now,row.id,row.version),
@@ -229,7 +235,11 @@ async function applyOne(db:D1Database,row:TransitionRow,now:number,invocation?:A
       VALUES (?,NULL,'seller_route_transition.applied','seller',?,'Reviewed simulated transition became effective',?,?,?,?)`)
       .bind(crypto.randomUUID(),row.sellerId,JSON.stringify({participationRoute:'managed_maker'}),JSON.stringify({participationRoute:'registered_seller',effectiveAt:row.effectiveAt,
         acceptedAt:original.acceptedAt,commissionSettingVersionId:original.commissionSettingVersionId,commissionBps:original.commissionBps,simulationLabel:SIMULATED_RECORD_LABEL}),requestId,now),
-    ...await invocationStatements(db,row,now,'applied',invocation)]);
+    ...await invocationStatements(db,row,now,'applied',invocation),
+    // Recheck against the database clock after all transition writes.
+    ...guard(db,`NOT EXISTS(SELECT 1 FROM seller_documents WHERE seller_id=?
+      AND id IN (${original.evidence.map(()=>'?').join(',')}) AND valid_until<=${checkoutCommitClock(db)})`,
+      [row.sellerId,...original.evidence.map(document=>document.id)])]);
 }
 export async function applyDueRouteTransitions(db:D1Database,now:number,environment:RuntimeEnvironment,applicationId?:string,invocation?:ApplyInvocation):Promise<number> {
   assertSimulationAllowed(environment);if(!Number.isSafeInteger(now)||now<0)throw new RangeError('Choose a valid transition processing time.');

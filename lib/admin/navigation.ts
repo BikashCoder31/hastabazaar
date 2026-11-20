@@ -1,23 +1,70 @@
 import { can, type Permission } from '@/lib/marketplace/permissions';
 
 export const adminNavigationGroups = [
-  'Operations',
-  'Marketplace',
-  'Controls',
+  'Overview & work queue',
+  'Sellers',
+  'Products & storefront',
+  'Orders & customer care',
+  'Finance & payments',
+  'Fees, programs & promotions',
+  'Team & business policies',
+  'System health & records',
 ] as const;
+
+type AdminArea = typeof adminNavigationGroups[number];
+const areaRoutes: readonly [AdminArea, readonly string[]][] = [
+  ['Overview & work queue', ['/admin', '/admin/notifications', '/admin/progress', '/admin/analytics', '/admin/exceptions']],
+  ['Sellers', ['/admin/sellers']],
+  ['Products & storefront', ['/admin/products/publications', '/admin/products', '/admin/catalog', '/admin/homepage', '/admin/reviews']],
+  ['Orders & customer care', ['/admin/orders', '/admin/shipping', '/admin/cases', '/admin/privacy', '/admin/riders', '/admin/feedback', '/admin/delivery-rates']],
+  ['Finance & payments', ['/admin/payments', '/admin/payouts', '/admin/accounting']],
+  ['Fees, programs & promotions', ['/admin/fees', '/admin/referrals', '/admin/promo-codes', '/admin/fee-waivers', '/admin/loyalty', '/admin/commission', '/admin/programs', '/admin/gift-cards']],
+  ['Team & business policies', ['/security', '/admin/team', '/admin/business-settings', '/admin/legal-policies', '/admin/legal-policies/active']],
+  ['System health & records', ['/admin/system-health', '/admin/backup-transfer', '/admin/forms', '/admin/business-emails', '/admin/order-emails', '/admin/activity', '/admin/governance', '/admin/staff-form-history', '/admin/form-submissions']],
+];
+const areaForRoute = new Map(areaRoutes.flatMap(([area, routes]) => routes.map(route => [route, area] as const)));
+function destinationArea(href: string): AdminArea {
+  const area = areaForRoute.get(href);
+  if (!area) throw new Error('Admin destination requires an explicit workspace area.');
+  return area;
+}
 
 const destinations: readonly {
   href: string;
   label: string;
-  group: string;
   icon: string;
   permission: Permission;
   role?: 'super_admin';
 }[] = [
   {
+    href: '/admin/system-health',
+    label: 'System health & records',
+    icon: 'governance',
+    permission: 'system.health.view',
+  },
+  {
+    href: '/security',
+    label: 'Account security',
+    icon: 'governance',
+    permission: 'account.self.manage',
+  },
+  {
+    href: '/admin/backup-transfer',
+    label: 'Backup & Transfer',
+    icon: 'governance',
+    permission: 'audit_log.view',
+    role: 'super_admin',
+  },
+  {
+    href: '/admin/accounting',
+    label: 'Accounting',
+    icon: 'analytics',
+    permission: 'audit_log.view',
+    role: 'super_admin',
+  },
+  {
     href: '/admin/forms',
-    label: 'Form catalog',
-    group: 'Controls',
+    label: 'Form Management',
     icon: 'forms',
     permission: 'business_settings.manage',
     role: 'super_admin',
@@ -25,7 +72,6 @@ const destinations: readonly {
   {
     href: '/admin/riders',
     label: 'Rider operations',
-    group: 'Operations',
     icon: 'shipping',
     permission: 'order.manage',
     role: 'super_admin',
@@ -33,212 +79,203 @@ const destinations: readonly {
   {
     href: '/admin/notifications',
     label: 'Notifications',
-    group: 'Operations',
     icon: 'reviews',
     permission: 'account.self.manage',
   },
   {
     href: '/admin/business-emails',
-    label: 'Business emails',
-    group: 'Controls',
+    label: 'Email delivery',
     icon: 'reviews',
-    permission: 'admin.invite',
+    permission: 'email.delivery.manage',
+  },
+  {
+    href: '/admin/legal-policies/active',
+    label: 'Active staff procedure',
+    icon: 'governance',
+    permission: 'support.manage',
   },
   {
     href: '/admin/exceptions',
     label: 'Exception follow-up',
-    group: 'Operations',
     icon: 'cases',
     permission: 'order.manage',
   },
   {
     href: '/admin/progress',
     label: 'Recorded work',
-    group: 'Operations',
     icon: 'analytics',
     permission: 'audit_log.view',
   },
   {
     href: '/admin/activity',
     label: 'Action audit',
-    group: 'Controls',
     icon: 'analytics',
     permission: 'admin.invite',
   },
   {
     href: '/admin/delivery-rates',
     label: 'Delivery rates',
-    group: 'Controls',
     icon: 'shipping',
     permission: 'admin.invite',
   },
   {
     href: '/admin/order-emails',
     label: 'Order emails',
-    group: 'Operations',
     icon: 'orders',
-    permission: 'order.manage',
+    permission: 'email.delivery.manage',
+  },
+  {
+    href: '/admin/fees',
+    label: 'Fees & programs overview',
+    icon: 'commission',
+    permission: 'commercial_policy.manage',
   },
   {
     href: '/admin/referrals',
     label: 'Referrals & wallet',
-    group: 'Marketplace',
     icon: 'payouts',
-    permission: 'admin.invite',
+    permission: 'commercial_policy.manage',
   },
   {
     href: '/admin/promo-codes',
     label: 'Promo codes',
-    group: 'Controls',
     icon: 'commission',
-    permission: 'admin.invite',
+    permission: 'commercial_policy.manage',
+    role: 'super_admin',
+  },
+  {
+    href: '/admin/fee-waivers',
+    label: 'Marketplace fee waivers',
+    icon: 'commission',
+    permission: 'commercial_policy.manage',
     role: 'super_admin',
   },
   {
     href: '/admin/loyalty',
     label: 'Daily loyalty points',
-    group: 'Controls',
     icon: 'commission',
-    permission: 'admin.invite',
+    permission: 'commercial_policy.manage',
     role: 'super_admin',
   },
   {
     href: '/admin/commission',
     label: 'Commission',
-    group: 'Controls',
     icon: 'commission',
     permission: 'commercial_policy.manage',
   },
   {
     href: '/admin/business-settings',
     label: 'Business Settings',
-    group: 'Controls',
     icon: 'settings',
     permission: 'business_settings.view',
   },
   {
     href: '/admin/programs',
     label: 'Program Management',
-    group: 'Marketplace',
     icon: 'programs',
     permission: 'business_settings.view',
   },
   {
     href: '/admin',
     label: 'Overview',
-    group: 'Operations',
     icon: 'overview',
-    permission: 'audit_log.view',
+    permission: 'account.self.manage',
   },
   {
     href: '/admin/orders',
     label: 'Orders',
-    group: 'Operations',
     icon: 'orders',
     permission: 'order.manage',
   },
   {
     href: '/admin/shipping',
     label: 'Shipping & claims',
-    group: 'Operations',
     icon: 'shipping',
     permission: 'order.manage',
   },
   {
     href: '/admin/cases',
     label: 'Returns & complaints',
-    group: 'Operations',
     icon: 'cases',
     permission: 'support.manage',
   },
   {
     href: '/admin/sellers',
     label: 'Sellers',
-    group: 'Marketplace',
     icon: 'sellers',
     permission: 'seller.application.review',
   },
   {
     href: '/admin/products',
     label: 'Product moderation',
-    group: 'Marketplace',
     icon: 'products',
     permission: 'product.review',
   },
+  { href: '/admin/products/publications', label: 'Product publishing', icon: 'products', permission: 'product.publish' },
   {
     href: '/admin/homepage',
     label: 'Homepage products',
-    group: 'Marketplace',
     icon: 'homepage',
     permission: 'admin.invite',
   },
   {
     href: '/admin/catalog',
     label: 'Categories & occasions',
-    group: 'Marketplace',
     icon: 'catalog',
     permission: 'catalog.manage',
   },
   {
     href: '/admin/reviews',
     label: 'Customer reviews',
-    group: 'Marketplace',
     icon: 'reviews',
     permission: 'product.review',
   },
+  {href:'/admin/payments',label:'Incoming payments',icon:'payouts',permission:'payment.receipt.verify'},
   {
     href: '/admin/payouts',
     label: 'Payouts',
-    group: 'Operations',
     icon: 'payouts',
     permission: 'payout.prepare',
   },
   {
     href: '/admin/analytics',
     label: 'Reports',
-    group: 'Controls',
     icon: 'analytics',
     permission: 'audit_log.view',
   },
   {
     href: '/admin/privacy',
     label: 'Privacy requests',
-    group: 'Controls',
     icon: 'privacy',
     permission: 'support.manage',
   },
   {
     href: '/admin/legal-policies',
     label: 'Legal procedures',
-    group: 'Controls',
     icon: 'governance',
     permission: 'admin.invite',
   },
   {
     href: '/admin/governance',
     label: 'Governance',
-    group: 'Controls',
     icon: 'governance',
     permission: 'catalog.manage',
   },
   {
     href: '/admin/gift-cards',
     label: 'Gift cards',
-    group: 'Controls',
     icon: 'payouts',
     permission: 'admin.invite',
   },
   {
     href: '/admin/team',
-    label: 'Staff access',
-    group: 'Controls',
+    label: 'Team & business policies',
     icon: 'team',
-    permission: 'admin.invite',
+    permission: 'account.self.manage',
   },
   {
     href: '/admin/staff-form-history',
     label: 'Recorded form answers',
-    group: 'Controls',
     icon: 'forms',
     permission: 'audit_log.view',
     role: 'super_admin',
@@ -246,7 +283,6 @@ const destinations: readonly {
   {
     href: '/admin/form-submissions',
     label: 'Private identity request history',
-    group: 'Controls',
     icon: 'privacy',
     permission: 'audit_log.view',
     role: 'super_admin',
@@ -254,7 +290,6 @@ const destinations: readonly {
   {
     href: '/admin/feedback',
     label: 'Contact & feedback',
-    group: 'Operations',
     icon: 'reviews',
     permission: 'support.manage',
   },
@@ -267,6 +302,30 @@ export type AdminTaskGuide = Readonly<{
 const taskGuides: Readonly<
   Record<string, readonly [string, readonly string[]]>
 > = {
+  '/security': [
+    'Set up your authenticator, save recovery codes and verify protected Admin access.',
+    [
+      'Confirm your own password and connect an authenticator you control.',
+      'Save recovery codes privately before activating MFA.',
+      'Use a single-use recovery code if your authenticator is unavailable.',
+    ],
+  ],
+  '/admin/backup-transfer': [
+    'Prepare and inspect encrypted records, uploads and separate security-key recovery for a future hosting move.',
+    [
+      'Verify recent Admin security and check export readiness.',
+      'Download the encrypted backup and protect the key recovery bundle separately.',
+      'Inspect the saved package; restore only to a separately reviewed empty compatible destination.',
+    ],
+  ],
+  '/admin/accounting': [
+    'Read existing seller, maker, cash and incentive records without changing money or settings.',
+    [
+      'Choose a Nepal reporting period and a section.',
+      'Check the source, date basis and any unavailable or review messages.',
+      'Open the existing finance work area when a recorded amount needs investigation.',
+    ],
+  ],
   '/admin/staff-form-history': [
     'Inspect retained form answers and the version used for a recorded task.',
     [
@@ -395,6 +454,7 @@ const taskGuides: Readonly<
       'Save the change and review the resulting homepage.',
     ],
   ],
+  '/admin/fees': ['Review original commercial sources, upcoming changes and retained history.', ['Choose a focused view and source status.', 'Review the actual version, dates, beneficiary and funding basis.', 'Open its native editor or history; no policy changes in this overview.']],
   '/admin/programs': [
     'Review Managed Maker program readiness and commercial configuration.',
     [
@@ -411,6 +471,7 @@ const taskGuides: Readonly<
       'Save an explained change and review its effective status.',
     ],
   ],
+  '/admin/payments': ['Match actual company receipts to orders and review exceptions.', ['Review the original order and company instructions.','Record independently verified credit and its exact allocations.','Resolve outstanding ownership, balances and fulfillment holds.']],
   '/admin/payouts': [
     'Review seller payout requests and eligible balances; approval and payment are separate.',
     [
@@ -434,6 +495,10 @@ const taskGuides: Readonly<
       'Review required notice and seller acceptance.',
       'Schedule the change without rewriting historical orders.',
     ],
+  ],
+  '/admin/fee-waivers': [
+    'Schedule full marketplace fee waivers for Registered Seller orders and review overlapping campaigns.',
+    ['Create a named campaign with Nepal start and end times.', 'Publish or schedule, pause, resume or end a campaign.', 'Check active overlaps; only one full waiver applies to each new eligible order.'],
   ],
   '/admin/delivery-rates': [
     'Review delivery prices and service-area settings.',
@@ -500,11 +565,19 @@ const taskGuides: Readonly<
     ],
   ],
   '/admin/team': [
-    'Invite staff and review each Admin’s feature access.',
+    'Review staff access, coverage, service clocks and policy responsibilities.',
     [
       'Select the person or invitation task.',
       'Review the role and added or removed feature access.',
       'Confirm an explained change and check the retained record.',
+    ],
+  ],
+  '/admin/system-health': [
+    'Review service health, incident ownership, recovery evidence and authorized records.',
+    [
+      'Check the environment, release and freshness of the relevant evidence.',
+      'Open the current incident and its owner, next action and promised update.',
+      'Follow the protected source record and verify recovery before resolving work.',
     ],
   ],
   '/admin/forms': [
@@ -516,7 +589,7 @@ const taskGuides: Readonly<
     ],
   ],
   '/admin/business-emails': [
-    'Review and process business messages using the recorded delivery queue.',
+    'Track automatic email delivery, intervention and recovery using recorded evidence.',
     [
       'Check the message type, recipient and status.',
       'Review failed or pending records before processing.',
@@ -542,9 +615,11 @@ const taskGuides: Readonly<
 };
 const taskOrder: readonly string[] = [
   '/admin',
+  '/admin/accounting',
   '/admin/orders',
   '/admin/shipping',
   '/admin/cases',
+  '/admin/payments',
   '/admin/payouts',
   '/admin/notifications',
   '/admin/exceptions',
@@ -554,24 +629,31 @@ const taskOrder: readonly string[] = [
   '/admin/riders',
   '/admin/sellers',
   '/admin/products',
+  '/admin/products/publications',
   '/admin/reviews',
   '/admin/catalog',
   '/admin/homepage',
+  '/admin/fees',
   '/admin/programs',
   '/admin/referrals',
   '/admin/business-settings',
   '/admin/commission',
+  '/admin/fee-waivers',
   '/admin/delivery-rates',
   '/admin/promo-codes',
   '/admin/loyalty',
   '/admin/gift-cards',
   '/admin/team',
+  '/admin/system-health',
   '/admin/forms',
   '/admin/business-emails',
   '/admin/analytics',
   '/admin/privacy',
   '/admin/legal-policies',
+  '/admin/legal-policies/active',
   '/admin/governance',
+  '/admin/backup-transfer',
+  '/security',
   '/admin/activity',
   '/admin/staff-form-history',
   '/admin/form-submissions',
@@ -596,7 +678,11 @@ export function adminNavigation(
         (!item.role || item.role === role) &&
         can({ role, permissions }, item.permission),
     )
-    .map((item) => ({ ...item, description: taskGuides[item.href]?.[0] ?? '' }))
+    .map((item) => ({ ...item,
+      label: item.href === '/admin/team' && role === 'admin' ? 'My responsibilities' : item.label,
+      group: destinationArea(item.href),
+      description: item.href === '/admin/team' && role === 'admin' ? 'Review your access, assigned work and coverage contacts.' : taskGuides[item.href]?.[0] ?? '',
+    }))
     .filter((item) =>
       terms.every((term) =>
         (item.label + ' ' + item.description).toLowerCase().includes(term),
@@ -616,6 +702,7 @@ export function adminTaskGuide(
       (item.href !== '/admin' && pathname.startsWith(item.href + '/')),
   );
   if (!destination) return null;
+  if(destination.href==='/admin/team'&&role==='admin')return {...destination,steps:['Review your current access and assigned responsibilities.','Check the current owner and coverage contacts.','Open the original task or acknowledge the applicable procedure.']};
   const guide = taskGuides[destination.href];
   return guide ? { ...destination, steps: guide[1] } : null;
 }

@@ -29,7 +29,7 @@ export default function PageError({
             href="/"
             className="inline-flex min-h-11 items-center rounded-full border px-5 text-sm font-semibold"
           >
-            Back to HastaBazaar
+            Back to Hastabazaar
           </Link>
         </div>
       </div>

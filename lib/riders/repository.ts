@@ -1,3 +1,4 @@
+import {formAnswerSourceSql} from '../forms/answer-proof';
 import {
   createHash,
   randomInt,
@@ -114,7 +115,7 @@ export async function submitRiderRemittance(
       );
     if (o.form) {
       const answer = await db.prepare(`SELECT subject_id AS subjectId,actor_id AS actorId,
-        config_version_id AS versionId FROM form_answer_sets
+        config_version_id AS versionId FROM ${formAnswerSourceSql(db)} retained_answers
         WHERE form_id='rider.remittance' AND request_id=? LIMIT 1`)
         .bind(requestId).first<{ subjectId: string; actorId: string; versionId: string }>();
       const audits = await db.prepare(`SELECT actor_id AS actorId,subject_id AS subjectId,next_json AS nextJson
@@ -510,7 +511,7 @@ export async function reviewRider(
       FROM audit_logs WHERE request_id=?`).bind(`staff.rider-control-1:${o.requestId}`)
       .first<{actorId:string;subjectId:string;nextJson:string|null}>();
     if (prior) {
-      const answer=await db.prepare(`SELECT 1 AS valid FROM form_answer_sets WHERE form_id='staff.rider-control-1'
+      const answer=await db.prepare(`SELECT 1 AS valid FROM ${formAnswerSourceSql(db)} retained_answers WHERE form_id='staff.rider-control-1'
         AND request_id=? AND config_version_id=? AND subject_type='rider' AND subject_id=? AND actor_id=?`)
         .bind(o.requestId,o.form.versionId,o.userId,o.actorId).first();
       let recorded:unknown;try{recorded=JSON.parse(prior.nextJson??'')?.catalogDigest;}catch{}
@@ -611,7 +612,7 @@ export async function setRiderOpenBoxEligibility(
       FROM audit_logs WHERE request_id=?`).bind(`staff.rider-control-1:${o.requestId}`)
       .first<{actorId:string;subjectId:string;nextJson:string|null}>();
     if (prior) {
-      const answer=await db.prepare(`SELECT 1 AS valid FROM form_answer_sets WHERE form_id='staff.rider-control-1'
+      const answer=await db.prepare(`SELECT 1 AS valid FROM ${formAnswerSourceSql(db)} retained_answers WHERE form_id='staff.rider-control-1'
         AND request_id=? AND config_version_id=? AND subject_type='rider' AND subject_id=? AND actor_id=?`)
         .bind(o.requestId,o.form.versionId,o.userId,o.actorId).first();
       let recorded:unknown;try{recorded=JSON.parse(prior.nextJson??'')?.catalogDigest;}catch{}
@@ -701,7 +702,7 @@ export async function saveRiderPolicy(
       FROM audit_logs WHERE request_id=?`).bind(`staff.rider-control-2:${o.requestId}`)
       .first<{actorId:string;subjectId:string;nextJson:string|null}>();
     if (prior) {
-      const answer=await db.prepare(`SELECT 1 AS valid FROM form_answer_sets WHERE form_id='staff.rider-control-2'
+      const answer=await db.prepare(`SELECT 1 AS valid FROM ${formAnswerSourceSql(db)} retained_answers WHERE form_id='staff.rider-control-2'
         AND request_id=? AND config_version_id=? AND subject_type='rider_policy' AND subject_id='current'
         AND actor_id=?`).bind(o.requestId,o.form.versionId,o.actorId).first();
       let recorded:unknown;try{recorded=JSON.parse(prior.nextJson??'')?.catalogDigest;}catch{}
@@ -811,7 +812,7 @@ export async function submitRiderReport(
         FROM audit_logs WHERE request_id=? LIMIT 2`).bind(`rider.report:${o.requestId}`)
         .all<{ actorId: string; subjectId: string; nextJson: string | null }>();
       const answer = await db.prepare(`SELECT subject_id AS subjectId,actor_id AS actorId,
-        config_version_id AS versionId FROM form_answer_sets
+        config_version_id AS versionId FROM ${formAnswerSourceSql(db)} retained_answers
         WHERE form_id='rider.report' AND request_id=? LIMIT 1`).bind(o.requestId)
         .first<{ subjectId: string; actorId: string; versionId: string }>();
       let digest: unknown;
@@ -1018,7 +1019,7 @@ export async function rejectRiderReport(
       FROM audit_logs WHERE request_id=?`).bind(`staff.rider-control-1:${o.requestId}`)
       .first<{actorId:string;subjectId:string;nextJson:string|null}>();
     if (prior) {
-      const answer=await db.prepare(`SELECT 1 AS valid FROM form_answer_sets WHERE form_id='staff.rider-control-1'
+      const answer=await db.prepare(`SELECT 1 AS valid FROM ${formAnswerSourceSql(db)} retained_answers WHERE form_id='staff.rider-control-1'
         AND request_id=? AND config_version_id=? AND subject_type='rider_report' AND subject_id=?
         AND actor_id=?`).bind(o.requestId,o.form.versionId,o.reportId,o.actorId).first();
       let recorded:unknown;try{recorded=JSON.parse(prior.nextJson??'')?.catalogDigest;}catch{}

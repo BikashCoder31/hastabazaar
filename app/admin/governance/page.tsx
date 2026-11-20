@@ -1,4 +1,6 @@
 import { env } from 'cloudflare:workers';
+import Link from 'next/link';
+import {can} from '@/lib/marketplace/permissions';
 import { GovernanceConsole } from '@/components/admin/governance-console';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
@@ -25,6 +27,7 @@ export default async function GovernancePage() {
         superAdmin={staff.role === 'super_admin'}
         actorId={staff.id}
       />
+      {(can(staff,'system.health.view')||can(staff,'system.incidents.manage'))&&<p><Link className="font-semibold underline" href="/admin/system-health/incidents">Open incidents, response plans and recovery evidence</Link></p>}
     </div>
   );
 }

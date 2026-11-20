@@ -21,7 +21,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 import type { AdminFulfillmentAction, SellerFulfillmentAction } from '@/lib/db/repositories/fulfillment';
 type FulfillmentAction = AdminFulfillmentAction | SellerFulfillmentAction;
@@ -30,7 +30,7 @@ const definitions = {
   start_packing: {label:'Start company packing',title:'Start packing these company-store items?',description:'Records preparation of this maker’s company-store items. It does not dispatch the parcel or record payment.',icon:Send,variant:'default'},
   ready_for_pickup: {label:'Mark company items ready',title:'Mark these company-store items ready for pickup?',description:'Confirm preparation is complete. Dispatch, delivery and customer payment remain separate steps.',icon:CircleCheckBig,variant:'default'},
   dispatch: { label: 'Mark dispatched', title: 'Dispatch this order?', description: 'The customer will see the consignment as dispatched.', icon: Send, variant: 'default' },
-  deliver: { label: 'Confirm delivery', title: 'Confirm delivery and COD collection?', description: 'This records the COD payment as collected and closes fulfilment.', icon: CircleCheckBig, variant: 'default' },
+  deliver: { label: 'Confirm delivery', title: 'Confirm physical delivery?', description: 'Records the completed delivery. Actual customer collection and company remittance require their separate evidence and records.', icon: CircleCheckBig, variant: 'default' },
   cancel: { label: 'Cancel order', title: 'Cancel this complete order?', description: 'Eligible parcels close and reserved inventory is restored. Custom production already started requires a separate staff review. Readiness and revised amounts are checked before cancellation.', icon: Ban, variant: 'destructive' },
 } as const;
 

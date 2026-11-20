@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
 import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
 import test from 'node:test';
 
@@ -30,7 +31,7 @@ void test('privacy export follows product seller profile ownership for submissio
       CREATE TABLE gift_cards(id TEXT PRIMARY KEY, issued_by TEXT, redeemed_by TEXT);
       CREATE TABLE order_cancellation_events(id TEXT PRIMARY KEY,order_id TEXT,actor_id TEXT);
       CREATE TABLE order_cancellation_reviews(id TEXT PRIMARY KEY,order_id TEXT,requested_by TEXT);
-      CREATE TABLE audit_logs(actor_id TEXT,action TEXT,subject_type TEXT,subject_id TEXT,request_id TEXT,next_json TEXT);
+
       CREATE TABLE addresses(id TEXT PRIMARY KEY, user_id TEXT NOT NULL);
       CREATE TABLE address_answer_owner_tombstones(address_id TEXT PRIMARY KEY, user_id TEXT NOT NULL);
       CREATE TABLE product_reviews(id TEXT PRIMARY KEY, customer_id TEXT NOT NULL, product_id TEXT);
@@ -54,6 +55,10 @@ void test('privacy export follows product seller profile ownership for submissio
       INSERT INTO seller_profiles VALUES ('owned-shop','owner'),('foreign-shop','other-owner');
       INSERT INTO products VALUES ('owned-product','owned-shop'),('foreign-product','foreign-shop');
     `);
+    const auditSchema=(await readFile(new URL('../drizzle/0000_clear_lizard.sql',import.meta.url),'utf8'))
+      .split('--> statement-breakpoint').find(sql=>sql.includes('CREATE TABLE `audit_logs`'));
+    assert.ok(auditSchema, 'canonical audit receipt schema exists');
+    sqlite.exec(auditSchema);
     for (const formId of ['seller.product-submission', 'seller.inventory']) {
       sqlite.prepare(`INSERT INTO form_config_versions VALUES (?, ?, 1, 'published', ?)`)
         .run(`${formId}-v1`, formId, JSON.stringify({ formId, fields: [

@@ -1,4 +1,6 @@
 'use client';
+import {useAccountCommand} from './use-account-command';
+import {AccountCommandRecovery} from './account-command-recovery';
 
 import { FormGuide } from '@/components/forms/form-guide';
 import {LocationPicker} from '@/components/delivery/location-picker';
@@ -19,21 +21,20 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { sendJson } from '@/lib/http/client-request';
 import type { CustomerAddressRow } from '@/lib/db/repositories/customers';
 import { NEPAL_PROVINCES, DISTRICTS_BY_PROVINCE,normalizeProvince,normalizeDistrict } from '@/lib/checkout/nepal-address';
 import { ConfiguredFields, fieldDisplay, focusConfiguredField } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 
 const BASE_KEYS = ['label', 'recipientName', 'phone', 'province', 'district', 'municipality', 'ward', 'locality', 'landmark', 'postalCode', 'isDefault', 'location', 'userId', 'idempotencyKey'] as const;
 const ADDRESS_KEYS = ['label', 'recipientName', 'phone', 'province', 'district', 'municipality', 'ward', 'locality', 'landmark', 'postalCode'] as const;
 
-export function AddressManager({
-  addresses,
-}: {
-  addresses: readonly CustomerAddressRow[];
-}) {
+type AddressManagerProps={actorId:string;addresses:readonly CustomerAddressRow[]};
+export function AddressManager(props:AddressManagerProps) {
+  return <CurrentAddressManager key={props.actorId} {...props}/>;
+}
+function CurrentAddressManager({actorId,addresses}:AddressManagerProps) {
   const router = useRouter();
   const { config, status, message: configMessage, canSubmit, refresh, handleSubmissionResponse } = usePublishedFormConfig('account.address');
   const requestId = useRef<string | null>(null);
@@ -49,14 +50,22 @@ export function AddressManager({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   useEffect(()=>{if(error && Object.keys(fieldErrors).length === 0) errorSummary.current?.focus();},[error, fieldErrors]);
   const [deleting, setDeleting] = useState<CustomerAddressRow | null>(null);
+  const command=useAccountCommand({actorId,scopeKey:'addresses',onRecorded:(_result,_isCurrent,reference)=>{
+    requestId.current=null;setError('');
+    setEditing(current=>reference.action==='address.create'?(current===null?undefined:current):(current?.id===reference.sourceId?undefined:current));
+    setDeleting(current=>current?.id===reference.sourceId?null:current);router.refresh();
+  },onDenied:()=>router.refresh()});
+  useEffect(()=>{const fieldId=Object.keys(fieldErrors)[0],form=addressForm.current;if(!fieldId||!form||command.blocked)return;
+    if(fieldId==='landmark')form.querySelector<HTMLInputElement>('input[name="landmark"]')?.focus();else focusConfiguredField(form,fieldId);
+  },[fieldErrors,command.blocked]);
 
   async function save(event: {
     preventDefault(): void;
     currentTarget: HTMLFormElement;
   }) {
     event.preventDefault();
-    if (busy || !canSubmit || !config) return;
-    const form = event.currentTarget;
+    if (busy || command.blocked || !canSubmit || !config) return;
+    const isCurrent=command.capture();
     let payload: ReturnType<typeof configuredJsonPayload>;
     try {
       const { answers } = readConfiguredSubmission(event.currentTarget, config, BASE_KEYS);
@@ -75,63 +84,55 @@ export function AddressManager({
       : '/api/account/addresses';
     try {
       requestId.current ??= crypto.randomUUID();
-      const response = await fetch(url, { method: editing?.id ? 'PATCH' : 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
+      const response = await command.run({action:editing?.id?'address.update':'address.create',sourceId:editing?.id??'new',requestId:requestId.current,endpoint:url,method:editing?.id?'PATCH':'POST',body:{
           address: { ...address, location: data.get('latitude') && data.get('longitude') ? {latitude:Number(data.get('latitude')),longitude:Number(data.get('longitude'))}:undefined, isDefault: data.get('isDefault') === 'on' },
           idempotencyKey: requestId.current,
           ...payload,
-        }) });
-      const result = await response.json().catch(() => null) as { error?: unknown; code?: unknown; fieldId?: unknown } | null;
+        } });
+      if(!response||!isCurrent())return;
+      const result = response.data as { error?: unknown; code?: unknown; fieldId?: unknown } | null;
       if (!response.ok) {
-        if (response.status === 409 && result?.code === 'stale_version') handleSubmissionResponse(response);
+        if (response.status === 409 && result?.code === 'stale_version') handleSubmissionResponse(response, 'stale_version');
         else if (response.status === 400 || response.status === 409) requestId.current = null;
         const explanation = typeof result?.error === 'string' ? result.error : 'Address could not be saved.';
         if (typeof result?.fieldId === 'string') {
           setFieldErrors({ [result.fieldId]: explanation });
-          if (result.fieldId === 'landmark') form.querySelector<HTMLInputElement>('input[name="landmark"]')?.focus();
-          else focusConfiguredField(form, result.fieldId);
         }
         throw new Error(explanation);
       }
-      requestId.current = null;
-      setEditing(undefined);
-      router.refresh();
     } catch (reason) {
-      setError(
+      if(isCurrent())setError(
         reason instanceof Error
           ? reason.message
           : 'Address could not be saved.',
       );
     } finally {
-      setBusy(false);
+      if(isCurrent())setBusy(false);
     }
   }
 
   async function remove(id: string) {
-    if (busy) return;
+    if (busy||command.blocked) return;
+    const isCurrent=command.capture();
     setBusy(true);
     setError('');
     try {
-      await sendJson(
-        `/api/account/addresses/${id}`,
-        'DELETE',
-        { idempotencyKey: crypto.randomUUID() },
-        'Address could not be deleted.',
-      );
-      setDeleting(null);
-      if (editing?.id === id) setEditing(undefined);
-      router.refresh();
+      requestId.current??=crypto.randomUUID();
+      const response=await command.run({action:'address.delete',sourceId:id,requestId:requestId.current,endpoint:`/api/account/addresses/${encodeURIComponent(id)}`,method:'DELETE',body:{idempotencyKey:requestId.current}});
+      if(!response||!isCurrent())return;
+      if(!response.ok){const detail=(response.data as {error?:unknown}|null)?.error;throw Error(typeof detail==='string'?detail:'Address could not be deleted.');}
     } catch (reason) {
-      setError(
+      if(isCurrent())setError(
         reason instanceof Error
           ? reason.message
           : 'Address could not be deleted.',
       );
-      setDeleting(null);
     } finally {
-      setBusy(false);
+      if(isCurrent())setBusy(false);
     }
   }
 
+  if(command.accessDenied)return <p role="alert">Account access changed. Reopen your account to load the current address book.</p>;
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -147,7 +148,7 @@ export function AddressManager({
         </div>
         <Button
           ref={openButton}
-          disabled={busy || !canSubmit}
+          disabled={busy || command.blocked || !canSubmit}
           className="min-h-11 rounded-full px-5"
           onClick={() => {
             setError('');
@@ -178,9 +179,10 @@ export function AddressManager({
           ref={addressForm}
           key={editing?.id ?? 'new'}
           onSubmit={save}
-          onChange={() => { if (!busy) requestId.current = null; }}
+          onChange={() => { if (!busy&&!command.blocked) requestId.current = null; }}
           className="customer-form mt-7 rounded-2xl border bg-card p-6"
         >
+          <fieldset disabled={command.blocked} className="contents">
       <FormGuide formId="account.address" />
 
           <div className="flex justify-between gap-4">
@@ -193,7 +195,7 @@ export function AddressManager({
               size="icon"
               onClick={() => {setEditing(undefined);openButton.current?.focus();}}
               aria-label="Close form"
-              disabled={busy}
+              disabled={busy||command.blocked}
             >
               <X />
             </Button>
@@ -290,11 +292,12 @@ export function AddressManager({
             </label>
             <LocationPicker key={editing?.id??"new"} initial={editing?.latitude!=null && editing?.longitude!=null ? {latitude:editing.latitude,longitude:editing.longitude}:undefined} />
               <div className="flex justify-end">
-              <Button type="submit" disabled={busy || !canSubmit}>
+              <Button type="submit" disabled={busy || command.blocked || !canSubmit}>
                 {busy ? 'Saving…' : 'Save address'}
               </Button>
             </div>
           </div>
+          </fieldset>
         </form>
       ) : null}
       {addresses.length ? (
@@ -332,7 +335,7 @@ export function AddressManager({
                     variant="ghost"
                     size="icon"
                     onClick={() => { requestId.current = null; setEditing(address); }}
-                    disabled={busy}
+                    disabled={busy||command.blocked}
                     aria-label={`Edit ${address.label}`}
                   >
                     <Pencil />
@@ -341,7 +344,7 @@ export function AddressManager({
                     variant="ghost"
                     size="icon"
                     onClick={() => setDeleting(address)}
-                    disabled={busy}
+                    disabled={busy||command.blocked}
                     aria-label={`Delete ${address.label}`}
                   >
                     <Trash2 />
@@ -375,7 +378,7 @@ export function AddressManager({
             <AlertDialogCancel disabled={busy}>Keep address</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
-              disabled={busy}
+              disabled={busy||command.blocked}
               onClick={() => {
                 if (deleting) void remove(deleting.id);
               }}
@@ -383,8 +386,10 @@ export function AddressManager({
               {busy ? 'Removing…' : 'Remove address'}
             </AlertDialogAction>
           </AlertDialogFooter>
+          <AccountCommandRecovery command={command}/>
         </AlertDialogContent>
       </AlertDialog>
+      <AccountCommandRecovery command={command}/>
     </div>
   );
 }

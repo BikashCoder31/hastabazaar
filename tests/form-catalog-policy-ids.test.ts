@@ -22,6 +22,8 @@ void test('policy resolves only statically declared form IDs in the actual lexic
   assert.deepEqual(ids('const FORM_ID="account.profile"; export function Form(){const FORM_ID="account.address";return <form data-form-id={FORM_ID}/>;}'), ['account.address']);
   assert.deepEqual(ids('export const Form=({mode})=> <form data-form-id={mode ? "public.contact" : "public.feedback"}/>'), ['public.contact','public.feedback']);
   assert.deepEqual(ids('const CONTACT="public.contact";const FEEDBACK="public.feedback";export const Form=({mode})=> <form data-form-id={mode ? CONTACT : FEEDBACK}/>'), ['public.contact','public.feedback']);
+  assert.deepEqual(ids('export function Form({issue}){const formId=issue?"commerce.gift-card-issue":"commerce.gift-card-redeem";return <form data-form-id={formId}/>;}'), ['commerce.gift-card-issue','commerce.gift-card-redeem']);
+  assert.deepEqual(ids('export function Form({mode}){const formId=mode===1?"public.contact":mode===2?"public.feedback":"public.contact";return <form data-form-id={formId}/>;}'), ['public.contact','public.feedback']);
 });
 
 void test('policy rejects mutable, imported, computed and shadowed unknown IDs', () => {
@@ -35,5 +37,9 @@ void test('policy rejects mutable, imported, computed and shadowed unknown IDs',
     'const FORM_ID="account.profile";const ALIAS=FORM_ID;export const Form=()=> <form data-form-id={ALIAS}/>',
     'export const Form=({mode,id})=> <form data-form-id={mode ? "public.contact" : id}/>',
     'export const Form=()=> <form data-form-id={unknownId}/>',
+    'const FORM_ID=mode?"public.contact":undefined;export const Form=()=> <form data-form-id={FORM_ID}/>',
+    'const FORM_ID=mode?"public.contact":FORM_ID;export const Form=()=> <form data-form-id={FORM_ID}/>',
+    'const FORM_ID=mode?"public.contact":OTHER;const OTHER=FORM_ID;export const Form=()=> <form data-form-id={FORM_ID}/>',
+    'const FORM_ID=mode?"public.contact":OTHER;const OTHER=mode?"public.feedback":FORM_ID;export const Form=()=> <form data-form-id={FORM_ID}/>',
   ]) assert.equal(ids(source), null, source);
 });

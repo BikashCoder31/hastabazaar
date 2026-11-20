@@ -34,7 +34,8 @@ export async function generateMetadata({searchParams}:{searchParams:Promise<Reco
     'Browse gifts and everyday finds from marketplace sellers. Read each listing for materials, origin and seller details.',
 };}
 
-function money(paisa: number): string {
+function money(paisa: number | null): string {
+  if(paisa===null)return 'Price unavailable';
   return new Intl.NumberFormat('en-NP', {
     style: 'currency',
     currency: 'NPR',
@@ -193,7 +194,7 @@ export default async function ShopPage({
                 <p className="mx-auto mt-3 max-w-lg leading-7 text-muted-foreground">
                   {isFiltered
                     ? 'Try clearing one filter or searching with a broader phrase.'
-                    : 'Approved products will appear here as soon as HastaBazaar’s catalogue review is complete.'}
+                    : 'Approved products will appear here as soon as Hastabazaar’s catalogue review is complete.'}
                 </p>
                 {isFiltered ? (
                   <Link
@@ -245,19 +246,19 @@ export default async function ShopPage({
                     </div>
                     <p className="mt-4 text-sm font-semibold text-primary">
                       {product.tradingName}
-                      {product.participationRoute === 'managed_maker' ? <span className="block text-xs text-muted-foreground">Made by this maker · Sold by {product.storeName ?? 'company store — terms review pending'}</span> : null}
+                      {product.participationRoute === 'managed_maker' ? <span className="block text-xs text-muted-foreground">Supplied by {product.makerName??product.tradingName}<span className="block">{product.legalSellerName ? `Sold and invoiced by ${product.legalSellerName}` : 'Seller and invoice identity require review'}</span></span> : <span className="block text-xs text-muted-foreground">Sold by {product.tradingName} · Through Hastabazaar</span>}
                     </p>
                     <h2 className="mt-1 line-clamp-2 text-base font-semibold leading-6">
                       {product.nameEn}
                     </h2>
                     <p className="mt-3 flex items-center justify-between gap-2 text-base font-semibold">
-                      {money(product.pricePaisa)}
+                      {product.priceFrom?'From ':''}{money(product.pricePaisa)}
                       <ArrowUpRight className="size-4 shrink-0 text-primary" />
                     </p>
                     <ProductDiscount pricePaisa={product.pricePaisa} originalPaisa={product.compareAtPricePaisa} />
                     <p className="mt-2 text-sm text-muted-foreground">
-                      {product.inventoryQuantity > 0
-                        ? `${product.inventoryQuantity} available`
+                      {!product.purchasable ? 'Not available to order yet' : product.inventoryQuantity > 0
+                        ? product.offerSet?'Options available':`${product.inventoryQuantity} available`
                         : 'Currently unavailable'}
                     </p>
                   </Link>

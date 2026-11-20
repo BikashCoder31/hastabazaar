@@ -218,12 +218,12 @@ export async function RecordedProgressSection({
                   <td className="p-3">{group.outcome}</td>
                   <td className="p-3 tabular-nums">{group.count}</td>
                   <td className="p-3">
-                    <Link
+                    <a
                       className="underline"
                       href={evidenceRoute + '?' + params}
                     >
                       View matching records
-                    </Link>
+                    </a>
                   </td>
                 </tr>
               );
@@ -272,7 +272,7 @@ export async function RecordedProgressSection({
                     </td>
                     <td className="p-3">
                       {href ? (
-                        <Link className="underline" href={href}>
+                        <Link className="underline" href={href} prefetch={false}>
                           {event.subjectType}: {event.subjectId}
                         </Link>
                       ) : (

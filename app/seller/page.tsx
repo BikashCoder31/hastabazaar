@@ -4,13 +4,10 @@ import {
   ArrowRight,
   AlertTriangle,
   Boxes,
-  ClipboardCheck,
   Clock3,
   FileText,
-  HandCoins,
   Package,
   PackageCheck,
-  Percent,
 } from 'lucide-react';
 import {
   SellerEmpty,
@@ -20,232 +17,198 @@ import {
 import { SellerOrderList } from '@/components/seller/seller-order-list';
 import { SellerAgreementAcceptance } from '@/components/seller/seller-agreement-acceptance';
 import { SellerManagedProgramWorkspace } from '@/components/seller/managed-program-workspace';
-import { requireSellerPage } from '@/lib/auth/seller';
+import { SellerEarningsSummary } from '@/components/seller/seller-earnings-summary';
+import { SellerProgramDetails } from '@/components/seller/seller-program-details';
+import { requireSellerCenterPage } from '@/lib/auth/seller-center';
+import { ApplicantSection } from '@/components/seller/applicant-section';
 import { requireDatabase } from '@/lib/db/d1';
 import { getSellerProductStats } from '@/lib/db/repositories/products';
-import { getRegisteredSellerTerms, sellerAcceptedCommissionVersion } from '@/lib/db/repositories/marketplace-settings';
-import { getSellerCommissionTerms } from '@/lib/db/repositories/commission-rates';
+import {
+  getRegisteredSellerTerms,
+  sellerAcceptedCommissionVersion,
+} from '@/lib/db/repositories/marketplace-settings';
 import { listOrdersForSeller } from '@/lib/db/repositories/orders';
-import { getSellerFinanceSummary } from '@/lib/db/repositories/payouts';
-import { getSellerWorkSummary } from '@/lib/db/repositories/seller-workspace';
-import { sellerMoney } from '@/lib/seller/presentation';
+import { getSellerEarnings } from '@/lib/seller/earnings';
 import { SELLER_AGREEMENT_VERSION } from '@/lib/content/legal-policies';
 import { getManagedProgramWorkspace } from '@/lib/managed-commerce/program-workspace';
+import { withFirstCodPresentation } from '@/lib/orders/first-cod-review';
+import { CommissionRateUnavailableError } from '@/lib/db/repositories/business-settings';
+import {getSellerReadiness} from '@/lib/sellers/readiness';
+import {SellerReadinessSummary} from '@/components/seller/readiness-summary';
+import {SellerOnboardingChecklist} from '@/components/seller/onboarding-checklist';
+import {getSellerOnboardingChecklist} from '@/lib/sellers/onboarding-checklist';
+import {readSellerWorkspaceTasks,assertSellerWorkspaceViewer} from '@/lib/seller/workspace-tasks';
+import {SellerWorkspaceTaskList} from '@/components/seller/workspace-task-list';
 
 export const dynamic = 'force-dynamic';
+// This dynamic server page uses one request-time snapshot for terms and consent.
+const sellerDashboardObservedAt = () => Date.now();
+
 export default async function SellerDashboardPage() {
-  const seller = await requireSellerPage('/seller');
+  const now = sellerDashboardObservedAt();
+  const seller = await requireSellerCenterPage('/seller');
+  if (!seller.approvedSeller || !seller.sellerId) return <ApplicantSection viewer={seller} section="home" />;
   const db = requireDatabase(env as unknown as { DB?: D1Database });
-  const [products, work, finance, orders, commission, managedProgram, appliedCommission] = await Promise.all([
-    getSellerProductStats(db, seller.sellerId),
-    getSellerWorkSummary(db, seller.sellerId),
-    getSellerFinanceSummary(db, seller.sellerId),
-    listOrdersForSeller(db, seller.sellerId, 4),
-    getRegisteredSellerTerms(db),
-    getManagedProgramWorkspace(db, seller.sellerId),
-    getSellerCommissionTerms(db, seller.sellerId),
+  const [currentWork, readiness] = await Promise.all([
+    readSellerWorkspaceTasks(db,seller.userId,{now,limit:8}).catch(()=>null),
+    getSellerReadiness(db,seller.sellerId,now).catch(()=>null),
   ]);
-  const currentCommissionAccepted = await sellerAcceptedCommissionVersion(db,seller.sellerId,commission.versionId);
+  const [products, earnings, orders, commission, managedProgram] =
+    await Promise.all([
+      getSellerProductStats(db, seller.sellerId),
+      getSellerEarnings(db, seller.sellerId),
+      listOrdersForSeller(db, seller.sellerId, 4),
+      getRegisteredSellerTerms(db, now).catch(error => { if (error instanceof CommissionRateUnavailableError) return null; throw error; }),
+      getManagedProgramWorkspace(db, seller.sellerId),
+    ]);
+  const [currentCommissionAccepted, displayedOrders, onboarding] = await Promise.all([
+    commission ? sellerAcceptedCommissionVersion(db, seller.sellerId, commission, now) : Promise.resolve(false),
+    withFirstCodPresentation(db, orders),
+    getSellerOnboardingChecklist(db, {
+      sellerId: seller.sellerId, ownerId: seller.userId, stage: readiness?.stage ?? seller.status,
+      readiness, viewer: { kind: 'seller' },
+    }),
+  ]);
+  const hasProgramHistory =
+    managedProgram.participationRoute === 'managed_maker' ||
+    managedProgram.supplies.length > 0 ||
+    managedProgram.transitions.length > 0;
+  await assertSellerWorkspaceViewer(db,seller.userId,seller.sellerId,seller.authSubject);
   return (
-    <div className="space-y-7">
+    <div className="flex flex-col gap-7">
       <SellerHeading
         eyebrow="Shop overview"
         title={seller.tradingName}
-        description="Prepare your orders, manage listings, and keep track of earnings."
+        description="Your next tasks, order progress and recorded earnings in one place."
       />
-      {seller.sellerAgreementVersion !== SELLER_AGREEMENT_VERSION || !currentCommissionAccepted ? (
-        <SellerAgreementAcceptance commissionPercent={commission.basisPoints / 100} termsContext={commission.context} />
-      ) : null}
-      <SellerManagedProgramWorkspace workspace={managedProgram} sellerId={seller.sellerId} />
-      <p className="flex flex-wrap gap-4 text-sm">
-        <Link className="section-link" href="/seller/form-history?kind=managed-supply">Managed supply answer history</Link>
-        <Link className="section-link" href="/seller/form-history?kind=managed-transition">Managed route answer history</Link>
-      </p>
-      <section>
-        <h2 className="font-heading text-2xl">Product overview</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Live totals update whenever a listing changes status.
-        </p>
+      <SellerOnboardingChecklist model={onboarding} />
+      <SellerWorkspaceTaskList model={currentWork} compact unavailable={!currentWork}/>
+      <div id="seller-readiness" className="scroll-mt-28"><SellerReadinessSummary readiness={readiness}/></div>
+      <section id="selling-fee-terms" className="scroll-mt-28">
+      {managedProgram.participationRoute!=='managed_maker'&&commission && (seller.sellerAgreementVersion !== SELLER_AGREEMENT_VERSION ||
+      !currentCommissionAccepted) ? (
+        <SellerAgreementAcceptance termsContext={commission.context} />
+      ) : <Link href={managedProgram.participationRoute==='managed_maker'?'/sell/application#selling-fee-terms':'/seller/registration'} className="section-link">Review recorded agreements and current selling terms →</Link>}
       </section>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <SellerMetric
-          label="Total products"
-          value={products.total}
-          detail="All current listings"
-          icon={Package}
-          href="/seller/products"
-        />
-        <SellerMetric
-          label="Published / active"
-          value={products.published}
-          detail="Visible to customers"
-          icon={PackageCheck}
-          href="/seller/products?status=published"
-        />
-        <SellerMetric
-          label="Pending approval"
-          value={products.pendingApproval}
-          detail="Submitted or awaiting publication"
-          icon={Clock3}
-          href="/seller/products?status=pending"
-        />
-        <SellerMetric
-          label="Rejected"
-          value={products.rejected}
-          detail="Closed with a reviewer reason"
-          icon={AlertTriangle}
-          href="/seller/products?status=rejected"
-        />
-        <SellerMetric
-          label="Drafts"
-          value={products.drafts}
-          detail="Not yet submitted"
-          icon={FileText}
-          href="/seller/products?status=draft"
-        />
-        <SellerMetric
-          label="Out of stock"
-          value={products.outOfStock}
-          detail="Published listings with zero stock"
-          icon={Boxes}
-          href="/seller/products?status=out_of_stock"
-        />
-      </div>
-      {products.rejected ||
-      products.needsChanges ||
-      products.outOfStock ||
-      products.pendingApproval ? (
-        <section className="space-y-2 rounded-2xl border bg-card p-5 sm:p-6">
-          <h2 className="font-heading text-2xl">Product alerts</h2>
-          {products.rejected ? (
-            <Link
-              className="flex items-center justify-between rounded-xl bg-destructive/5 p-4 text-sm font-semibold text-destructive"
-              href="/seller/products?status=rejected"
-            >
-              <span>
-                {products.rejected} product{products.rejected === 1 ? '' : 's'}{' '}
-                rejected and requiring correction.
-              </span>
-              <ArrowRight className="size-4" />
-            </Link>
-          ) : null}
-          {products.needsChanges ? (
-            <Link
-              className="flex items-center justify-between rounded-xl bg-amber-50 p-4 text-sm font-semibold text-amber-900"
-              href="/seller/products?status=needs_changes"
-            >
-              <span>
-                {products.needsChanges} product
-                {products.needsChanges === 1 ? '' : 's'} need changes.
-              </span>
-              <ArrowRight className="size-4" />
-            </Link>
-          ) : null}
-          {products.outOfStock ? (
-            <Link
-              className="flex items-center justify-between rounded-xl bg-secondary/60 p-4 text-sm font-semibold"
-              href="/seller/products?status=out_of_stock"
-            >
-              <span>
-                {products.outOfStock} published product
-                {products.outOfStock === 1 ? ' is' : 's are'} out of stock.
-              </span>
-              <ArrowRight className="size-4" />
-            </Link>
-          ) : null}
-          {products.pendingApproval ? (
-            <Link
-              className="flex items-center justify-between rounded-xl bg-primary/5 p-4 text-sm font-semibold text-primary"
-              href="/seller/products?status=pending"
-            >
-              <span>
-                {products.pendingApproval} product
-                {products.pendingApproval === 1 ? ' is' : 's are'} waiting for
-                approval.
-              </span>
-              <ArrowRight className="size-4" />
-            </Link>
-          ) : null}
-        </section>
-      ) : null}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <SellerMetric
-          label="Orders to pack"
-          value={work.toPack}
-          detail="Confirmed items waiting for you"
-          icon={Package}
-          href="/seller/orders"
-        />
-        <SellerMetric
-          label="Available balance"
-          value={sellerMoney(finance.availablePaisa)}
-          detail="After holds and allocated payouts"
-          icon={HandCoins}
-          href="/seller/finance"
-        />
-        <SellerMetric
-          label="Marketplace commission"
-          value={`${appliedCommission.basisPoints / 100}%`}
-          detail="Current rate for new orders"
-          icon={Percent}
-          href="/seller/finance"
-        />
-      </div>
-      <section className="rounded-2xl border bg-card p-5 sm:p-6">
-        <h2 className="flex items-center gap-2 font-heading text-2xl">
-          <ClipboardCheck className="size-5 text-primary" />
-          Work in progress
-        </h2>
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          {[
-            {
-              label: 'Being packed',
-              value: work.packing,
-              href: '/seller/orders',
-            },
-            {
-              label: 'Ready for pickup',
-              value: work.ready,
-              href: '/seller/shipping',
-            },
-            {
-              label: 'Listing changes requested',
-              value: work.needsChanges,
-              href: '/seller/products',
-            },
-          ].map((item) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className="flex items-center justify-between gap-3 rounded-xl bg-secondary/50 p-4 hover:bg-secondary"
-            >
-              <span className="text-sm font-semibold">{item.label}</span>
-              <span className="text-xl font-semibold tabular-nums">
-                {item.value}
-              </span>
-            </Link>
-          ))}
-        </div>
-      </section>
-      <section>
+      <SellerEarningsSummary earnings={earnings} compact />
+      <section aria-labelledby="recent-orders-title">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-heading text-2xl">Recent orders</h2>
-          <Link href="/seller/orders" className="section-link">
+          <h2 id="recent-orders-title" className="font-heading text-2xl">
+            Recent orders
+          </h2>
+          <Link href="/seller/orders" className="section-link min-h-11">
             All orders
-            <ArrowRight className="size-4" />
+            <ArrowRight aria-hidden="true" className="size-4" />
           </Link>
         </div>
         {orders.length ? (
-          <SellerOrderList orders={orders} />
+          <SellerOrderList orders={displayedOrders} />
         ) : (
           <SellerEmpty
             icon={Package}
             title="Your first order will appear here"
-            description="Submit a product for review to start building your shop."
-            href="/seller/products/new"
-            action="Add a product"
+            description="Orders for your published products will appear here. You can check your listings while you wait."
+            href="/seller/products"
+            action="View your products"
           />
         )}
+      </section>
+      <section
+        aria-labelledby="product-overview-title"
+        className="flex flex-col gap-4"
+      >
+        <div>
+          <h2 id="product-overview-title" className="font-heading text-2xl">
+            Product overview
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            Current listing totals. Review decisions and reasons are available
+            with each product.
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <SellerMetric
+            label="Total products"
+            value={products.total}
+            detail="All current listings"
+            icon={Package}
+            href="/seller/products"
+          />
+          <SellerMetric
+            label="Published / active"
+            value={products.published}
+            detail="Visible to customers"
+            icon={PackageCheck}
+            href="/seller/products?status=published"
+          />
+          <SellerMetric
+            label="Pending approval"
+            value={products.pendingApproval}
+            detail="Submitted or awaiting publication"
+            icon={Clock3}
+            href="/seller/products?status=pending"
+          />
+          <SellerMetric
+            label="Rejected"
+            value={products.rejected}
+            detail="Read the reviewer reason and available next steps"
+            icon={AlertTriangle}
+            href="/seller/products?status=rejected"
+          />
+          <SellerMetric
+            label="Drafts"
+            value={products.drafts}
+            detail="Not yet submitted"
+            icon={FileText}
+            href="/seller/products?status=draft"
+          />
+          <SellerMetric
+            label="Out of stock"
+            value={products.outOfStock}
+            detail="Published listings with zero stock"
+            icon={Boxes}
+            href="/seller/products?status=out_of_stock"
+          />
+        </div>
+      </section>
+      <section
+        id="managed-program"
+        aria-labelledby="program-details-title"
+        className="scroll-mt-28"
+      >
+        <SellerProgramDetails>
+          {hasProgramHistory ? (
+            <>
+              <SellerManagedProgramWorkspace
+                workspace={managedProgram}
+                sellerId={seller.sellerId}
+              />
+              <div className="flex flex-wrap gap-4 text-sm">
+                <Link
+                  className="section-link min-h-11"
+                  href="/seller/form-history?kind=managed-supply"
+                >
+                  Managed supply answer history
+                </Link>
+                <Link
+                  className="section-link min-h-11"
+                  href="/seller/form-history?kind=managed-transition"
+                >
+                  Managed route answer history
+                </Link>
+              </div>
+            </>
+          ) : null}
+          <Link className="section-link min-h-11" href="/seller-agreement">
+            Seller Marketplace Agreement
+          </Link>
+          <Link
+            className="section-link min-h-11"
+            href="/seller/form-history?kind=payout-request"
+          >
+            Payout request answer history
+          </Link>
+        </SellerProgramDetails>
       </section>
       <div className="grid gap-4 sm:grid-cols-2">
         <Link
@@ -253,13 +216,12 @@ export default async function SellerDashboardPage() {
           className="rounded-2xl border bg-card p-6 hover:border-primary/50"
         >
           <h2 className="font-heading text-2xl">Returns & complaints</h2>
-          <p className="mt-3 text-base leading-7 text-muted-foreground">
-            Respond to cases for your items. HastaBazaar reviews the final
-            outcome.
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            Review cases for your items. Hastabazaar reviews the final outcome.
           </p>
           <span className="section-link mt-3">
             Open cases
-            <ArrowRight className="size-4" />
+            <ArrowRight aria-hidden="true" className="size-4" />
           </span>
         </Link>
         <Link
@@ -267,12 +229,12 @@ export default async function SellerDashboardPage() {
           className="rounded-2xl border bg-card p-6 hover:border-primary/50"
         >
           <h2 className="font-heading text-2xl">Your maker profile</h2>
-          <p className="mt-3 text-base leading-7 text-muted-foreground">
-            Keep your story, craft specialties, and support details up to date.
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            Keep your story, craft specialties and support details up to date.
           </p>
           <span className="section-link mt-3">
             Edit shop profile
-            <ArrowRight className="size-4" />
+            <ArrowRight aria-hidden="true" className="size-4" />
           </span>
         </Link>
       </div>

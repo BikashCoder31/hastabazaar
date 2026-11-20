@@ -25,6 +25,21 @@ export interface StaffAccessComparison {
 
 export const STAFF_ACCESS_RIGHTS: readonly StaffAccessRight[] = [
   {
+    permission: 'system.health.view',
+    label: 'View service health',
+    description: 'Read sanitized service health, form outcomes and scoped technical records. Private business evidence and mail setup remain separately protected.',
+  },
+  {
+    permission: 'system.incidents.manage',
+    label: 'Respond to service incidents',
+    description: 'Acknowledge and update eligible assigned incidents with recovery evidence. Sensitive closure and severity reductions require Super Admin authority.',
+  },
+  {
+    permission: 'payment.receipt.verify',
+    label: 'Verify ordinary incoming receipts',
+    description: 'Inspect scoped company receipt evidence and confirm ordinary completed incoming payments. Exceptions, COD remittance and seller recovery retain their separate Super Admin checks.',
+  },
+  {
     permission: 'seller.application.review',
     label: 'Review sellers',
     description:
@@ -81,6 +96,13 @@ export const STAFF_ACCESS_RIGHTS: readonly StaffAccessRight[] = [
 ];
 
 export const BUILT_IN_STAFF_ACCESS_TEMPLATES: readonly StaffAccessTemplate[] = [
+  {
+    id: 'technical-responder',
+    name: 'Technical responder',
+    description: 'View sanitized health and respond to assigned incidents. Staff access, private business evidence, publication and financial execution need their own authority.',
+    permissions: ['system.health.view', 'system.incidents.manage'],
+    source: 'built-in',
+  },
   {
     id: 'orders-assistant',
     name: 'Orders assistant',

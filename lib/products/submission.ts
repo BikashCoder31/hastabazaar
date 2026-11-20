@@ -1,3 +1,6 @@
+import { isGregorianDate } from '../dates/nepal-calendar';
+import { normalizeSellerSku } from './stock-codes';
+
 export const productImageFields = [
   'image1',
   'image2',
@@ -28,6 +31,7 @@ export interface ProductSubmissionInput {
   categoryId: string;
   occasionIds: readonly string[];
   sku: string;
+  sellerSku?: string | null;
   nameEn: string;
   nameNe?: string | null;
   descriptionEn: string;
@@ -98,7 +102,7 @@ function parseMoney(value: string): number | null | 'invalid' {
 
 function parseDate(value: string): number | null | 'invalid' {
   if (!value) return null;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return 'invalid';
+  if (!isGregorianDate(value)) return 'invalid';
   const result = Date.parse(`${value}T00:00:00+05:45`);
   return Number.isFinite(result) ? result : 'invalid';
 }
@@ -108,6 +112,11 @@ export function parseProductSubmission(formData: FormData): {
   errors: readonly string[];
 } {
   const errors: string[] = [];
+  let sellerSku: string | null | undefined;
+  if (formData.has('sellerSku')) {
+    try { sellerSku = normalizeSellerSku(formData.get('sellerSku')); }
+    catch (error) { errors.push(error instanceof Error ? error.message : 'Seller SKU is invalid.'); }
+  }
   const pricePaisa = parseMoney(textField(formData, 'price'));
   const compareAtPricePaisa = parseMoney(textField(formData, 'compareAtPrice'));
   const inventoryText = textField(formData, 'inventoryQuantity');
@@ -132,6 +141,7 @@ export function parseProductSubmission(formData: FormData): {
     categoryId: textField(formData, 'categoryId'),
     occasionIds,
     sku: textField(formData, 'sku').toUpperCase(),
+    sellerSku,
     nameEn: textField(formData, 'nameEn'),
     nameNe: formData.has('nameNe') ? textField(formData, 'nameNe') || null : undefined,
     descriptionEn: textField(formData, 'descriptionEn'),

@@ -17,7 +17,7 @@ const fixtures = `
       <StaffPermissionManager actorId="reviewer" requests={[]} presets={[]} members={[
         {userId:'colleague', displayName:'Test colleague', email:'colleague@local.hastabazaar.test', permissions:['order.manage'], version:1}
       ]}/>
-      <StaffInvitationManager pendingInvitations={[]}/>
+      <StaffInvitationManager actorId="reviewer" pendingInvitations={[]}/>
     </>})}</>;
   }
 `;
@@ -92,8 +92,8 @@ void test('staff workspace tolerates autofill DOM changes without hiding real hy
         assert.deepEqual(errors.console, [], 'The workspace must not produce hydration warnings');
         if (mode === 'autofill') assert.equal(await page.locator('shark-icon-container').count(), 1, 'Autofill decoration is retained');
         await page.getByLabel('Find a task').fill('form');
-        await page.getByRole('link', { name: /^Form catalog/ }).waitFor();
-        assert.ok(await page.getByRole('link', { name: /^Form catalog/ }).isVisible());
+        await page.getByRole('link', { name: /^Form Management/ }).waitFor();
+        assert.ok(await page.getByRole('link', { name: /^Form Management/ }).isVisible());
         await page.getByLabel('Staff email').fill('colleague@local.hastabazaar.test');
         await page.getByRole('button', { name: 'Review invitation', exact: true }).click();
         await page.getByRole('alertdialog').getByText('Create this staff invitation?', { exact: true }).waitFor();

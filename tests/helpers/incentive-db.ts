@@ -1,19 +1,23 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { convertV4MiniflareOptions, Miniflare } from 'miniflare';
+import { loadFixtureMiniflare } from './fixture-miniflare';
 
 /** Applies every real migration, retaining legacy checks and triggers. No table substitutes. */
 export async function createIncentiveDb(
   options: {
     beforePromo?: (db: D1Database) => Promise<void>;
     beforeLoyalty?: (db: D1Database) => Promise<void>;
+    beforePublicFeedbackDefaults?: (db: D1Database) => Promise<void>;
+    beforeOrderablePriceHistory?: (db: D1Database) => Promise<void>;
   } = {},
 ): Promise<{ db: D1Database; dispose(): Promise<void> }> {
+  const { convertV4MiniflareOptions, Miniflare } = loadFixtureMiniflare();
   const mf = new Miniflare(
     convertV4MiniflareOptions({
       modules: true,
       script: 'export default {fetch(){return new Response("fixture")}}',
       d1Databases: { DB: randomUUID() },
+      d1Persist: false,
     }),
   );
   try {
@@ -24,6 +28,8 @@ export async function createIncentiveDb(
     for (const name of names) {
       if (name.startsWith('0060_')) await options.beforePromo?.(db);
       if (name.startsWith('0061_')) await options.beforeLoyalty?.(db);
+      if (name.startsWith('0154_')) await options.beforePublicFeedbackDefaults?.(db);
+      if (name.startsWith('0155_')) await options.beforeOrderablePriceHistory?.(db);
       const sql = await readFile(
         new URL(`../../drizzle/${name}`, import.meta.url),
         'utf8',
@@ -42,7 +48,7 @@ export async function createIncentiveDb(
           await db.batch(chunk.map(statement => db.prepare(statement)));
         } catch (error) {
           throw new Error(
-            `Migration ${name} batch failed: ${chunk[0].slice(0, 100)}`,
+            `Migration ${name} batch failed: ${chunk[0].slice(0, 100)}\n${migrationCause(error)}`,
             { cause: error },
           );
         }
@@ -141,4 +147,15 @@ export function incentiveItem(
     platform_discount_paisa,promo_discount_paisa,referral_discount_paisa)
     VALUES (?,?,'product','seller','Fixture Shop','Fixture product','FIX-SKU',10000,1,900,900,10000,1,?,?,?)`)
     .bind(id, orderId, promo + referral, promo, referral);
+}
+
+/** Preserve native migration causes in TAP, whose default reporter omits Error.cause. */
+function migrationCause(error: unknown): string {
+  const messages: string[] = [];
+  let current: unknown = error;
+  for (let depth = 0; depth < 4 && current instanceof Error; depth++) {
+    messages.push(`${current.name}: ${current.message.slice(0, 2000)}`);
+    current = current.cause;
+  }
+  return messages.join('\nCaused by: ');
 }

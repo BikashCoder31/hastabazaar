@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 
 const caseBaseKeys = ['response', 'recommendation', 'locale', 'idempotencyKey',
@@ -35,7 +35,7 @@ export function SellerCaseResponseForm({
   if (disabled)
     return (
       <p className="text-sm leading-6 text-muted-foreground">
-        No further response is requested at this stage. HastaBazaar operations
+        No further response is requested at this stage. Hastabazaar operations
         makes the final decision.
       </p>
     );
@@ -67,7 +67,7 @@ export function SellerCaseResponseForm({
         ? decoded as Record<string, unknown> : null;
       if (!saved.ok) {
         if (saved.status === 409 && result?.code === 'stale_version')
-          published.handleSubmissionResponse(saved);
+          published.handleSubmissionResponse(saved, 'stale_version');
         throw new Error(typeof result?.error === 'string' ? result.error : 'Response could not be saved.');
       }
       if (result?.ok !== true)

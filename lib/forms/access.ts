@@ -1,5 +1,7 @@
 import type { StoredFormAnswer } from '../db/repositories/form-answers';
-import { configurableAdminPermissions, validateAdminPermissions, type Permission } from '../marketplace/permissions';
+import { formAnswerSourceSql } from './answer-proof';
+import { coreFormContract, coreFormVersionId } from './core-contracts';
+import { defaultAdminPermissions, configurableAdminPermissions, validateAdminPermissions, type Permission } from '../marketplace/permissions';
 import { businessSettingKeys } from '../configuration/types';
 
 export type FormAnswerViewer = {
@@ -164,23 +166,25 @@ export async function currentStaffGrant(db: D1Database, viewer: FormAnswerViewer
   return Boolean(await db.prepare(`SELECT 1 AS valid FROM users u JOIN user_roles r ON r.user_id=u.id
     LEFT JOIN staff_permission_profiles p ON p.user_id=u.id
     WHERE u.id=? AND u.status='active' AND r.role='admin'
-      AND (p.user_id IS NULL OR (json_type(${safePermissions})='array'
+      AND ((p.user_id IS NULL AND ?=1) OR (json_type(${safePermissions})='array'
         AND EXISTS(SELECT 1 FROM json_each(${safePermissions}) item
           WHERE item.type='text' AND item.value=?)
         AND NOT EXISTS(SELECT 1 FROM json_each(${safePermissions}) item
           WHERE item.type<>'text' OR item.value NOT IN (SELECT value FROM json_each(?)))))
-    LIMIT 1`).bind(viewer.id, permission, JSON.stringify(configurableAdminPermissions))
+    LIMIT 1`).bind(viewer.id, defaultAdminPermissions.includes(permission)?1:0, permission, JSON.stringify(configurableAdminPermissions))
     .first<{ valid: number }>());
 }
 
 type AnswerLink = Pick<StoredFormAnswer, 'id' | 'formId' | 'subjectType' | 'subjectId' | 'actorId' | 'requestId'>;
 
 async function committedAnswerVersion(db: D1Database, answer: AnswerLink): Promise<string | null> {
-  const row = await db.prepare(`SELECT a.config_version_id AS versionId FROM form_answer_sets a
-    JOIN form_config_versions v ON v.id=a.config_version_id AND v.form_id=a.form_id
+  const row = await db.prepare(`SELECT a.config_version_id AS versionId FROM ${formAnswerSourceSql(db)} a
+    LEFT JOIN form_config_versions v ON v.id=a.config_version_id AND v.form_id=a.form_id
     WHERE a.id=? AND a.form_id=? AND a.subject_type=? AND a.subject_id=?
-      AND a.request_id=? AND a.actor_id IS ? LIMIT 1`)
-    .bind(answer.id, answer.formId, answer.subjectType, answer.subjectId, answer.requestId, answer.actorId)
+      AND a.request_id=? AND a.actor_id IS ?
+      AND (v.id IS NOT NULL OR (a.core_config IS NOT NULL AND a.config_version_id=? AND ?=1)) LIMIT 1`)
+    .bind(answer.id, answer.formId, answer.subjectType, answer.subjectId, answer.requestId, answer.actorId,
+      coreFormVersionId(answer.formId), coreFormContract(answer.formId) ? 1 : 0)
     .first<{ versionId: string }>();
   return row?.versionId ?? null;
 }
@@ -828,6 +832,10 @@ export async function authorizeFormAnswerRead(
       .first<{ valid: number }>();
     return Boolean(parent) && currentStaffGrant(db, viewer, 'order.manage');
   }
+  if(['staff.return-case-action','staff.complaint-case-action'].includes(answerSet.formId)){
+    const care=await(await import('./care-answer-access')).careOperationalAnswerGrant(db,viewer,answerSet);
+    if(care!==null)return care;
+  }
   const programmatic = await programmaticStaffGrant(db, viewer, answerSet);
   if (programmatic !== null) return programmatic;
   const staffAction = await staffActionGrant(db, viewer, answerSet);
@@ -843,7 +851,7 @@ export async function authorizeFormAnswerRead(
       LEFT JOIN staff_permission_profiles p ON p.user_id=u.id
       JOIN feedback_delivery_jobs job ON job.id=? AND job.form_id=? AND job.request_id=?
         AND job.status IN ('pending','leased','sending','failed','sent')
-      JOIN form_answer_sets answer ON answer.id=? AND answer.subject_type='feedback_submission'
+      JOIN ${formAnswerSourceSql(db)} answer ON answer.id=? AND answer.subject_type='feedback_submission'
         AND answer.subject_id=job.id AND answer.form_id=job.form_id
         AND answer.request_id=job.request_id
       WHERE u.id=? AND u.status='active' AND r.role=?

@@ -1,7 +1,9 @@
+import {CustomerScopeError} from '@/lib/auth/customer-scope';
+import {requireCustomerIntentApi} from '@/lib/auth/customer-intent';
 import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 
-import { CustomerAuthorizationError, requireCustomerApi } from '@/lib/auth/customer';
+import { CustomerAuthorizationError } from '@/lib/auth/customer';
 import { requireDatabase } from '@/lib/db/d1';
 import { CustomerDataConflictError, customerAddressRequestStatus, saveCustomerAddress, validateAddressFormSubmission, type CustomerAddressInput } from '@/lib/db/repositories/customers';
 import { BodyTooLargeError } from '@/lib/http/bounded-body';
@@ -14,7 +16,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request): Promise<Response> {
   if (!isTrustedMutationRequest(request)) return Response.json({ error: 'Cross-site requests are not allowed.' }, { status: 403 });
   try {
-    const customer = await requireCustomerApi();
+    const customer = await requireCustomerIntentApi(request);
     const body = await readBoundedJsonObject(request) as { address?: CustomerAddressInput; idempotencyKey?: string; formVersion?: number; customAnswers?: unknown };
     if (!body?.address || typeof body.address !== 'object' || Array.isArray(body.address) || typeof body.idempotencyKey !== 'string' ||
       !body.idempotencyKey || body.idempotencyKey.length > 100 || !Number.isSafeInteger(body.formVersion) || !Array.isArray(body.customAnswers))
@@ -28,7 +30,7 @@ export async function POST(request: Request): Promise<Response> {
     const id = await saveCustomerAddress(db, { userId: customer.userId, input: body.address, requestId: body.idempotencyKey, now: Date.now(), form });
     return Response.json({ id }, { status: 201 });
   } catch (error) {
-    if (error instanceof CustomerAuthorizationError) return Response.json({ error: error.message }, { status: error.status });
+    if ((error instanceof CustomerAuthorizationError || error instanceof CustomerScopeError)) return Response.json({ error: error.message,code:error instanceof CustomerAuthorizationError?'access_denied_before_write':'outcome_unconfirmed' }, { status: error.status });
     if (error instanceof BodyTooLargeError) return Response.json({ error: 'Address submission is too large.' }, { status: 413 });
     if (error instanceof SyntaxError) return Response.json({ error: 'Invalid address request.' }, { status: 400 });
     if (error instanceof FormRuntimeError) return Response.json({ error: error.code === 'stale_version' ? error.message : 'Form configuration is unavailable.', code: error.code }, { status: error.code === 'stale_version' ? 409 : 503 });

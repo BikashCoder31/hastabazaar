@@ -1,9 +1,12 @@
-import { getEffectiveBusinessSetting } from '../db/repositories/business-settings';
+import { CommissionRateUnavailableError, getEffectiveBusinessSetting } from '../db/repositories/business-settings';
 import { buildFormAnswerInsert } from '../db/repositories/form-answers';
 import { digestFormRequest, FormRequestConflictError } from '../forms/submission';
 import type { FormAnswerSnapshot } from '../forms/types';
 import { managedMakerAgreementContext, managedMakerAgreementSnapshot } from '../sellers/managed-identity';
 import { makerOwnerPredicate } from './maker-authority';
+import { currentFormVersionGuards, publishedFormVersionId } from '../forms/native-version';
+import { formAnswerSourceSql, formAnswerSnapshotMatches } from '../forms/answer-proof';
+import { managedAgreementVersionForSeller } from '../db/repositories/managed-maker-details';
 
 const accountKey = 'managed_maker_company_account';
 const retentionKey = 'managed_sale_linked_platform_retention_bps';
@@ -40,11 +43,11 @@ export function acceptedManagedTermsGuards(db: D1Database, terms: AcceptedManage
   return statements;
 }
 
-async function offerAt(db: D1Database, at: number): Promise<ManagedTermsOffer> {
+async function offerAt(db: D1Database, at: number, sellerId: string): Promise<ManagedTermsOffer> {
   const [account, retention] = await Promise.all([
     getEffectiveBusinessSetting(db, accountKey, at), getEffectiveBusinessSetting(db, retentionKey, at),
   ]);
-  const snapshot = managedMakerAgreementSnapshot(account.value, retention.value);
+  const snapshot = managedMakerAgreementSnapshot(account.value, retention.value, await managedAgreementVersionForSeller(db,sellerId));
   const context = await managedMakerAgreementContext(snapshot);
   const settingVersionIds = { account: account.versionId, retention: retention.versionId };
   return { id: await digestFormRequest({ context, settingVersionIds }), context, snapshot,
@@ -55,7 +58,7 @@ async function offerAt(db: D1Database, at: number): Promise<ManagedTermsOffer> {
 /** Commercial evidence only. Private government ID data never enters this projection. */
 export async function getManagedTermsOffers(db: D1Database, sellerId: string, now: number) {
   if (!Number.isSafeInteger(now) || now <= 0) throw new RangeError('A valid terms lookup time is required.');
-  const current = await offerAt(db, now);
+  const current = await offerAt(db, now, sellerId);
   const boundaries = await db.prepare(`SELECT DISTINCT effective_from AS at FROM business_setting_versions
     WHERE setting_key IN (?,?) AND status='published' AND effective_from>?
     UNION SELECT DISTINCT effective_until AS at FROM business_setting_versions
@@ -64,17 +67,26 @@ export async function getManagedTermsOffers(db: D1Database, sellerId: string, no
   const upcoming: ManagedTermsOffer[] = [];
   let previous = current.id;
   for (const { at } of boundaries.results) {
-    const offer = await offerAt(db, at);
+    const offer = await offerAt(db, at, sellerId).catch(error => { if (error instanceof CommissionRateUnavailableError) return null; throw error; });
+    if (!offer) continue; // A future gap is not an offer; new sales at that time remain blocked.
     if (offer.id !== previous) { upcoming.push({ ...offer, effectiveFrom: at,accepted:Boolean(await findAcceptedOffer(db,sellerId,offer,now)) }); previous = offer.id; }
   }
   return { current:{...current,accepted:Boolean(await findAcceptedOffer(db,sellerId,current,now))}, upcoming };
 }
 
 export async function getAcceptedManagedTerms(db: D1Database, sellerId: string, now: number): Promise<AcceptedManagedTerms | null> {
-  const offer = await offerAt(db, now);
+  const offer = await offerAt(db, now, sellerId);
   return findAcceptedOffer(db,sellerId,offer,now);
 }
 async function findAcceptedOffer(db:D1Database,sellerId:string,offer:ManagedTermsOffer,now:number):Promise<AcceptedManagedTerms|null> {
+  // This spelling-only brand correction must not require renewed consent.
+  // Compare against one exact earlier rendering of this same offer, including
+  // all commercial fields and setting versions; never normalize stored evidence.
+  const previousBrandContext = offer.snapshot.company.brandName === 'Hastabazaar'
+    ? await managedMakerAgreementContext({ ...offer.snapshot,
+      company: { ...offer.snapshot.company, brandName: 'HastaBazaar' },
+      terms: offer.snapshot.terms.map(term => term.replace(/\bHastabazaar\b/g, 'HastaBazaar')),
+    }) : null;
   const rows = await db.prepare(`SELECT d.id,d.agreement_snapshot_json AS snapshotJson,
       d.agreement_accepted_by AS acceptedBy,d.agreement_accepted_at AS acceptedAt,
       d.agreement_language AS language,d.agreement_form_version_id AS formVersionId
@@ -91,9 +103,12 @@ async function findAcceptedOffer(db:D1Database,sellerId:string,offer:ManagedTerm
     const base: Agreement = { version: stored.version, company: stored.company, companyAccount: stored.companyAccount,
       commercialModel: stored.commercialModel, platformRetentionBps: stored.platformRetentionBps, terms: stored.terms };
     const sources = stored.settingVersionIds ?? { account: null, retention: null };
-    if (await managedMakerAgreementContext(base) === offer.context &&
+    const context = await managedMakerAgreementContext(base);
+    if ((context === offer.context || context === previousBrandContext) &&
       sources.account === offer.settingVersionIds.account && sources.retention === offer.settingVersionIds.retention) {
-      return { ...offer, detailId: row.id, sellerId, acceptedBy: row.acceptedBy,
+      return { ...offer, snapshot: base, context,
+        id: await digestFormRequest({ context, settingVersionIds: offer.settingVersionIds }),
+        detailId: row.id, sellerId, acceptedBy: row.acceptedBy,
         acceptedAt: row.acceptedAt, language: 'en', formVersionId: row.formVersionId };
     }
   }
@@ -128,15 +143,16 @@ export async function acceptManagedTerms(db: D1Database, input: Acceptance): Pro
     context: input.context, language: input.language, versionId: input.form.versionId, answers: input.form.answers });
   const prior = await db.prepare(`SELECT a.actor_id AS actorId,a.subject_id AS sellerId,a.next_json AS nextJson,
       f.config_version_id AS versionId,f.answers_json AS answersJson
-    FROM audit_logs a LEFT JOIN form_answer_sets f ON f.form_id=? AND f.request_id=a.request_id
+    FROM audit_logs a LEFT JOIN ${formAnswerSourceSql(db)} f ON f.form_id=? AND f.request_id=a.request_id
       AND f.actor_id=a.actor_id AND f.subject_type='seller' AND f.subject_id=a.subject_id
     WHERE a.request_id=? AND a.action='managed_maker.terms_accepted' AND a.subject_type='seller'`)
     .bind(managedTermsFormId, input.requestId).first<{ actorId: string; sellerId: string; nextJson: string; versionId: string; answersJson: string }>();
   if (prior) {
     const receipt = JSON.parse(prior.nextJson) as { catalogDigest: string; detailId: string; offerId: string };
     if (prior.actorId !== input.actorId || prior.sellerId !== input.sellerId || receipt.catalogDigest !== catalogDigest ||
-      prior.versionId !== input.form.versionId || prior.answersJson !== JSON.stringify(input.form.answers))
+      prior.versionId !== input.form.versionId || !formAnswerSnapshotMatches(prior.answersJson, input.form.answers))
       throw new FormRequestConflictError('Request reference is already used for different content.');
+    await(await import('../commission/terms-followup')).reconcileSellerFeeCases(db,input.sellerId,input.now);
     return { detailId: receipt.detailId, offerId: receipt.offerId };
   }
   const offers = await getManagedTermsOffers(db, input.sellerId, input.now);
@@ -162,23 +178,23 @@ export async function acceptManagedTerms(db: D1Database, input: Acceptance): Pro
       .bind(`${guardId}:${key}`, key, Math.max(input.now, offer.effectiveFrom), Math.max(input.now, offer.effectiveFrom), versionId ?? ''));
     statements.push(db.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(`${guardId}:${key}`));
   }
-  statements.push(db.prepare(`INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN
-    EXISTS(SELECT 1 FROM form_config_versions WHERE id=? AND form_id=? AND status='published'
-      AND id=(SELECT id FROM form_config_versions WHERE form_id=? AND status='published' ORDER BY version DESC LIMIT 1))
-    THEN 1 ELSE 0 END`).bind(`${guardId}:form`, input.form.versionId, managedTermsFormId, managedTermsFormId),
+  statements.push(...currentFormVersionGuards(db, managedTermsFormId, input.form.versionId),
     db.prepare(`INSERT INTO managed_maker_application_details(id,seller_id,government_id_type,government_id_description,
       personal_pan,identity_document_id,agreement_version,agreement_accepted_at,agreement_accepted_by,agreement_snapshot_json,
       created_at,agreement_language,agreement_form_version_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .bind(detailId, input.sellerId, evidence.idType, evidence.description, evidence.pan, evidence.documentId,
         offer.agreementVersion, input.now, input.actorId, JSON.stringify({ ...offer.snapshot, settingVersionIds: offer.settingVersionIds }),
-        input.now, input.language, input.form.versionId),
+        input.now, input.language, publishedFormVersionId(managedTermsFormId, input.form.versionId)),
     buildFormAnswerInsert(db, { formId: managedTermsFormId, requestId: input.requestId, versionId: input.form.versionId,
       subjectType: 'seller', subjectId: input.sellerId, actorId: input.actorId, answers: input.form.answers, now: input.now }),
     db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,next_json,request_id,created_at)
       VALUES(?,?,'managed_maker.terms_accepted','seller',?,'Maker explicitly accepted displayed company-store terms',?,?,?)`)
       .bind(crypto.randomUUID(), input.actorId, input.sellerId, JSON.stringify({ catalogDigest, detailId, offerId: offer.id }), input.requestId, input.now),
-    db.prepare('DELETE FROM operation_transaction_guards WHERE id IN (?,?)').bind(guardId, `${guardId}:form`));
+    db.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(guardId));
+  await(await import('../commission/terms-followup')).reconcileSellerFeeCases(db,input.sellerId,input.now);
+  statements.push(db.prepare("UPDATE commission_terms_cases SET revision=revision+1 WHERE seller_id=? AND source_version_id=? AND state='open'").bind(input.sellerId,offer.settingVersionIds.retention));
   try { await db.batch(statements); }
   catch { throw new FormRequestConflictError('The offer, account, identity or form changed. Reload before trying again.'); }
+  await(await import('../commission/terms-followup')).reconcileSellerFeeCases(db,input.sellerId,input.now);
   return { detailId, offerId: offer.id };
 }

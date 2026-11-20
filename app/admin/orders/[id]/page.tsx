@@ -1,9 +1,16 @@
+import {StaffReviewAccessBoundary} from '@/components/admin/staff-review-access-boundary';
+import {ReviewBackLink} from '@/components/admin/review-back-link';
+import {safeAdminReturnTo,withAdminReturnTo} from '@/lib/admin/return-context';
+import {OrderOfferDetails} from '@/components/commerce/order-offer-details';
 import { FirstCodConfirmation } from '@/components/admin/first-cod-confirmation';
+import { PlatformServiceFeeRefund } from '@/components/admin/platform-service-fee-refund';
+import { serviceFeeRefundSummary } from '@/lib/db/repositories/platform-service-fee-refunds';
 import { getFirstCodReview } from '@/lib/orders/first-cod-review';
 import { StaffFormHistoryLinks } from '@/components/admin/staff-form-history-links';
 import { CancellationReviewSection } from '@/components/admin/cancellation-review-section';
 import { ExceptionOrderSection } from '@/components/admin/exception-order-section';
 import { InvoiceAdjustmentForm } from '@/components/admin/invoice-adjustment-form';
+import { LiveInvoiceAdjustmentForm } from '@/components/admin/live-invoice-adjustment-form';
 import { ParcelControls } from '@/components/admin/parcel-controls';
 import {
   listParcels,
@@ -19,7 +26,7 @@ import { getDelivery, publicDelivery } from '@/lib/delivery/repository';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, Banknote, MapPin, PackageCheck, Truck } from 'lucide-react';
+import { Banknote, MapPin, PackageCheck, Truck } from 'lucide-react';
 
 import { AdminOrderFulfillmentActions } from '@/components/admin/order-fulfillment-actions';
 import { listCompanyPreparationGroups } from '@/lib/db/repositories/fulfillment';
@@ -30,6 +37,10 @@ import { getOperationsOrderDetail } from '@/lib/db/repositories/fulfillment';
 import { listManagedInvoiceGroupsForOrder } from '@/lib/db/repositories/managed-documents';
 import { getEffectiveBusinessSetting } from '@/lib/db/repositories/business-settings';
 import { can } from '@/lib/marketplace/permissions';
+import { readOrderMarketplaceFeeViews } from '@/lib/db/repositories/fee-waivers';
+import { OrderMarketplaceFees } from '@/components/seller/order-marketplace-fees';
+import { readOrderCustomerServiceFees } from '@/lib/db/repositories/customer-service-fees';
+import { CustomerServiceFeeBreakdown } from '@/components/commerce/customer-service-fee-breakdown';
 
 export const dynamic = 'force-dynamic';
 const invoiceSettingsObservedAt = () => Date.now();
@@ -49,6 +60,7 @@ export default async function AdminOrderPage({
   searchParams?: Promise<{
     deliveryAfterAt?: string;
     deliveryAfterId?: string;
+    returnTo?:string;
   }>;
 }) {
   const { id } = await params;
@@ -60,7 +72,13 @@ export default async function AdminOrderPage({
   if (!order) notFound();
   const address = order.address;
   const db = requireDatabase(env as unknown as { DB?: D1Database });
+  const [marketplaceFees, customerFees] = await Promise.all([
+    readOrderMarketplaceFeeViews(db,order.items.map(item=>item.id)),
+    readOrderCustomerServiceFees(db,[id]),
+  ]);
+  const customerFee=customerFees.get(id);
   const codReview = await getFirstCodReview(db, id);
+  const feeSummary = staff.role==='super_admin' ? await serviceFeeRefundSummary(db,id) : null;
   const codPending =
     codReview?.status === 'pending' && order.status !== 'cancelled';
   const companyPreparation = staff.role==='super_admin' && !codPending
@@ -75,6 +93,9 @@ export default async function AdminOrderPage({
   } catch {
     notFound();
   }
+  const returnTo=safeAdminReturnTo(query?.returnTo,'/admin/orders');
+  const detailParams=new URLSearchParams();if(deliveryAfter){detailParams.set('deliveryAfterAt',String(deliveryAfter.createdAt));detailParams.set('deliveryAfterId',deliveryAfter.id);}
+  const detailHref=withAdminReturnTo(`/admin/orders/${encodeURIComponent(id)}${detailParams.size?'?'+detailParams:''}`,returnTo);
   const deliveryAnswers = staff.role === 'super_admin' ? await listFormAnswersForSubjectPage(db, {
     subjectType: 'order',
     subjectId: id,
@@ -125,9 +146,18 @@ export default async function AdminOrderPage({
   const delivery = staff.role === 'super_admin' ? rawDelivery : publicDelivery(rawDelivery);
   const visibleParcels = staff.role === 'super_admin' ? parcels : parcels.filter(p => p.method !== 'own_rider').map(p => ({ ...p, riderUserId: null, latitude: null, longitude: null, accuracy: null, positionAt: null, riderFinanceSnapshotJson: null }));
   return (
-    <div>
-      <CancellationReviewSection db={db} orderId={id} />
+    <StaffReviewAccessBoundary actorId={staff.id} sourceId={id}><div>
+      <Link href={withAdminReturnTo(`/admin/order-responses/${encodeURIComponent(id)}`,detailHref)} className="text-sm underline">Preparation issues and next updates</Link>
+      {customerFee?<section className="mb-6 rounded-2xl border bg-card p-6">
+        <h2 className="mb-3 font-heading text-xl">Customer service fee at placement</h2>
+        <CustomerServiceFeeBreakdown {...customerFee} campaignName={customerFee.campaign?.name??null}
+          source={customerFee.source==='legacy_recorded'?'historical':'recorded'}/>
+        <p className="mt-3 text-sm">Customer service fee after cancellations: {money(order.buyerPlatformFeePaisa)}.</p>
+      </section>:null}
+      {feeSummary && feeSummary.chargedPaisa > 0 ? <div className="mb-6"><PlatformServiceFeeRefund actorId={staff.id} orderId={id} {...feeSummary}/></div> : null}
+      <CancellationReviewSection db={db} orderId={id} actorId={staff.id}/>
       <StaffFormHistoryLinks
+        returnTo={detailHref}
         entries={[
           {
             kind: 'order-fulfillment',
@@ -152,13 +182,8 @@ export default async function AdminOrderPage({
           },
         ]}
       />
-      <Link
-        href="/admin/orders"
-        className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" />
-        Back to orders
-      </Link>
+      <OrderMarketplaceFees fees={marketplaceFees}/>
+      <ReviewBackLink returnTo={returnTo} actorId={staff.id}/>
       <div className="mt-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="eyebrow">Order fulfilment</p>
@@ -177,8 +202,8 @@ export default async function AdminOrderPage({
       {companyPreparation.length ? <section className="mt-6 space-y-4 rounded-2xl border bg-card p-5" aria-label="Company-store preparation">
         <h2 className="font-heading text-2xl">Company-store preparation</h2>
         <p className="text-sm text-muted-foreground">Super Admin prepares company-store items on behalf of each maker. Parcel dispatch, delivery and payment stay separate.</p>
-        {companyPreparation.map(group=><div key={group.sellerId} className="min-w-0 space-y-3 rounded-lg border p-4">
-          <p className="break-words font-semibold">{group.makerName} · {group.status.replaceAll('_',' ')}</p>
+        {companyPreparation.map(group=><div key={`${group.sellerId}:${group.status}`} className="min-w-0 space-y-3 rounded-lg border p-4">
+          <p className="break-words font-semibold">{group.makerName} · {group.itemCount} item lines · {group.status.replaceAll('_',' ')}</p>
           <AdminOrderFulfillmentActions orderId={id} status={group.status} companySellerId={group.sellerId}/>
         </div>)}
       </section> : null}
@@ -190,6 +215,8 @@ export default async function AdminOrderPage({
           compensation={compensation}
           actorId={staff.id}
           isSuperAdmin={staff.role === 'super_admin'}
+          returnTo={detailHref}
+          canReviewIncoming={can(staff,'payment.receipt.verify')}
           canPrepare={
             !parcels.length && !codPending &&
             ['confirmed', 'packing', 'ready_for_pickup'].includes(order.status)
@@ -214,6 +241,7 @@ export default async function AdminOrderPage({
                     <strong>
                       {item.productName} × {item.quantity}
                     </strong>
+                      <OrderOfferDetails offer={item.offerSnapshot} />
                     <p className="mt-1 text-sm text-muted-foreground">
                       {item.sellerName} · SKU {item.sku}
                     </p>
@@ -340,7 +368,7 @@ export default async function AdminOrderPage({
                 {deliveryAnswers.nextCursor ? (
                   <Link
                     className="underline"
-                    href={`/admin/orders/${encodeURIComponent(id)}?deliveryAfterAt=${deliveryAnswers.nextCursor.createdAt}&deliveryAfterId=${encodeURIComponent(deliveryAnswers.nextCursor.id)}`}
+                    href={withAdminReturnTo(`/admin/orders/${encodeURIComponent(id)}?deliveryAfterAt=${deliveryAnswers.nextCursor.createdAt}&deliveryAfterId=${encodeURIComponent(deliveryAnswers.nextCursor.id)}`,returnTo)}
                   >
                     Next 50 answers
                   </Link>
@@ -380,6 +408,14 @@ export default async function AdminOrderPage({
                 <dd>{money(order.grandTotalPaisa)}</dd>
               </div>
               <div className="flex justify-between">
+                <dt>Platform service fee (included)</dt>
+                <dd>{money(order.buyerPlatformFeePaisa)}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt>Legally required fee refunds</dt>
+                <dd>{money(feeSummary?.refundedPaisa??0)}</dd>
+              </div>
+              <div className="flex justify-between">
                 <dt>Payment</dt>
                 <dd className="capitalize">{order.paymentStatus}</dd>
               </div>
@@ -406,7 +442,7 @@ export default async function AdminOrderPage({
             <section className="rounded-2xl border bg-card p-6">
               <h2 className="font-heading text-2xl">Issuer invoice records</h2>
               <p className="mt-2 text-sm text-muted-foreground">
-                Each issuer remains a separate simulated document group.
+                Each issuer retains its original document and recorded financial scope.
                 Corrections append documents and never rewrite the invoice
                 snapshot.
               </p>
@@ -419,14 +455,14 @@ export default async function AdminOrderPage({
                       correction documents
                     </span>
                     <span className="block text-xs text-amber-800">
-                      {invoice.simulationLabel}
+                      {invoice.recordKind==='live'?'Actual commercial invoice':invoice.simulationLabel}
                     </span>
                   </li>
                 ))}
               </ul>
-              {can(staff, 'tax_policy.manage') ? (
+              {invoiceGroups.some(invoice=>invoice.recordKind==='simulation') && (can(staff, 'tax_policy.manage') ? (
                 <InvoiceAdjustmentForm
-                  invoices={invoiceGroups}
+                  invoices={invoiceGroups.filter(invoice=>invoice.recordKind==='simulation')}
                   reasonCodes={adjustmentReasons}
                 />
               ) : (
@@ -434,11 +470,12 @@ export default async function AdminOrderPage({
                   Only a Super Admin with tax-policy authority can issue a
                   simulated correction document.
                 </p>
-              )}
+              ))}
+              {staff.role==='super_admin'&&can(staff,'refund.approve.standard')?invoiceGroups.filter(invoice=>invoice.recordKind==='live').map(invoice=><LiveInvoiceAdjustmentForm key={invoice.id} actorId={staff.id} invoiceId={invoice.id}/>):null}
             </section>
           ) : null}
         </aside>
       </div>
-    </div>
+    </div></StaffReviewAccessBoundary>
   );
 }

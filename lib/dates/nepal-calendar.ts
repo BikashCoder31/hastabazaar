@@ -93,6 +93,17 @@ export const nepalClock = (timestamp: number) =>
     second: '2-digit',
   }).format(new Date(timestamp));
 
+// Product date-only values use fixed UTC+05:45 midnight, including older dates.
+// Keep that storage convention separate from historical offsets for real events.
+const nepalDateOnlyOffset = 20_700_000;
+const nepalDateOnlyFormatter = new Intl.DateTimeFormat('en-NP', {
+  timeZone: 'UTC',
+});
+export const nepalDateOnlyIso = (timestamp: number): string =>
+  new Date(timestamp + nepalDateOnlyOffset).toISOString().slice(0, 10);
+export const formatNepalDateOnly = (timestamp: number): string =>
+  nepalDateOnlyFormatter.format(timestamp + nepalDateOnlyOffset);
+
 // auditFilters uses fixed UTC+05:45 day boundaries, including historical AD inputs.
 // Use this for synthetic report bounds; Intl retains historical offsets for real events.
 export const reportingDayIso=(timestamp:number)=>new Date(timestamp+20700000).toISOString().slice(0,10);

@@ -1,9 +1,11 @@
 import { getFormAnswerById, type StoredFormAnswer } from '../db/repositories/form-answers';
 import { authorizeFormAnswerRead, currentStaffGrant, type FormAnswerViewer } from './access';
 import type { Permission } from '../marketplace/permissions';
+import { coreFormContract } from './core-contracts';
+import { formAnswerSourceSql } from './answer-proof';
 
 export const STAFF_HISTORY_KINDS = [
-  { kind: 'return-case-action', label: 'Return case decisions', formId: 'staff.return-case-action', subjectType: 'return_request', permission: 'refund.approve.standard' },
+  { kind: 'return-case-action', label: 'Return case decisions and operational context', formId: 'staff.return-case-action', subjectType: 'return_request', permission: 'refund.approve.standard',otherReadPermissions:['order.manage','support.manage'] },
   { kind: 'complaint-case-action', label: 'Complaint case decisions', formId: 'staff.complaint-case-action', subjectType: 'complaint', permission: 'support.manage' },
   { kind: 'cancellation-approved', label: 'Cancellation approvals', formId: 'staff.cancellation-review', subjectType: 'order_cancellation_event', permission: 'order.manage' },
   { kind: 'cancellation-rejected', label: 'Cancellation rejections', formId: 'staff.cancellation-review', subjectType: 'order_cancellation_review', permission: 'order.manage' },
@@ -67,6 +69,7 @@ async function mayList(db: D1Database, viewer: FormAnswerViewer, rule: StaffHist
     .bind(viewer.id, viewer.role).first();
   if (!active || ('superAdminOnly' in rule && rule.superAdminOnly && viewer.role !== 'super_admin')) return false;
   return await currentStaffGrant(db, viewer, rule.permission as Permission) ||
+    ('otherReadPermissions' in rule && (await Promise.all(rule.otherReadPermissions.map(permission=>currentStaffGrant(db,viewer,permission as Permission)))).some(Boolean)) ||
     ('anyPermission' in rule && await currentStaffGrant(db, viewer, rule.anyPermission as Permission));
 }
 
@@ -108,9 +111,10 @@ export async function listStaffFormHistory(db: D1Database, viewer: FormAnswerVie
   if (!rule || !await mayList(db, viewer, rule)) return { items: [], nextCursor: null };
   const subjectId = safeSubjectId(options.subjectId);
   const cursor = decodeCursor(options.cursor);
+  const answerSource = coreFormContract(rule.formId) ? formAnswerSourceSql(db) : 'form_answer_sets';
   const rows = await db.prepare(`SELECT a.id,a.form_id AS formId,a.subject_type AS subjectType,
       a.subject_id AS subjectId,a.actor_id AS actorId,a.request_id AS requestId,
-      a.created_at AS createdAt FROM form_answer_sets a
+      a.created_at AS createdAt FROM ${answerSource} a
     WHERE a.form_id=? AND a.subject_type=?
       AND (? IS NULL OR a.subject_id=?)
       AND (? IS NULL OR a.created_at<? OR (a.created_at=? AND a.id<?))

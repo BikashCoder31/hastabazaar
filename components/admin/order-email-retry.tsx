@@ -36,7 +36,7 @@ export function OrderEmailRetry({ readyCount }: { readyCount: number }) {
       setMessage(
         result.pending
           ? 'Sending is unavailable. Ask the site administrator to check email settings and queue readiness.'
-          : `${result.sent} accepted by the mail server · ${result.failed} failed · ${result.cancelled ?? 0} skipped.${result.failed ? ' Failed attempts retry with a delay and stop after five attempts.' : ''}`,
+          : `${result.sent} successfully processed · ${result.failed} failed · ${result.cancelled ?? 0} skipped. See delivery history for provider acceptance or local capture.${result.failed ? ' Eligible temporary failures continue automatically with backoff; uncertain acceptance is held for reconciliation.' : ''}`,
       );
       router.refresh();
     } catch (e) {
@@ -57,7 +57,7 @@ export function OrderEmailRetry({ readyCount }: { readyCount: number }) {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h2 id="send-order-emails-title" className="font-semibold">
-            Send queued updates
+            Attempt eligible queued updates
           </h2>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
             {readyCount > 0

@@ -1,9 +1,7 @@
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
-import {
-  CommissionSettings,
-  CancelCommissionRate,
-} from '@/components/admin/commission-settings';
+import { CommonFeePolicy } from '@/components/admin/common-fee-policy';
+import { getCommonFeeState } from '@/lib/commission/coordinated-policy';
 import { CommissionReport } from '@/components/admin/commission-report';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
@@ -21,7 +19,7 @@ export default async function CommissionPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireStaffPage('/admin/commission', 'commercial_policy.manage');
+  const actor = await requireStaffPage('/admin/commission', 'commercial_policy.manage');
   const params = await searchParams;
   const first = (key: string) =>
     typeof params[key] === 'string' ? (params[key] as string) : undefined;
@@ -34,8 +32,9 @@ export default async function CommissionPage({
     page: Number(first('page') ?? 1),
   };
   const database = requireDatabase(env as unknown as { DB?: D1Database });
+  const rateState = getCommissionRateState(database);
   const [state, result] = await Promise.all([
-    getCommissionRateState(database),
+    rateState,
     getCommissionReport(database, filters)
       .then((report) => ({ report, error: '' }))
       .catch(async (error) => {
@@ -48,9 +47,7 @@ export default async function CommissionPage({
   ]);
   const { report, error: filterError } = result;
   const now = state.asOf;
-  const scheduled = state.history.find(
-    (change) => change.status === 'scheduled',
-  );
+  const common = await getCommonFeeState(database, now);
   return (
     <div className="space-y-7">
       <div>
@@ -79,58 +76,9 @@ export default async function CommissionPage({
           ))}
         </nav>
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <section className="rounded-2xl border bg-card p-5 sm:p-6">
-          <h2 className="text-sm font-semibold text-muted-foreground">
-            Current published rate
-          </h2>
-          <p className="mt-2 font-heading text-4xl">
-            {state.current.basisPoints / 100}%
-          </p>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Applies to future orders for sellers who accepted this fee schedule.
-            Other sellers retain their previous accepted rate; the launch rate
-            is 9%.
-          </p>
-        </section>
-        <section className="rounded-2xl border bg-card p-5 sm:p-6">
-          <h2 className="text-sm font-semibold text-muted-foreground">
-            Next scheduled change
-          </h2>
-          {scheduled ? (
-            <>
-              <p className="mt-2 font-heading text-4xl">
-                {scheduled.basisPoints / 100}%
-              </p>
-              <p className="mt-2 text-sm">
-                {commissionDate(scheduled.effectiveAt)} · Nepal time
-              </p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                {scheduled.acceptedSellers} of {state.approvedSellers} approved
-                sellers accepted
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="mt-2 font-heading text-2xl">
-                No rate change scheduled
-              </p>
-              <a
-                href="#rate-management"
-                className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-primary hover:underline"
-              >
-                Schedule a future rate
-              </a>
-            </>
-          )}
-        </section>
-      </div>
+      <CommonFeePolicy actorId={actor.id} state={common} editable={actor.role === 'super_admin'} />
+      <Link href="/admin/commission/terms" className="section-link">Acceptance, outreach and current terms holds →</Link>
       <CommissionReport report={report} filters={filters} error={filterError} />
-      <CommissionSettings
-        state={{ revision: state.revision, current: state.current }}
-        now={now}
-        hasScheduledRate={!!scheduled}
-      />
       <section
         id="rate-history"
         className="scroll-mt-28 rounded-2xl border bg-card p-5 sm:p-6"
@@ -180,19 +128,15 @@ export default async function CommissionPage({
                   Fee schedule version: {change.id}
                 </p>
               </details>
-              {change.status === 'scheduled' ? (
-                <CancelCommissionRate
-                  id={change.id}
-                  revision={state.revision}
-                />
-              ) : null}
+
             </article>
           ))}
           <article className="rounded-xl border border-dashed p-4">
-            <h3 className="font-semibold">9% launch commission</h3>
+            <h3 className="font-semibold">Original recorded terms</h3>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              The original rate continues for sellers until a later fee schedule
-              takes effect and they accept it.
+              The current saved base and published supplements are shown above.
+              Historical orders and agreements retain their original recorded
+              commission terms.
             </p>
           </article>
         </div>
@@ -204,7 +148,7 @@ export default async function CommissionPage({
         <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
           Commission is calculated on product selling value after seller-funded
           discounts. Separately stated product taxes and delivery are excluded.
-          HastaBazaar-funded discounts do not reduce the agreed product value.
+          Hastabazaar-funded discounts do not reduce the agreed product value.
           Earnings and refund reversals use the original order and ledger
           snapshots. No joining fee.
         </p>

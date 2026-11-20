@@ -1,10 +1,14 @@
 import type { RuntimeEnvironment } from '@/lib/staging/environment';
+import {fixedRecoveryCreditsSql} from './recovery-balance';
 import { assertSimulationAllowed, SIMULATED_RECORD_LABEL } from '@/lib/staging/environment';
 import { buildFormAnswerInsert } from '@/lib/db/repositories/form-answers';
 import type { FormAnswerSnapshot } from '@/lib/forms/types';
 import { digestFormRequest, formRequestReplay, FormRequestConflictError } from '@/lib/forms/submission';
 import { decisionFormReplay } from './form-replay';
 import { staffMutationGuard } from '@/lib/db/repositories/staff-mutation-guard';
+import {protectedPayoutGuards} from '../sellers/protected-change-policy';
+import {protectedPayoutReplacementStatements} from '../sellers/protected-payout-disposition';
+import {payoutRegistrationBlocker,payoutRegistrationGuards} from '../payments/payout-registration-readiness';
 
 export class FixedSupplyError extends Error {}
 
@@ -88,7 +92,17 @@ export async function addFixedSupplyAdjustment(database:D1Database,options:{reco
  await database.batch(statements);
 }
 
-export async function getFixedSupplyBalance(database:D1Database,recordId:string){const row=await database.prepare(`SELECT o.original_amount_paisa AS originalOwedPaisa,o.status,COALESCE((SELECT SUM(amount_paisa) FROM managed_supplier_adjustments WHERE obligation_id=o.id),0) AS adjustmentsPaisa,COALESCE((SELECT SUM(amount_paisa) FROM managed_supplier_payments WHERE obligation_id=o.id AND status='paid'),0) AS paidPaisa FROM managed_supplier_obligations o WHERE o.id=?`).bind(recordId).first<{originalOwedPaisa:number;status:string;adjustmentsPaisa:number;paidPaisa:number}>();if(!row)throw new FixedSupplyError('Accepted supply obligation not found.');const payable=Number(row.originalOwedPaisa)-Number(row.adjustmentsPaisa),paid=Number(row.paidPaisa);return {originalOwedPaisa:Number(row.originalOwedPaisa),adjustmentsPaisa:Number(row.adjustmentsPaisa),paidPaisa:paid,balancePaisa:Math.max(0,payable-paid),recoverablePaisa:Math.max(0,paid-payable),status:paid>=Number(row.originalOwedPaisa)?'paid':row.status};}
+export async function getFixedSupplyBalance(database:D1Database,recordId:string){
+ const row=await database.prepare(`SELECT o.original_amount_paisa AS originalOwedPaisa,o.status,
+  COALESCE((SELECT SUM(amount_paisa) FROM managed_supplier_adjustments WHERE obligation_id=o.id),0) AS adjustmentsPaisa,
+  COALESCE((SELECT SUM(amount_paisa) FROM managed_supplier_payments WHERE obligation_id=o.id AND status='paid'),0) AS paidPaisa,
+  ${fixedRecoveryCreditsSql('o.id')} AS recoveryCreditsPaisa FROM managed_supplier_obligations o WHERE o.id=?`).bind(recordId)
+  .first<{originalOwedPaisa:number;status:string;adjustmentsPaisa:number;paidPaisa:number;recoveryCreditsPaisa:number}>();
+ if(!row)throw new FixedSupplyError('Accepted supply obligation not found.');
+ const paid=Number(row.paidPaisa),balance=Number(row.originalOwedPaisa)-Number(row.adjustmentsPaisa)-paid+Number(row.recoveryCreditsPaisa);
+ if(!Number.isSafeInteger(balance))throw new FixedSupplyError('Reconcile the exact native supplier balance.');
+ return {originalOwedPaisa:Number(row.originalOwedPaisa),adjustmentsPaisa:Number(row.adjustmentsPaisa),paidPaisa:paid,balancePaisa:Math.max(0,balance),recoverablePaisa:Math.max(0,-balance),status:paid>=Number(row.originalOwedPaisa)?'paid':row.status};
+}
 
 export async function prepareFixedSupplierPayment(database:D1Database,options:{recordId:string;actorId:string;destinationReference:string;requestId:string;now:number;environment:RuntimeEnvironment;form?:{requestId:string;versionId:string;answers:FormAnswerSnapshot}}):Promise<string>{
  assertSimulationAllowed(options.environment);
@@ -102,21 +116,27 @@ export async function prepareFixedSupplierPayment(database:D1Database,options:{r
  const authorized=await database.prepare("SELECT 1 FROM users JOIN user_roles ON user_roles.user_id=users.id WHERE users.id=? AND users.status='active' AND user_roles.role='super_admin'").bind(options.actorId).first();if(!authorized)throw new FixedSupplyError('An active Super Admin must prepare a simulated supplier payment.');
  if(await database.prepare("SELECT 1 FROM managed_supplier_payments WHERE obligation_id=? AND status IN ('prepared','approved') LIMIT 1").bind(options.recordId).first())throw new FixedSupplyError('This obligation already has a payment awaiting completion.');
  const balance=await getFixedSupplyBalance(database,options.recordId);if(balance.balancePaisa<=0)throw new FixedSupplyError('A positive unpaid supplier balance is required.');
+ const obligation=await database.prepare('SELECT seller_id AS sellerId FROM managed_supplier_obligations WHERE id=?').bind(options.recordId).first<{sellerId:string}>();
+ if(!obligation)throw new FixedSupplyError('Supplier obligation not found.');
  const id=crypto.randomUUID(),destination=text('Destination reference',options.destinationReference);
+ const blocker=await payoutRegistrationBlocker(database,obligation.sellerId,'fixed',options.now,destination);
+ if(blocker)throw new FixedSupplyError(blocker);
  const insert=database.prepare(`INSERT INTO managed_supplier_payments(id,obligation_id,amount_paisa,status,destination_reference,simulation_label,prepared_by,approved_by,request_id,created_at,updated_at,paid_at)
   SELECT ?,o.id,?,'approved',?,?,?,?,?,?,?,NULL FROM managed_supplier_obligations o WHERE o.id=?
-   AND o.original_amount_paisa-COALESCE((SELECT SUM(amount_paisa) FROM managed_supplier_adjustments WHERE obligation_id=o.id),0)-COALESCE((SELECT SUM(amount_paisa) FROM managed_supplier_payments WHERE obligation_id=o.id AND status='paid'),0)=?
+   AND o.original_amount_paisa-COALESCE((SELECT SUM(amount_paisa) FROM managed_supplier_adjustments WHERE obligation_id=o.id),0)-COALESCE((SELECT SUM(amount_paisa) FROM managed_supplier_payments WHERE obligation_id=o.id AND status='paid'),0)+${fixedRecoveryCreditsSql('o.id')}=?
    AND NOT EXISTS(SELECT 1 FROM managed_supplier_payments WHERE obligation_id=o.id AND status IN ('prepared','approved'))`).bind(id,balance.balancePaisa,destination,SIMULATED_RECORD_LABEL,options.actorId,options.actorId,options.requestId,options.now,options.now,options.recordId,balance.balancePaisa);
  const audit=database.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,next_json,request_id,created_at) VALUES (?,?,'managed_supplier_payment.prepared','managed_supplier_payment',?,'Simulated supplier payment approved at preparation',CASE WHEN EXISTS(SELECT 1 FROM managed_supplier_payments WHERE id=? AND request_id=? AND prepared_by=? AND status='approved' AND approved_by=?) THEN ? ELSE json_extract('invalid','$') END,?,?)`).bind(crypto.randomUUID(),options.actorId,id,id,options.requestId,options.actorId,options.actorId,JSON.stringify({status:'approved',approvedBy:options.actorId,amountPaisa:balance.balancePaisa,destinationReference:destination,simulationLabel:SIMULATED_RECORD_LABEL,...(options.form?{catalogDigest}:{})}),options.requestId,options.now);
- await database.batch([insert,audit,...(options.form?[buildFormAnswerInsert(database,{formId:'staff.managed-payment-preparation',requestId:options.requestId,versionId:options.form.versionId,subjectType:'managed_supplier_payment',subjectId:id,actorId:options.actorId,answers:options.form.answers,now:options.now})]:[]),...authority.statements]);
+ await database.batch([...payoutRegistrationGuards(database,obligation.sellerId,'fixed',destination),insert,audit,...(options.form?[buildFormAnswerInsert(database,{formId:'staff.managed-payment-preparation',requestId:options.requestId,versionId:options.form.versionId,subjectType:'managed_supplier_payment',subjectId:id,actorId:options.actorId,answers:options.form.answers,now:options.now})]:[]),...authority.statements,
+  ...protectedPayoutGuards(database,obligation.sellerId,options.actorId,{model:'fixed'}),...protectedPayoutReplacementStatements(database,{model:'fixed',payoutId:id,sellerId:obligation.sellerId,actorId:options.actorId,now:options.now})]);
  return id;
 }
 
 export async function transitionFixedSupplierPayment(database:D1Database,options:{paymentId:string;actorId:string;action:'approve'|'mark_paid';requestId:string;now:number;environment:RuntimeEnvironment;form?:{requestId:string;versionId:string;answers:FormAnswerSnapshot}}):Promise<void>{
  assertSimulationAllowed(options.environment);
+ requireExecutionPacket(options.action);
  const active=await database.prepare("SELECT 1 FROM users JOIN user_roles ON user_roles.user_id=users.id WHERE users.id=? AND users.status='active' AND user_roles.role='super_admin'").bind(options.actorId).first();
  if(!active)throw new FixedSupplyError('An active Super Admin must record this supplier payment action.');
- const authority=options.form?await staffMutationGuard(database,options.actorId,options.action==='approve'?'payout.approve':'payout.mark_paid',FixedSupplyError,'super_admin'):null;
+ const authority=await staffMutationGuard(database,options.actorId,options.action==='approve'?'payout.approve':'payout.mark_paid',FixedSupplyError,'super_admin');
  const to=options.action==='approve'?'approved':'paid',from=options.action==='approve'?'prepared':'approved';
  const catalogDigest=options.form?await digestFormRequest({paymentId:options.paymentId,action:options.action,versionId:options.form.versionId,answers:options.form.answers}):null;
  if(options.form){if(await decisionFormReplay(database,{formId:'staff.managed-payment-action',requestId:options.requestId,actorId:options.actorId,action:`managed_supplier_payment.${to}`,subjectType:'managed_supplier_payment',subjectId:options.paymentId,versionId:options.form.versionId,digest:catalogDigest!}))return;}
@@ -130,6 +150,15 @@ export async function transitionFixedSupplierPayment(database:D1Database,options
    SELECT 1 FROM managed_supplier_payments WHERE id=? AND status=? AND prepared_by=?) THEN 1 ELSE 0 END`)
    .bind(guardId,options.paymentId,from,row.preparedBy),
   database.prepare('DELETE FROM staff_permission_guards WHERE id=?').bind(guardId));}
- statements.push(...(authority?.statements??[]));
+ const obligation=await database.prepare(`SELECT o.seller_id AS sellerId,p.destination_reference AS destination FROM managed_supplier_payments p JOIN managed_supplier_obligations o ON o.id=p.obligation_id WHERE p.id=?`)
+  .bind(options.paymentId).first<{sellerId:string;destination:string}>();if(!obligation)throw new FixedSupplyError('Supplier obligation not found.');
+ if(options.action==='approve'){
+  const blocker=await payoutRegistrationBlocker(database,obligation.sellerId,'fixed',options.now,obligation.destination);
+  if(blocker)throw new FixedSupplyError(blocker);
+  statements.push(...payoutRegistrationGuards(database,obligation.sellerId,'fixed',obligation.destination));
+ }
+ statements.push(...authority.statements,...protectedPayoutGuards(database,obligation.sellerId,options.actorId,{id:options.paymentId,model:'fixed'}));
  const result=await database.batch(statements);if((result[options.form?2:0].meta.changes??0)!==1)throw new FixedSupplyError('Supplier payment changed before this action completed.');
 }
+
+function requireExecutionPacket(action:string){if(action==='mark_paid')throw new FixedSupplyError('Record the actual bank outcome through the original verified execution packet.');}

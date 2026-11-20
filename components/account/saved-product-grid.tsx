@@ -42,7 +42,7 @@ export function SavedProductGrid({
               ) : (
                 <Package className="absolute left-1/2 top-1/2 size-10 -translate-x-1/2 -translate-y-1/2 text-muted-foreground" />
               )}
-              {item.inventoryQuantity < 1 ? (
+              {item.purchasable === false || item.inventoryQuantity < 1 ? (
                 <span className="absolute left-3 top-3 rounded-full bg-background/95 px-3 py-1.5 text-xs font-semibold">
                   Currently unavailable
                 </span>
@@ -56,10 +56,10 @@ export function SavedProductGrid({
                 {item.nameEn}
               </h2>
               <p className="mt-3 flex items-center justify-between gap-3 text-lg font-semibold">
-                {new Intl.NumberFormat('en-NP', {
+                {item.pricePaisa===null?'Price unavailable':`${item.priceFrom?'From ':''}${new Intl.NumberFormat('en-NP', {
                   style: 'currency',
                   currency: 'NPR',
-                }).format(item.pricePaisa / 100)}
+                }).format(item.pricePaisa / 100)}`}
                 <ArrowUpRight className="size-4 text-primary" />
               </p>
             </div>

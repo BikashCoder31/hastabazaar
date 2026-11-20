@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     const body = await readBoundedJsonObject(request) as Record<string, unknown>;
     if (!body || Array.isArray(body) || Object.keys(body).some((key) =>
       !['note', 'requestId', 'formVersion', 'customAnswers'].includes(key)) ||
-      typeof body.note !== 'string' || typeof body.requestId !== 'string' ||
+      (body.note!==undefined&&typeof body.note!=='string') || typeof body.requestId !== 'string' ||
       !/^[a-zA-Z0-9_-]{1,100}$/.test(body.requestId) ||
       !Number.isSafeInteger(body.formVersion) || !Array.isArray(body.customAnswers))
       return Response.json(
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
       {
         sellerId: seller.sellerId,
         actorId: seller.userId,
-        note: body.note,
+        note: typeof body.note==='string'?body.note:'',
         requestId: body.requestId,
         now: Date.now(),
         form: { requestId: body.requestId, versionId: form.versionId, answers: form.answers },
@@ -59,4 +59,14 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
+}
+
+export async function GET(request:Request){
+ try{
+  const seller=await requireSellerApi(),url=new URL(request.url),attempt=url.searchParams.get('attempt');
+  if(!attempt||!/^[a-zA-Z0-9_-]{1,100}$/.test(attempt)||[...url.searchParams.keys()].some(key=>key!=='attempt'))return Response.json({error:'Use the original payout request reference.'},{status:400});
+  const database=requireDatabase(env as unknown as {DB?:D1Database});
+  const row=await database.prepare('SELECT id FROM payout_requests WHERE seller_id=? AND created_request_id=?').bind(seller.sellerId,attempt).first<{id:string}>();
+  return Response.json({outcome:row?{id:row.id,revision:0}:null},{headers:{'Cache-Control':'no-store'}});
+ }catch(error){if(error instanceof SellerAuthorizationError)return Response.json({error:error.message},{status:error.status});return Response.json({error:'The original payout request could not be checked.'},{status:503});}
 }

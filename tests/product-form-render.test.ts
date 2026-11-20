@@ -5,13 +5,24 @@ import {createRequire} from 'node:module';
 import {createElement,type ComponentType} from 'react';
 import {runInNewContext} from 'node:vm';
 import {renderToStaticMarkup} from 'react-dom/server';
-void test('actual new product form omits removed fields and exposes four required photos plus optional video',async()=>{
- const compiled=await build({entryPoints:['components/seller/product-submission-form.tsx'],bundle:true,write:false,platform:'node',format:'cjs',external:['react','react/*','react-dom','react-dom/*'],plugins:[{name:'test-link',setup(b){b.onResolve({filter:/^next\/link$/},()=>({path:'link',namespace:'test'}));b.onLoad({filter:/.*/,namespace:'test'},()=>({contents:"const React=require('react');module.exports=function Link(props){return React.createElement('a',props);};",loader:'js'}));}}]});
- const renderedModule={exports:{} as {ProductSubmissionForm:ComponentType<{categories:unknown[];occasions:unknown[]}>}};runInNewContext(compiled.outputFiles[0].text,{require:createRequire(import.meta.url),module:renderedModule,exports:renderedModule.exports,process});
- const html=renderToStaticMarkup(createElement(renderedModule.exports.ProductSubmissionForm,{categories:[{id:'other',nameEn:'Others'}],occasions:[{id:'other',nameEn:'Others'}]}));
- for(const field of ['producer','sku'])assert.doesNotMatch(html,new RegExp('name="'+field+'"'));
- assert.match(html,/<input type="hidden" name="materials" value=""/);
- assert.match(html,/name="nameNe"/);assert.match(html,/name="descriptionNe"/);
- const inputs=html.match(/<input\b[^>]*>/g)??[];for(let i=1;i<=4;i++){const tag=inputs.find(v=>v.includes('name="image'+i+'"'));assert.ok(tag);assert.match(tag,/ required(?:=|\s|>)/);}
- assert.doesNotMatch(inputs.find(v=>v.includes('name="image5"'))??'',/ required(?:=|\s|>)/);assert.match(html,/name="video"/);assert.match(html,/Product description/);assert.match(html,/Time needed to prepare the product/);
+import {productDetailGroups,type CategoryDetailModel} from '../lib/products/category-fields';
+import {stubFixtureImage,stubFixtureLink} from './helpers/browser-fixture-link';
+void test('actual optional workspace renders three steps, every detail group, one optional cover and honest unknown customer facts',async()=>{
+ const compiled=await build({
+  entryPoints:['components/seller/product-intake-workspace.tsx'],bundle:true,write:false,platform:'node',format:'cjs',external:['react','react/*','react-dom','react-dom/*'],
+  plugins:[{name:'product-static-framework',setup(bundler){
+   stubFixtureLink(bundler);
+   stubFixtureImage(bundler);
+   bundler.onResolve({filter:/^next\/navigation$/},()=>({path:'navigation',namespace:'product-static-framework'}));
+   bundler.onLoad({filter:/^navigation$/,namespace:'product-static-framework'},()=>({
+    contents:'exports.useRouter=()=>({refresh(){throw Error("Unexpected router refresh during static render");}});',
+    loader:'js',
+   }));
+  }}],
+ });
+ const renderedModule={exports:{} as {ProductIntakeWorkspace:ComponentType<{categories:unknown[];occasions:unknown[];initialCategoryModel:CategoryDetailModel}>}};runInNewContext(compiled.outputFiles[0].text,{require:createRequire(import.meta.url),module:renderedModule,exports:renderedModule.exports,process,structuredClone});
+ const model:CategoryDetailModel={categoryId:null,name:null,parentId:null,status:'unknown',versionId:null,revision:null,contract:null,groups:productDetailGroups.map(group=>({...group,recommended:false}))};
+ const html=renderToStaticMarkup(createElement(renderedModule.exports.ProductIntakeWorkspace,{categories:[{id:'other',nameEn:'Others'}],occasions:[{id:'other',nameEn:'Others'}],initialCategoryModel:model}));
+ for(const group of productDetailGroups)assert.ok(html.includes(group.label));for(const text of ['Basics','Photos &amp; details','Review','Cover photo','Additional product photos','Product video','Product name not provided','Price not provided','Availability needs confirmation'])assert.ok(html.includes(text),text);
+ assert.doesNotMatch(html,/<(?:input|select|textarea)\b[^>]*\srequired(?:=|\s|>)/);assert.doesNotMatch(html,/at least four|name="sku"|>Free<|In stock/);assert.match(html,/name="producer"/);assert.match(html,/name="nameNe"/);assert.match(html,/name="descriptionNe"/);
 });

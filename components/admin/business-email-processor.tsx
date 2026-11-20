@@ -18,7 +18,7 @@ export function BusinessEmailProcessor() {
         cancelled: number;
       }>('/api/admin/business-emails', 'POST', {}, 'Processing failed.');
       setMessage(
-        `${r.accepted} mail-server acceptances; ${r.failed} failed attempts; ${r.cancelled} cancelled because recipient access changed.`,
+        `${r.accepted} successfully processed; ${r.failed} failed attempts; ${r.cancelled} no longer needed. See delivery history for provider acceptance or local capture.`,
       );
       router.refresh();
     } catch (e) {

@@ -1,4 +1,6 @@
-import { seedVerifiedCheckoutContact } from './helpers/checkout-contact';
+import { readyCheckoutSeller, seedVerifiedCheckoutContact } from './helpers/checkout-contact';
+import { stubFixtureLink } from './helpers/browser-fixture-link';
+import { historicalCommissionFixture } from './helpers/historical-commission-fixture';
 import type { FixtureBrowser } from './helpers/browser-fixture-types';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -13,7 +15,8 @@ import { respondToReturnAsSeller } from '../lib/db/repositories/returns';
 import { createCustomerComplaint, respondToComplaintAsSeller } from '../lib/db/repositories/complaints';
 import { createCodOrder } from '../lib/db/repositories/orders';
 import { getDeliveryRates } from '../lib/db/repositories/delivery-rates';
-import { SELLER_AGREEMENT_VERSION } from '../lib/content/legal-policies';
+import { getCheckoutPolicyContext } from '../lib/checkout/policy-context';
+import { getPlatformServiceFee } from '../lib/db/repositories/platform-service-fee';
 import { build } from 'esbuild';
 import { FORM_REGISTRY } from '../lib/forms/registry';
 import { authorizeFormAnswerRead } from '../lib/forms/access';
@@ -44,6 +47,15 @@ function checkoutInput() {
     address: { recipientName: 'Maya Buyer', phone: '9811111111',
       province: 'Bagmati', district: 'Kathmandu', municipality: 'Kathmandu',
       locality: 'Test locality' },
+  };
+}
+
+async function reviewedFixtureQuote(db:D1Database,now:number) {
+  const serviceFee=await getPlatformServiceFee(db,now);
+  return {
+    lines: [{ id:'cart-item',sellerId:'seller-profile',pricePaisa:100000,quantity:1 }],
+    deliveryPaisa:15000,walletPaisa:0,referralPaisa:0,promoPaisa:0,payablePaisa:115000+serviceFee.chargedPaisa,serviceFee,
+    referralCampaign:null,policyContext:await getCheckoutPolicyContext(),
   };
 }
 
@@ -245,6 +257,7 @@ function caseDatabase(custom = true) {
   sqlite.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('seller','seller',1)").run();
   sqlite.prepare(`INSERT INTO seller_profiles(id,user_id,legal_name,trading_name,registration_authority,registration_number,tax_mode,tax_registration_number,representative_name,support_phone,support_email,province,district,municipality,locality,payout_account_reference,status,approved_at,created_at,updated_at)
     VALUES ('seller-profile','seller','Seller','Shop','Local','REG-1','PAN','PAN-1','Seller','9800000000','seller@example.test','Madhesh','Dhanusha','Janakpur','Ward 1','BANK','approved',1,1,1)`).run();
+  historicalCommissionFixture(sqlite, 'sa', true);
   sqlite.prepare("INSERT INTO categories(id,slug,name_en,is_active,sort_order,created_at,updated_at) VALUES ('cat','test','Test',1,1,1,1)").run();
   sqlite.prepare(`INSERT INTO products(id,seller_id,category_id,slug,sku,name_en,description_en,price_paisa,inventory_quantity,producer,country_of_origin,materials,return_eligible,status,created_at,updated_at)
     VALUES ('product','seller-profile','cat','product','product','Product','Description',100000,10,'Maker','NP','Fibre',1,'published',1,1)`).run();
@@ -602,6 +615,12 @@ void test('return route hashes validated evidence bytes and cleans retry uploads
   try {
     const route = await import('../app/orders/[orderNumber]/returns/route');
     const context = { params: Promise.resolve({ orderNumber: 'HK-TEST' }) };
+    const { sharp } = await import('../lib/reviews/image-processor');
+    const images = await Promise.all([1, 2].map(red => sharp({ create: {
+      width: 2, height: 2, channels: 3, background: { r: red, g: 0, b: 0 },
+    } }).png({ compressionLevel: 0 }).toBuffer()));
+    assert.equal(images[0].length, images[1].length, 'valid fixtures retain equal byte lengths');
+    assert.notDeepEqual(images[0], images[1], 'the changed-content fixture must have distinct bytes');
     const post = (lastByte: number, name = 'proof.png') => {
       const form = new FormData();
       for (const [key, value] of Object.entries({ orderItemId: 'item', quantity: '1',
@@ -609,7 +628,7 @@ void test('return route hashes validated evidence bytes and cleans retry uploads
         detail: 'The item has a manufacturing defect.', locale: 'en-NP',
         idempotencyKey: 'return-route-evidence-1', formVersion: '1', customAnswers: '[]' }))
         form.set(key, value);
-      form.set('evidence', new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, lastByte])],
+      form.set('evidence', new File([new Uint8Array(images[lastByte - 1])],
         name, { type: 'image/png' }));
       return route.POST(new Request('http://localhost:3000/orders/HK-TEST/returns', {
         method: 'POST', headers: { origin: 'http://localhost:3000',
@@ -630,7 +649,7 @@ void test('checkout answer joins the committed order and cannot be added by a du
   const { sqlite, db, now } = caseDatabase(false);
   try {
     await seedVerifiedCheckoutContact(db, 'buyer');
-    sqlite.prepare("UPDATE seller_profiles SET seller_agreement_version=?,seller_agreement_accepted_at=1 WHERE id='seller-profile'").run(SELLER_AGREEMENT_VERSION);
+    await readyCheckoutSeller({ database: db, sqlite }, 'seller-profile', 'seller', 'sa', now);
     sqlite.prepare("INSERT INTO carts(id,anonymous_token_hash,currency,created_at,updated_at) VALUES ('cart','cart-hash','NPR',?,?)").run(now, now);
     sqlite.prepare("INSERT INTO cart_items(id,cart_id,product_id,quantity,created_at,updated_at) VALUES ('cart-item','cart','product',1,?,?)").run(now, now);
     const formId = 'commerce.checkout';
@@ -639,13 +658,22 @@ void test('checkout answer joins the committed order and cannot be added by a du
       .run(`${formId}-v1`, formId, JSON.stringify({ formId, fields: [{ id: 'context_note', key: 'context_note', label: 'Context note', type: 'short_text', required: true, order: 0, status: 'active' }] }), `seed-${formId}`);
     const rates = await getDeliveryRates(db);
     const parsed = parseCheckoutInput({ ...checkoutInput(), deliveryRateVersion: rates.version,
+      reviewedQuote: await reviewedFixtureQuote(db,now),
       formVersion: 1, customAnswers: [{ fieldId: 'context_note', value: 'Call first' }] });
     assert.ok(parsed.value, parsed.errors.join(' '));
     parsed.value.customerAuthSubject = 'buyer';
+    assert.equal(sqlite.prepare("SELECT inventory_quantity FROM products WHERE id='product'").get()?.inventory_quantity, 9,
+      'the original delivered item already reserved one of the ten fixture units');
     const ordered = await createCodOrder(db, 'cart-hash', 'receipt-hash-new', parsed.value, now, 'buyer',
       giftForm('commerce.checkout', 'Call first'));
     const order = sqlite.prepare('SELECT id FROM orders WHERE order_number=?').get(ordered.orderNumber);
     assert.equal(sqlite.prepare("SELECT subject_id FROM form_answer_sets WHERE form_id='commerce.checkout'").get()?.subject_id, order?.id);
+    assert.deepEqual({ ...sqlite.prepare(`SELECT item_subtotal_paisa,delivery_charge_paisa,
+      buyer_platform_fee_paisa,grand_total_paisa FROM orders WHERE id=?`).get(order!.id) }, {
+      item_subtotal_paisa: 100000, delivery_charge_paisa: 15000,
+      buyer_platform_fee_paisa: 0, grand_total_paisa: 115000,
+    });
+    assert.equal(sqlite.prepare("SELECT inventory_quantity FROM products WHERE id='product'").get()?.inventory_quantity, 8);
     assert.equal((await createCodOrder(db, 'cart-hash', 'receipt-hash-new', parsed.value, now, 'buyer',
       giftForm('commerce.checkout', 'Call first'))).orderNumber, ordered.orderNumber);
     await assert.rejects(() => createCodOrder(db, 'cart-hash', 'receipt-hash-new',
@@ -655,6 +683,11 @@ void test('checkout answer joins the committed order and cannot be added by a du
     await assert.rejects(() => createCodOrder(db, 'cart-hash', 'receipt-hash-new',
       parsed.value!, now + 1, 'buyer', giftForm('commerce.checkout', 'Call first')));
     assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM form_answer_sets WHERE form_id='commerce.checkout'").get()?.n, 1);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM orders WHERE id<>'order'").get()?.n, 1);
+    assert.equal(sqlite.prepare("SELECT inventory_quantity FROM products WHERE id='product'").get()?.inventory_quantity, 8,
+      'exact and conflicting replays cannot reserve inventory again');
+    assert.equal(sqlite.prepare("SELECT commission_paisa FROM order_items WHERE id='item'").get()?.commission_paisa, 12000,
+      'current seller readiness cannot rewrite the original delivered item terms');
   } finally { sqlite.close(); }
 });
 
@@ -663,8 +696,8 @@ void test('checkout route rejects an unversioned cart before placing an order', 
   globalThis.commerceCatalogDb = db;
   try {
     await seedVerifiedCheckoutContact(db, 'buyer');
+    await readyCheckoutSeller({ database: db, sqlite }, 'seller-profile', 'seller', 'sa', now);
     globalThis.commerceCheckoutActor = { userId: 'buyer', authSubject: 'buyer', email: 'buyer@example.test' };
-    sqlite.prepare('UPDATE seller_profiles SET seller_agreement_version=?,seller_agreement_accepted_at=1 WHERE id=?').run(SELLER_AGREEMENT_VERSION, 'seller-profile');
     sqlite.prepare("INSERT INTO carts(id,anonymous_token_hash,currency,created_at,updated_at) VALUES ('cart','cart-hash','NPR',?,?)").run(now, now);
     sqlite.prepare("INSERT INTO cart_items(id,cart_id,product_id,quantity,created_at,updated_at) VALUES ('cart-item','cart','product',1,?,?)").run(now, now);
     const rates = await getDeliveryRates(db);
@@ -684,8 +717,8 @@ void test('versioned checkout route links its answer to the created order', asyn
   globalThis.commerceCatalogDb = db;
   try {
     await seedVerifiedCheckoutContact(db, 'buyer');
+    await readyCheckoutSeller({ database: db, sqlite }, 'seller-profile', 'seller', 'sa', now);
     globalThis.commerceCheckoutActor = { userId: 'buyer', authSubject: 'buyer', email: 'buyer@example.test' };
-    sqlite.prepare('UPDATE seller_profiles SET seller_agreement_version=?,seller_agreement_accepted_at=1 WHERE id=?').run(SELLER_AGREEMENT_VERSION, 'seller-profile');
     sqlite.prepare("INSERT INTO carts(id,anonymous_token_hash,currency,created_at,updated_at) VALUES ('cart','cart-hash','NPR',?,?)").run(now, now);
     sqlite.prepare("INSERT INTO cart_items(id,cart_id,product_id,quantity,created_at,updated_at) VALUES ('cart-item','cart','product',1,?,?)").run(now, now);
     const formId = 'commerce.checkout';
@@ -698,6 +731,7 @@ void test('versioned checkout route links its answer to the created order', asyn
       method: 'POST', headers: { origin: 'http://localhost:3000', cookie: 'hastabazaar_cart=cart-hash',
         'content-type': 'application/json' },
       body: JSON.stringify({ ...checkoutInput(), deliveryRateVersion: rates.version,
+        reviewedQuote: await reviewedFixtureQuote(db,now),
         formVersion: 1, customAnswers: [] }),
     }));
     assert.equal(response.status, 201);
@@ -717,7 +751,7 @@ void test('gift form renders a required custom field and submits its versioned a
       import React from 'react';
       import { createRoot } from 'react-dom/client';
       import { GiftCardForm } from './components/commerce/gift-card-form';
-      createRoot(document.getElementById('root')!).render(<GiftCardForm issue />);
+      createRoot(document.getElementById('root')!).render(<GiftCardForm actorId="gift-staff-fixture" issue />);
     `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'navigation-stub', setup(bundler) {
@@ -745,6 +779,7 @@ void test('gift form renders a required custom field and submits its versioned a
           fields: [{ id: 'context_note', key: 'context_note', label: 'Gift purpose', type: 'short_text',
             required: true, order: 0, status: 'active' }] } }) });
       if (url.pathname === '/api/admin/gift-cards') {
+        if(route.request().method()==='GET')return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({requestId:url.searchParams.get('requestId'),status:'recorded',record:{id:'gift-1',amountPaisa:12500}})});
         payloads.push(JSON.parse(route.request().postData() ?? '{}'));
         if (payloads.length === 1) return route.abort();
         return route.fulfill({ status: 200, contentType: 'application/json',
@@ -760,14 +795,12 @@ void test('gift form renders a required custom field and submits its versioned a
     await page.getByText(/Connection interrupted/).waitFor();
     await page.reload();
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
-    await page.getByLabel(/Gift purpose/).fill('Festival gift', { timeout: 3000 });
-    await page.getByLabel(/Amount in NPR/).fill('125.00');
-    await page.getByRole('button', { name: 'Issue gift card' }).click();
-    await page.waitForFunction(() => document.body.textContent?.includes('Gift card issued.'));
-    assert.equal(payloads[0].requestId, payloads[1].requestId,
-      'reload after a lost issuance response must preserve the same opaque request ID');
-    assert.equal(payloads[1].formVersion, 1);
-    assert.deepEqual(payloads[1].customAnswers,
+    assert.equal(await page.getByLabel(/Gift purpose/).inputValue(),'');
+    await page.getByRole('button', { name: 'Check saved result' }).click();
+    await page.waitForFunction(() => document.body.textContent?.includes('Gift card issuance is recorded.'));
+    assert.equal(payloads.length,1,'Reload may only check the original opaque receipt, never reconstruct private answers.');
+    assert.equal(payloads[0].formVersion, 1);
+    assert.deepEqual(payloads[0].customAnswers,
       [{ fieldId: 'context_note', value: 'Festival gift' }]);
     assert.equal(await page.evaluate(() => sessionStorage.getItem(
       'hastabazaar:profile-attempt:commerce.gift-card-issue:current-staff')), null);
@@ -784,7 +817,7 @@ void test('invalid gift code stays correctable after a domain 409', async () => 
       import React from 'react';
       import { createRoot } from 'react-dom/client';
       import { GiftCardForm } from './components/commerce/gift-card-form';
-      createRoot(document.getElementById('root')!).render(<GiftCardForm />);
+      createRoot(document.getElementById('root')!).render(<GiftCardForm actorId="gift-buyer-fixture" />);
     `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'navigation-stub', setup(bundler) {
@@ -815,7 +848,7 @@ void test('invalid gift code stays correctable after a domain 409', async () => 
         requests.push(JSON.parse(route.request().postData() ?? '{}'));
         return route.fulfill({ status: requests.length === 2 ? 200 : 409,
           contentType: 'application/json', body: requests.length === 1
-            ? JSON.stringify({ error: 'Gift code is invalid.' })
+            ? JSON.stringify({ error: 'Gift code is invalid.',code:'command_rejected' })
             : requests.length === 2
               ? JSON.stringify({ id: 'gift-1', amountPaisa: 12500, duplicate: false })
               : JSON.stringify({ error: 'Form changed.', code: 'stale_version' }) });
@@ -830,10 +863,10 @@ void test('invalid gift code stays correctable after a domain 409', async () => 
     await page.getByText('Gift code is invalid.').waitFor();
     await input.fill('VALID-CODE');
     await page.getByRole('button', { name: 'Redeem into wallet' }).click({ timeout: 3000 });
-    await page.getByText('Gift card redeemed. Shopping credit added.').waitFor();
+    await page.getByText('Gift card redemption is recorded.',{exact:false}).waitFor();
     assert.deepEqual(requests.map((value) => value.code), ['INVALID-CODE', 'VALID-CODE']);
-    assert.equal(requests[0].requestId, requests[1].requestId,
-      'known invalid code can be corrected under the same unclaimed attempt');
+    assert.notEqual(requests[0].requestId, requests[1].requestId,
+      'A proven rejected, unclaimed code can be corrected as an explicit fresh request.');
     await page.getByRole('button', { name: 'Redeem another code' }).click();
     await input.fill('ANOTHER-CODE');
     await page.getByRole('button', { name: 'Redeem into wallet' }).click();
@@ -861,6 +894,7 @@ void test('aftercare client posts published answers with each authorized case re
     `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'navigation-stub', setup(bundler) {
+      stubFixtureLink(bundler);
       bundler.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'next/navigation', namespace: 'next-shim' }));
       bundler.onLoad({ filter: /.*/, namespace: 'next-shim' }, () => ({
         contents: 'export function useRouter(){return {refresh(){}}}', loader: 'js',
@@ -941,7 +975,9 @@ void test('checkout client submits the published answer with the core order payl
       import React from 'react';
       import { createRoot } from 'react-dom/client';
       import { CheckoutForm } from './components/commerce/checkout-form';
-      createRoot(document.getElementById('root')!).render(<CheckoutForm customerId="customer-fixture" />);
+      createRoot(document.getElementById('root')!).render(<CheckoutForm policyContext={'a'.repeat(64)} customerId="customer-fixture" customerEmail="buyer@example.test" customerPhone="9811111111"
+        paymentCapabilities={{cod:true,manual_bank:false,state:'ready'}}
+        savedAddresses={[{id:'fixture-address',label:'Home',isDefault:1,recipientName:'Fixture Buyer',phone:'9811111111',province:'Madhesh',district:'Dhanusha',municipality:'Janakpur',locality:'Fixture locality',ward:null,landmark:null,postalCode:null}]} />);
     `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'checkout-stubs', setup(bundler) {
@@ -991,8 +1027,6 @@ void test('checkout client submits the published answer with the core order payl
     const form = page.locator('form[data-form-id="commerce.checkout"]');
     await form.getByLabel('Recipient name').fill('Maya Buyer');
     await form.getByLabel('Recipient phone').fill('9811111111');
-    await form.getByLabel('Order email').fill('buyer@example.test');
-    await form.getByLabel('Contact phone').fill('9811111111');
     await form.getByLabel('District').fill('Dhanusha');
     await form.getByLabel('Municipality / rural municipality').fill('Janakpur');
     await form.getByLabel('Street, tole or locality').fill('Ward 1');
@@ -1000,7 +1034,7 @@ void test('checkout client submits the published answer with the core order payl
     await form.locator('label[for="checkout-terms"]').click({ timeout: 3000 });
     await form.getByRole('button', { name: 'Place COD order' }).click();
     await page.getByText('Correct the delivery details.').waitFor();
-    await form.getByLabel('Contact phone').fill('9822222222');
+    await form.getByLabel('Recipient phone').fill('9822222222');
     await form.getByRole('button', { name: 'Place COD order' }).click();
     await form.getByText(/differs from the prior attempt/).waitFor();
     assert.equal(payloads.length, 1, 'changed intent must not reuse an uncertain order attempt');

@@ -290,7 +290,7 @@ void test('client parser accepts only exact registered camelCase seller display 
 
 void test('stale response supplies refresh feedback and leaves entered values intact', () => {
   const entered = { delivery_note: 'Please ring twice' };
-  const result = submissionFeedback(409);
+  const result = submissionFeedback(409, 'stale_version');
   assert.equal(result.stale, true);
   assert.match(result.message, /changed|refresh/i);
   assert.deepEqual(entered, { delivery_note: 'Please ring twice' });
@@ -324,7 +324,7 @@ void test('mounted form retains text through 409 and refresh, then ignores an ol
           state.config ? React.createElement('form', null,
             React.createElement(ConfiguredFields, { config: state.config, baseKeys: [] }),
             React.createElement('button', { id: 'submit', type: 'submit', disabled: !state.canSubmit }, 'Save')) : null,
-          React.createElement('button', { id: 'stale', type: 'button', onClick: () => state.handleSubmissionResponse(new Response(null, { status: 409 })) }, 'Stale'),
+          React.createElement('button', { id: 'stale', type: 'button', onClick: () => state.handleSubmissionResponse(new Response(null, { status: 409 }), 'stale_version') }, 'Stale'),
           React.createElement('button', { id: 'refresh', type: 'button', onClick: state.refresh }, 'Refresh'),
           React.createElement('button', { id: 'switch', type: 'button', onClick: () => setFormId('account.other') }, 'Switch'),
           React.createElement('button', { id: 'switch-invalid', type: 'button', onClick: () => setFormId('account.invalid') }, 'Invalid'));

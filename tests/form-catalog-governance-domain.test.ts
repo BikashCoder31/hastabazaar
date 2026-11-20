@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { registerHooks } from 'node:module';
 import test from 'node:test';
 import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
+import { buildFormAnswerInsert } from '../lib/db/repositories/form-answers';
+import { digestFormRequest } from '../lib/forms/submission';
 
 declare global {
   var governanceDomainDb: D1Database;
@@ -18,7 +20,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier === '@/lib/http/request-security') return { url:
     'data:text/javascript,export function isTrustedMutationRequest(){return true}', shortCircuit: true };
   if (specifier.endsWith('/business-notifications')) return { url:
-    'data:text/javascript,export async function operationalBusinessNotificationStatements(){return []}', shortCircuit: true };
+    'data:text/javascript,export async function operationalBusinessNotificationStatements(){return []};export async function caseBusinessNotificationStatements(){return []}', shortCircuit: true };
   return nextResolve(specifier, context);
 } });
 
@@ -73,6 +75,12 @@ function fixture() {
       'Documented operational detail',NULL,'super','seed-incident',1,1,NULL);`);
   for (const statement of readFileSync('drizzle/0056_form_catalog.sql', 'utf8').split('--> statement-breakpoint'))
     if (statement.trim()) sqlite.exec(statement);
+  // Preserve canonical receipt retention and current answer health columns in
+  // this owned :memory: fixture; no canonical/local database is opened.
+  for (const statement of readFileSync('drizzle/0081_core_form_receipt_retention.sql', 'utf8').split('--> statement-breakpoint'))
+    if (statement.trim()) sqlite.exec(statement);
+  for (const statement of readFileSync('drizzle/0151_form_health_records.sql', 'utf8').split('--> statement-breakpoint').slice(0, 4))
+    if (statement.trim()) sqlite.exec(statement);
   for (const id of formIds) sqlite.prepare(`INSERT INTO form_config_versions
     (id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,
       updated_at,published_by,published_at,last_request_id) VALUES (?, ?,1,1,'published',?,
@@ -98,6 +106,31 @@ const cases = [
     table: 'backup_verifications' },
 ] as const;
 
+const legacyIncident = (action: string) => action === 'incident.create' || action === 'incident.update';
+const activeCases = cases.filter(entry => !legacyIncident(entry.action));
+
+// Explicit pre-existing legacy evidence, not a successful call to the retired
+// mutation API. Keep the real published-answer builder and exact audit digest.
+async function retainLegacyIncident(database: D1Database, entry: typeof cases[number], requestId: string) {
+  const subjectId = entry.action === 'incident.create' ? 'retained-created-incident' : 'existing-incident';
+  const answers = { formId: entry.formId, version: 1, answers: [] };
+  const versionId = `${entry.formId}-v1`;
+  const catalogDigest = await digestFormRequest({ action: entry.action, data: { ...entry.data }, versionId, answers });
+  await database.batch([
+    entry.action === 'incident.create'
+      ? database.prepare(`INSERT INTO operational_incidents
+        (id,reference_number,severity,status,title,detail,owner_id,request_id,created_at,updated_at)
+        VALUES (?,'INC-RETAINED','high','open','Retained incident','Documented prior incident evidence',?,?,100,100)`)
+        .bind(subjectId, entry.actorId, requestId)
+      : database.prepare("UPDATE operational_incidents SET status='mitigating',resolution='Retained mitigation',updated_at=100 WHERE id=?").bind(subjectId),
+    database.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,next_json,request_id,created_at)
+      VALUES (?, ?, ?, 'operational_incident', ?, ?, ?, 100)`)
+      .bind(`retained-${requestId}`, entry.actorId, entry.action, subjectId, JSON.stringify({ catalogDigest }), requestId),
+    buildFormAnswerInsert(database, { formId: entry.formId, requestId, versionId,
+      subjectType: 'operational_incident', subjectId, actorId: entry.actorId, answers, now: 100 }),
+  ]);
+}
+
 function publishContext(sqlite: DatabaseSync, formId: string, version: number) {
   sqlite.prepare(`INSERT INTO form_config_versions
     (id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,
@@ -108,9 +141,9 @@ function publishContext(sqlite: DatabaseSync, formId: string, version: number) {
       type:'short_text',required:true,order:0,status:'active'}]}),`route-seed-${formId}-${version}`);
 }
 
-void test('five live governance routes require nonempty published answers and commit one contextual result', async () => {
+void test('three active governance routes require nonempty published answers and commit one contextual result', async () => {
   const { POST } = await import('../app/api/admin/governance/route');
-  for (const entry of cases) {
+  for (const entry of activeCases) {
     const { sqlite, database } = fixture();
     globalThis.governanceDomainDb = database;
     globalThis.governanceDomainActor = { id: entry.actorId, role: entry.actorRole };
@@ -138,7 +171,7 @@ void test('five live governance routes require nonempty published answers and co
 
 void test('governance route reports commit-time publication races as stale without any action or answer', async () => {
   const { POST } = await import('../app/api/admin/governance/route');
-  for (const entry of cases) {
+  for (const entry of activeCases) {
     const { sqlite, database } = fixture();
     globalThis.governanceDomainDb = database;
     globalThis.governanceDomainActor = { id: entry.actorId, role: entry.actorRole };
@@ -178,7 +211,8 @@ void test('governance answer history requires a current grant and exact parent a
     const { sqlite, database } = fixture();
     try {
       const requestId = `history-${entry.action}`;
-      await performGovernanceAction(database,{actorId:entry.actorId,actorRole:entry.actorRole,
+      if (legacyIncident(entry.action)) await retainLegacyIncident(database, entry, requestId);
+      else await performGovernanceAction(database,{actorId:entry.actorId,actorRole:entry.actorRole,
         action:entry.action,requestId,data:{...entry.data},now:100,
         form:{formId:entry.formId,requestId,versionId:`${entry.formId}-v1`,
           answers:{formId:entry.formId,version:1,answers:[]}}});
@@ -233,9 +267,9 @@ void test('governance no-input decisions reject fake form context and unavailabl
   } finally { sqlite.close(); globalThis.governanceDomainActor=null; }
 });
 
-void test('five governance actions atomically retain answers and reject changed or cross-actor replay', async () => {
+void test('three active governance actions atomically retain answers and reject changed or cross-actor replay', async () => {
   const { performGovernanceAction } = await import('../lib/db/repositories/operations');
-  for (const entry of cases) {
+  for (const entry of activeCases) {
     const { sqlite, database } = fixture();
     try {
       const options = { actorId: entry.actorId, actorRole: entry.actorRole, action: entry.action,
@@ -270,9 +304,9 @@ void test('a failed governance batch rolls back parent, audit, and answer; curre
   } finally { sqlite.close(); }
 });
 
-void test('all five actions roll back on obsolete or missing answer versions, while exact historical replay remains valid', async () => {
+void test('all three active actions roll back on obsolete or missing answer versions, while exact historical replay remains valid', async () => {
   const { performGovernanceAction } = await import('../lib/db/repositories/operations');
-  for (const entry of cases) {
+  for (const entry of activeCases) {
     const { sqlite, database } = fixture();
     try {
       const requestId = `version-${entry.action}`;
@@ -297,6 +331,48 @@ void test('all five actions roll back on obsolete or missing answer versions, wh
       await performGovernanceAction(database, valid);
       assert.equal((sqlite.prepare('SELECT COUNT(*) n FROM form_answer_sets WHERE request_id=?').get(requestId) as { n: number }).n, 1);
     } finally { sqlite.close(); }
+  }
+});
+
+void test('retired incident actions direct to System health and cannot mutate or replay retained history', async () => {
+  const { POST } = await import('../app/api/admin/governance/route');
+  const { performGovernanceAction } = await import('../lib/db/repositories/operations');
+  for (const entry of cases.filter(entry => legacyIncident(entry.action))) {
+    const { sqlite, database } = fixture();
+    globalThis.governanceDomainDb = database;
+    globalThis.governanceDomainActor = { id: entry.actorId, role: entry.actorRole };
+    try {
+      const requestId = `retired-${entry.action.replace('.', '-')}`;
+      const options = { actorId: entry.actorId, actorRole: entry.actorRole, action: entry.action,
+        requestId, data: { ...entry.data }, now: 200,
+        form: { formId: entry.formId, requestId, versionId: `${entry.formId}-v1`,
+          answers: { formId: entry.formId, version: 1, answers: [] } } };
+      await assert.rejects(performGovernanceAction(database, options), /System health incident workspace/);
+      assert.equal((sqlite.prepare('SELECT COUNT(*) n FROM audit_logs').get() as { n: number }).n, 0);
+      assert.equal((sqlite.prepare('SELECT COUNT(*) n FROM form_answer_sets').get() as { n: number }).n, 0);
+      await retainLegacyIncident(database, entry, requestId);
+      const original = sqlite.prepare('SELECT * FROM operational_incidents ORDER BY id').all();
+      const originalAudit = sqlite.prepare('SELECT * FROM audit_logs').all();
+      const originalAnswers = sqlite.prepare('SELECT * FROM form_answer_sets').all();
+      for (const attemptedId of [requestId, `${requestId}-new`]) {
+        const response = await POST(new Request('http://localhost:3000/api/admin/governance', {
+          method: 'POST', headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' },
+          body: JSON.stringify({ action: entry.action, requestId: attemptedId, data: { ...entry.data },
+            formVersion: 1, customAnswers: [] }),
+        }));
+        assert.equal(response.status, 409, entry.action);
+        assert.equal(response.headers.get('Cache-Control'), 'no-store');
+        const body = await response.json() as { href: string; error: string };
+        assert.match(body.error, /Legacy history is retained/);
+        assert.equal(body.href, '/admin/system-health/incidents' +
+          (entry.action === 'incident.update' ? '?legacy=existing-incident' : ''));
+        await assert.rejects(performGovernanceAction(database, { ...options, requestId: attemptedId,
+          form: { ...options.form, requestId: attemptedId } }), /System health incident workspace/);
+      }
+      assert.deepEqual(sqlite.prepare('SELECT * FROM operational_incidents ORDER BY id').all(), original);
+      assert.deepEqual(sqlite.prepare('SELECT * FROM audit_logs').all(), originalAudit);
+      assert.deepEqual(sqlite.prepare('SELECT * FROM form_answer_sets').all(), originalAnswers);
+    } finally { sqlite.close(); globalThis.governanceDomainActor = null; }
   }
 });
 

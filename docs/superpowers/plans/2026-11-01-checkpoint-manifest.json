@@ -1,0 +1,4247 @@
+{
+  "capturedAt": "2026-10-31T19:31:56.725Z",
+  "root": "C:/Users/abinash/Desktop/HastaBazaar",
+  "branch": "codex/company-store-maker-readiness",
+  "head": "1addd7e9d60ace09e111d30ad5d4a8140998ecc6",
+  "configuredRoot": "C:/Users/abinash/Desktop/HastaBazaar",
+  "baseline": "d9056dc10fee13dc11d15f24a14f63b003befe0b",
+  "baselineIsAncestor": true,
+  "scope": "Changed source/planning paths in listed scopes only; excludes archives/build outputs/private media/runtime data. Hash metadata only, no database or credential contents.",
+  "scopes": [
+    "app",
+    "components",
+    "lib",
+    "hooks",
+    "db",
+    "drizzle",
+    "scripts",
+    "tests",
+    "deployment",
+    "docs",
+    ".github",
+    "AGENTS.md",
+    "LOCAL-START.md",
+    "package.json",
+    "package-lock.json"
+  ],
+  "preflight": {
+    "command": "npm run local:check",
+    "exitCode": 0,
+    "formsReady": 89,
+    "formsTotal": 89,
+    "signInSchemaReady": true,
+    "mode": "local_staging",
+    "serverStarted": false,
+    "dataChanged": false,
+    "emailDeliveryVerified": false,
+    "paymentDeliveryVerified": false
+  },
+  "existingChanges": [
+    {
+      "status": " M",
+      "path": ".github/workflows/verify-release.yml",
+      "sha256": "58caff30a5561dfe8b57ad419e3f36b58282454c6c01427c6ccbfe3530f29db5",
+      "bytes": 8177
+    },
+    {
+      "status": " M",
+      "path": "AGENTS.md",
+      "sha256": "3eead773ccbebd527abf5f7781905ba892c744fca7438d84f1fa8fc70e59498f",
+      "bytes": 2228
+    },
+    {
+      "status": " M",
+      "path": "LOCAL-START.md",
+      "sha256": "3588b49ccd8ededab12a0a5d2543c4acf85787c51f375ea2b28a12563134e2ac",
+      "bytes": 3154
+    },
+    {
+      "status": " M",
+      "path": "app/account-access-denied/page.tsx",
+      "sha256": "173bdb4f64330d9e4a1d632b1f94c1a07caf06489a9693abb7967e7c45e1093b",
+      "bytes": 807
+    },
+    {
+      "status": " M",
+      "path": "app/account/notifications/page.tsx",
+      "sha256": "eff19afc90266f2e0d5cdaf58cbc251ff7e6aa432f63d160c0cb2fe235d7c4e9",
+      "bytes": 1024
+    },
+    {
+      "status": " M",
+      "path": "app/account/page.tsx",
+      "sha256": "389142fe5e81b0846754b1d699aadb924f2df535a1ec7c117f7452b0ba61ac6f",
+      "bytes": 7529
+    },
+    {
+      "status": " M",
+      "path": "app/account/referrals/page.tsx",
+      "sha256": "6e860bd6f2c18ffc86cc4f6b7753c49aa9323023f3641800a039097a878af533",
+      "bytes": 6372
+    },
+    {
+      "status": " M",
+      "path": "app/account/rewards/page.tsx",
+      "sha256": "95176c1f2614d6470955ff0146a539cda687c966c23adfe3fff9020ac13e9878",
+      "bytes": 1399
+    },
+    {
+      "status": " M",
+      "path": "app/account/wallet/page.tsx",
+      "sha256": "251e6f8f298bde09a1991fcbe645aed5893352b7999dcd4054a14167409e7a4f",
+      "bytes": 7829
+    },
+    {
+      "status": " M",
+      "path": "app/admin/business-settings/page.tsx",
+      "sha256": "76e7d70d58d938a2e0d815066726bfa69fddea8c9fd68896cded7586d78f3ccc",
+      "bytes": 3025
+    },
+    {
+      "status": " M",
+      "path": "app/admin/commission/page.tsx",
+      "sha256": "06f4eb1ee0aa5271c939d815cf55f6f04ff39ce7df36fc7c94a58a7670e26c66",
+      "bytes": 11565
+    },
+    {
+      "status": " M",
+      "path": "app/admin/layout.tsx",
+      "sha256": "ede87d10fb1c0c1eb4069f069d02704292fdefdede85f9384b0d65df05ca68d8",
+      "bytes": 3913
+    },
+    {
+      "status": " M",
+      "path": "app/admin/legal-policies/page.tsx",
+      "sha256": "94a54422e787e688a3cf89c7ea07fd99f33e4252401547dc3b3cd21a9725a660",
+      "bytes": 3304
+    },
+    {
+      "status": " M",
+      "path": "app/admin/orders/[id]/page.tsx",
+      "sha256": "0bd7a9329b80520fd2a0bd7551933cb6e6b590d106f58150e4c50e44fd4fae16",
+      "bytes": 21035
+    },
+    {
+      "status": " M",
+      "path": "app/admin/products/[id]/page.tsx",
+      "sha256": "18534965277f9c9c850ba33111d9c26f50223aafb09f54fad1966a4b76c0866a",
+      "bytes": 14081
+    },
+    {
+      "status": " M",
+      "path": "app/admin/programs/page.tsx",
+      "sha256": "4090b66d272de38b9d632408e048f9a11212c3b0a7fae09f84980b24f7096437",
+      "bytes": 6046
+    },
+    {
+      "status": " M",
+      "path": "app/admin/promo-codes/page.tsx",
+      "sha256": "9db9b5086c468d8dbf1c37610a0fcee4d7b26f229facdfd320ffcd28cec672da",
+      "bytes": 3218
+    },
+    {
+      "status": " M",
+      "path": "app/admin/sellers/[id]/page.tsx",
+      "sha256": "bfa3950383b4eeba8d2a98050e8e4bc2dfcc505eb1436edb28e0767970d7203c",
+      "bytes": 25883
+    },
+    {
+      "status": " M",
+      "path": "app/admin/team/page.tsx",
+      "sha256": "c09f601aa815a88babe87fbb854912178ae7000be116d0c286643ecb0d597e8f",
+      "bytes": 6916
+    },
+    {
+      "status": " M",
+      "path": "app/api/admin/business-settings/[key]/route.ts",
+      "sha256": "1e8e4c1a8381c0fc84bd376cba48809ae9cdf0c4afdbcef4a570dac8b6a7fdb5",
+      "bytes": 2272
+    },
+    {
+      "status": " M",
+      "path": "app/api/admin/business-settings/route.ts",
+      "sha256": "bda33fb20e8c418de94d7eb8a7d8fc9598c92f3e0a37f9f12e7588109b6afc7c",
+      "bytes": 6087
+    },
+    {
+      "status": " M",
+      "path": "app/api/admin/commission/route.ts",
+      "sha256": "e5bd2fee01b3fc02a332fbf921ecfd4c2d24cc430535ebec771696b2d23a60ff",
+      "bytes": 3884
+    },
+    {
+      "status": " M",
+      "path": "app/api/admin/seller-documents/[id]/route.ts",
+      "sha256": "22bd7f053391d09fbcd5a21215c934e53122e7d51bfbbeb1dae2f58583ed808b",
+      "bytes": 3044
+    },
+    {
+      "status": " M",
+      "path": "app/api/auth/email-code/verify/route.ts",
+      "sha256": "6ee2f74d8b92e2605e93b1db9d4f717cde7dd1e9c044f65f4f955025835f566d",
+      "bytes": 6089
+    },
+    {
+      "status": " M",
+      "path": "app/api/auth/google/callback/route.ts",
+      "sha256": "a9e301b85aedfa3cd02733ac6902c4bc162657ce2c5fc3824f8a4ed76534827b",
+      "bytes": 3226
+    },
+    {
+      "status": " M",
+      "path": "app/api/auth/login/route.ts",
+      "sha256": "783dbb375696841e662ce0df36c5dc457bf4103c4195d2615a82737a9f8b58be",
+      "bytes": 6039
+    },
+    {
+      "status": " M",
+      "path": "app/api/checkout/route.ts",
+      "sha256": "edea42718c8a83cef67c4cbababbe1d6f719cfc77175809c8cd5fa0322f864f7",
+      "bytes": 5896
+    },
+    {
+      "status": " M",
+      "path": "app/api/return-evidence/[id]/route.ts",
+      "sha256": "828f83cffbd3b819e53bb33a983a207d9c49542b3f901dabeb7e163a023fdd7e",
+      "bytes": 2701
+    },
+    {
+      "status": " M",
+      "path": "app/api/seller-applications/managed-terms/route.ts",
+      "sha256": "74daf10dfd4d899123a6c7965dcb00500a69a241e88fa0c216216fc21d1e2eda",
+      "bytes": 4943
+    },
+    {
+      "status": " M",
+      "path": "app/api/seller-applications/profile/route.ts",
+      "sha256": "9b3de66610d4cf818bc2cf64d5f200cbce4de0e1c3ab621991959cb72be6ca75",
+      "bytes": 12548
+    },
+    {
+      "status": " M",
+      "path": "app/api/seller-applications/route.ts",
+      "sha256": "7f0e49d63f2b533ae403c6c14507c3fbf58e0701ae0076d072e19f833a0101d1",
+      "bytes": 15435
+    },
+    {
+      "status": " M",
+      "path": "app/api/seller-applications/transition/route.ts",
+      "sha256": "cdb8cac032a538ebb9a3419cb68d6dae8ae0a57767cb7a8b8acc6cfbfaea04df",
+      "bytes": 11776
+    },
+    {
+      "status": " M",
+      "path": "app/api/seller/agreements/route.ts",
+      "sha256": "e9977d6e903582c183115fb0234724bafe3dc347f732f0d1a210a9b4e9f4c8de",
+      "bytes": 5183
+    },
+    {
+      "status": " M",
+      "path": "app/auth.ts",
+      "sha256": "a2ea667de6285e6e637c49aebc38895acfd2247e400836f0a32a1b78680906a0",
+      "bytes": 4215
+    },
+    {
+      "status": " M",
+      "path": "app/auth/continue/page.tsx",
+      "sha256": "415ea2c9fdc1fee34676aacef2204689d47552c98b60339a680606e58bb7a26e",
+      "bytes": 1055
+    },
+    {
+      "status": " M",
+      "path": "app/careers/page.tsx",
+      "sha256": "be681180cfe53fb7a91991f81d07b0d54d232f5a318e6d90316a1643b77cbb16",
+      "bytes": 1003
+    },
+    {
+      "status": " M",
+      "path": "app/cart/page.tsx",
+      "sha256": "2e034d9ed09b1d23bd28c8c954e6b2c096fb32940009f4ae45e28c2ad35e0b86",
+      "bytes": 1413
+    },
+    {
+      "status": " M",
+      "path": "app/categories/page.tsx",
+      "sha256": "ca8220573ce4f69f8e544a3333dcfbc7b2e9d151d29954d363fabca3af673273",
+      "bytes": 914
+    },
+    {
+      "status": " M",
+      "path": "app/checkout/page.tsx",
+      "sha256": "ebfa2161b09e4bc7fab0cdb6197f9229551d07640d100a8e61d651a9a9c0a6a4",
+      "bytes": 3433
+    },
+    {
+      "status": " M",
+      "path": "app/contact-us/page.tsx",
+      "sha256": "924bfe06b5335f6c782d112604e421cec4a2349e2658b8b960af9cf5f32b33e6",
+      "bytes": 4573
+    },
+    {
+      "status": " M",
+      "path": "app/error.tsx",
+      "sha256": "643cfe0404742e9fddd4d00354544f60340f2d7ff48359c3e7ce2729f75e0961",
+      "bytes": 1263
+    },
+    {
+      "status": " M",
+      "path": "app/feedback/page.tsx",
+      "sha256": "32b210f87777e545503e87621ad1d2dd3bb0cf72c63674ff4bfe91774b0afb89",
+      "bytes": 1325
+    },
+    {
+      "status": " M",
+      "path": "app/forgot-password/page.tsx",
+      "sha256": "5e2296f9897e74fbaf80dd50dd91743b6d043f08ea7bb547412ec703b6e808c6",
+      "bytes": 3287
+    },
+    {
+      "status": " M",
+      "path": "app/forgot-password/reset/page.tsx",
+      "sha256": "30157b7bec45ba0eaa77b3763898ffc96f2e16618514bb702a35ed29ae4f82d1",
+      "bytes": 4950
+    },
+    {
+      "status": " M",
+      "path": "app/health/route.ts",
+      "sha256": "78e481a12ad5c200651e9d8f32b950ab1ae5623ae0c572be3194e56d8ab4ffa5",
+      "bytes": 613
+    },
+    {
+      "status": " M",
+      "path": "app/help/page.tsx",
+      "sha256": "2eed01844dc976631e8ef2a112568b172148b4cbad2c4e962ebaf2ce2bf2f48e",
+      "bytes": 2399
+    },
+    {
+      "status": " M",
+      "path": "app/icon.png",
+      "sha256": "5187c32655cc629356fc9304abde8d7d3495f931bdfe4278935d25d4c7c85e70",
+      "bytes": 73254
+    },
+    {
+      "status": " M",
+      "path": "app/layout.tsx",
+      "sha256": "71e54bf1c1ef78cb7a73fe505b550204aae093c2c2faca4ed3367a13917cf973",
+      "bytes": 1289
+    },
+    {
+      "status": " M",
+      "path": "app/legal/history/page.tsx",
+      "sha256": "47f07f714d847aebb3d08a88209d2918b33f8367ad782be0f9bd2d9fdfc1a7d4",
+      "bytes": 3256
+    },
+    {
+      "status": " M",
+      "path": "app/legal/page.tsx",
+      "sha256": "24370545bd057ebae29b4d25de4fc38648b1679482b18a4c76b69c5b0a6722e4",
+      "bytes": 3445
+    },
+    {
+      "status": " M",
+      "path": "app/local-testing/page.tsx",
+      "sha256": "680159658216e0d25d38f913254c9ff23a0e14886247bec621a4045d55f8fb04",
+      "bytes": 3782
+    },
+    {
+      "status": " M",
+      "path": "app/login/code/page.tsx",
+      "sha256": "96e9ab4187728478654fb59d560146689842f66dbcd47d664e87d1115005076a",
+      "bytes": 3278
+    },
+    {
+      "status": " M",
+      "path": "app/login/page.tsx",
+      "sha256": "ee72088c8e13265fd617edb84c69f973f450fa980d77e96664794c4734b2fe60",
+      "bytes": 6504
+    },
+    {
+      "status": " M",
+      "path": "app/makers/[id]/page.tsx",
+      "sha256": "3ca317355ca4eb4773164348dedeccb23d769ff399fea3643f735739e4a70706",
+      "bytes": 4765
+    },
+    {
+      "status": " M",
+      "path": "app/occasions/page.tsx",
+      "sha256": "6d5521aa9147f4a8678e3f02edc7de180a999ecf0bca2468fc895cefd4dab004",
+      "bytes": 896
+    },
+    {
+      "status": " M",
+      "path": "app/orders/[orderNumber]/documents/[id]/page.tsx",
+      "sha256": "e26dfe2b15381d9dce8d13e4b1c53ab568ffb13bdf8d1735c8fdbd2493aa01f4",
+      "bytes": 10576
+    },
+    {
+      "status": " M",
+      "path": "app/orders/[orderNumber]/managed-invoices/[id]/page.tsx",
+      "sha256": "58b0358f77bf461e1241689840f0902eb882d9e27e4299634ddfaf4f2ca2f07a",
+      "bytes": 5174
+    },
+    {
+      "status": " M",
+      "path": "app/orders/[orderNumber]/page.tsx",
+      "sha256": "d5a30ddd4de036317fc6e00a5409844b3221b0b1673a447da9d82a7fd8a48b7b",
+      "bytes": 23679
+    },
+    {
+      "status": " M",
+      "path": "app/orders/[orderNumber]/returns/route.ts",
+      "sha256": "a6213b389b4de918c7c9faa19970ecc7820bed59b7f4ddee729d0d39d489aece",
+      "bytes": 6390
+    },
+    {
+      "status": " M",
+      "path": "app/page.tsx",
+      "sha256": "12432ce2fd12e43557b82fd6cb939d0882e5759b31db7784f7c0a1b14ded5936",
+      "bytes": 20322
+    },
+    {
+      "status": " M",
+      "path": "app/products/[slug]/page.tsx",
+      "sha256": "72051e0bd852bc299eb17d90a24f7a5998af1b96ee795114e795749198a98f44",
+      "bytes": 19942
+    },
+    {
+      "status": " M",
+      "path": "app/referral-terms/page.tsx",
+      "sha256": "c22006bf45fa491da1d0282dab5a1ad4bb4b85c7ad9601be651271412af7f6cd",
+      "bytes": 4355
+    },
+    {
+      "status": " M",
+      "path": "app/register/page.tsx",
+      "sha256": "1845ae8a8de1f7c5644547dca141f26476334902d0e0c4be1d87575551375da3",
+      "bytes": 4245
+    },
+    {
+      "status": " M",
+      "path": "app/robots.txt/route.ts",
+      "sha256": "6066d51dd97b4b24b149ba94b3e3ec05d1b631627ba97c46c8b382e481d9893e",
+      "bytes": 855
+    },
+    {
+      "status": " M",
+      "path": "app/sell/application/page.tsx",
+      "sha256": "75879dda98b1974061f22450992e46b8366f461317e8ab73c7257464fc46dda9",
+      "bytes": 14031
+    },
+    {
+      "status": " M",
+      "path": "app/sell/apply/page.tsx",
+      "sha256": "253bb5ea815360f4967bab0b7d43bd48e4bf73591b1ce0e33cd3d254b8532a9a",
+      "bytes": 2039
+    },
+    {
+      "status": " M",
+      "path": "app/sell/page.tsx",
+      "sha256": "ad12eab30679a9d7e5fa47369423bcbb24b73151e9d8662efa714ed8af7805dc",
+      "bytes": 6774
+    },
+    {
+      "status": " M",
+      "path": "app/seller-access-denied/page.tsx",
+      "sha256": "b975c1ecb44e16a9ef3e71ce75074ea8454005d06687bd1bc6bfda491e6540bd",
+      "bytes": 3106
+    },
+    {
+      "status": " M",
+      "path": "app/seller/cases/returns/[id]/page.tsx",
+      "sha256": "a6566aea7ac4a145b64fe93252f64f817cf0adf32ab86a4ed6e426bf24f8851f",
+      "bytes": 6945
+    },
+    {
+      "status": " M",
+      "path": "app/seller/finance/page.tsx",
+      "sha256": "55900adb88107569acd3effa4dec8987d572a203a944dfa5a0c2483da40c55cb",
+      "bytes": 8799
+    },
+    {
+      "status": " M",
+      "path": "app/seller/layout.tsx",
+      "sha256": "3871152020c77af72aad4a354c8dbd1424fefac1b92be077c5aa17ee444a7ef0",
+      "bytes": 5247
+    },
+    {
+      "status": " M",
+      "path": "app/seller/orders/[id]/page.tsx",
+      "sha256": "c7e248853046ba306531e17337c8d323de6d4d32c683ad1b471e492db8df44fa",
+      "bytes": 9233
+    },
+    {
+      "status": " M",
+      "path": "app/seller/orders/page.tsx",
+      "sha256": "1c31ed01b29b6a391ce500f44d3aca47f4e7b111c590fcdfd4535b795621da87",
+      "bytes": 1982
+    },
+    {
+      "status": " M",
+      "path": "app/seller/page.tsx",
+      "sha256": "82e9be510cbcf99c14a4b4a31c20bf54d62a591808325142e4efbb84f96cd173",
+      "bytes": 8974
+    },
+    {
+      "status": " M",
+      "path": "app/seller/products/new/page.tsx",
+      "sha256": "168c1224a1266e9c45395ba670151eee6018375d1b9f7412042be0cb73365535",
+      "bytes": 1410
+    },
+    {
+      "status": " M",
+      "path": "app/seller/products/page.tsx",
+      "sha256": "79e0c9b13bd9c3c5f03d987421bf3fa58854a5a63237811c469229209d9f1118",
+      "bytes": 12673
+    },
+    {
+      "status": " M",
+      "path": "app/seller/profile/page.tsx",
+      "sha256": "5464fc8a101cd5e3d5ba05b99934c5b34af73be7085204caca5f7d8a0beeb77f",
+      "bytes": 3705
+    },
+    {
+      "status": " M",
+      "path": "app/shop/page.tsx",
+      "sha256": "716a619d5b9abd201bef432b52558ebf12799974d93756b26a41c6b5a6f92c6b",
+      "bytes": 13784
+    },
+    {
+      "status": " M",
+      "path": "app/staff-access-denied/page.tsx",
+      "sha256": "d85a5a55900698413dcd4c6254afd56ddfdba7c4f65413e15348d7602ae85021",
+      "bytes": 4145
+    },
+    {
+      "status": " M",
+      "path": "components/account/account-navigation.tsx",
+      "sha256": "7ee0d3cfd18237e8c9e75b01ada31f3e736db0a5d79a66819eb7112ced814510",
+      "bytes": 4113
+    },
+    {
+      "status": " M",
+      "path": "components/account/address-manager.tsx",
+      "sha256": "5b5be190e9615574c731075cb7414454ed83bfef3fee63a0c403b53ed429873f",
+      "bytes": 16127
+    },
+    {
+      "status": " M",
+      "path": "components/account/privacy-request-form.tsx",
+      "sha256": "d7538f170dd53ae703474a388183949cb66c9b4529f77e9b4c8ce33e661c1ecb",
+      "bytes": 5113
+    },
+    {
+      "status": " M",
+      "path": "components/account/profile-form.tsx",
+      "sha256": "2ede3ab9d84ccee1b1d11880390c9be674b071d253731a614f37a0d2d272f2c7",
+      "bytes": 6876
+    },
+    {
+      "status": " M",
+      "path": "components/account/referral-share.tsx",
+      "sha256": "23601f284b62f8df4d99c2506f92dcc04a6bf8653a463eed12b9c327a1979ac4",
+      "bytes": 2980
+    },
+    {
+      "status": " M",
+      "path": "components/account/review-form.tsx",
+      "sha256": "f9c0412f989cf4d9e56c96c853c06eb485a5748ae5d0be21712d197159d3d272",
+      "bytes": 7216
+    },
+    {
+      "status": " M",
+      "path": "components/account/saved-product-grid.tsx",
+      "sha256": "2731bb827c417d6580d41ee729f0f8a16147700bc186240d57b8a94911d718cc",
+      "bytes": 2742
+    },
+    {
+      "status": " M",
+      "path": "components/admin/business-settings-manager.tsx",
+      "sha256": "e89d0fea908a0794e07ca224213460901d9593068f176e335d5b3f4416fdaa48",
+      "bytes": 47266
+    },
+    {
+      "status": " M",
+      "path": "components/admin/commission-report.tsx",
+      "sha256": "8d0cdf534913ca5e811dc19a4f82c932651b9ea7c01b892d5aac54013fdb89a4",
+      "bytes": 13053
+    },
+    {
+      "status": " M",
+      "path": "components/admin/product-review-actions.tsx",
+      "sha256": "fa1157f6422b8e082664c8916782db37a45892b46ed2f8c42446700e4462c1dc",
+      "bytes": 9235
+    },
+    {
+      "status": " M",
+      "path": "components/admin/program-management.tsx",
+      "sha256": "dd43b1e0e67700ee706215545aaaff195928a1db5097d3edc6f0d795c9f39354",
+      "bytes": 14635
+    },
+    {
+      "status": " M",
+      "path": "components/admin/promo-code-cost-preview.tsx",
+      "sha256": "c98070f8d395d9aa42480cb1a2c41305818085117e7254368496257af77ff039",
+      "bytes": 6751
+    },
+    {
+      "status": " M",
+      "path": "components/admin/promo-code-manager.tsx",
+      "sha256": "61cc748943a55b9918c2a621bb5a8272c554c0ea9569b36a638c97d8ddc5eafa",
+      "bytes": 34744
+    },
+    {
+      "status": " M",
+      "path": "components/admin/return-case-actions.tsx",
+      "sha256": "72ffc493eafa31c11e7642f72bc32eb4c320ae4eb1dbbd9873937a9a5aa4ccce",
+      "bytes": 15240
+    },
+    {
+      "status": " M",
+      "path": "components/admin/seller-review-actions.tsx",
+      "sha256": "039c2695c18101d7acf1f9f2faa6c0d648b51d0eadec3d3a4fe17270a9a44e41",
+      "bytes": 12998
+    },
+    {
+      "status": " M",
+      "path": "components/admin/setting-value-preview.tsx",
+      "sha256": "cf66815b2e0b32a035c3743c1a9b665abe4cfb336f44a3bc3004e9f4dbb0b900",
+      "bytes": 2258
+    },
+    {
+      "status": " M",
+      "path": "components/catalog/product-card.tsx",
+      "sha256": "7c96b846114a54423cd5cc24b8539c3c7a4c4c3fabcfb90c67958c0557152a38",
+      "bytes": 2535
+    },
+    {
+      "status": " M",
+      "path": "components/commerce/cart-view.tsx",
+      "sha256": "397886009f8c5d83c65ef5b43293cd1ea5b3e7d440cfcdf94c246f850d49433f",
+      "bytes": 10916
+    },
+    {
+      "status": " M",
+      "path": "components/commerce/checkout-form.tsx",
+      "sha256": "4f615c3be03094fe2a4ff2c912f0888c853a869b6602155ebddf3ea5c223756c",
+      "bytes": 50627
+    },
+    {
+      "status": " M",
+      "path": "components/commerce/customer-aftercare.tsx",
+      "sha256": "90039bdd7c64d410ae3187ebfcc148378d67bb30011054eea77ace1ea7eda169",
+      "bytes": 24736
+    },
+    {
+      "status": " M",
+      "path": "components/commerce/gift-card-form.tsx",
+      "sha256": "387f5b941137b7794cc80d9e415c656bdce8654b65fe36ceb26bc3ea54017f99",
+      "bytes": 8439
+    },
+    {
+      "status": " M",
+      "path": "components/delivery/location-picker.tsx",
+      "sha256": "db29e958c8964ae52bda7a1a90232686e42684affd4f74f55e4df3f53dbd9ded",
+      "bytes": 4026
+    },
+    {
+      "status": " M",
+      "path": "components/forms/configured-fields.tsx",
+      "sha256": "b690ced833b78f7e65871b4eca23969d82b5f5a62b725968cc52557fb7096288",
+      "bytes": 5909
+    },
+    {
+      "status": " M",
+      "path": "components/forms/form-config-client.tsx",
+      "sha256": "c241681271604780bad05f1bc400786f8afd30f3ffc01e4e4f7212bec542ffeb",
+      "bytes": 10478
+    },
+    {
+      "status": " M",
+      "path": "components/layout/company-disclosure.tsx",
+      "sha256": "f854ae546c2fe6d1240a98375bff6ff820e913e3ff4b3d73564245254e435afa",
+      "bytes": 2353
+    },
+    {
+      "status": " M",
+      "path": "components/layout/customer-contact-form.tsx",
+      "sha256": "d145dbb2c05c2521cf649652f68a148b53e90b7bdeed86e916028cbb2285023d",
+      "bytes": 10245
+    },
+    {
+      "status": " M",
+      "path": "components/layout/footer-feedback-form.tsx",
+      "sha256": "08495c46c8f60de7e504e637795db6aef74f51913425e1dfd290abce0d2cb98e",
+      "bytes": 11962
+    },
+    {
+      "status": " M",
+      "path": "components/layout/legal-policy-page.tsx",
+      "sha256": "a961d055f1be23e97c2362a75e6fc5beaca9e37d40962ce89d27ce565a645228",
+      "bytes": 13584
+    },
+    {
+      "status": " M",
+      "path": "components/layout/public-information-page.tsx",
+      "sha256": "c0e234ddf276a9ea213de4993f2a34fbf5bab1768956bbc0c8134b3f269780e1",
+      "bytes": 4292
+    },
+    {
+      "status": " M",
+      "path": "components/layout/site-footer.tsx",
+      "sha256": "6a12cb4e1fa89d1ae3c7f1c65a552c0836f48f50b4984a72e4afce37e95ba7b9",
+      "bytes": 10260
+    },
+    {
+      "status": " M",
+      "path": "components/layout/site-header.tsx",
+      "sha256": "f40126ecafa6b0faf904f04924848800bbf10ee3c173506b73587c02b41edb73",
+      "bytes": 9719
+    },
+    {
+      "status": " M",
+      "path": "components/seller/case-response-form.tsx",
+      "sha256": "e02046522c739b39d48ab426aa49e62522f437b3d52dfd1f304a18e1c55c769c",
+      "bytes": 5572
+    },
+    {
+      "status": " M",
+      "path": "components/seller/commission-fee-notice.tsx",
+      "sha256": "801113e0cfec3bf208a969c628dd86ade0f1ce5423f22c759a59126e963ca417",
+      "bytes": 4075
+    },
+    {
+      "status": " M",
+      "path": "components/seller/maker-application-profile-form.tsx",
+      "sha256": "c919c6007b9168bb6eb268d2d1831a1c68d3d2096bcc3328a44b376e8296fa18",
+      "bytes": 11356
+    },
+    {
+      "status": " M",
+      "path": "components/seller/managed-maker-identity-fields.tsx",
+      "sha256": "c7d7831d0838b01b3b79271ba460a426bd8175b73d01f2df95e9d19e93cf8a1d",
+      "bytes": 7153
+    },
+    {
+      "status": " M",
+      "path": "components/seller/order-fulfillment-actions.tsx",
+      "sha256": "821f814a98afbac78094b5d07e1e86ddc91e19d54dad68c7b6b0cdb5400fffc8",
+      "bytes": 4064
+    },
+    {
+      "status": " M",
+      "path": "components/seller/product-submission-form.tsx",
+      "sha256": "2d742e80ea29e62f318c94163528894c55f3da2af77129a262d3145ac12993d0",
+      "bytes": 47550
+    },
+    {
+      "status": " M",
+      "path": "components/seller/registered-transition-form.tsx",
+      "sha256": "c4f01daf35b199c2ed2a247370559007f401fb530438f4e00c4f049bfbf3ddb8",
+      "bytes": 14789
+    },
+    {
+      "status": " M",
+      "path": "components/seller/seller-agreement-acceptance.tsx",
+      "sha256": "dc48c6840a3be7bb8c458ed8c9f2af0a99bb8df2fd132732fe2d86acb4450e0d",
+      "bytes": 3549
+    },
+    {
+      "status": " M",
+      "path": "components/seller/seller-application-form.tsx",
+      "sha256": "2d151be33a0a010c482cf0fa9d2677cad590eb0e27119a5bb857e1bd1bb78abf",
+      "bytes": 31063
+    },
+    {
+      "status": " M",
+      "path": "components/seller/seller-navigation.tsx",
+      "sha256": "ec88fe0b75f9a800edd609fd666ccfdc6547704b38c65b99542d5e26b00c3135",
+      "bytes": 8265
+    },
+    {
+      "status": " M",
+      "path": "db/schema.ts",
+      "sha256": "e487523bb7fa3aa633b40d5d4f1dc02759df6b550fe75fa60078b16daa68304f",
+      "bytes": 112189
+    },
+    {
+      "status": " M",
+      "path": "deployment/babal/mariadb-reset-empty-import.sql",
+      "sha256": "40b9eff335ebcae2368b85c447e6ca247575308e5ad65a6346492ec3055f8115",
+      "bytes": 267564
+    },
+    {
+      "status": " M",
+      "path": "deployment/babal/mariadb-schema.sql",
+      "sha256": "439ac47ed3cbd6ce9cf9860c4a08d67af034c86072a5b7cd70b86325f8434b70",
+      "bytes": 260613
+    },
+    {
+      "status": " M",
+      "path": "deployment/babal/release-manifest.json",
+      "sha256": "8f2ea5688e9865f07c9aa34f62d6531855e80e337576cd481426955f31814034",
+      "bytes": 92284
+    },
+    {
+      "status": " M",
+      "path": "lib/admin/navigation.ts",
+      "sha256": "32160f577a1321e85d1fd35c2c2c22e815ed52b8211c152a3e3bda1c6024d5f3",
+      "bytes": 20294
+    },
+    {
+      "status": " M",
+      "path": "lib/analytics/first-party.ts",
+      "sha256": "808d9bfc1823495a3e1cd204b63da0fe51e80a17e6c635bb33b7bad70ceae079",
+      "bytes": 4122
+    },
+    {
+      "status": " M",
+      "path": "lib/auth/contact-delivery.ts",
+      "sha256": "d9c0d2fa715823f3d7cef1d118103e7782c5b1296e99f0d86df89368e146b080",
+      "bytes": 6762
+    },
+    {
+      "status": " M",
+      "path": "lib/auth/hosted-session.ts",
+      "sha256": "965fa726553c54c924a2224892aaa56f2e24e27185876e5ffe3123a7819bb996",
+      "bytes": 11614
+    },
+    {
+      "status": " M",
+      "path": "lib/auth/local-test-access.ts",
+      "sha256": "9f5424874b04d92fd96e462b66c6fac27a0cbf1b313a700a986cb45d03f0638d",
+      "bytes": 2524
+    },
+    {
+      "status": " M",
+      "path": "lib/auth/sign-in-destination.ts",
+      "sha256": "b860c0d01daceda9447e48b1a98afbd7a52f2686e0e2230b19febdefc94d2264",
+      "bytes": 1691
+    },
+    {
+      "status": " M",
+      "path": "lib/auth/staff.ts",
+      "sha256": "ce65454866733bef0d624a0fe86f6eb7aad406c665917301059c58987e5bfdd2",
+      "bytes": 9737
+    },
+    {
+      "status": " M",
+      "path": "lib/cancellation/accounting.ts",
+      "sha256": "6c5e7bcbd0d06f8db07d408633b13825cabf039c17809e4b54638a398c6e4411",
+      "bytes": 5236
+    },
+    {
+      "status": " M",
+      "path": "lib/cancellation/repository.ts",
+      "sha256": "ba2625ae575abeed99d2920bd4c603bc3e3cc25ac7e1b2ecb016016435ce7afa",
+      "bytes": 44163
+    },
+    {
+      "status": " M",
+      "path": "lib/cart/session.ts",
+      "sha256": "b8510a39b6eb5e87d25e601b5c66bbac01f479e26b3dd816f5c6f668cf4db04d",
+      "bytes": 2419
+    },
+    {
+      "status": " M",
+      "path": "lib/catalog/featured-products.ts",
+      "sha256": "203be77254a7c4dd3305f4207cbb911e208ca91eb35275f910396d18f525890c",
+      "bytes": 437
+    },
+    {
+      "status": " M",
+      "path": "lib/checkout/validation.ts",
+      "sha256": "e756aeb63e06bd35a9d565f2cef0ef7c74dd7f2ed65f518c427d1ec8e994515a",
+      "bytes": 10002
+    },
+    {
+      "status": " M",
+      "path": "lib/commission/rates.ts",
+      "sha256": "1ce7ed7c9cbbd2a4071eadc48daca0804cc45259186e20a22c929d57938fd2a9",
+      "bytes": 3175
+    },
+    {
+      "status": " M",
+      "path": "lib/commission/reporting.ts",
+      "sha256": "676fad9406c5a9c5e747b6d021c6e95f6985757c50219eff617b19c7fe152526",
+      "bytes": 1593
+    },
+    {
+      "status": " M",
+      "path": "lib/configuration/capabilities.ts",
+      "sha256": "ac099ff0daee5f2473c2e4457e1965f5002b280486c5ed65af8020fcad5161e6",
+      "bytes": 4692
+    },
+    {
+      "status": " M",
+      "path": "lib/configuration/commission-defaults.ts",
+      "sha256": "0cb011b0133ce7225da3cf4313539d7207589d28bde8a310165535fe7eb66080",
+      "bytes": 148
+    },
+    {
+      "status": " M",
+      "path": "lib/configuration/definitions.ts",
+      "sha256": "c3ec302871a22c0d0bd6fa811c504c061b3c2f1d7138e653e492770ddd87f4b6",
+      "bytes": 29568
+    },
+    {
+      "status": " M",
+      "path": "lib/configuration/types.ts",
+      "sha256": "24f2cfe5bf20f0b3f349cd5dcdefc8b6f3b25e75d4fda68b3ba3964735219b62",
+      "bytes": 4641
+    },
+    {
+      "status": " M",
+      "path": "lib/content/archived-policy-documents.json",
+      "sha256": "1e91015d2131ba30062a91e1491984c60bbf76b36ac69fc735923378b520ca50",
+      "bytes": 93763
+    },
+    {
+      "status": " M",
+      "path": "lib/content/company-details.ts",
+      "sha256": "5133042c7619351fe12c4751e2f461e30edd36015ea678f4504a52c57909aad3",
+      "bytes": 1864
+    },
+    {
+      "status": " M",
+      "path": "lib/content/incentive-policy-documents.ts",
+      "sha256": "4dc62fa543086d7cc5cb9b9d0ca881347323e3153007eb79129f078e70f05ea2",
+      "bytes": 9302
+    },
+    {
+      "status": " M",
+      "path": "lib/content/legal-policies.ts",
+      "sha256": "f5837f6436c631ea73108784f38ea4efcfb55ebb3ac0cbada471914f0bec637b",
+      "bytes": 6004
+    },
+    {
+      "status": " M",
+      "path": "lib/content/public-pages.ts",
+      "sha256": "44e93c786be0f9725172a2f7ea4d02ed1265518ad0ff4332a42d993607c9ebd8",
+      "bytes": 25127
+    },
+    {
+      "status": " M",
+      "path": "lib/content/public-policy-documents.ts",
+      "sha256": "500bf642aaa06ca54de8f5bf8c4baace0c5ab831ecda8c0d5ad62f6bef588ed7",
+      "bytes": 34621
+    },
+    {
+      "status": " M",
+      "path": "lib/dates/nepal-calendar.ts",
+      "sha256": "b21d00bf5c6dcccf86e80255f00ae4383dce7ceadfd17d28980f876dc343d403",
+      "bytes": 3804
+    },
+    {
+      "status": " M",
+      "path": "lib/db/repositories/business-settings.ts",
+      "sha256": "c6094ab85e55b00f50a1f18089a2f0b9d09798ef4d430603143d7aea65bbe1ef",
+      "bytes": 46044
+    },
+    {
+      "status": " M",
+      "path": "lib/db/repositories/cart.ts",
+      "sha256": "ed07d6c8b9d4040795e4707ef7e21c3f709fc1d0ae22bd990393e3a2f4e8e413",
+      "bytes": 9582
+    },
+    {
+      "status": " M",
+      "path": "lib/db/repositories/commission-rates.ts",
+      "sha256": "04b7ee6776c454984e3332ca2da8d5494db1f5d36a07ab5c83499def6acf5b15",
+      "bytes": 16261
+    },
+    {
+      "status": " M",
+      "path": "lib/db/repositories/commission-reporting.ts",
+      "sha256": "7b4268a8659bdaf8df587be580294aec3fc836de49e920b1ec391951245fefcf",
+      "bytes": 7609
+    },
+    {
+      "status": " M",
+      "path": "lib/db/repositories/complaints.ts",
+      "sha256": "786e0308f28abe663ad930915bb613b3aadf700b9d2d33d170973d9c8414276a",
+      "bytes": 33552
+    },
+    {
+      "status": " M",
+      "path": "lib/db/repositories/customers.ts",
+      "sha256": "1138b98e3b0840e18cec51f4ba3f7d977b2b1bd754b479a174a6c8d858560345",
+      "bytes": 51446
+    },
+    {
+      "status": " M",
+      "path": "lib/db/repositories/form-answers.ts",
+      "sha256": "8dabba88a12562113ff39f20fff791f2f5788ee625ceb4dd933114761f551d45",
+      "bytes": 27460
+    },
+    {
+      "status": " M",
+      "path": "lib/db/repositories/fulfillment.ts",
+      "sha256": "37ba3766b75a93515fd712642b974d114629c963125aecf86dfd023bd59fba67",
+      "bytes": 41399
+    },
+    {
+      "status": " M",
+      "path": "lib/db/repositories/homepage-hero.ts",
+      "sha256": "9928f8c21e4b924b88e13469e340357790d95e0b868faa64d528bd4a168ba7d0",
+      "bytes": 12857
+    },
+    {
+      "status": " M",
+      "path": "lib/db/repositories/managed-documents.ts",
+      "sha256": "35e3eec4aa327c621b310656048d1d83d324947bc3613199f9002dafe746a7a2",
+      "bytes": 16224
+    },
+    {
+      "status": " M",
+      "path": "lib/db/repositories/managed-maker-details.ts",
+      "sha256": "831b83487884013de10f6d65dbb323383df31297055181fe8006a636ad2053ac",
+      "bytes": 6131
+    },
+    {
+      "status": " M",
+      "path": "lib/db/repositories/marketplace-settings.ts",
+      "sha256": "b5c30a99ba1e2ed38f8e4546b951772821bacf40eb62b38bb3900d9928b264f2",
+      "bytes": 8484
+    },
+    {
+      "status": " M",
+      "path": "lib/db/repositories/operations.ts",
+      "sha256": "29731df83f33f17d641479ca512535a42512f2e56569ca9659f3c56ef94f3d2b",
+      "bytes": 74357
+    },
+    {
+      "status": " M",
+      "path": "lib/db/repositories/orders.ts",
+      "sha256": "bc58deb3825e2e6beeba8f3ffcc583f4967e806e16b037770eae64969100a70a",
+      "bytes": 70546
+    },
+    {
+      "status": " M",
+      "path": "lib/db/repositories/payouts.ts",
+      "sha256": "f2b38878a34bf535f1a47aeebcad84ccc1d653cf2a94a5a8f2438d8a6d8703f0",
+      "bytes": 56551
+    },
+    {
+      "status": " M",
+      "path": "lib/db/repositories/products.ts",
+      "sha256": "e4e7ea5c8965c3235907039c695cfbeed028c0f7998d795777434d976fe40e32",
+      "bytes": 95409
+    },
+    {
+      "status": " M",
+      "path": "lib/db/repositories/recently-viewed.ts",
+      "sha256": "2558e59f323316b4ed8bbf22d150a50a10d428e7e6d1090d498634d78724b5fb",
+      "bytes": 6051
+    },
+    {
+      "status": " M",
+      "path": "lib/db/repositories/returns.ts",
+      "sha256": "f413adef92dbeb4b576a12dda04676dce39d1661c8ffbe9f7060e2affeba364f",
+      "bytes": 90782
+    },
+    {
+      "status": " M",
+      "path": "lib/db/repositories/seller-applications.ts",
+      "sha256": "fdddb9d31e5419e1a3e40b687b096064a209a93de37a6077f81f7f6776a6a428",
+      "bytes": 74243
+    },
+    {
+      "status": " M",
+      "path": "lib/db/repositories/seller-profile.ts",
+      "sha256": "e0a116f7c5d75b164de3fae58b8197b7796e7f7aeb3934ce1f82e836a02b81ad",
+      "bytes": 6789
+    },
+    {
+      "status": " M",
+      "path": "lib/db/repositories/seller-workspace.ts",
+      "sha256": "408f1769b8d994521b7dbc835da28f53f9b9d5c990ff299da3d00281158a04be",
+      "bytes": 2734
+    },
+    {
+      "status": " M",
+      "path": "lib/db/repositories/wallet.ts",
+      "sha256": "67ecf727f36e1d5e8af07a0209bf6479470084821d4d3f50989f13f35a0c7a0b",
+      "bytes": 14855
+    },
+    {
+      "status": " M",
+      "path": "lib/email/login-code.ts",
+      "sha256": "bdf490f38b47db736abb8e53abb26e9ae94e1524e91efdc054f91280561fde59",
+      "bytes": 1964
+    },
+    {
+      "status": " M",
+      "path": "lib/email/order-updates.ts",
+      "sha256": "b9d2162f7385e406df1cadd7b9d2b6615b83fc8540ac6f69444587962b70b3d3",
+      "bytes": 9969
+    },
+    {
+      "status": " M",
+      "path": "lib/email/password-reset.ts",
+      "sha256": "b7d1c452f5839bd588f34939dd9fa7a2984e83652aec9f7c34712626a5b3d8fc",
+      "bytes": 890
+    },
+    {
+      "status": " M",
+      "path": "lib/email/staff-invitation.ts",
+      "sha256": "fec81eb4741c7f2a05b310e2dfaaa8c095c1498f105ad6d7241c8e285b90ccdd",
+      "bytes": 3244
+    },
+    {
+      "status": " M",
+      "path": "lib/feedback/customer-feedback.ts",
+      "sha256": "2d0228a9e374815277c781fdb8b0baff7917fdbf049b7df77e8de6a50d4f81cf",
+      "bytes": 5997
+    },
+    {
+      "status": " M",
+      "path": "lib/forms/catalog-presentation.ts",
+      "sha256": "04994fb8388e468acf3629a6d7155a2baa6f9798f0ba43e76050f455d7c23ec1",
+      "bytes": 10694
+    },
+    {
+      "status": " M",
+      "path": "lib/forms/registry.ts",
+      "sha256": "0e4d2a336d6044dc81256a6ecad4d9d83ef2eaf516e932509e45e6a1021982a0",
+      "bytes": 71886
+    },
+    {
+      "status": " M",
+      "path": "lib/forms/submission.ts",
+      "sha256": "6f05ef60cf93d94645c46bf7418eeadd871ec8043bf9185af7106c67023fc51c",
+      "bytes": 17832
+    },
+    {
+      "status": " M",
+      "path": "lib/forms/types.ts",
+      "sha256": "0751d11ce44d526a15c5e5d8038692d5b9e4803c227a5f2e49e930fd3b8ce251",
+      "bytes": 2612
+    },
+    {
+      "status": " M",
+      "path": "lib/http/security-headers.ts",
+      "sha256": "5106958093728683c1779698c464b3475087dd2b1cc3fccd154a06074eb722a8",
+      "bytes": 889
+    },
+    {
+      "status": " M",
+      "path": "lib/incentives/presentation.ts",
+      "sha256": "54f02be6392aa77fd55ebfdd5e3887344a9c051e850dad6595aa4e2f8ce8f607",
+      "bytes": 7461
+    },
+    {
+      "status": " M",
+      "path": "lib/managed-commerce/accepted-terms.ts",
+      "sha256": "70f988d6d94a74f5013fd45c56d5ad0726af668bc19d621a92bf070b83c10421",
+      "bytes": 15755
+    },
+    {
+      "status": " M",
+      "path": "lib/managed-commerce/activation.ts",
+      "sha256": "3ee2c3d21212c9de71c0b3217b35c2e5625aeb0c3597450c303a4e7068c2fcf3",
+      "bytes": 13788
+    },
+    {
+      "status": " M",
+      "path": "lib/managed-commerce/registered-transition.ts",
+      "sha256": "06f215a6b7d5513bb869a4ac80c2b322ef132cf6b7e5e05052d828358cfef35a",
+      "bytes": 30563
+    },
+    {
+      "status": " M",
+      "path": "lib/managed-makers/settlement.ts",
+      "sha256": "48fc192ced09d0a9399f77fe8cec9a114847b02ef02d212e43ca61bf3d382caa",
+      "bytes": 4136
+    },
+    {
+      "status": " M",
+      "path": "lib/marketplace/policy.ts",
+      "sha256": "24d3145e363b24934b3e77249c23444e6584e455705ea95f2a8b7ebb37927f07",
+      "bytes": 9560
+    },
+    {
+      "status": " M",
+      "path": "lib/operations/business-notifications.ts",
+      "sha256": "bfcab755f4bcdd44927665687f6fce0f52c4924ca50004a5c3ec75f6ca2ca552",
+      "bytes": 47217
+    },
+    {
+      "status": " M",
+      "path": "lib/operations/parcels.ts",
+      "sha256": "94b69e9ff479e8e0a18079afe73a21e3597a332e3972c285386aa179b8b738ab",
+      "bytes": 47243
+    },
+    {
+      "status": " M",
+      "path": "lib/operations/readiness.ts",
+      "sha256": "db5518e1add71af90d3b46e1bee3484139bd0e548ffd560b7d3fa6a02e28fc9d",
+      "bytes": 10580
+    },
+    {
+      "status": " M",
+      "path": "lib/products/eligibility.ts",
+      "sha256": "2c4630b9eb9d91c6dbc1b784e3ecba91faa204c8aa70aead179e1bf7b5914707",
+      "bytes": 3246
+    },
+    {
+      "status": " M",
+      "path": "lib/products/selling-identity.ts",
+      "sha256": "c149bff931fb8609a13d779a39c5b9544eeb39579316c9228ce06d1c84997725",
+      "bytes": 1391
+    },
+    {
+      "status": " M",
+      "path": "lib/products/submission.ts",
+      "sha256": "e9cb2411385243e3c5f9daedd1cec5bbee7a681a794253c00af23b15e0eb8f2d",
+      "bytes": 14376
+    },
+    {
+      "status": " M",
+      "path": "lib/products/watermark-delivery.ts",
+      "sha256": "9206dfd6c6dedb4bc0ec33e9f8095f4ced91967f9c8abb228a664933b306dace",
+      "bytes": 4230
+    },
+    {
+      "status": " M",
+      "path": "lib/products/watermark.ts",
+      "sha256": "feccfb99e53c99bf2fb39f358932e774d0e0545531abd0de2cf2bb8291c888da",
+      "bytes": 5829
+    },
+    {
+      "status": " M",
+      "path": "lib/returns/validation.ts",
+      "sha256": "2b73bc57aa5a0544b9102d3030bf0bc2b66a22b1910427493f6ed3747e2c99dc",
+      "bytes": 9354
+    },
+    {
+      "status": " M",
+      "path": "lib/runtime/node-bindings.ts",
+      "sha256": "e4500b44e0bc376e45bca46f1c416154f1f2ec481c4d8a65affdc30e966db062",
+      "bytes": 35066
+    },
+    {
+      "status": " M",
+      "path": "lib/sellers/application.ts",
+      "sha256": "529663c787bc97f37b740cc6de0b65f1f3ffba0311b168303360193916f17947",
+      "bytes": 14337
+    },
+    {
+      "status": " M",
+      "path": "lib/sellers/managed-identity.ts",
+      "sha256": "310f2d807696c212978c69619ed316949994d1f0899289915a34b514ca575fd9",
+      "bytes": 9087
+    },
+    {
+      "status": " M",
+      "path": "lib/seo/discovery.ts",
+      "sha256": "cae9de4c7473871a057ce43fc9737b4714c551b6da2308f6050b0f29c0ddef8d",
+      "bytes": 4973
+    },
+    {
+      "status": " M",
+      "path": "lib/shipping/nepal-can-move.ts",
+      "sha256": "0350077c36f31219058e8df6e1507a009da57e6371115b42f1fa273c885a547f",
+      "bytes": 930
+    },
+    {
+      "status": " M",
+      "path": "package-lock.json",
+      "sha256": "212c1926344ad87b9168af89bc37aafd3de859d2e36cd7ca65e0628e960b9846",
+      "bytes": 408705
+    },
+    {
+      "status": " M",
+      "path": "package.json",
+      "sha256": "08c25732f8fcfd5790c42afffba5a99e137b908e7721d385fd8e56f18f45bf9c",
+      "bytes": 3052
+    },
+    {
+      "status": " M",
+      "path": "scripts/build-babal.mjs",
+      "sha256": "2ee20ec7cdf157f660808e9ea06e44b394bd9539f25694a0f9d94ccfe56d79c6",
+      "bytes": 1281
+    },
+    {
+      "status": " M",
+      "path": "scripts/deployment/staging-runtime.mjs",
+      "sha256": "e5d0eb090fc5af4219fb281b008c7118c6159d6a5eae3e8dfed973bad3795cfd",
+      "bytes": 2553
+    },
+    {
+      "status": " M",
+      "path": "scripts/generate-mariadb-schema.mjs",
+      "sha256": "a90498744cd69d13577f4c388b889099c930661aa73d76645d2f3caba3c65e1b",
+      "bytes": 30314
+    },
+    {
+      "status": " M",
+      "path": "scripts/generate-release-manifest.mjs",
+      "sha256": "20c30aec17302553c78be696a3bcd6ea8b0120b19c34749da635081717bd2bbc",
+      "bytes": 18083
+    },
+    {
+      "status": " M",
+      "path": "scripts/package-babal-release.ps1",
+      "sha256": "a0509ec7ef6e22d5ae96481a5837505bb0c50fb67311e8c29f860fbedb9a6337",
+      "bytes": 6029
+    },
+    {
+      "status": " M",
+      "path": "scripts/release-files.mjs",
+      "sha256": "057c8391f062048f184d86ab94563d9a9dabe4853ea0f4a318746bf8b7c01712",
+      "bytes": 3333
+    },
+    {
+      "status": " M",
+      "path": "scripts/smoke-standalone.mjs",
+      "sha256": "4f49c1ecefa003c53fe1ac4c057ac561268e700fae93792fd6e17916585ab155",
+      "bytes": 3848
+    },
+    {
+      "status": " M",
+      "path": "scripts/staging-native-upgrade.mjs",
+      "sha256": "1cb4b6a46bd0f7ab888bb4d4eaf124923fbda0e0a5475d0ad4d69276dc1951a1",
+      "bytes": 1668
+    },
+    {
+      "status": " M",
+      "path": "scripts/staging/managed-maker-demo-fixture.mjs",
+      "sha256": "030370c870cb673bcbc2354e50ea4cd6ff53cd498bab3408ffd05e96233ff218",
+      "bytes": 13526
+    },
+    {
+      "status": " M",
+      "path": "scripts/staging/product-watermark-plugin.ts",
+      "sha256": "ef5e29d12b477a8b0b6524fdb31fddfbc277ca3a83aecee704c16766f59d36eb",
+      "bytes": 10132
+    },
+    {
+      "status": " M",
+      "path": "scripts/staging/run-managed-maker-demo.mjs",
+      "sha256": "c6e988aebdecdad1fd9ce61638b790aadf6e4b838ed8acc5af077af719f192da",
+      "bytes": 1219
+    },
+    {
+      "status": " M",
+      "path": "scripts/start-local.mjs",
+      "sha256": "45aa2fcc33a24d9c280cf742c55617d640095ec0b4fe609e1c1cf3863e6607f7",
+      "bytes": 16694
+    },
+    {
+      "status": " M",
+      "path": "scripts/verify-staging-native.mjs",
+      "sha256": "620208868b115eea9c62b8684ae1ee4c27206c5fab7b16697fa86bb6f7b043be",
+      "bytes": 20539
+    },
+    {
+      "status": " M",
+      "path": "tests/admin-order-search.test.ts",
+      "sha256": "8e6a0d46f95e0329220702e5eff2e78b92835342326c0b00df15352d832be08f",
+      "bytes": 4540
+    },
+    {
+      "status": " M",
+      "path": "tests/admin-presentation.test.ts",
+      "sha256": "dbd0a64252afd3245aa23f99a006f1ce9a58bf4db2473429c07a254396e7923e",
+      "bytes": 9312
+    },
+    {
+      "status": " M",
+      "path": "tests/business-settings-presentation.test.ts",
+      "sha256": "34576217b9aa92592fdb014005579fd401dc2bb77a1b71594ca01486ca9cf175",
+      "bytes": 7851
+    },
+    {
+      "status": " M",
+      "path": "tests/business-settings-repository.test.ts",
+      "sha256": "431be168a63084fa403d4bd66c77383dcb78953b7536d87c036ecdbe67b3542f",
+      "bytes": 29324
+    },
+    {
+      "status": " M",
+      "path": "tests/business-settings.test.ts",
+      "sha256": "a13d8b37d26b66818627e4438d5e55730fa90947fbf8ef042d30add5b4d1961e",
+      "bytes": 9989
+    },
+    {
+      "status": " M",
+      "path": "tests/cancellation-accounting.test.ts",
+      "sha256": "e09f910e959e91ea7e0318f211bd3f98482d1bd03d686dff7eed3fbc06648ea9",
+      "bytes": 3963
+    },
+    {
+      "status": " M",
+      "path": "tests/category-images-deployment.test.ts",
+      "sha256": "c2c3fce8b4ead02f1df0aa2a5aa55a6be1c839c44b9f34e4968e72250f0cac41",
+      "bytes": 5460
+    },
+    {
+      "status": " M",
+      "path": "tests/checkout-config-recovery.test.ts",
+      "sha256": "821836c9db770e3500690746531c9891a480f2db1b1838b3ffeec80c41043dcb",
+      "bytes": 16916
+    },
+    {
+      "status": " M",
+      "path": "tests/checkout-contact-verification.test.ts",
+      "sha256": "7032ae482f6dd3255ce5a1f47ff47fe141b25c9a57173dd3ddb59496cceb0d46",
+      "bytes": 48465
+    },
+    {
+      "status": " M",
+      "path": "tests/checkout-form-config-activation.test.ts",
+      "sha256": "b501faaa767760755029cfaa48363671f1bb77c78161d1846d1c656cf90e10e9",
+      "bytes": 9935
+    },
+    {
+      "status": " M",
+      "path": "tests/commission-workspace.test.ts",
+      "sha256": "6380ba3039288272b903978a902374e2d42ffc097e198dda9eabc69a8b97f07e",
+      "bytes": 22530
+    },
+    {
+      "status": " M",
+      "path": "tests/company-store-maker-lifecycle.test.ts",
+      "sha256": "5bf2b22724296111f3bd35ed537cd5303b3623662d77214a2872bc2578315275",
+      "bytes": 11026
+    },
+    {
+      "status": " M",
+      "path": "tests/company-store-maker-upgrade.test.ts",
+      "sha256": "6fb81755f0870631ef35fdbf28f3b4e49c146707944a40f52a11e736a09f8f22",
+      "bytes": 8481
+    },
+    {
+      "status": " M",
+      "path": "tests/company-store-native-terms.test.ts",
+      "sha256": "936b2e3e704059469869dd6b8832940c48944bf32c001a24640e1acd975b2c3a",
+      "bytes": 11420
+    },
+    {
+      "status": " M",
+      "path": "tests/customer-feedback.test.ts",
+      "sha256": "a9d93336622cc584431781dc0388b7fc45141d9e340f93c0420f96d0156e361a",
+      "bytes": 2476
+    },
+    {
+      "status": " M",
+      "path": "tests/delivery-rates.test.ts",
+      "sha256": "3bfb3e427e0d53c705c69debc3ebd42e57d68a2b85dc35f433e4840e29a1c310",
+      "bytes": 48611
+    },
+    {
+      "status": " M",
+      "path": "tests/email-otp.test.ts",
+      "sha256": "9b0eea51c8e1045f521e65ec75dc51c8ddfed4a3eb34050cc41207f7ffaed6b8",
+      "bytes": 11766
+    },
+    {
+      "status": " M",
+      "path": "tests/footer-presentation.test.ts",
+      "sha256": "279eff1a24261c970c79cfa0d6116119647939aa0b44c573e50ca43c4b821fde",
+      "bytes": 1706
+    },
+    {
+      "status": " M",
+      "path": "tests/form-catalog-account.test.ts",
+      "sha256": "c084453d9a673ae36eae26280f1ed795057146efc42c7cbf079c960dcbbbb1d3",
+      "bytes": 64244
+    },
+    {
+      "status": " M",
+      "path": "tests/form-catalog-admin-ui.test.ts",
+      "sha256": "c328b64e564760aebb6f428178b92650f178d2d1bf17b7785a9a41e02718dbd9",
+      "bytes": 85450
+    },
+    {
+      "status": " M",
+      "path": "tests/form-catalog-commerce-success.test.ts",
+      "sha256": "3177c8b1ab00b5bcfab4ab1d08785bcbb884bafcd30cf03ccf791fac2c089b49",
+      "bytes": 16239
+    },
+    {
+      "status": " M",
+      "path": "tests/form-catalog-commerce.test.ts",
+      "sha256": "39f5601a0e829239cb6e4a2f146bddaf37df91efe00173be6160239f64f22d00",
+      "bytes": 76821
+    },
+    {
+      "status": " M",
+      "path": "tests/form-catalog-coverage.test.ts",
+      "sha256": "7bd4b50a44d7ee9d0e2a7bf232677d559ab026939f624a1c7d209d5183ff8522",
+      "bytes": 6351
+    },
+    {
+      "status": " M",
+      "path": "tests/form-catalog-hosted-auth-readiness.test.ts",
+      "sha256": "1f39c7e5813db84894cc9c06525d9727d8136d94eea20a670d4732c0c83bd5c7",
+      "bytes": 14808
+    },
+    {
+      "status": " M",
+      "path": "tests/form-catalog-identity.test.ts",
+      "sha256": "afe058b92a05d7174a01359f531023e5508899193322644fa68cfdab29c438c9",
+      "bytes": 69791
+    },
+    {
+      "status": " M",
+      "path": "tests/form-catalog-policy.test.ts",
+      "sha256": "59843febce1f6008bffd7392e8f10704111522a89f703e869668485ac8df365d",
+      "bytes": 16854
+    },
+    {
+      "status": " M",
+      "path": "tests/form-catalog-profile-client.test.ts",
+      "sha256": "879e609017a2a2bae5d56540cc9ae5ac1d6fd424ec1ab0a574841c0562001995",
+      "bytes": 11243
+    },
+    {
+      "status": " M",
+      "path": "tests/form-catalog-programmatic-settings.test.ts",
+      "sha256": "756d0185ccbf007068ade6364430865a12cd2754c339966abed52917c2675d5e",
+      "bytes": 52581
+    },
+    {
+      "status": " M",
+      "path": "tests/form-catalog-query.test.ts",
+      "sha256": "0b694060750b4242b182eb250b73ce0c19b52668421144cf6fba31678fc33536",
+      "bytes": 10649
+    },
+    {
+      "status": " M",
+      "path": "tests/form-catalog-rendered-polish.test.ts",
+      "sha256": "74993f2e6c6d0a9262595541f30b439397667790bb6e7e0c60680ea9980966b0",
+      "bytes": 12069
+    },
+    {
+      "status": " M",
+      "path": "tests/form-catalog-renderer.test.ts",
+      "sha256": "f8fb409a312f2db6121a7355b4476dcd867790185de93e37ce4c8b0027de4d1f",
+      "bytes": 25343
+    },
+    {
+      "status": " M",
+      "path": "tests/form-catalog-routes.test.ts",
+      "sha256": "e2cf92b2337f1cdf2cd31205a33363ec4b2b93f3de6cdb22ed72d7c6400bac52",
+      "bytes": 33747
+    },
+    {
+      "status": " M",
+      "path": "tests/form-catalog-schema.test.ts",
+      "sha256": "72d7136fc29ada590e8bb21ba9e3911b8bdfa7996ebe6b814036b8490236dc51",
+      "bytes": 13048
+    },
+    {
+      "status": " M",
+      "path": "tests/form-catalog-seller-data.test.ts",
+      "sha256": "15c5e5dfc78f061eaa78ade71be17ba944a56f2662e0eda8a7320ebcf035b01e",
+      "bytes": 102250
+    },
+    {
+      "status": " M",
+      "path": "tests/form-catalog-staff-context-retry.test.ts",
+      "sha256": "4e78898805a69f4e480873ecc85ea30ac1d2da6324fd8898ac9be163854bbb1b",
+      "bytes": 14948
+    },
+    {
+      "status": " M",
+      "path": "tests/form-preview-readiness.test.ts",
+      "sha256": "dc630214594ebec65c20777ff4771ffeac5d4614f821107c56c5ff4f41892302",
+      "bytes": 6130
+    },
+    {
+      "status": " M",
+      "path": "tests/gift-cards.test.ts",
+      "sha256": "84548b2635f769b5c2295d5a5f39447ce44dff1399b400da475ee5452898fc93",
+      "bytes": 8276
+    },
+    {
+      "status": " M",
+      "path": "tests/github-delivery.test.ts",
+      "sha256": "974fff769f7df48a56992d358f4b7788c6e1be6bf0c62e1fd463aa2e6d607f37",
+      "bytes": 6325
+    },
+    {
+      "status": " M",
+      "path": "tests/helpers/activation-contract-fixture.ts",
+      "sha256": "75de6573058fbf82c26a65e87ccf7d275eb7b5d30bcffa4be2c6d2632916d68c",
+      "bytes": 3839
+    },
+    {
+      "status": " M",
+      "path": "tests/helpers/checkout-contact.ts",
+      "sha256": "e516eae585245b7f19db73eec8409b895811bfe2a63139cefc95d8944d73d3b9",
+      "bytes": 2095
+    },
+    {
+      "status": " M",
+      "path": "tests/helpers/commission-database.ts",
+      "sha256": "bed596b7575c75dcaa5a4b0e9a5b820d2204330b3df3a300cdda9a354e3a0087",
+      "bytes": 3875
+    },
+    {
+      "status": " M",
+      "path": "tests/helpers/company-store-maker-fixture.ts",
+      "sha256": "5dd3031cd1033bfcd462e169db50f2590def1e3fe869909e34727ec6daa127aa",
+      "bytes": 2469
+    },
+    {
+      "status": " M",
+      "path": "tests/helpers/managed-identity-fixture.ts",
+      "sha256": "ddd3c08626e910ab6bc3df203988ed4eff7c7241fc089e91152b8b026147555e",
+      "bytes": 1446
+    },
+    {
+      "status": " M",
+      "path": "tests/helpers/registered-transition-fixture.ts",
+      "sha256": "4d7b36e85da1d647e24189504545711fd4796d08bf2be93cbe3d6b82cad794b4",
+      "bytes": 3685
+    },
+    {
+      "status": " M",
+      "path": "tests/homepage-products.test.ts",
+      "sha256": "eb328e62a207c3465f15825c9c2d980f7c83bfa31734d49c4e112e904e28b9cc",
+      "bytes": 17504
+    },
+    {
+      "status": " M",
+      "path": "tests/homepage-truthfulness.test.ts",
+      "sha256": "2aea4a91d79484dc34cc220705027b53bcedf3c6d711fd747be1d947d8e6f69a",
+      "bytes": 9192
+    },
+    {
+      "status": " M",
+      "path": "tests/incentive-presentation.test.ts",
+      "sha256": "8c5da0f29c61a7a098d081c0c05c9f48396d09e7dc4495ecbda9d8ac0870bd96",
+      "bytes": 6535
+    },
+    {
+      "status": " M",
+      "path": "tests/legal-layout.test.ts",
+      "sha256": "d52a0025cee36d2d02ca8e7577cc0ef694eddf68f4c80e64d9614a531779668f",
+      "bytes": 7921
+    },
+    {
+      "status": " M",
+      "path": "tests/legal-policy-content.test.ts",
+      "sha256": "e75d36d10d62cc07c109b0ce5f248faf5e6dc5bbbf47c84e7338fa71a249a3ad",
+      "bytes": 3978
+    },
+    {
+      "status": " M",
+      "path": "tests/local-feature-readiness.test.ts",
+      "sha256": "660392e20dac0a082e27d903590cf158f887fb6639dbb7bb993c0c16b72ee33f",
+      "bytes": 5023
+    },
+    {
+      "status": " M",
+      "path": "tests/local-role-logout.test.ts",
+      "sha256": "9a1bb02151d24926d7e7efc51d0c830a6d253ec36ed14107748e9a2a0adfbefc",
+      "bytes": 7979
+    },
+    {
+      "status": " M",
+      "path": "tests/local-startup.test.ts",
+      "sha256": "0fa2f810258801de3a011beb14c7be5eae78b7335c7429790afefc907fd8a270",
+      "bytes": 7936
+    },
+    {
+      "status": " M",
+      "path": "tests/loyalty-claims.test.ts",
+      "sha256": "7e47fa44ae0bb0ac4a4405e973769ca9ef41d7753b8ff6f76a4a5f1a66485b6a",
+      "bytes": 21707
+    },
+    {
+      "status": " M",
+      "path": "tests/loyalty-redemption.test.ts",
+      "sha256": "f93f8b8f63d4e667011ae7feb64ee4ac59611ddb36a76ead2ce50f81bbcf1c7e",
+      "bytes": 22320
+    },
+    {
+      "status": " M",
+      "path": "tests/managed-documents-email.test.ts",
+      "sha256": "cbb4af81cd853bc42cc4c599bc9db6a51d738e137ea61045277e7cae74c1ff49",
+      "bytes": 11759
+    },
+    {
+      "status": " M",
+      "path": "tests/managed-maker-identity-client.test.ts",
+      "sha256": "ca56e0fa2828fe36a270213626fcaa46b0f33040f755390514c641713659ec97",
+      "bytes": 7426
+    },
+    {
+      "status": " M",
+      "path": "tests/managed-maker-identity.test.ts",
+      "sha256": "da5e8f21381ce4f1d4a0afb67fe57d3e1a8a6afa7144b7e4f5709a4c744222c8",
+      "bytes": 28759
+    },
+    {
+      "status": " M",
+      "path": "tests/managed-terms-client.test.ts",
+      "sha256": "168d3cb28ed103481f8b52b4d1503f4df2aae7841317ef2595a1f3bc1e160f62",
+      "bytes": 16309
+    },
+    {
+      "status": " M",
+      "path": "tests/marketplace-commission.test.ts",
+      "sha256": "9a98321fc65310bae0d59a1a2a17692d9f7c15dfa2f9683fadb893eab93e7afc",
+      "bytes": 9705
+    },
+    {
+      "status": " M",
+      "path": "tests/node-hosting.test.ts",
+      "sha256": "a6899570a05265c1f1fb74170e71b683f0e1bee8098e227c9a74d8554a761db4",
+      "bytes": 15893
+    },
+    {
+      "status": " M",
+      "path": "tests/product-video-ranges.test.ts",
+      "sha256": "79dc3f81f3cce8972d3fe68f4d67e0c62ca8b1ce27952ac3cc4adbeeefe82558",
+      "bytes": 10965
+    },
+    {
+      "status": " M",
+      "path": "tests/product-watermark-bridge.test.ts",
+      "sha256": "16a1857b64f3af1cd232761cc171cff054b4461ba8b9b07162f8d4cbd070fada",
+      "bytes": 6143
+    },
+    {
+      "status": " M",
+      "path": "tests/product-watermark.test.ts",
+      "sha256": "38efcb2e6f4b07212e27187719de078c8df8b8261dedd66ddbe441d8e3a95794",
+      "bytes": 8546
+    },
+    {
+      "status": " M",
+      "path": "tests/promo-aftercare.test.ts",
+      "sha256": "831ea9d0ceba7aca844dcea22fcec4f6a3fff125c690e7464246ff70a4aa72d8",
+      "bytes": 43313
+    },
+    {
+      "status": " M",
+      "path": "tests/promo-checkout-routes.test.ts",
+      "sha256": "0534d4f8a9217e40192bd5fe7cbfd4727792ae0e66d54025245e6561ad590ec3",
+      "bytes": 11589
+    },
+    {
+      "status": " M",
+      "path": "tests/promo-checkout.test.ts",
+      "sha256": "4ca6e9c6b04cf79f67454a88e7389fea4fd35a090f308236ceebc1960cf6b54e",
+      "bytes": 34231
+    },
+    {
+      "status": " M",
+      "path": "tests/promo-editor-presentation.test.ts",
+      "sha256": "95052cc78b6b63c94db8822fa26107e5a4dac1219463711b739306e184c70e78",
+      "bytes": 8479
+    },
+    {
+      "status": " M",
+      "path": "tests/promo-schema.test.ts",
+      "sha256": "a0e8c26a433e83c5f8ae8fa5ca34e4a2e94e0f6363d2bb15afaa431eedd7d0c5",
+      "bytes": 52297
+    },
+    {
+      "status": " M",
+      "path": "tests/promo-ui.test.ts",
+      "sha256": "b94e8b96f92f38600ded51d0f2d3acd3c0aa6b72bd1051a7509bd3bd4a986a7b",
+      "bytes": 39018
+    },
+    {
+      "status": " M",
+      "path": "tests/readiness-runtime.test.ts",
+      "sha256": "c64cd803b9d1003b4271cf270083c7b6e060125386a07942dd0030f2bfe1c7ed",
+      "bytes": 8043
+    },
+    {
+      "status": " M",
+      "path": "tests/release-manifest-completeness.test.ts",
+      "sha256": "fcf49dd597baecabb5544e04a425cf73a1fa69a74c5b32236842e72333309498",
+      "bytes": 9925
+    },
+    {
+      "status": " M",
+      "path": "tests/release-manifest-trigger-names.test.ts",
+      "sha256": "5485d0fd2024443f86b10ec3bfd6efbc5a3bd000e5eb7c1d74dbc5007ffd82ee",
+      "bytes": 2360
+    },
+    {
+      "status": " M",
+      "path": "tests/release-package-manifest.test.ts",
+      "sha256": "90c62027cf60e635df9e3e00d9b3e3ac4782310f8d4aa4044ff1196e5e27bb54",
+      "bytes": 7683
+    },
+    {
+      "status": " M",
+      "path": "tests/responsive-media-operations.test.ts",
+      "sha256": "c930224091d2f823d4a7a00f75bbaa1607fbb588007649436bb1f44ef0501144",
+      "bytes": 8165
+    },
+    {
+      "status": " M",
+      "path": "tests/returns-complaints.test.ts",
+      "sha256": "3cab24f7b9e14f59a1f93e1be191763f80fd23c8021554b32f861b4df75d57a9",
+      "bytes": 271344
+    },
+    {
+      "status": " M",
+      "path": "tests/review-truthfulness-regressions.test.ts",
+      "sha256": "33cb3bd610dd8ffb6dfa1afb96affec153053885541a4f19c1f22c2c0e1fea9f",
+      "bytes": 9839
+    },
+    {
+      "status": " M",
+      "path": "tests/security-traffic-beacon.test.ts",
+      "sha256": "2943160bcbd67070e949b00907a49d969ba8a7e16f32097ab5ce992a0b56d291",
+      "bytes": 1531
+    },
+    {
+      "status": " M",
+      "path": "tests/seller-application-required-labels.test.ts",
+      "sha256": "a5810fd871c9373dd562c4a72dbea1f8bdeeceb0fc6d632108003aae1b710dc0",
+      "bytes": 2276
+    },
+    {
+      "status": " M",
+      "path": "tests/seller-commercial-terms.test.ts",
+      "sha256": "6eaf4f315f80de5c9de7aafab12b457e326d9140180008faed730cb867b3fd61",
+      "bytes": 21096
+    },
+    {
+      "status": " M",
+      "path": "tests/seller-participation-repository.test.ts",
+      "sha256": "409b9d8b95dd59232163aad3e40a2a5c8fbdbe83dc53148ac9e8d270daad8a70",
+      "bytes": 10926
+    },
+    {
+      "status": " M",
+      "path": "tests/seller-registration-matrix.test.ts",
+      "sha256": "bb0db22a321d2f27f8e452f53bc2cb06d924aea9f78fc42d2bb069f9f4b658d6",
+      "bytes": 7312
+    },
+    {
+      "status": " M",
+      "path": "tests/seller-route-transition-lifecycle.test.ts",
+      "sha256": "3890ccfc5e35537c809c3a669565c3f6fbb4d205b3ef982aadc134ea5f0e0e8d",
+      "bytes": 26095
+    },
+    {
+      "status": " M",
+      "path": "tests/seller-route-transition.test.ts",
+      "sha256": "12414b58a320a9053eec8f8e6557efc14675d4d09f95e2eebb764662b7674fe2",
+      "bytes": 8484
+    },
+    {
+      "status": " M",
+      "path": "tests/site-responsive-layout.test.ts",
+      "sha256": "3bc124f465f3c59d144a9d0d8d12c3c448fbb97a5261f1c20a85eb1eac016c3e",
+      "bytes": 4326
+    },
+    {
+      "status": " M",
+      "path": "tests/staff-access-denied.test.ts",
+      "sha256": "72a1599cb8d93e1cd19c196ab0d8a821a648156290adce1e2b9750f0fda111cb",
+      "bytes": 4094
+    },
+    {
+      "status": " M",
+      "path": "tests/staging-native-runtime.test.ts",
+      "sha256": "a27428482241c72323ee075ad21e34d9bc6ff72fe48db4060dde5282ec864ce5",
+      "bytes": 14942
+    },
+    {
+      "status": " M",
+      "path": "tests/staging-runtime.test.ts",
+      "sha256": "7eb6c562d42623b55d3825ee56bacc079f493126e4993ca94de257d2b37f9884",
+      "bytes": 4093
+    },
+    {
+      "status": "??",
+      "path": "app/account/security/page.tsx",
+      "sha256": "ce3c66a7466c5d0d8467986b8cb6a0bbfdebe76743c7fd08f55f7651d27246cc",
+      "bytes": 161
+    },
+    {
+      "status": "??",
+      "path": "app/admin/accounting/error.tsx",
+      "sha256": "1ea8ca2cc14b8483ad10521d139383547615e56cb2ee3f53a0b81747b36b96cc",
+      "bytes": 490
+    },
+    {
+      "status": "??",
+      "path": "app/admin/accounting/loading.tsx",
+      "sha256": "21d352a9760ca68a8762bb9170c6d390ff4761114a8c73f5a86c781ef272bb6f",
+      "bytes": 451
+    },
+    {
+      "status": "??",
+      "path": "app/admin/accounting/page.tsx",
+      "sha256": "15eea49e75af48652c422030dec456c413377e4c1c5467e558e7622e4071f06f",
+      "bytes": 2037
+    },
+    {
+      "status": "??",
+      "path": "app/admin/backup-transfer/page.tsx",
+      "sha256": "802290c3c0f910b6f22fc16fe9c132867a976689fb592a4f8286b28893cd0e69",
+      "bytes": 490
+    },
+    {
+      "status": "??",
+      "path": "app/admin/fee-waivers/page.tsx",
+      "sha256": "b7fd1d3c6ad4ec30b67783f150cb579612356af7962a4318d4e2f76357e9c408",
+      "bytes": 1970
+    },
+    {
+      "status": "??",
+      "path": "app/admin/legal-policies/active/page.tsx",
+      "sha256": "2e1963e6ba00c8934528b3a045f6675bd6a5d302de689b52410d437339f7e61a",
+      "bytes": 3948
+    },
+    {
+      "status": "??",
+      "path": "app/api/admin/accounting/route.ts",
+      "sha256": "5bb4d0445a7f6dfb64ac4e209f4697526f43675d224203cfd05aa6804e1eebfa",
+      "bytes": 1499
+    },
+    {
+      "status": "??",
+      "path": "app/api/admin/backup-transfer/download/route.ts",
+      "sha256": "dd50acca935a5031751bb84164ab0005093f99bc89c9dce2c94510e2cdd41675",
+      "bytes": 106
+    },
+    {
+      "status": "??",
+      "path": "app/api/admin/backup-transfer/inspect/route.ts",
+      "sha256": "45ffc88efdaf0e667ce7428b3f534aea1a4ca525426e022abf3970be801f7ac0",
+      "bytes": 65
+    },
+    {
+      "status": "??",
+      "path": "app/api/admin/backup-transfer/route.ts",
+      "sha256": "32f906f4f0163e8f2e3059c1bd0d2b96c5cb4b822e3fe076c2c271026a8bc29b",
+      "bytes": 125
+    },
+    {
+      "status": "??",
+      "path": "app/api/admin/customer-fee-waivers/route.ts",
+      "sha256": "e5c81742dfb642091d54ab3fedc01b4900fef8ad294c8037004babb2368a7753",
+      "bytes": 3460
+    },
+    {
+      "status": "??",
+      "path": "app/api/admin/fee-waivers/route.ts",
+      "sha256": "eedf34b28fe77647de73d6cdf42e161f7fb70b794f7c35e21bfb07a62a348545",
+      "bytes": 2534
+    },
+    {
+      "status": "??",
+      "path": "app/api/admin/legal-procedures/active/route.ts",
+      "sha256": "0c996639db2073a32ce2eecbbb0d7525c119830984aed5de1458fa6e62202d62",
+      "bytes": 1474
+    },
+    {
+      "status": "??",
+      "path": "app/api/admin/legal-procedures/control/route.ts",
+      "sha256": "a24cf6faa704c86b3d5618a5d26e8ae6c0ad5bda6d0d90359d342ef0ef75ffd2",
+      "bytes": 1647
+    },
+    {
+      "status": "??",
+      "path": "app/api/admin/legal-procedures/route.ts",
+      "sha256": "29dcd80cf32c41cb238e68a28a0b33beab35721d5e7b84587b2cbf26b255e467",
+      "bytes": 3453
+    },
+    {
+      "status": "??",
+      "path": "app/api/admin/platform-service-fee-refunds/route.ts",
+      "sha256": "3cef85b09b7e0bbba6a0046ec4e6d56f46c34e90131abefa76f8250c4bf5852f",
+      "bytes": 2375
+    },
+    {
+      "status": "??",
+      "path": "app/api/admin/seller-applications/[id]/bank-details/route.ts",
+      "sha256": "d3dac43790697ff7f04754c9e1f407647c0c42c97fac13f44b3d81d6c560ae0b",
+      "bytes": 1774
+    },
+    {
+      "status": "??",
+      "path": "app/api/admin/seller-document-change-requests/[id]/route.ts",
+      "sha256": "7eb4f17dd1bb263f3c46177960c87cab32bdc99b4f0794328bff56749e0db208",
+      "bytes": 1632
+    },
+    {
+      "status": "??",
+      "path": "app/api/admin/seller-documents/[id]/verify/route.ts",
+      "sha256": "a2433c70bc2616569c87fe7bebac27b5ea199c1b4ba152306e6453cb9336ed74",
+      "bytes": 1685
+    },
+    {
+      "status": "??",
+      "path": "app/api/jobs/seller-drafts/route.ts",
+      "sha256": "6c6f4e9bea43ba001a00007d4881657a2faa0677dd7f28c5f3e1222b7a7d347e",
+      "bytes": 1340
+    },
+    {
+      "status": "??",
+      "path": "app/api/orders/[orderNumber]/documents/[id]/stamp/route.ts",
+      "sha256": "8de6fecde6da4682140bfe1c3b79526b08c2550d099338b6086c12dc6b7c74b6",
+      "bytes": 1925
+    },
+    {
+      "status": "??",
+      "path": "app/api/security/activity/route.ts",
+      "sha256": "1ddf9d1bc6076e00942dd0857c0977b0b3b1446f0cbc238c4c876905ae36041d",
+      "bytes": 68
+    },
+    {
+      "status": "??",
+      "path": "app/api/security/assisted-recovery/complete/route.ts",
+      "sha256": "cb89c3fe7d585ee6c910339b742ff286fd6f5aa757b1d585a641dcb3537f5020",
+      "bytes": 96
+    },
+    {
+      "status": "??",
+      "path": "app/api/security/assisted-recovery/route.ts",
+      "sha256": "79b8245562f7227401d36a97c5446afedc3b022434732061c36cd2fe3311acf7",
+      "bytes": 93
+    },
+    {
+      "status": "??",
+      "path": "app/api/security/bootstrap/route.ts",
+      "sha256": "3408717df618e7e283da8791c76f7c417ea8426303f9f034924db61d75ab1ad5",
+      "bytes": 153
+    },
+    {
+      "status": "??",
+      "path": "app/api/security/confirm/route.ts",
+      "sha256": "a258ac9e0808a7b8c13eb3336f3b80c73feaab21bd6141fd2ce0b061b327d27d",
+      "bytes": 151
+    },
+    {
+      "status": "??",
+      "path": "app/api/security/disable/route.ts",
+      "sha256": "ba607e18fd8a5dc32c0a4729723bfd140d278c79c7a0ea14655fcce084962ce0",
+      "bytes": 160
+    },
+    {
+      "status": "??",
+      "path": "app/api/security/recovery/route.ts",
+      "sha256": "010f9f079d92246bbc5907a385a574738bd4a7200833f8769324a0fa56d0230d",
+      "bytes": 152
+    },
+    {
+      "status": "??",
+      "path": "app/api/security/setup/route.ts",
+      "sha256": "5bc18c6b666e9a6874332d89dbd4ba992d253870ad09a88bf936a010a81dd5c8",
+      "bytes": 149
+    },
+    {
+      "status": "??",
+      "path": "app/api/security/status/route.ts",
+      "sha256": "0d974b8237fe89103f5ab9a018baea83361ace6e4fd3ce210dfb4cb9269615ae",
+      "bytes": 103
+    },
+    {
+      "status": "??",
+      "path": "app/api/security/verify/route.ts",
+      "sha256": "01c3c1b10f7b0c3156e006f79ad8870abe9e75d0ceadbf852cda81ee8a6a44c8",
+      "bytes": 150
+    },
+    {
+      "status": "??",
+      "path": "app/api/seller-applications/document-change/route.ts",
+      "sha256": "c758c881ad7d727d0f5517c2589fbc163e382420f802b4835779507a04c46641",
+      "bytes": 1731
+    },
+    {
+      "status": "??",
+      "path": "app/api/seller-applications/draft/route.ts",
+      "sha256": "65b1f9d65e234b6a74a6d65f536929b5dbf2b05968d20d9930bfb087a51a8df7",
+      "bytes": 6139
+    },
+    {
+      "status": "??",
+      "path": "app/api/seller-registrations/route.ts",
+      "sha256": "27c9b32afb0851d035ce0cd23c8db66458271ea86ffeb8d81d3010e36bbb8f52",
+      "bytes": 8925
+    },
+    {
+      "status": "??",
+      "path": "app/api/seller/bank-details/route.ts",
+      "sha256": "0c665d60127aab0f0781c56b5675f1d8f4beba25d11cd81005dcec4ea2b080fb",
+      "bytes": 4399
+    },
+    {
+      "status": "??",
+      "path": "app/api/seller/products-description/route.ts",
+      "sha256": "bbb9f73db187e565559ff7458864ce708ae12719d15d0950a0dd5fcdf7560500",
+      "bytes": 3710
+    },
+    {
+      "status": "??",
+      "path": "app/api/seller/public-profile/route.ts",
+      "sha256": "d8a72a2118efa5214b6ae5af13068698908f9c62b405b067d85c016fff129de6",
+      "bytes": 6434
+    },
+    {
+      "status": "??",
+      "path": "app/local-testing/billing/page.tsx",
+      "sha256": "f36b1b0f64f91cecb9d1767aeab0bc1ea8e4851cd52292b73412fc37be9d89d9",
+      "bytes": 2684
+    },
+    {
+      "status": "??",
+      "path": "app/orders/[orderNumber]/documents/[id]/stamp/route.ts",
+      "sha256": "38535db037b3e5fdf3772c72b8aa0951047f6d7e3367d3afd447465d4c71ab1b",
+      "bytes": 178
+    },
+    {
+      "status": "??",
+      "path": "app/recover-account/page.tsx",
+      "sha256": "d5763e2fa699f516c29870d3b7214538c2cd4e9b8311f9226ae1b63e54e15933",
+      "bytes": 744
+    },
+    {
+      "status": "??",
+      "path": "app/security/page.tsx",
+      "sha256": "b7a1b9845e4e833582081ce205d60d419b89a69133ec23e80108dea367df7bc1",
+      "bytes": 945
+    },
+    {
+      "status": "??",
+      "path": "components/admin/account-recovery-assistance.tsx",
+      "sha256": "5d3fb8e6ff148cf0a1af439344c59443e5efa3a65297e061446fe3f80d5eec21",
+      "bytes": 6510
+    },
+    {
+      "status": "??",
+      "path": "components/admin/accounting-workspace.tsx",
+      "sha256": "76cf1b07b6fdbf2f102d45fe22a1db253d39018c735c3b88db59cabce42f4621",
+      "bytes": 19065
+    },
+    {
+      "status": "??",
+      "path": "components/admin/fee-waiver-manager.tsx",
+      "sha256": "6af747dccda9f56bd16fb4f6f89f810e3e3fbeb013748e46fb0f6082d7be9826",
+      "bytes": 13680
+    },
+    {
+      "status": "??",
+      "path": "components/admin/legal-procedure-controls.tsx",
+      "sha256": "90ea09e5deedec6a42fe39a9c6d69bb6eeb29b72191704ea4f8859181bf8a1a3",
+      "bytes": 11725
+    },
+    {
+      "status": "??",
+      "path": "components/admin/legal-procedure-workspace.tsx",
+      "sha256": "f57eeec347cfa21ccf0b194845242142ab2a6c03efbf2651170d55d3ef9692f8",
+      "bytes": 15990
+    },
+    {
+      "status": "??",
+      "path": "components/admin/platform-service-fee-refund.tsx",
+      "sha256": "66ec373a1ea14c36fc9525e00431024f1095f8927ab3a87b1178c11059f134a7",
+      "bytes": 3441
+    },
+    {
+      "status": "??",
+      "path": "components/admin/seller-bank-review.tsx",
+      "sha256": "545c2602efcb256f79dd60b73ed76dc9c1bc321d71a6fcbeae8f5ae199575f1a",
+      "bytes": 2193
+    },
+    {
+      "status": "??",
+      "path": "components/admin/seller-document-review.tsx",
+      "sha256": "23da602212baf70f2cc01b494b258309db47026aab52fe829832e150dd86696b",
+      "bytes": 1633
+    },
+    {
+      "status": "??",
+      "path": "components/auth/assisted-recovery-form.tsx",
+      "sha256": "9dde90bde75ad8f801abf7f14008e055ab685db320ec5d67e6609715d1b2f050",
+      "bytes": 5731
+    },
+    {
+      "status": "??",
+      "path": "components/commerce/approved-billing-document.tsx",
+      "sha256": "4f2126ae8ff2f62d0efc5fec7b8589c87e15dc8d46c41fd79e029f01145836eb",
+      "bytes": 13552
+    },
+    {
+      "status": "??",
+      "path": "components/commerce/customer-service-fee-breakdown.tsx",
+      "sha256": "8270e2d1b494ad7009c9ceb44e8c8cc73c03e412883802adf0218f3b71d699f7",
+      "bytes": 1904
+    },
+    {
+      "status": "??",
+      "path": "components/commerce/seller-disclosure.tsx",
+      "sha256": "80dfc5042285ee62da18857e97e2ef0a42fce18083e089bd9434ada9d8541c43",
+      "bytes": 293
+    },
+    {
+      "status": "??",
+      "path": "components/security/backup-transfer-workspace.tsx",
+      "sha256": "216424f922e4ec0223a85d2a82ca47dfb822264fcfd52e39ae8b97f37bc1d103",
+      "bytes": 31370
+    },
+    {
+      "status": "??",
+      "path": "components/security/security-workspace.tsx",
+      "sha256": "91d18854cad87c6b633c32e4d6856469e70ad5ce5fdb01b908fad488417a96a8",
+      "bytes": 42798
+    },
+    {
+      "status": "??",
+      "path": "components/security/session-activity.tsx",
+      "sha256": "a6d61d06f01aec62bc833db2bbdfeb17ff4f03e6d24da0a38644da37748654a1",
+      "bytes": 1963
+    },
+    {
+      "status": "??",
+      "path": "components/seller/bank-details-form.tsx",
+      "sha256": "2701cbe7cc86f0c4cad82bf533c7a75ac79aed8a24af5e95228132b8c2a57895",
+      "bytes": 3542
+    },
+    {
+      "status": "??",
+      "path": "components/seller/marketplace-fee-breakdown.tsx",
+      "sha256": "c37f76120d83d33de23685bc29976be2f33ebc1332567ae4e96a90e77a982ad1",
+      "bytes": 1200
+    },
+    {
+      "status": "??",
+      "path": "components/seller/order-marketplace-fees.tsx",
+      "sha256": "cb2e72ffc91476c21649f3b22aa7c1c513ee1a5033b269aea894661645cb8f2f",
+      "bytes": 1091
+    },
+    {
+      "status": "??",
+      "path": "components/seller/seller-action-overview.tsx",
+      "sha256": "920eeec5fcdf954adb1943bf764595a472b43b1dca7d43ae766863c4ea4af58b",
+      "bytes": 5112
+    },
+    {
+      "status": "??",
+      "path": "components/seller/seller-earnings-summary.tsx",
+      "sha256": "ec3c129ee10fefa66f413657db3edcca32a40f67be35a51bf5dbe9b6f9809868",
+      "bytes": 11073
+    },
+    {
+      "status": "??",
+      "path": "components/seller/seller-onboarding-fields.tsx",
+      "sha256": "48682e8569729c4c7a7f48bda7c78d93ea7e0b997e4fb1c7154286cabc14964f",
+      "bytes": 1633
+    },
+    {
+      "status": "??",
+      "path": "components/seller/seller-products-description.tsx",
+      "sha256": "bf999577f264fd74ed0730556780245c0f39fa4085d602eed5fcfe80176caf96",
+      "bytes": 3090
+    },
+    {
+      "status": "??",
+      "path": "components/seller/seller-program-details.tsx",
+      "sha256": "ae905ed629f4cf408379c14b38967f84583ddf52c97e02bcc422983613074a86",
+      "bytes": 1445
+    },
+    {
+      "status": "??",
+      "path": "components/seller/seller-registration-intake-form.tsx",
+      "sha256": "8959cf9f1d84d10715b752914c21aaf562021ad871725af79ac19630e786788e",
+      "bytes": 17554
+    },
+    {
+      "status": "??",
+      "path": "components/seller/seller-registration-video.tsx",
+      "sha256": "2080e4fad46d173ac8d3922db055d1590fbe048647f6bd569ccb008ff694d23e",
+      "bytes": 3832
+    },
+    {
+      "status": "??",
+      "path": "components/seller/use-seller-draft.ts",
+      "sha256": "13aa0a31221928a65696335aad29c8ef9c7edbdc6bbd7bfd82e538ac8d62f6fa",
+      "bytes": 12400
+    },
+    {
+      "status": "??",
+      "path": "components/support/support-assistant.module.css",
+      "sha256": "9c44beaa479821cbf8273f89487d0cc9a1142fc501887020a0f6d7d2d4fb09c7",
+      "bytes": 7954
+    },
+    {
+      "status": "??",
+      "path": "components/support/support-assistant.tsx",
+      "sha256": "8525e2ece5b70d7015b322b8e8a436a041fa527ef446475dbe90c2fea657183f",
+      "bytes": 13519
+    },
+    {
+      "status": "??",
+      "path": "components/support/support-contact-card.tsx",
+      "sha256": "efba4e3d5699c60ef82179e98f96dba146bb5c7b5a4c905ffd96e0676ef9514a",
+      "bytes": 2038
+    },
+    {
+      "status": "??",
+      "path": "deployment/babal/mariadb-commission-continuity.sql",
+      "sha256": "8ba92036e85f3d6a02f7d830880a4ab4a5804c222138ea7016ad849b4dcd445c",
+      "bytes": 6139
+    },
+    {
+      "status": "??",
+      "path": "deployment/babal/mariadb-customer-service-fee-waivers.sql",
+      "sha256": "a0959007fe16cd1d3691ecc78fd1a5f552512e273929609f98f7d0c9773dfb16",
+      "bytes": 8328
+    },
+    {
+      "status": "??",
+      "path": "deployment/babal/mariadb-marketplace-fee-waivers.sql",
+      "sha256": "c9399f9a217f29913d62da0fed502735dffb55083ed29f34c208fe6536bdb9b9",
+      "bytes": 5897
+    },
+    {
+      "status": "??",
+      "path": "deployment/babal/mariadb-seller-application-drafts.sql",
+      "sha256": "9ac63b8fc504e0048a7b7a8bf9b07ff8deb88afc743384000c6721fe285f204a",
+      "bytes": 1009
+    },
+    {
+      "status": "??",
+      "path": "deployment/babal/mariadb-seller-registration-intakes.sql",
+      "sha256": "9b4f30426115aed223f2f989614eb75346aef1655167d4e0d61053721445c2be",
+      "bytes": 554
+    },
+    {
+      "status": "??",
+      "path": "docs/admin-security-and-transfer.md",
+      "sha256": "36c1555f2a06271e278fa0e1b18767d71f47c10d2083a9739eaa27e75b72e8f8",
+      "bytes": 12717
+    },
+    {
+      "status": "??",
+      "path": "docs/hosted-security-bootstrap.md",
+      "sha256": "4e5d4081318383d3679a14d2ce51c070e14b1e8de9c426220b3946b5c8f6258a",
+      "bytes": 7950
+    },
+    {
+      "status": "??",
+      "path": "docs/marketplace-fee-waivers.md",
+      "sha256": "1b7e17576c3550d132fd86286fcfcf72473daef190fd30d777fa44bba799ecb7",
+      "bytes": 6221
+    },
+    {
+      "status": "??",
+      "path": "docs/native-recovery.md",
+      "sha256": "6604fd67e37909417cea123285891b320a46068e8fb297096d3fdefc6a7eb4dc",
+      "bytes": 8784
+    },
+    {
+      "status": "??",
+      "path": "docs/policy-drafts/2026-10-19-policy-improvements.md",
+      "sha256": "44c220ed726f2eb9d2f38f1f7e2f942ee2a725d938221ab5971e2de69d9c41ac",
+      "bytes": 17201
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/plans/2026-10-18-accounting-section.md",
+      "sha256": "70421caa0b4a12ba718be3b1a2f93578e890d44c6ce9d27ec15668a3e7f47bd8",
+      "bytes": 29668
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/plans/2026-10-18-legal-procedures-editor.md",
+      "sha256": "788c19f7c2a64b6f4b9dc72b58b4e9bb654f66d8579b90cf94afc5da276a7560",
+      "bytes": 5366
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/plans/2026-10-19-config-and-policy-corrections.md",
+      "sha256": "0a3f739c01e27eb2a15d928e6e5fef9fbce0976985e26a50ed7cd17671f3ab08",
+      "bytes": 6509
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/plans/2026-10-19-policy-management.md",
+      "sha256": "f89cd474abe4a5eb647cc2e55750c0861b14f82a0c5d685e075d9fd0d98195e7",
+      "bytes": 5281
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/plans/2026-10-19-promo-and-dependency-security.md",
+      "sha256": "dc1848edd5c344665225df4e9c9a20cef1425c48f2017ea5bbed4d161610c0f2",
+      "bytes": 5004
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/plans/2026-10-20-remaining-local-test-failures.md",
+      "sha256": "9e559c1ee4fb6aff12c11baf371d87a26a95078546866f93b199338b0a8c7289",
+      "bytes": 4611
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/plans/2026-10-20-security-and-transfer.md",
+      "sha256": "0574687eb30c34f0634f2ce8e2794766fbe351fc0a819c7b1eb27cf184e8cf75",
+      "bytes": 9169
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/plans/2026-10-20-seller-onboarding.md",
+      "sha256": "e197eaa32fc141a6370c756e434b9fc53caa5760462186714a7d17fbb46ff303",
+      "bytes": 7827
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/plans/2026-10-21-approved-billing-format.md",
+      "sha256": "4685850a913f11bc27768fd380637fc14ab66321fb630c6dbdd0115db7129df1",
+      "bytes": 6023
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/plans/2026-10-21-readiness-remediation.md",
+      "sha256": "5e8b4588603cbd927f42f8e1d46d83419c2a1c012eee88f5aec776fc300671b8",
+      "bytes": 2902
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/plans/2026-10-22-marketplace-fee-waivers.md",
+      "sha256": "28c1137e64df890b6075fdeb52462f8e5fd9b030e80078f755dc24b80f5d7b0e",
+      "bytes": 15762
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/plans/2026-10-23-customer-fee-waiver-correction.md",
+      "sha256": "7bc147f66c6ef249f7161ac4200631f85f696085b3bceb510db4cfd98c760a9e",
+      "bytes": 29008
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/plans/2026-10-23-production-inventory.md",
+      "sha256": "9e9ad61cd6c39cdef767dea24601d4879f46c1bf32c36341678e02ca36b00ee4",
+      "bytes": 6899
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/plans/2026-10-23-production-preupgrade-recovery.md",
+      "sha256": "a535ef942b6fa16111b562638464b599b074a4c31ee648a43fccc11236a9330c",
+      "bytes": 24478
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/plans/2026-10-28-free-support-assistant.md",
+      "sha256": "91dcb2d38c2aadf3a7ab799a66e7c879305814a4dbf4d3dafa458d4afe1669b0",
+      "bytes": 8039
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/plans/2026-10-28-seller-mfa-assisted-recovery.md",
+      "sha256": "ff9f33ca726e23f9bf7e0738f5d9255e06e5a799526c59750fe7dfb6c6a1702b",
+      "bytes": 7016
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/plans/2026-10-28-upload-security.md",
+      "sha256": "88bf5940a50fcef42d89237ee4f2dbda8cf7b51698e9c117d691c77816456b1b",
+      "bytes": 3992
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/plans/2026-10-29-seller-registration-recovery.md",
+      "sha256": "4d467b02a59a3608317b0fcd876c3dd66bf4adb93bac45d4aec4864ed852dc84",
+      "bytes": 9205
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/plans/2026-10-30-live-maker-activation.md",
+      "sha256": "111c4f26b165458b523d956ac7cf33dfbb0d0d2c2d50119ae71bc260d5fc14ca",
+      "bytes": 8863
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/plans/2026-10-30-managed-maker-public-listings.md",
+      "sha256": "6826ccce110801ebdae2434fd5f24da9f7c833b6219bd98a0a089cf063ea6a4f",
+      "bytes": 4705
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/plans/2026-10-30-planning-readiness-review.md",
+      "sha256": "f8cb47d9887f48737c2d51014260273f5d2d9c0c3bdde2ca47f0a610cf7ff597",
+      "bytes": 51433
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/plans/2026-10-30-seller-order-response.md",
+      "sha256": "83b8733aedd4a285b5ad5c2058737770e0f7c1554e759cebb6e834b28bdfcdad",
+      "bytes": 123941
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/plans/2026-10-31-complete-plan-review.md",
+      "sha256": "6b8937d7d7352d2c8b4dc028ab6333e58713647b8dd16d28fc1521b015683c7c",
+      "bytes": 18831
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/plans/2026-10-31-complete-version-scope.md",
+      "sha256": "78d9eb72968ef5f036d879a76d659bbd66b91ffa69ca4b75ebe283fa97d76a29",
+      "bytes": 15737
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-18-accounting-section-design.md",
+      "sha256": "81e62f88e5389589d3debf432a54e6b4aa05fdc26184369c9fd033c44651abe3",
+      "bytes": 24785
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-18-legal-procedures-editor-design.md",
+      "sha256": "2e239d9566ae41432ca8c153a627bb2b56070db2cdef509f667bb95f31122003",
+      "bytes": 3585
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-20-admin-mfa-design.md",
+      "sha256": "731bfbd8137d201c14385787a4b7c2e3d86a3d69cea9e0ea83f81d32877d3dd1",
+      "bytes": 15315
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-20-hosting-portability-requirements.md",
+      "sha256": "c5d887e19f5a0c7b34d5965bd41badc1f093d301bc236056e668597b181fcc83",
+      "bytes": 11138
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-22-marketplace-fee-waiver-design.md",
+      "sha256": "72322ee6955b28fd0ff595ebe33f81494e560b4a881a2f75f713dd26e4ad83f2",
+      "bytes": 6670
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-23-customer-fee-waiver-correction-design.md",
+      "sha256": "1d3a2fca19019ae1994636f6910a328210d6c999414549c1424e41cbdf347656",
+      "bytes": 17561
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-23-production-preupgrade-recovery-design.md",
+      "sha256": "51eb5ca72ad5645d18e6c75d61ba93143c402219a81e0808c82566bb0323ac22",
+      "bytes": 19908
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-28-free-support-assistant-design.md",
+      "sha256": "2409c4074903e4fc4aa96bcd8bbaaf7521153239022ad18af2b71a95f5ae309c",
+      "bytes": 1868
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-28-seller-mfa-assisted-recovery-design.md",
+      "sha256": "4a5f3abcd89131434aaf6ebe85328346dce3f7c25aeaa8213ee4a4462342958f",
+      "bytes": 6174
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-30-email-delivery-automation.md",
+      "sha256": "c6a0a6bd058ac1d08a81f6cfaf98a41fbf23f34dfdb7edddf48fc469e2a5faa6",
+      "bytes": 35524
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-30-finance-payments-workspace.md",
+      "sha256": "8d01e139226c6a8b39d7ccc53f940d15297ca0fea0089ae1acb4de41b4635e1f",
+      "bytes": 41498
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-30-form-management-field-inventory.md",
+      "sha256": "3a38a9f5d9bc041ac12030526e1672528376555149c45b6a42c91e5a0c0aa95a",
+      "bytes": 35445
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-30-form-management-reliability.md",
+      "sha256": "51345100782bd7f9693d5c60a2766c1d768c081b91dc7edb73cf3aeee37d0c9f",
+      "bytes": 24820
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-30-live-maker-activation-design.md",
+      "sha256": "3f08479dd940ece40dad7d44fe8390612f46ba3f9d2e6bbf9899dd04d7ba8aad",
+      "bytes": 6282
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-30-managed-maker-product-release.md",
+      "sha256": "91c70b06e2804c81debbf4630b905063321ebf958c4d530f8222571076c1adba",
+      "bytes": 5172
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-30-orders-customer-care-workspace.md",
+      "sha256": "b446233e15857d2df4c40be817398b0cb43d00d2d225bd2bb50c1e039cd29667",
+      "bytes": 40388
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-30-products-storefront-workspace.md",
+      "sha256": "cc5be2b6554b498653846d0b4e7f6bc3b40dcf01f56b39ed5e406e7140fa0726",
+      "bytes": 31413
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-30-seller-center-workspace.md",
+      "sha256": "f9c4617a393f066ed879a56d00722eba1694a1c069a3e7b93d5a3f5c0aa466f1",
+      "bytes": 42653
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-30-seller-management-workspace.md",
+      "sha256": "3966888192dda353de3677999978f3d0406f8e0c3859a4ddb35216aafbb48914",
+      "bytes": 55987
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-30-super-admin-overview-review.md",
+      "sha256": "9520dafc19124f4453c905e8b72c3f657215e13df8f1036527ac8a8c8d348660",
+      "bytes": 22232
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-31-bank-identity-changes-payout-approval.md",
+      "sha256": "63916ac3ba35cd5fbb2bcb390b4ed700bab4afd5070acc6cc995bcd18052c866",
+      "bytes": 32021
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-31-cancellation-return-rules.md",
+      "sha256": "0bf751d785646906d159f08fbb906cfef7f1ee02ca04f92a52962a9f199bc1f2",
+      "bytes": 30144
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-31-fee-publication-schedules-combinations.md",
+      "sha256": "c48509c0d7b8ea15301af09e59119abea3b7ee0f88739f403d10ed0eb99de101",
+      "bytes": 24666
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-31-fees-programs-promotions-workspace.md",
+      "sha256": "74129377c24d157cf16d89de91802484ecda8aea8546533cb8cf5c92f62e0e79",
+      "bytes": 33686
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-31-manual-payment-rules.md",
+      "sha256": "77ad92757d61a16f6cd14b4bd7de5f7ffc5f21723874e463801c86eb89d3bead",
+      "bytes": 38887
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-31-optional-product-intake-support.md",
+      "sha256": "35d194e01d0ad6c07caff264f7ddbeb1c00e23fb00213a4561cd0c584304bdd9",
+      "bytes": 18824
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-31-product-discount-price-guidance.md",
+      "sha256": "21b6f5bac76257288b95b1dd300dc5b75885597ffd448ebc50a125f52dd86fec",
+      "bytes": 31315
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-31-public-profile-changes-cooldown.md",
+      "sha256": "7cf6e4043303024e9de77f55db523fdd59916d65b2fa9a8870f570171ab11325",
+      "bytes": 24444
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-31-published-product-edit-rules.md",
+      "sha256": "9a0a5f5be705cf2d3ff6a6cf885e1e61a36fff8ee65f1533f9d8a5ac7999e072",
+      "bytes": 22160
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-31-refunds-after-payout-recovery.md",
+      "sha256": "d4f8b82993c085ff6d341e5c882377040e064fcf83d43d9296401ec76733c11b",
+      "bytes": 29347
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-31-retail-categories-product-variants.md",
+      "sha256": "06b92cb0652b0f9ebd6cf8e4db2fa499efc2aa9de5f34b6d04f6049a5ecab331",
+      "bytes": 58852
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-31-seller-customer-screen-walkthrough.md",
+      "sha256": "aa9d0f5ee90af47614ce5ba3e2f7d598b0dae724f261ca3d9a19038905dd3139",
+      "bytes": 47949
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-31-seller-price-public-preview.md",
+      "sha256": "b2ba0b9058376074312f15aa99606461e4b680e342feff7658c59aa1be1ddbae",
+      "bytes": 18906
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-31-single-super-admin-finance-approval.md",
+      "sha256": "24609fc17d1d8f1408e80809ac414576312f84355c364fd438a0d6a189cb4e0e",
+      "bytes": 6830
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-31-system-health-records.md",
+      "sha256": "f091b563450213f798574bae3a5e6eb0b4cfb5665820384a8787b2e7e1fc3ea3",
+      "bytes": 35231
+    },
+    {
+      "status": "??",
+      "path": "docs/superpowers/specs/2026-10-31-team-business-policies.md",
+      "sha256": "1a3c4b751486894f4484b4c2140a427d3deadbb95b9a4659c5dd29a0fcec7571",
+      "bytes": 35354
+    },
+    {
+      "status": "??",
+      "path": "docs/testing/2026-10-21-approved-billing-verification.md",
+      "sha256": "b95fb26c53154278149835bb3a7e181f61ef903e5b34119174f5491adf43826a",
+      "bytes": 6787
+    },
+    {
+      "status": "??",
+      "path": "drizzle/0073_marketplace_fee_waivers.sql",
+      "sha256": "fcfdd94056c19bb17bb9c636b33356aa21e9272f542c55146be2c845c29f848a",
+      "bytes": 5353
+    },
+    {
+      "status": "??",
+      "path": "drizzle/0074_customer_service_fee_waivers.sql",
+      "sha256": "ad8e0818ccf77c22f105cb4b34e574fe5d6ef1b354bef004161ee8ca32fbc651",
+      "bytes": 7469
+    },
+    {
+      "status": "??",
+      "path": "drizzle/0075_commission_continuity.sql",
+      "sha256": "513844cfee3c8c37f35e4bbaee302854fa156f9406d879d39137da95875ae015",
+      "bytes": 3670
+    },
+    {
+      "status": "??",
+      "path": "drizzle/0076_seller_application_drafts.sql",
+      "sha256": "790bc1293b1a60627f43c9247663a571c495765a086ebe6c1999000b56eb42eb",
+      "bytes": 880
+    },
+    {
+      "status": "??",
+      "path": "drizzle/0077_seller_registration_intakes.sql",
+      "sha256": "ab765c32b61052bb60693b7bc6bcdcfbcbf1f92b478167f5c9115bd7cbf34940",
+      "bytes": 351
+    },
+    {
+      "status": "??",
+      "path": "drizzle/0078_seller_document_change_requests.sql",
+      "sha256": "4045ed455bbe53920637fe0a1fb978b745083febc78d2230dff5c46a371a2b1a",
+      "bytes": 613
+    },
+    {
+      "status": "??",
+      "path": "lib/accounting/access.ts",
+      "sha256": "cf807913ae8daf15f150c41d2cc08e5bdc75626a20da8c72b3ae06b8f4ba7fea",
+      "bytes": 735
+    },
+    {
+      "status": "??",
+      "path": "lib/accounting/environment.ts",
+      "sha256": "d1502fd87a689ff380c6ff4f74822df16280ba2e6bfd523b68575468a52042f2",
+      "bytes": 470
+    },
+    {
+      "status": "??",
+      "path": "lib/accounting/filters.ts",
+      "sha256": "f632656812db4c7e65c461a168589b8b10b0845d359bd04e0a9a65a03770fa1c",
+      "bytes": 4268
+    },
+    {
+      "status": "??",
+      "path": "lib/accounting/form-contract.ts",
+      "sha256": "d9f223b57a6a78d23e3b8d3e9e5f97082735116c3b422292a74756e9ea53b2c1",
+      "bytes": 1033
+    },
+    {
+      "status": "??",
+      "path": "lib/accounting/money.ts",
+      "sha256": "fa704347fe9707574909e80a3381ac64b980b24891cb2c32bf1d1ddaba979d50",
+      "bytes": 871
+    },
+    {
+      "status": "??",
+      "path": "lib/accounting/projection.ts",
+      "sha256": "13996012d354ebc859cb92f751b96d41bb3e6c70b7cf843a0d4f418f7bd22d3c",
+      "bytes": 354
+    },
+    {
+      "status": "??",
+      "path": "lib/accounting/source-manifest.ts",
+      "sha256": "07e52a6a52030f82d9dc1e58288e0285394deae6c8da84a729fc437f77201615",
+      "bytes": 4219
+    },
+    {
+      "status": "??",
+      "path": "lib/accounting/source-queries.ts",
+      "sha256": "f4a9bba0610f1f75a726d9e33570d3421fad5a5cddb1182dac3a20a7631ee034",
+      "bytes": 35904
+    },
+    {
+      "status": "??",
+      "path": "lib/accounting/types.ts",
+      "sha256": "f44f82ed5c6de9f32942d88f3d9749787c26d055e78bf9f79308c84a4a994745",
+      "bytes": 2226
+    },
+    {
+      "status": "??",
+      "path": "lib/accounting/workspace.ts",
+      "sha256": "7c0f014422a35d938b868247e6d30c0f163597b82fe185ad66b31b28d525dd0d",
+      "bytes": 462
+    },
+    {
+      "status": "??",
+      "path": "lib/checkout/customer-service-fee.ts",
+      "sha256": "2f8a1e83a2fcd7ef350d776582560cef2589b2fd8779f738fdc37db5ab9e1f62",
+      "bytes": 1166
+    },
+    {
+      "status": "??",
+      "path": "lib/checkout/platform-service-fee-form-contract.ts",
+      "sha256": "9a270c00f4f8d71fb60f3e3dfedbba5080f2c062f23cea6940455f468f6955e7",
+      "bytes": 1109
+    },
+    {
+      "status": "??",
+      "path": "lib/checkout/platform-service-fee.ts",
+      "sha256": "7bcd8180b71fe66313c809ffa2bd579202ddfbb92bc6f11ed4ad7b62c74ef2ce",
+      "bytes": 4469
+    },
+    {
+      "status": "??",
+      "path": "lib/checkout/policy-context.ts",
+      "sha256": "b39bb3b4b07520dd488d7e3287d6d84c147ed51c5b64655689f330c24b4b120c",
+      "bytes": 989
+    },
+    {
+      "status": "??",
+      "path": "lib/checkout/reviewed-quote.ts",
+      "sha256": "e4de47edda81a083884b2009a3de2c441326f3c9dff1828785f9ca63d9d2c6de",
+      "bytes": 4294
+    },
+    {
+      "status": "??",
+      "path": "lib/checkout/saved-address.ts",
+      "sha256": "390af26784788bf1b908d9173aed26b793bef1434006aaa974261874a1f0c9ad",
+      "bytes": 1677
+    },
+    {
+      "status": "??",
+      "path": "lib/content/help-topics.ts",
+      "sha256": "db8eea312bbeda8d7ed3f23f98579bdd33164ae8b1a9c4928ccb2aa610586b16",
+      "bytes": 1531
+    },
+    {
+      "status": "??",
+      "path": "lib/db/repositories/billing-documents.ts",
+      "sha256": "a13967962dbdd99ddbc9a893e52d8eb5cacee7c894c0f5acf021be167bf55fd4",
+      "bytes": 2802
+    },
+    {
+      "status": "??",
+      "path": "lib/db/repositories/commission-continuity-proof.ts",
+      "sha256": "b42c9de05e0ece879be831444afcef390cb214a1cb46ad2d6bd23337993c659c",
+      "bytes": 9631
+    },
+    {
+      "status": "??",
+      "path": "lib/db/repositories/commission-continuity.ts",
+      "sha256": "6fcc0887bcdbcc73fc8a40e013808858b0412ca82416d39e861aebd473601cc4",
+      "bytes": 13168
+    },
+    {
+      "status": "??",
+      "path": "lib/db/repositories/customer-fee-waivers.ts",
+      "sha256": "b66e1c69f07a0755674998366d1d87490a68a4cdb84e198d4d144b11d758f75d",
+      "bytes": 842
+    },
+    {
+      "status": "??",
+      "path": "lib/db/repositories/customer-service-fees.ts",
+      "sha256": "a15269547498622147f83cc401877b4447b2e15a79798ea3fd7e9765b0f559f7",
+      "bytes": 5050
+    },
+    {
+      "status": "??",
+      "path": "lib/db/repositories/fee-campaign-commands.ts",
+      "sha256": "7199504b491518259fc3cb7036a4e374e5919bf86eeeb310c769698284460b7b",
+      "bytes": 14699
+    },
+    {
+      "status": "??",
+      "path": "lib/db/repositories/fee-waivers.ts",
+      "sha256": "4af5a1f18daa6c997d24d2934d7869f9126f20aa099140353592b851c861bafb",
+      "bytes": 4981
+    },
+    {
+      "status": "??",
+      "path": "lib/db/repositories/platform-service-fee-refunds.ts",
+      "sha256": "d4140fcb517ae1cee700a41ba7b6ce3d12e885d5714b7379f6481ae16876af4a",
+      "bytes": 5519
+    },
+    {
+      "status": "??",
+      "path": "lib/db/repositories/platform-service-fee.ts",
+      "sha256": "da211ba84c00949403b73f21545d518f8155c4399d2d0662cfe4b75202002753",
+      "bytes": 1767
+    },
+    {
+      "status": "??",
+      "path": "lib/documents/billing.ts",
+      "sha256": "e07835fc8249d3e89e87af09e8df43b8914a9b4b24ca76de4b7399a5626a00bb",
+      "bytes": 10310
+    },
+    {
+      "status": "??",
+      "path": "lib/documents/company-stamp-data.json",
+      "sha256": "9b29d4f75a899315b2e40320e80225f8e93bd93861ba0977d9c878c9942008cd",
+      "bytes": 1766044
+    },
+    {
+      "status": "??",
+      "path": "lib/documents/company-stamp.ts",
+      "sha256": "2b1b93b452e5b3eee4139a2a66ad2763438786106ceca9ff74e6bd9a90f63351",
+      "bytes": 920
+    },
+    {
+      "status": "??",
+      "path": "lib/email/account-security.ts",
+      "sha256": "d47f30a3bb53d6911ef49695e212633fe738d4b1aa20fb96ccdb30a2b1a93147",
+      "bytes": 4593
+    },
+    {
+      "status": "??",
+      "path": "lib/http/content-disposition.ts",
+      "sha256": "15deacff50e9a4775fe44d932d373e4536f951f6f847d8dffe7b5a7968f6bb11",
+      "bytes": 1514
+    },
+    {
+      "status": "??",
+      "path": "lib/legal-procedures/access.ts",
+      "sha256": "294fc1c66e435ebfc120009487ddd349e31729abc4cc52c290daeab70482ff29",
+      "bytes": 4088
+    },
+    {
+      "status": "??",
+      "path": "lib/legal-procedures/content.ts",
+      "sha256": "3984f834cf1554330afa7a72cc433bea399e4fc5a479014096084f1dadbe0974",
+      "bytes": 3858
+    },
+    {
+      "status": "??",
+      "path": "lib/legal-procedures/document.ts",
+      "sha256": "766fa0f916e0aec1c5eda16250f1e56f396c2c726c7713c23d6a059197dbad3f",
+      "bytes": 1142
+    },
+    {
+      "status": "??",
+      "path": "lib/legal-procedures/http.ts",
+      "sha256": "cba38b570d103e038391733c4e05edc4f6055c0cc5aeca08cb0dc43b96aed7a2",
+      "bytes": 2125
+    },
+    {
+      "status": "??",
+      "path": "lib/legal-procedures/lifecycle-model.ts",
+      "sha256": "675f7b449050f27a04edb6205705f5dc8bd5a5b6c1f1bece68db5453e3979545",
+      "bytes": 6635
+    },
+    {
+      "status": "??",
+      "path": "lib/legal-procedures/lifecycle.ts",
+      "sha256": "4d9ab01496e4137b3212585464089e074834cf1b0643bf337ca4a36e93dd08d6",
+      "bytes": 11027
+    },
+    {
+      "status": "??",
+      "path": "lib/legal-procedures/model.ts",
+      "sha256": "b3c24c861176dfce39bed201cc22750647ef7b5621beffb2e3d7da5b0514b428",
+      "bytes": 7263
+    },
+    {
+      "status": "??",
+      "path": "lib/legal-procedures/operating-procedure.ts",
+      "sha256": "53d9ec4ae1b6addf88fe48f62e2dd8e819efeb66ab94aa0819fdf3d6bde0e8cf",
+      "bytes": 17688
+    },
+    {
+      "status": "??",
+      "path": "lib/legal-procedures/repository.ts",
+      "sha256": "f5591969fe8fd1e35fdf8719cd08265fdbf348b5b1b719d8003d11efe0ef70d7",
+      "bytes": 8244
+    },
+    {
+      "status": "??",
+      "path": "lib/marketplace/fee-waiver-form-contract.ts",
+      "sha256": "e63d5787a2289df62f83b9a4833bfd91c26895c1c0d18bfcdb7fb9506595747b",
+      "bytes": 1125
+    },
+    {
+      "status": "??",
+      "path": "lib/marketplace/fee-waiver-presentation.ts",
+      "sha256": "b21ac63f34aa80b6e9f04ba825859f3098b43cfd9a69f07da3ad013d9b8e5994",
+      "bytes": 753
+    },
+    {
+      "status": "??",
+      "path": "lib/marketplace/fee-waivers.ts",
+      "sha256": "d346ae15e623ffe5949a4876b9e2b19272ae45d73d602119add1af37221cc839",
+      "bytes": 3858
+    },
+    {
+      "status": "??",
+      "path": "lib/operations/commission-continuity-operator.ts",
+      "sha256": "27a9371d7dca6061baab7c926ad480fed8df82e924825811beda1949cd2d5888",
+      "bytes": 2392
+    },
+    {
+      "status": "??",
+      "path": "lib/operations/deployment-readiness.ts",
+      "sha256": "df569ea7291282f8f0eba034e81427d9b65d85ef33364658d4fd5ef7035619a0",
+      "bytes": 1039
+    },
+    {
+      "status": "??",
+      "path": "lib/operations/fee-schema-readiness.mjs",
+      "sha256": "43530784f9c16e240ae5f6b8a693f356bcfa5b26853f51a2256090b128ec7b5b",
+      "bytes": 19477
+    },
+    {
+      "status": "??",
+      "path": "lib/portability/application-media.ts",
+      "sha256": "43628d336c7110529443c71a08e648c54a31c1d51d1a4334a79f35fc50c1161d",
+      "bytes": 4663
+    },
+    {
+      "status": "??",
+      "path": "lib/portability/crypto.ts",
+      "sha256": "b6c1f2759f513d8f0632d6bc33a298e9355a9351b3425f2cd9d461bd6bff5422",
+      "bytes": 12222
+    },
+    {
+      "status": "??",
+      "path": "lib/portability/d1-source.ts",
+      "sha256": "97dfb1bedc2c485e227892ada0c73763b008e0ac6938521f041c3e20ceae6fa0",
+      "bytes": 45521
+    },
+    {
+      "status": "??",
+      "path": "lib/portability/service.ts",
+      "sha256": "9529d78c68ee94773e6110077c2fa1f6d0e71ca9cb5809360283359dc44db4fb",
+      "bytes": 17959
+    },
+    {
+      "status": "??",
+      "path": "lib/portability/transfer.ts",
+      "sha256": "27010f5876e1bed6eb31a139a0adf78cda30787af5f78430b43d772ffa20266c",
+      "bytes": 36877
+    },
+    {
+      "status": "??",
+      "path": "lib/portability/types.ts",
+      "sha256": "465f31d43c2d3fcca736a72e0d86738ad818e1042fc1b9ee6bfeb54dd71c52d2",
+      "bytes": 4530
+    },
+    {
+      "status": "??",
+      "path": "lib/portability/values.ts",
+      "sha256": "d8966c06f834bbaa0638a13275d4bd5117982e2a31b1da860b0dc9b8d10fa2d7",
+      "bytes": 4230
+    },
+    {
+      "status": "??",
+      "path": "lib/products/image-work-queue.ts",
+      "sha256": "b0ac50a55d5d3cf30079e7cce3ae8f393ac228de7bdcf0d8662d503ec54e25e2",
+      "bytes": 868
+    },
+    {
+      "status": "??",
+      "path": "lib/products/stock-codes.ts",
+      "sha256": "17d70f5d0862c137bb2cc8f28309b58ab9db17c5ddc2e5acffaa28d273f62c55",
+      "bytes": 1712
+    },
+    {
+      "status": "??",
+      "path": "lib/referrals/invitation-link.ts",
+      "sha256": "0d81363f4484b10b169e86c36b19ccfb3828e456f67d9538f4ab84071bd787fe",
+      "bytes": 701
+    },
+    {
+      "status": "??",
+      "path": "lib/security/assisted-recovery-controller.ts",
+      "sha256": "f18d48ab07d7c7f45f4d85d2473291c9588a75593ddaa22ec03be2d3c1d82b4a",
+      "bytes": 4717
+    },
+    {
+      "status": "??",
+      "path": "lib/security/assisted-recovery.ts",
+      "sha256": "e2f6d6af8b17560b8c72dd6cedf806dc419abe619932e1f8e8e0e3b27bb48835",
+      "bytes": 18701
+    },
+    {
+      "status": "??",
+      "path": "lib/security/bootstrap.ts",
+      "sha256": "ac413aa57b33afbb3b44e1073eca4ca53ace4fc39bd0e3a3f4910dd87811bbf1",
+      "bytes": 5088
+    },
+    {
+      "status": "??",
+      "path": "lib/security/controller.ts",
+      "sha256": "36fb9c0b516283c23fca1ff61faaff7257397f559195b9ed57869ef4f089bbf4",
+      "bytes": 15769
+    },
+    {
+      "status": "??",
+      "path": "lib/security/crypto.ts",
+      "sha256": "328e24cc93536d574a07534001c4f52e6845bdd701217bed9cf564bac8d4c125",
+      "bytes": 5415
+    },
+    {
+      "status": "??",
+      "path": "lib/security/form-contracts.ts",
+      "sha256": "8443f9c446b8e31a4766415ee93b303f91a9e1c10abb36d49c9d54864ef7025d",
+      "bytes": 8190
+    },
+    {
+      "status": "??",
+      "path": "lib/security/hosted-policy.ts",
+      "sha256": "e516ebdb5496645ed68c0a40811e2704bd024f0e7276ee5d9be62ff6a2618468",
+      "bytes": 10104
+    },
+    {
+      "status": "??",
+      "path": "lib/security/mfa.ts",
+      "sha256": "4f4b986dd910c9bf8d421ef060b8d5fb10785bf16548eb369f2fd214d32fd4cf",
+      "bytes": 17110
+    },
+    {
+      "status": "??",
+      "path": "lib/security/model.ts",
+      "sha256": "d3d6dc7e1105f66e371758ac971d1344d92e17397407a88ea64bc7cdb056d3ab",
+      "bytes": 8050
+    },
+    {
+      "status": "??",
+      "path": "lib/security/password-challenge.ts",
+      "sha256": "9c9596dac50257c8e8d75bd76c0b97aaef8c951e162edb0d6f9b040e5a5c6292",
+      "bytes": 3893
+    },
+    {
+      "status": "??",
+      "path": "lib/security/request.ts",
+      "sha256": "57a834e3aa37a37731a43bbd40bd7d4981419b0aa43117f2809e91ef908aa693",
+      "bytes": 9549
+    },
+    {
+      "status": "??",
+      "path": "lib/security/runtime-policy.ts",
+      "sha256": "94159c1bc3244dfc11a3abf54daf1ffbb3255eb7e4e44ee7e75276f453c1f394",
+      "bytes": 4567
+    },
+    {
+      "status": "??",
+      "path": "lib/security/session.ts",
+      "sha256": "b8d303d52875eccbade47aaa586d20d348ba3f5b652c0bac05f79939782c5891",
+      "bytes": 7375
+    },
+    {
+      "status": "??",
+      "path": "lib/security/store.ts",
+      "sha256": "8f36b21164f3ed4ab70ee7d7462bfc50aa74eb363ba6a3210c7bce6b05704502",
+      "bytes": 8527
+    },
+    {
+      "status": "??",
+      "path": "lib/seller/earnings.ts",
+      "sha256": "7366ef404021f1a8d8459640bd53a9b2a9c4f0386b186785a379e61fdb542c0f",
+      "bytes": 5278
+    },
+    {
+      "status": "??",
+      "path": "lib/sellers/application-terms.ts",
+      "sha256": "edb56b81c465b59e84654a860f50585d1d91c0a0bcf1686bef766b7ffdde55a5",
+      "bytes": 1519
+    },
+    {
+      "status": "??",
+      "path": "lib/sellers/bank-details.ts",
+      "sha256": "1e84ce4bae9ff86fac2bd92cad3bdd48bb41eee136e8ddf8d4abcc08a202c019",
+      "bytes": 6482
+    },
+    {
+      "status": "??",
+      "path": "lib/sellers/contact-phone.ts",
+      "sha256": "d58c0222e2351f667f7f9c27afb88397c55c5307b65a0aba108831b3a6c1d3f7",
+      "bytes": 1475
+    },
+    {
+      "status": "??",
+      "path": "lib/sellers/dashboard-form-contracts.ts",
+      "sha256": "b09ba76a3fe3bd9205d77d1c1649ced9f7c48fe7829ac614006aada2164648ff",
+      "bytes": 1711
+    },
+    {
+      "status": "??",
+      "path": "lib/sellers/dashboard-terms.ts",
+      "sha256": "5b434debdb12186b0f6e74dea08008a523e13002f5c5d0b61b604b975eb20af9",
+      "bytes": 1143
+    },
+    {
+      "status": "??",
+      "path": "lib/sellers/disclosure.ts",
+      "sha256": "832e86c1f114beb3c7d9de758cbd987ae71afc0552c90bb855179fa068dbc75e",
+      "bytes": 471
+    },
+    {
+      "status": "??",
+      "path": "lib/sellers/document-review.ts",
+      "sha256": "cdeeb80129f48990c3b4e0b95a7fb0b23ab332f98a374da2b1632eaa2da2055f",
+      "bytes": 6623
+    },
+    {
+      "status": "??",
+      "path": "lib/sellers/draft-contract.ts",
+      "sha256": "8ff9230c2a100423dd11b97d723e19e387e0976d284e819b2c6a4b04bb11cda3",
+      "bytes": 2216
+    },
+    {
+      "status": "??",
+      "path": "lib/sellers/draft-store.ts",
+      "sha256": "f4795843cf1a9e75a10fb9aeb6fbe63bad0b44bc45c7d1037a4484bf9266e694",
+      "bytes": 7674
+    },
+    {
+      "status": "??",
+      "path": "lib/sellers/onboarding.ts",
+      "sha256": "03cdb6e581ceabc30a4449f80a67b23c46f6f473b1345075a70f4c280c1ac1a7",
+      "bytes": 6752
+    },
+    {
+      "status": "??",
+      "path": "lib/sellers/public-profile.ts",
+      "sha256": "a6406effecb3a6af5732b15593d9a2cb3005c9d3fab71dbe20aec09a6263a7dc",
+      "bytes": 483
+    },
+    {
+      "status": "??",
+      "path": "lib/sellers/registration-intake.ts",
+      "sha256": "8d73529c88996e60f46d31503374506202a7d4a6e7cf7cf16f9926c09ccb4866",
+      "bytes": 6252
+    },
+    {
+      "status": "??",
+      "path": "lib/sellers/registration-store.ts",
+      "sha256": "89917e164f60832d56db05792d070042667f7b6c1f0e6735af4c9391e383b619",
+      "bytes": 10024
+    },
+    {
+      "status": "??",
+      "path": "lib/seo/brand.ts",
+      "sha256": "9a3159a1357d0b4d5c979ed3506868717568125923b6a3dc3b6bc7550c30f82c",
+      "bytes": 1244
+    },
+    {
+      "status": "??",
+      "path": "lib/settlements/registered-terms.ts",
+      "sha256": "b822f45a97f9c6f3e89b7b009c193a138565b8caf77152ad78400202407c4418",
+      "bytes": 1210
+    },
+    {
+      "status": "??",
+      "path": "lib/staging/billing-preview.ts",
+      "sha256": "f5fb6e7d8f21b2ba484ebaee1d0aa2b066ccd8089b9828b3866e242d79fbb5f6",
+      "bytes": 2908
+    },
+    {
+      "status": "??",
+      "path": "lib/staging/security-policy-plugin.ts",
+      "sha256": "5eaa3d5a7ac8cf5085f4477cd8a9d02790a9c15a0caaa0a8795fc8ca9a37474d",
+      "bytes": 4889
+    },
+    {
+      "status": "??",
+      "path": "lib/support/additional-topics.ts",
+      "sha256": "6b758afc06447b06463427bfb8230246e601657465fec722eb8b7984fc42404e",
+      "bytes": 17820
+    },
+    {
+      "status": "??",
+      "path": "lib/support/assistant.ts",
+      "sha256": "c024ec170afe0e3bbd5bd966e064adb71310302a2eb357a00ccfd41fc1c4e5b4",
+      "bytes": 10557
+    },
+    {
+      "status": "??",
+      "path": "lib/support/form-contract.ts",
+      "sha256": "db81612094a46637886fd1260ef243cc575cdacf6f8a9d8895a25211c78b1ec1",
+      "bytes": 745
+    },
+    {
+      "status": "??",
+      "path": "lib/uploads/document-content.ts",
+      "sha256": "995030bef5303522a765646e976ade1baaedd214d1b639dcc2185e3ddb79612f",
+      "bytes": 6114
+    },
+    {
+      "status": "??",
+      "path": "scripts/build-hosted-security-cli.mjs",
+      "sha256": "2b0a9df97e92262bf164cd54836177019fe71eff5376c47fdba54fe2f64f295a",
+      "bytes": 926
+    },
+    {
+      "status": "??",
+      "path": "scripts/deployment/provision-hosted-security.mts",
+      "sha256": "d9e348ce2e428eea5c802efb0a2349ee2af3a73dc64198c0ddae25a5a4777f39",
+      "bytes": 2792
+    },
+    {
+      "status": "??",
+      "path": "scripts/recovery/local-source-artifact.mjs",
+      "sha256": "86a803589e42a7f85a7fd71f0a4c84a8aafbaf1f22e0cf2697cdcee82779b87f",
+      "bytes": 3411
+    },
+    {
+      "status": "??",
+      "path": "scripts/recovery/native-inventory.mjs",
+      "sha256": "77e40b0dc9b63151fad56fd3faf36d15ca79d7d959c9f790e8df1f99928014e9",
+      "bytes": 8680
+    },
+    {
+      "status": "??",
+      "path": "scripts/recovery/native-recovery.mjs",
+      "sha256": "de1998c499e638a7c0b5ee55031e8e28e5cfb2fed394ab17ed1acdd3411033b8",
+      "bytes": 9725
+    },
+    {
+      "status": "??",
+      "path": "scripts/recovery/native-test-results.mjs",
+      "sha256": "7d43327ab2466941717ea97712c5431fefc10e79871e2d5d78915065777c027a",
+      "bytes": 1111
+    },
+    {
+      "status": "??",
+      "path": "scripts/recovery/package-native-backup.mjs",
+      "sha256": "77f06e672573b73d8a86b4b80e5ff377f3b6bd8215d522e9bdc7d0ccee570cfa",
+      "bytes": 1834
+    },
+    {
+      "status": "??",
+      "path": "scripts/recovery/rehearse-native.mjs",
+      "sha256": "033c7c7b7f8c66563f311fac84bfa03ecc92d8042631f3a8c7d0f050390f9292",
+      "bytes": 12910
+    },
+    {
+      "status": "??",
+      "path": "scripts/staging/security-key.mjs",
+      "sha256": "26162e7c03318e2848a7d24d7fc8010aee743415566d58aa5e4aee87b223f39f",
+      "bytes": 6040
+    },
+    {
+      "status": "??",
+      "path": "scripts/testing/verify-packaged-browser-gates.mts",
+      "sha256": "653fdf9e0674674b36a9f11f2c1797a106d6e1d7ff86c9ad5f97c9989d79329d",
+      "bytes": 39409
+    },
+    {
+      "status": "??",
+      "path": "tests/account-security-email.test.ts",
+      "sha256": "86b7af44fa7e9edbad1c31faaacdedfa114378261f9080a7035a995a266bb6a6",
+      "bytes": 2235
+    },
+    {
+      "status": "??",
+      "path": "tests/accounting-access.test.ts",
+      "sha256": "ad3176264b41f1c830fae4bbb351ce1495a35fa28774fa3b8ec51861263ac24a",
+      "bytes": 4497
+    },
+    {
+      "status": "??",
+      "path": "tests/accounting-contract.test.ts",
+      "sha256": "625314ec0fc7dda2ea2f400ee482a51f72a46607ed5b0d10f8814e52b8e9cb99",
+      "bytes": 4448
+    },
+    {
+      "status": "??",
+      "path": "tests/accounting-current-rates.test.ts",
+      "sha256": "930d15258ccd106a44f3c7eb0858e4d76feb6fa0f0e2d3cd84192318af20a3d0",
+      "bytes": 2531
+    },
+    {
+      "status": "??",
+      "path": "tests/accounting-filter-client.test.ts",
+      "sha256": "4a5f07b0a24eaea0492700a69043f1737092022ca74e50cd723fe2cc5c520c1b",
+      "bytes": 6222
+    },
+    {
+      "status": "??",
+      "path": "tests/accounting-native-runtime.test.ts",
+      "sha256": "0df95d5a603905638b47080b11f745ba6e1b2862ba84e8888a7c41b56d0e7c65",
+      "bytes": 2715
+    },
+    {
+      "status": "??",
+      "path": "tests/accounting-projection.test.ts",
+      "sha256": "245df1cfccf7ec25f9cd1c3904cf6e97ee9882ce66d2ee5f94eb23d23b064082",
+      "bytes": 985
+    },
+    {
+      "status": "??",
+      "path": "tests/accounting-session-security.test.ts",
+      "sha256": "3fe84799aa09c228cb981e9080763e20cbd21ce1b27f939654b2fe1beffea420",
+      "bytes": 3197
+    },
+    {
+      "status": "??",
+      "path": "tests/accounting-sources.test.ts",
+      "sha256": "6abbcd16f76edb1e64064d7b4b5cc572f4fe518d2c68da25ce999736f19c2a83",
+      "bytes": 21521
+    },
+    {
+      "status": "??",
+      "path": "tests/accounting-ui.test.ts",
+      "sha256": "61bcc44cbb66d93f2b6dcb3e01ddaadc89f2fce6c85bc7f38eb1ec3a07640605",
+      "bytes": 7725
+    },
+    {
+      "status": "??",
+      "path": "tests/accounting-worker-limits.test.ts",
+      "sha256": "de381899569d575ae3ce7c1f3e6bc130492e29e197078af93e617f7cad407793",
+      "bytes": 3848
+    },
+    {
+      "status": "??",
+      "path": "tests/admin-backup-transfer.test.ts",
+      "sha256": "783804e6fa8ccb65fd0114c79c7bf20591de9e86db710ba368ef2013f97718a4",
+      "bytes": 15480
+    },
+    {
+      "status": "??",
+      "path": "tests/admin-commission-base-copy.test.ts",
+      "sha256": "dd447e866e17554487967f42180143780b7ca6135f58c8fac71c85f5c16b9011",
+      "bytes": 4140
+    },
+    {
+      "status": "??",
+      "path": "tests/admin-commission-scheduled-base.test.ts",
+      "sha256": "1d7e0c4130aae536ae372110e086e1cf19fecc1508792c5155a591197a9d32a9",
+      "bytes": 4800
+    },
+    {
+      "status": "??",
+      "path": "tests/admin-mfa-core.test.ts",
+      "sha256": "4db232d07cf74396f263b90e9c68f1a987f52b8b41e43430d4abc647c7b6d717",
+      "bytes": 11349
+    },
+    {
+      "status": "??",
+      "path": "tests/admin-mfa-session.test.ts",
+      "sha256": "6059732726a2fc424cb8a5bed5566a43159e1e3aab508c0142f8ed449068a80d",
+      "bytes": 4138
+    },
+    {
+      "status": "??",
+      "path": "tests/admin-recovery-continuation.test.ts",
+      "sha256": "52947d894981198213afd144bf0c3430209db740fd417de7d3f19cad3bc8023a",
+      "bytes": 12380
+    },
+    {
+      "status": "??",
+      "path": "tests/admin-security-access.test.ts",
+      "sha256": "4e23d46361b1ec68f32b56a4cb151450cf2a6432e9d1ce04c7c31cc1ea3413d9",
+      "bytes": 3606
+    },
+    {
+      "status": "??",
+      "path": "tests/admin-security-negative.test.ts",
+      "sha256": "c9b2d980eb7ae7f0f89532d458064561ca45a65ef4dde25d129a86236e2f2fb9",
+      "bytes": 22135
+    },
+    {
+      "status": "??",
+      "path": "tests/admin-security-routes.test.ts",
+      "sha256": "19d116210610e012b4bc38d7d2f8d3d5419097c7e8ba7ac820c0e6c7d7469d5b",
+      "bytes": 5034
+    },
+    {
+      "status": "??",
+      "path": "tests/admin-security-ui.test.ts",
+      "sha256": "9b7b8d5815ea86a8d4ab79ba08c4a129192dd936ec61aabd9a784539a06e9a9d",
+      "bytes": 45212
+    },
+    {
+      "status": "??",
+      "path": "tests/admin-session-limits.test.ts",
+      "sha256": "12f7e9ba573d9da330f9f28c4e5b6f533eae3e22b4ebe9fc12596f0b71df499d",
+      "bytes": 3029
+    },
+    {
+      "status": "??",
+      "path": "tests/approved-billing.test.ts",
+      "sha256": "c4b8b7329424d6971562a8fd07c788a3f2d3367aa7dc5eabe8fadd4da8f260da",
+      "bytes": 10787
+    },
+    {
+      "status": "??",
+      "path": "tests/assisted-recovery-routes.test.ts",
+      "sha256": "401e01a1494590698155647bc253752fa3a5075941b846e34b2b0c64d0e074f0",
+      "bytes": 3014
+    },
+    {
+      "status": "??",
+      "path": "tests/assisted-recovery-ui.test.ts",
+      "sha256": "68e25a531ebdfcfe7f2fb52216b901be4ddcfac1b98b2393b9fa22254d3159b3",
+      "bytes": 5787
+    },
+    {
+      "status": "??",
+      "path": "tests/assisted-recovery.test.ts",
+      "sha256": "8978f3ec051bad7732b3a6cc7b4c7da2a42889e79694eea2c6505740acd9fe25",
+      "bytes": 15443
+    },
+    {
+      "status": "??",
+      "path": "tests/billing-native-compatibility.test.ts",
+      "sha256": "7078c5e38273c836580f547e2876b8d1512ff85a92c04958f67b1f1b3012660a",
+      "bytes": 1161
+    },
+    {
+      "status": "??",
+      "path": "tests/billing-native-locks.test.ts",
+      "sha256": "1479ef98d84c251f9018675c2296ace4b661b8415e487435caaeebfc307550d3",
+      "bytes": 2579
+    },
+    {
+      "status": "??",
+      "path": "tests/billing-print-layout.test.ts",
+      "sha256": "15e17fc5ac35049c7e2185d4be8fb063abf4bc9c50e5543b0baddb9a569cdc59",
+      "bytes": 4841
+    },
+    {
+      "status": "??",
+      "path": "tests/billing-product-workflow.test.ts",
+      "sha256": "d72cd2a844046ed6c398ccc51b24ca8842c3c7b2e612911aad777409fb44d6a0",
+      "bytes": 480
+    },
+    {
+      "status": "??",
+      "path": "tests/billing-receipt-d1.test.ts",
+      "sha256": "ff8bd0ab75a9d2469143a0283924ad42ba405c5963d57f90638bf542a3e7082c",
+      "bytes": 2936
+    },
+    {
+      "status": "??",
+      "path": "tests/billing-receipt-sequence.test.ts",
+      "sha256": "489b579067a7284c60f3a7a47c0741b8b26e6f5b53744691971d64a0a89c943a",
+      "bytes": 2298
+    },
+    {
+      "status": "??",
+      "path": "tests/billing-release-native.test.ts",
+      "sha256": "7e52e631bc19080616b9582d609e7da9e5244efff2efaed46b34f665ade8cbed",
+      "bytes": 2048
+    },
+    {
+      "status": "??",
+      "path": "tests/billing-render.test.ts",
+      "sha256": "0b953a1f6a2a93e55d51617353fed35ccfcdbffda3510ebd1d313794cd3a78c8",
+      "bytes": 4029
+    },
+    {
+      "status": "??",
+      "path": "tests/billing-seller-sku.test.ts",
+      "sha256": "c02b3af1b841e9526c4634bf2de28f34cef88717eb218b7a3fac1859fa33a7f3",
+      "bytes": 4167
+    },
+    {
+      "status": "??",
+      "path": "tests/billing-stamp-access.test.ts",
+      "sha256": "2a9d86c4a58b4a3abf262b5029b82d428c6eb13b42a542cd335b25d34649c1fd",
+      "bytes": 4657
+    },
+    {
+      "status": "??",
+      "path": "tests/braces-security.test.ts",
+      "sha256": "8907763baf613b82e996768bc604628ddff4f3d6778ad71858450c4ccbc62811",
+      "bytes": 6051
+    },
+    {
+      "status": "??",
+      "path": "tests/cart-security.test.ts",
+      "sha256": "b2c192a221745f0d10396fe6bdbbddc4a0c8050e9d831bc9b5b8a7bc07d659b3",
+      "bytes": 9527
+    },
+    {
+      "status": "??",
+      "path": "tests/checkout-address-experience.test.ts",
+      "sha256": "3c9f98297dfa1d636aa8ed2459e9773efb20802ccb2cda34821eef4c8b4a09f4",
+      "bytes": 9948
+    },
+    {
+      "status": "??",
+      "path": "tests/checkout-reviewed-quote.test.ts",
+      "sha256": "396fe6dbd92e61eadc5e511bc1310f4b8704be44911ac20c5041421aff8f5290",
+      "bytes": 18170
+    },
+    {
+      "status": "??",
+      "path": "tests/checkout-saved-address.test.ts",
+      "sha256": "425f31fe6b68ac2ae6fd2080941504b184dec9567462b4786b71fd5ce045b6ca",
+      "bytes": 2122
+    },
+    {
+      "status": "??",
+      "path": "tests/commerce-financial-native.test.ts",
+      "sha256": "e5748901b8abc2bac9447d15a59f57e2eca83cd621ea4c2dd5b79ce629cfafc1",
+      "bytes": 1742
+    },
+    {
+      "status": "??",
+      "path": "tests/commerce-financial-transitions.test.ts",
+      "sha256": "b35c807ed63d41d019674044202ae842063c720e97c1070f10db98155b331c57",
+      "bytes": 20455
+    },
+    {
+      "status": "??",
+      "path": "tests/commission-continuity-native-adapter.test.ts",
+      "sha256": "667b298b894a12fd3f8a707989480731ceb145e2e1b7bfa076b6a6fd263c15c1",
+      "bytes": 8091
+    },
+    {
+      "status": "??",
+      "path": "tests/commission-continuity.test.ts",
+      "sha256": "dd5684aa1d6f768202cda6d2570bb033d633857cbd33179a963445ad2ac349ee",
+      "bytes": 23387
+    },
+    {
+      "status": "??",
+      "path": "tests/commission-launch.test.ts",
+      "sha256": "dc5c668e676d126c954e068d5a57556e9ac58c14b44f04aeff753db7b249e6a2",
+      "bytes": 9963
+    },
+    {
+      "status": "??",
+      "path": "tests/commission-required-rates.test.ts",
+      "sha256": "7274102102f814d1b9d4db1e303f3e38e9beee48f95c7041a5fc396cb93fa922",
+      "bytes": 4428
+    },
+    {
+      "status": "??",
+      "path": "tests/content-security-policy.test.ts",
+      "sha256": "d51f18b13ea4dc7b1ad9673e3f383f35c5e21fd957acfee537c1cc7a69a4556c",
+      "bytes": 3338
+    },
+    {
+      "status": "??",
+      "path": "tests/continuity-portability-policy.test.ts",
+      "sha256": "b86929d7d79ec62378fa87b81c590664dae79b207b4b44d38220aca11c3a23df",
+      "bytes": 2273
+    },
+    {
+      "status": "??",
+      "path": "tests/customer-fee-accounting.test.ts",
+      "sha256": "2ae4260889d09ef372c35873e84a58229f98b1436cf82e2883ad6acef1048f2a",
+      "bytes": 7965
+    },
+    {
+      "status": "??",
+      "path": "tests/customer-fee-aftercare.test.ts",
+      "sha256": "88597bc5ef8aa2cf683422ea39074a9fab0b522aecf7ff84bc9f792e6828a887",
+      "bytes": 17399
+    },
+    {
+      "status": "??",
+      "path": "tests/customer-fee-campaign-time-bounds.test.ts",
+      "sha256": "47457fddad7fba8e9e31ba8b6ca0b408e8397eae8f372eacc30145a8ee39e6ab",
+      "bytes": 2909
+    },
+    {
+      "status": "??",
+      "path": "tests/customer-fee-checkout.test.ts",
+      "sha256": "7445252e571d8d14a5ec84ed8ee5232a07cb4e7e01c0f49c5e10ca26fb2fd2ab",
+      "bytes": 27650
+    },
+    {
+      "status": "??",
+      "path": "tests/customer-fee-commercial-placement.test.ts",
+      "sha256": "d55d2298090b9291737157a4f7dd534a923a774fc946ae8a999c8069075bb370",
+      "bytes": 8610
+    },
+    {
+      "status": "??",
+      "path": "tests/customer-fee-commercial-terms.test.ts",
+      "sha256": "96f63f941261d7d5a36187643561b74d3793a7de19f9f5a473edb3fcb6f3b087",
+      "bytes": 12079
+    },
+    {
+      "status": "??",
+      "path": "tests/customer-fee-native.test.ts",
+      "sha256": "2b72845d6ed910b019db5b16b85f2577c86422db182eade753210e58540b58a7",
+      "bytes": 32726
+    },
+    {
+      "status": "??",
+      "path": "tests/customer-fee-repository.test.ts",
+      "sha256": "ca11b4d1a310462fdf69e915a0ced3a2924e11ed4356d13e3d8ff59890c70cb4",
+      "bytes": 16683
+    },
+    {
+      "status": "??",
+      "path": "tests/customer-fee-routes.test.ts",
+      "sha256": "73f0a87bfd698bdf43c04a1a5d18e415d46ec032a41dc8b521a60fffaee9f173",
+      "bytes": 10082
+    },
+    {
+      "status": "??",
+      "path": "tests/customer-fee-schema.test.ts",
+      "sha256": "3689e6dae9f3401dcd4a3b44f343fc04767af3bc7dc5bbecc9de33990f5cab8a",
+      "bytes": 22610
+    },
+    {
+      "status": "??",
+      "path": "tests/customer-fee-ui.test.ts",
+      "sha256": "97cdf4750ec254ce3d631caed8bfe02b2dcc759d597b2b7422b40a7fb5eb2732",
+      "bytes": 6610
+    },
+    {
+      "status": "??",
+      "path": "tests/customer-service-fee.test.ts",
+      "sha256": "2d60f77ff83860b7fa663cca682fa5f37f61efba23e4bcdf2bc268385a99a7f0",
+      "bytes": 4358
+    },
+    {
+      "status": "??",
+      "path": "tests/deployment-security-readiness.test.ts",
+      "sha256": "3b634b471b82d8c77cac44dacf0f73302b151a9a14f0f6a218bd6c856a12a205",
+      "bytes": 3314
+    },
+    {
+      "status": "??",
+      "path": "tests/discovery-routes.test.ts",
+      "sha256": "20f7d3df57c1ce37cbab2add32c614ca44b4f4b375a8370f96f14ff0ce0ca1c1",
+      "bytes": 8990
+    },
+    {
+      "status": "??",
+      "path": "tests/document-upload-security.test.ts",
+      "sha256": "140e810c3e95659e80929d5387988c036e2f94d75bcaaa51de16304e676143db",
+      "bytes": 6767
+    },
+    {
+      "status": "??",
+      "path": "tests/fee-waiver-accounting.test.ts",
+      "sha256": "34ca77a35b0f11d75bbbba5c2edad07ab2bb834dbcb5dde7e1a4cad349a156a6",
+      "bytes": 14951
+    },
+    {
+      "status": "??",
+      "path": "tests/fee-waiver-checkout.test.ts",
+      "sha256": "021ce26ddf7ffe375a8e1a137f0179b3b3b9c0edb264616daa09f2b5b9bfdb4a",
+      "bytes": 12294
+    },
+    {
+      "status": "??",
+      "path": "tests/fee-waiver-native.test.ts",
+      "sha256": "610dcbd2aea99cc9f7b5d71a20c9eacc6d6099372634cfb4e7d06215d40cfa25",
+      "bytes": 5062
+    },
+    {
+      "status": "??",
+      "path": "tests/fee-waiver-page.test.ts",
+      "sha256": "21c28c56591a70b286384de250a127ecd7c65a5f14f44911a08357b9be4c1818",
+      "bytes": 7565
+    },
+    {
+      "status": "??",
+      "path": "tests/fee-waiver-policy.test.ts",
+      "sha256": "3d970bff4ae464aad4f968e511fbb80a4858939af7b7529b2935c13524eb4463",
+      "bytes": 2212
+    },
+    {
+      "status": "??",
+      "path": "tests/fee-waiver-readiness.test.ts",
+      "sha256": "c1a8a21864c7cdab0b5340366e0fa032f935cfef2dda50bc0f7324045a77db3a",
+      "bytes": 14067
+    },
+    {
+      "status": "??",
+      "path": "tests/fee-waiver-repository.test.ts",
+      "sha256": "5736fadfd6c466e180e6e46dd774fa6eb9b4b3fb75951054b92e65351c19868b",
+      "bytes": 15357
+    },
+    {
+      "status": "??",
+      "path": "tests/fee-waiver-routes.test.ts",
+      "sha256": "c91a8251942309658be9f2649cef6aa0932f0729ebbb2c7050bb928f390b7985",
+      "bytes": 5483
+    },
+    {
+      "status": "??",
+      "path": "tests/fee-waiver-ui.test.ts",
+      "sha256": "cfc66f4b9b41396b84d998c84d18cc5c71aee0226c1fd87e351d6fc8745b5aec",
+      "bytes": 13331
+    },
+    {
+      "status": "??",
+      "path": "tests/fee-waiver-upgrade-selection.test.ts",
+      "sha256": "cd514fff7fadbef2c8f419cd9432ecf119887e49822c37c83b416ad456749e47",
+      "bytes": 2046
+    },
+    {
+      "status": "??",
+      "path": "tests/fee-waiver-visibility.test.ts",
+      "sha256": "05c4fd44f8ea1f91fe28581c6eeec3b74d82edd3920b60d95bc09f71236ab931",
+      "bytes": 8282
+    },
+    {
+      "status": "??",
+      "path": "tests/helpers/accounting-fixture.ts",
+      "sha256": "cf9e18500d2eb7ba56a13018134e5c6dcb3902dc83628e2286ef0a93b2f0b9a2",
+      "bytes": 2970
+    },
+    {
+      "status": "??",
+      "path": "tests/helpers/billing-workflow-scenario.ts",
+      "sha256": "106b2b65fac5d4fac845575e73e112c62cb57a7f465f1c4c5551faad3b5b78a8",
+      "bytes": 9067
+    },
+    {
+      "status": "??",
+      "path": "tests/helpers/customer-fee-native-fixture.ts",
+      "sha256": "64cffd4fe5049b0899f6946231184b00debf07356f4ed8aae6024d97d58c2fc0",
+      "bytes": 8763
+    },
+    {
+      "status": "??",
+      "path": "tests/helpers/customer-fee-waiver-fixture.ts",
+      "sha256": "eb144c7c8f7e3bf219677d3f7e599995d8a79a279ef4330e1ebfe13df3f1e444",
+      "bytes": 10991
+    },
+    {
+      "status": "??",
+      "path": "tests/helpers/fee-waiver-fixture.ts",
+      "sha256": "0c3477d275d114f1723e3b6e997230dccfa2805a0af63095445b600283cc4776",
+      "bytes": 4488
+    },
+    {
+      "status": "??",
+      "path": "tests/helpers/financial-transition-scenarios.ts",
+      "sha256": "eba0337d5e84220de30fbedcd99032bb7f09036855eccbab507db4aa753a6284",
+      "bytes": 13359
+    },
+    {
+      "status": "??",
+      "path": "tests/helpers/historical-commission-fixture.ts",
+      "sha256": "df713517cdc6106a494f96b97f76e2946e4f6503bfbe6b2fbd9170c9280ce2ca",
+      "bytes": 2719
+    },
+    {
+      "status": "??",
+      "path": "tests/helpers/hosted-auth-project-fixture.ts",
+      "sha256": "5573ee49aae557f138f8157d50e5bb4e32b3f00fbbfa078c11faf8bae36d7fb7",
+      "bytes": 1409
+    },
+    {
+      "status": "??",
+      "path": "tests/helpers/legacy-fee-history-fixture.ts",
+      "sha256": "e0f7a06853357b36b14d0ec81521c0dbb174a753de873a29920e3031954b6cb5",
+      "bytes": 3632
+    },
+    {
+      "status": "??",
+      "path": "tests/helpers/legal-procedure-fixture.ts",
+      "sha256": "6df48327b1f968fd5cc44da892de2808c3bf58c65a31d1757a1d6fe74cfb6ff0",
+      "bytes": 2329
+    },
+    {
+      "status": "??",
+      "path": "tests/helpers/mariadb-fee-readiness-metadata.json",
+      "sha256": "6100ed620c6f4327ad631a7e41401985075881eba124c3ea92a526502b5538bd",
+      "bytes": 12595
+    },
+    {
+      "status": "??",
+      "path": "tests/helpers/passive-pdf.ts",
+      "sha256": "8f3c2072e95d4473dc7a106c9d37a0a326b4b0466a7ae1b0436c81378f9b4f62",
+      "bytes": 1110
+    },
+    {
+      "status": "??",
+      "path": "tests/helpers/promo-checkout-fixture.ts",
+      "sha256": "0794e78aab8203b3dcef0c4d8f1f48bd58a88bbbac921af48fbb87ea02dd7c2d",
+      "bytes": 6650
+    },
+    {
+      "status": "??",
+      "path": "tests/helpers/security-database.ts",
+      "sha256": "a31f31828fe84b88c59075371c93796b95609fd5744f37cb6d58c8c707939712",
+      "bytes": 2883
+    },
+    {
+      "status": "??",
+      "path": "tests/helpers/security-fixture.ts",
+      "sha256": "8f51fd1221b7b6a54f379e082ec66af594ea2dba9b5ec6ab815c76945d96b22a",
+      "bytes": 1691
+    },
+    {
+      "status": "??",
+      "path": "tests/hosted-security-bootstrap.test.ts",
+      "sha256": "0589ac7874e584b071c93add31d22266dc3386ca6e2b370a982bc22ba7d6d7cb",
+      "bytes": 4476
+    },
+    {
+      "status": "??",
+      "path": "tests/hosted-security-native.test.ts",
+      "sha256": "4932a680e3d74233f0ce9b14dd523100e40fd8ed2d345925d4d424dcda813bfc",
+      "bytes": 9811
+    },
+    {
+      "status": "??",
+      "path": "tests/hosted-security-package.test.ts",
+      "sha256": "cac0c876704f5ae50ba0ab3c699f4fed0aeb0fe6e4853d6d724cdfa713cad57e",
+      "bytes": 2638
+    },
+    {
+      "status": "??",
+      "path": "tests/hosted-security-policy.test.ts",
+      "sha256": "90c40f1b27bd762bb1c8bd1ee422b9ad817ab15a4da5d3a587f24736bf4e4edf",
+      "bytes": 10323
+    },
+    {
+      "status": "??",
+      "path": "tests/legal-procedure-control-routes.test.ts",
+      "sha256": "6b7f534da975c14f81466457acd063ec6a1a3b95c5898fba29eba14ad853e522",
+      "bytes": 6938
+    },
+    {
+      "status": "??",
+      "path": "tests/legal-procedure-drafts.test.ts",
+      "sha256": "0251c830394d75ad0224edcc570d80524e34e66d72783ddb1153b3102b3a2f7e",
+      "bytes": 12091
+    },
+    {
+      "status": "??",
+      "path": "tests/legal-procedure-editor.test.ts",
+      "sha256": "49671fb3988e2c26a329c4cadf56907cce9f156f1bfe4c631b8fd1e2ee7f227a",
+      "bytes": 8739
+    },
+    {
+      "status": "??",
+      "path": "tests/legal-procedure-lifecycle.test.ts",
+      "sha256": "c013c2a3a092fc6eeaca34c79fa72bf0f201c96d98992994ab866a1f3103f82e",
+      "bytes": 16805
+    },
+    {
+      "status": "??",
+      "path": "tests/legal-procedure-management-ui.test.ts",
+      "sha256": "2fa50c1cc712f7d7727991ac06126f50d54739bc4bb62b7e67492ca3bb3d22c2",
+      "bytes": 9973
+    },
+    {
+      "status": "??",
+      "path": "tests/legal-procedure-routes.test.ts",
+      "sha256": "da82e7c5d824c0cbd9e60d50b3247a1949067441b92b0e6bddd3dc354816a9ad",
+      "bytes": 8161
+    },
+    {
+      "status": "??",
+      "path": "tests/legal-public-active-only.test.ts",
+      "sha256": "ff3f66da71798e081a8980c5b8679ff9ec18f91409e59bb7f39299cf630f382f",
+      "bytes": 4208
+    },
+    {
+      "status": "??",
+      "path": "tests/local-security-key.test.ts",
+      "sha256": "49787c090b0d7c3fc051190a9d24811f471e9032e98fa7e1a5260fbe9fea118d",
+      "bytes": 2057
+    },
+    {
+      "status": "??",
+      "path": "tests/managed-maker-product-presentation.test.ts",
+      "sha256": "3d7b4aedbb99c39194a2327cfda0b612de8afa2ec741c0e05c86d2bb2c17f718",
+      "bytes": 558
+    },
+    {
+      "status": "??",
+      "path": "tests/managed-maker-public-listings.test.ts",
+      "sha256": "bfa7d57919bf2ee898b95f21cbeeb5c35d7503a4d941ffc6a850b683058a0b87",
+      "bytes": 6177
+    },
+    {
+      "status": "??",
+      "path": "tests/mfa-disable-routes.test.ts",
+      "sha256": "14473923bf7d07f03be8c8f439dd2258f780a45383f4281fb3e9cd4c05c35d1e",
+      "bytes": 18514
+    },
+    {
+      "status": "??",
+      "path": "tests/mfa-optional-policy.test.ts",
+      "sha256": "896ad89b784c421da9ed00d8937671e21dcf92099d09ca0223c615616424ebd2",
+      "bytes": 10869
+    },
+    {
+      "status": "??",
+      "path": "tests/native-recovery-inventory.test.ts",
+      "sha256": "8afd1ad76ae1c584428f0319498da79239543f2b27b00a95aee3b29af83dc462",
+      "bytes": 6628
+    },
+    {
+      "status": "??",
+      "path": "tests/native-recovery-package.test.ts",
+      "sha256": "05a403f80196535f3115c9d588496889d49707966c59dbc9bc55d2b87214a0e4",
+      "bytes": 5264
+    },
+    {
+      "status": "??",
+      "path": "tests/native-release-results.test.ts",
+      "sha256": "983df9e54a8fdb33fa96e86e7d1dea148655e4eea16e0fb64e4208d407a2f0f4",
+      "bytes": 2632
+    },
+    {
+      "status": "??",
+      "path": "tests/packaged-browser-gates.test.ts",
+      "sha256": "f52aa3de1bb55af784e0e77b72fbd928e4003fee2cfa2d080f760afb78c11730",
+      "bytes": 19621
+    },
+    {
+      "status": "??",
+      "path": "tests/platform-service-fee-ui.test.ts",
+      "sha256": "ca1072a99272001b94a2c3c298d2ad2edae392089571311bdbbadcba89f2fd76",
+      "bytes": 4595
+    },
+    {
+      "status": "??",
+      "path": "tests/platform-service-fee.test.ts",
+      "sha256": "a32dd74ed377cd77960932e17ba0f64fb3c843627aadd5ba2405ca1cb11e7be3",
+      "bytes": 26413
+    },
+    {
+      "status": "??",
+      "path": "tests/portable-application-media.test.ts",
+      "sha256": "160b08c43569c72b819b1c54ff45076edee0d066c578df008a89c632d8a2dd0f",
+      "bytes": 4818
+    },
+    {
+      "status": "??",
+      "path": "tests/portable-media-list.test.ts",
+      "sha256": "3312881c2a9d6df25505a1bb77b46fad0b2aa3993a8a0be40910cb1f0e7e0ae0",
+      "bytes": 1415
+    },
+    {
+      "status": "??",
+      "path": "tests/portable-mfa-roundtrip.test.ts",
+      "sha256": "a20efc94d9858a7c9d15af09f476e74fd7bcce7601acba1d6eccf304052ddad0",
+      "bytes": 43300
+    },
+    {
+      "status": "??",
+      "path": "tests/portable-source.test.ts",
+      "sha256": "d818f17f951f12dca1de893650a4283bb0f6a8dd5eeecaf1521157a459897ca4",
+      "bytes": 37466
+    },
+    {
+      "status": "??",
+      "path": "tests/portable-transfer.test.ts",
+      "sha256": "33e6e7d87cd425d47f942ae4feba282ad833ce837d881b2abf73159440e8639d",
+      "bytes": 34356
+    },
+    {
+      "status": "??",
+      "path": "tests/portable-worker-runtime.test.ts",
+      "sha256": "a9ad28fe89badfdbda9dcf085b8dfad815e10fee4521decb747d0a108684427b",
+      "bytes": 7768
+    },
+    {
+      "status": "??",
+      "path": "tests/product-date-calendar.test.ts",
+      "sha256": "6d5b1ebeb7d7669d00f4752c9bc0ef3538cc069a79f28bda6cf9d213c1a4cdac",
+      "bytes": 9819
+    },
+    {
+      "status": "??",
+      "path": "tests/product-image-queue.test.ts",
+      "sha256": "fa2c2eee3b50babeade58601f16f5cce0fef41bcf8224eb3711f5aed8ba48fc4",
+      "bytes": 1201
+    },
+    {
+      "status": "??",
+      "path": "tests/referral-invitation-links.test.ts",
+      "sha256": "ef96025abf01edf0bad3d3cde7ac66aebde312511212f742854b3d5651dedc31",
+      "bytes": 2634
+    },
+    {
+      "status": "??",
+      "path": "tests/registered-consent-evidence.test.ts",
+      "sha256": "790493f185fa6492c71ae2c085824825fc9b73cd516f8ac85f6b50980a433a15",
+      "bytes": 8487
+    },
+    {
+      "status": "??",
+      "path": "tests/registered-settlement-accrual.test.ts",
+      "sha256": "c8d4c7a8453460ddbd04e959248cb96868348f40c8ece4f5071dc40c33f81db5",
+      "bytes": 14238
+    },
+    {
+      "status": "??",
+      "path": "tests/registered-settlement-terms.test.ts",
+      "sha256": "4818604141410bc7363a97936d74aa3a14d568a7b8370a2450c29c8f99efae32",
+      "bytes": 2502
+    },
+    {
+      "status": "??",
+      "path": "tests/return-evidence-download.test.ts",
+      "sha256": "b4ff5cf233c56b4a4afe7ef4c5b5d9289a1625e9b27e68f6161e141bd4f5a3de",
+      "bytes": 4198
+    },
+    {
+      "status": "??",
+      "path": "tests/rider-holiday-dates.test.ts",
+      "sha256": "b9bf28d445f9d24514b11fbe83d333df94d65d608ec293dd3d371abbc9c3caf7",
+      "bytes": 1240
+    },
+    {
+      "status": "??",
+      "path": "tests/security-runtime-policy.test.ts",
+      "sha256": "907dbe7f10d016a7f6d677be7b649c9404836432fa50bf41f72a5c48d5132856",
+      "bytes": 10332
+    },
+    {
+      "status": "??",
+      "path": "tests/seller-access-denied-recovery.test.ts",
+      "sha256": "f243d0a676155847e5bd18657aa37269a136ab56d1e63241b6c3c97b96b45b5a",
+      "bytes": 2223
+    },
+    {
+      "status": "??",
+      "path": "tests/seller-agreement-consent.test.ts",
+      "sha256": "206d03820dfbfae766efeec55262f6bc66ca082edd4acec08251c9fdce4bde59",
+      "bytes": 5869
+    },
+    {
+      "status": "??",
+      "path": "tests/seller-bank-details.test.ts",
+      "sha256": "74236c16a161064682d6ced9a086119c98d0d59784a4500f3e922aca448d1fb2",
+      "bytes": 2764
+    },
+    {
+      "status": "??",
+      "path": "tests/seller-dashboard-experience.test.ts",
+      "sha256": "cde1ccd9ba3ec0f99df078447ba2ef21eeb5a99db31eb06880de12cc4b2767c4",
+      "bytes": 12674
+    },
+    {
+      "status": "??",
+      "path": "tests/seller-dashboard-records.test.ts",
+      "sha256": "e8000b670c7ae5de3110f213be320df0919d12abf4f346ac81ef7c68641ded1f",
+      "bytes": 14184
+    },
+    {
+      "status": "??",
+      "path": "tests/seller-dashboard-terms.test.ts",
+      "sha256": "5c3d8f69fd9b8ce886c8a795dfa2fb0c6aa9511d050626f7455a7413c97e6b29",
+      "bytes": 1662
+    },
+    {
+      "status": "??",
+      "path": "tests/seller-deferred-bank.test.ts",
+      "sha256": "3cac300f3928cbab396ada4f923d11d0a1fd2dbb2116b5c9566ee15547025bd8",
+      "bytes": 1100
+    },
+    {
+      "status": "??",
+      "path": "tests/seller-document-review.test.ts",
+      "sha256": "e3f60e33aa1ae8218227b3150bf1edbf533d58fc19675dd7006f7034e2a65371",
+      "bytes": 9654
+    },
+    {
+      "status": "??",
+      "path": "tests/seller-draft.test.ts",
+      "sha256": "7649410ae7778c159d0a50aa351760e2bc54e5304329637cb066036a007f53e7",
+      "bytes": 4481
+    },
+    {
+      "status": "??",
+      "path": "tests/seller-form-feedback.test.ts",
+      "sha256": "c5e51e5224b557a6f29c10423d1a5a7f67c132d2ef4ae41e2b1656b1364b27e6",
+      "bytes": 693
+    },
+    {
+      "status": "??",
+      "path": "tests/seller-mfa.test.ts",
+      "sha256": "d73799fb274dff597beb91b6bf5a378c1b7d9c72b3e78c4e4beef45a248a11a1",
+      "bytes": 12180
+    },
+    {
+      "status": "??",
+      "path": "tests/seller-onboarding.test.ts",
+      "sha256": "abe260444510cfae225d111cfd44f32864235796262e0cd2a0a9074a75f364fc",
+      "bytes": 19081
+    },
+    {
+      "status": "??",
+      "path": "tests/seller-optional-registration.test.ts",
+      "sha256": "c379a2b007f79c3cc349a335d1c836256dfd3bd4975acc6db372164f86bfeebd",
+      "bytes": 1148
+    },
+    {
+      "status": "??",
+      "path": "tests/seller-public-profile-cooldown.test.ts",
+      "sha256": "1572ffa9afab1edaee8c1e7703f8bdc8c16258ff8c3553188e8ab646e9f66fc4",
+      "bytes": 1752
+    },
+    {
+      "status": "??",
+      "path": "tests/seller-registration-api.test.ts",
+      "sha256": "f9ccff06f3fe69602a12772c4f0e4e6c2e72eac43a428844d200d7dc25a2d34e",
+      "bytes": 4483
+    },
+    {
+      "status": "??",
+      "path": "tests/seller-registration-browser.test.mjs",
+      "sha256": "f8b057156cd1beff3bf25063961ab04a79ba8e2138d966bcc21438711702c01e",
+      "bytes": 9294
+    },
+    {
+      "status": "??",
+      "path": "tests/seller-registration-intake-store.test.ts",
+      "sha256": "5cc84ad295874fdec60caece2ba44e4957fedb04bf247c8ef1d3c2231b326040",
+      "bytes": 10015
+    },
+    {
+      "status": "??",
+      "path": "tests/seller-registration-phone.test.ts",
+      "sha256": "c6a047e9bc7221c57e60eeb128781a9228de9d198a19bbcf801f8fe77982a94f",
+      "bytes": 678
+    },
+    {
+      "status": "??",
+      "path": "tests/seller-registration-release.test.ts",
+      "sha256": "bdb67f59cefa43f0dbe46da91d5cf0aac0d91d3eba8823a90be894b24f9e27d0",
+      "bytes": 1675
+    },
+    {
+      "status": "??",
+      "path": "tests/sign-in-continuation.test.ts",
+      "sha256": "f1738f69a31bcdd6f1c7b02289a1d6cccebe824219580e93c51694ce9e8909bf",
+      "bytes": 2081
+    },
+    {
+      "status": "??",
+      "path": "tests/support-assistant.test.ts",
+      "sha256": "abb4c99633a23300dc0e4f0a0e13e22e0294188b965b8143f2e5352d509dc148",
+      "bytes": 6744
+    }
+  ]
+}

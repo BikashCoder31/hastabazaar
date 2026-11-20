@@ -5,6 +5,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { renderProductWatermark, ProductWatermarkError, maximumProductWatermarkBytes, productWatermarkRendererVersion } from '../../lib/products/watermark';
 import { validateProductWatermarkPolicy } from '../../lib/products/watermark-policy';
+import { createImageWorkQueue } from '../../lib/products/image-work-queue';
 import { createLocalEnvironment, readLocalCheckout } from '../start-local.mjs';
 import { assertDisposableStagingContext, readAndVerifyStagingMarker, resolveDisposableStagingPaths } from './guards.mjs';
 
@@ -37,7 +38,7 @@ export function createLocalProductWatermarkPlugin(projectRoot: string, appOrigin
   const hosts = new Set(['localhost:' + port, '127.0.0.1:' + port]);
   const mediaPath = resolve(projectRoot, 'lib/products/watermark.ts').replaceAll('\\', '/');
   const policyPath = resolve(projectRoot, 'lib/products/watermark-policy.ts').replaceAll('\\', '/');
-  let active = 0;
+  const decodeQueue = createImageWorkQueue(2, 16);
   function reject(response: ServerResponse, status: number) {
     response.statusCode = status;
     response.setHeader('cache-control', 'no-store');
@@ -51,7 +52,7 @@ export function createLocalProductWatermarkPlugin(projectRoot: string, appOrigin
       timingSafeEqual(Buffer.from(value.slice(7)), Buffer.from(capability));
   }
   async function decode(request: IncomingMessage, response: ServerResponse, type: string, policyHeader: string) {
-    active++;
+    if (request.destroyed || response.destroyed) return;
     try {
       const policy = validateProductWatermarkPolicy(JSON.parse(decodeURIComponent(policyHeader)));
       const chunks: Buffer[] = []; let total = 0;
@@ -70,7 +71,6 @@ export function createLocalProductWatermarkPlugin(projectRoot: string, appOrigin
       response.setHeader('x-image-height', String(rendered.height));
       response.end(Buffer.from(rendered.bytes));
     } catch (error) { if (!response.headersSent) reject(response, error instanceof ProductWatermarkError ? error.status : 400); }
-    finally { active--; }
   }
   const workerSource =
     'import {validateProductWatermarkPolicy} from ' + JSON.stringify(policyPath) + ';\n' +
@@ -121,8 +121,12 @@ export function createLocalProductWatermarkPlugin(projectRoot: string, appOrigin
             request.headers['content-encoding'] !== undefined ||
             length !== undefined && (typeof length !== 'string' || !/^(0|[1-9]\d*)$/.test(length))) { reject(response, 400); return; }
         if (length !== undefined && Number(length) > maximumProductWatermarkBytes) { reject(response, 413); return; }
-        if (active >= 2) { reject(response, 503); return; }
-        void decode(request, response, type, policyHeader);
+        // Keep incoming bodies paused until a decoder is available. A normal
+        // four-photo product upload must not fail merely because two are busy.
+        void decodeQueue(() => decode(request, response, type, policyHeader)).catch(() => {
+          if (!response.destroyed && !response.headersSent) reject(response, 503);
+          request.resume();
+        });
       });
     },
   };

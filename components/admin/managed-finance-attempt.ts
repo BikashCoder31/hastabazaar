@@ -1,7 +1,7 @@
 import type { PublishedFormConfig } from '@/lib/forms/types';
 import type { ManagedFinanceAction } from '@/lib/managed-commerce/finance-contract';
 import { managedFinanceAction } from '@/lib/managed-commerce/finance-contract';
-import { digestFormRequest } from '@/lib/forms/submission';
+import { digestFormRequest } from '@/lib/forms/client-submission';
 import { parsePublishedFormConfig } from '@/components/forms/form-config-client';
 export interface FinanceAttemptScope { ownerId: string; sellerId: string; action: ManagedFinanceAction }
 export interface RetainedManagedFinanceAttempt extends FinanceAttemptScope {

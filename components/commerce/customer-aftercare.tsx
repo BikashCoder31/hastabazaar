@@ -1,4 +1,10 @@
 'use client';
+import Link from 'next/link';
+import {useOwnedFormScope} from '@/components/forms/use-owned-form-scope';
+import {ACTOR_INTENT_HEADER} from '@/lib/http/actor-intent';
+import {AftercareFollowupSummary} from './aftercare-followup-summary';
+import {ReturnPhysicalSummary} from './return-physical-summary';
+import {OrderOfferDetails} from './order-offer-details';
 
 import { FormGuide } from '@/components/forms/form-guide';
 import { CircleAlert, FileImage, RotateCcw } from 'lucide-react';
@@ -11,7 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 import {
   Accordion,
@@ -23,6 +29,7 @@ import type { ComplaintRow } from '@/lib/db/repositories/complaints';
 import type { ReturnCaseRow } from '@/lib/db/repositories/returns';
 
 interface ReceiptItem {
+  offerSnapshot?:import('@/lib/products/offer-order-contract').OrderOfferSnapshot|null;
   id: string;
   productName: string;
   sellerName: string;
@@ -60,25 +67,20 @@ function confirmedCase(result: Record<string, unknown> | null): result is Record
     typeof result.duplicate === 'boolean' && typeof result.message === 'string' && result.message.trim().length > 0 && result.message.length <= 1000;
 }
 
-export function CustomerAftercare({
-  orderNumber,
-  orderStatus,
-  items,
-  returns,
-  complaints,
-}: {
-  orderNumber: string;
-  orderStatus: string;
-  items: readonly ReceiptItem[];
-  returns: readonly ReturnCaseRow[];
-  complaints: readonly ComplaintRow[];
-}) {
+type AftercareProps={orderNumber:string;orderStatus:string;items:readonly ReceiptItem[];returns:readonly ReturnCaseRow[];complaints:readonly ComplaintRow[];viewerScope?:string;actorId?:string|null};
+export function CustomerAftercare(props:AftercareProps){
+ const scope=useOwnedFormScope(JSON.stringify([props.viewerScope??props.actorId??'legacy-receipt',props.orderNumber]));
+ return <ScopedCustomerAftercare key={scope.key} {...props} isCurrent={scope.isCurrent}/>;
+}
+function ScopedCustomerAftercare({orderNumber,orderStatus,items,returns,complaints,viewerScope,actorId,isCurrent}:AftercareProps&{isCurrent:()=>boolean}){
   const router = useRouter();
   const returnForm = usePublishedFormConfig('commerce.return-request');
   const complaintForm = usePublishedFormConfig('commerce.complaint');
   const returnItems=items.filter(item=>item.fulfillmentStatus==='delivered'||(!item.fulfillmentStatus&&orderStatus==='delivered'));
-  const returnAttemptKey = sessionAttemptKey('commerce.return-request', orderNumber);
-  const complaintAttemptKey = sessionAttemptKey('commerce.complaint', orderNumber);
+  const returnAttemptKey = sessionAttemptKey('commerce.return-request', JSON.stringify([viewerScope??actorId??'legacy-receipt',orderNumber]));
+  const complaintAttemptKey = sessionAttemptKey('commerce.complaint', JSON.stringify([viewerScope??actorId??'legacy-receipt',orderNumber]));
+  const intentHeaders:Record<string,string>=actorId===undefined?{}:{[ACTOR_INTENT_HEADER]:actorId??''};
+  const [accessDenied,setAccessDenied]=useState(false);
   const [returnPending, setReturnPending] = useState(false);
   const [complaintPending, setComplaintPending] = useState(false);
   const [returnError, setReturnError] = useState('');
@@ -111,13 +113,15 @@ export function CustomerAftercare({
       form.set('idempotencyKey', getOrCreateSessionAttempt(returnAttemptKey));
       const response = await fetch(
         `/orders/${encodeURIComponent(orderNumber)}/returns`,
-        { method: 'POST', body: form },
+        { method: 'POST', headers:intentHeaders,body: form },
       ).catch(() => { throw new Error(uncertainCaseMessage('return request')); });
       const decoded: unknown = await response.json().catch(() => null);
+      if(!isCurrent())return;
+      if([401,403,404].includes(response.status)){formElement.reset();setAccessDenied(true);router.refresh();}
       const result = decoded !== null && typeof decoded === 'object' && !Array.isArray(decoded)
         ? decoded as Record<string, unknown> : null;
       if (response.status === 409 && result?.code === 'stale_version')
-        returnForm.handleSubmissionResponse(response);
+        returnForm.handleSubmissionResponse(response, 'stale_version');
       if (!response.ok)
         throw new Error(response.status >= 500 ? uncertainCaseMessage('return request') : typeof result?.error === 'string' ? result.error : 'Return request could not be sent.');
       if (!confirmedCase(result))
@@ -127,13 +131,14 @@ export function CustomerAftercare({
       formElement.reset();
       router.refresh();
     } catch (error) {
+      if(!isCurrent())return;
       setReturnError(
         error instanceof Error
           ? error.message
           : 'Return request could not be sent.',
       );
     } finally {
-      setReturnPending(false);
+      if(isCurrent())setReturnPending(false);
     }
   }
 
@@ -156,7 +161,7 @@ export function CustomerAftercare({
         `/orders/${encodeURIComponent(orderNumber)}/complaints`,
         {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: { 'content-type': 'application/json',...intentHeaders },
           body: JSON.stringify({
             orderItemId: form.get('orderItemId'),
             category: form.get('category'),
@@ -169,10 +174,12 @@ export function CustomerAftercare({
         },
       ).catch(() => { throw new Error(uncertainCaseMessage('complaint')); });
       const decoded: unknown = await response.json().catch(() => null);
+      if(!isCurrent())return;
+      if([401,403,404].includes(response.status)){formElement.reset();setAccessDenied(true);router.refresh();}
       const result = decoded !== null && typeof decoded === 'object' && !Array.isArray(decoded)
         ? decoded as Record<string, unknown> : null;
       if (response.status === 409 && result?.code === 'stale_version')
-        complaintForm.handleSubmissionResponse(response);
+        complaintForm.handleSubmissionResponse(response, 'stale_version');
       if (!response.ok)
         throw new Error(response.status >= 500 ? uncertainCaseMessage('complaint') : typeof result?.error === 'string' ? result.error : 'Complaint could not be sent.');
       if (!confirmedCase(result))
@@ -182,14 +189,16 @@ export function CustomerAftercare({
       formElement.reset();
       router.refresh();
     } catch (error) {
+      if(!isCurrent())return;
       setComplaintError(
         error instanceof Error ? error.message : 'Complaint could not be sent.',
       );
     } finally {
-      setComplaintPending(false);
+      if(isCurrent())setComplaintPending(false);
     }
   }
 
+  if(accessDenied)return <section role="alert"><p>Account or order access changed. Previous private request fields are hidden and original references are retained.</p><button type="button" onClick={()=>window.location.reload()}>Reload current order</button></section>;
   return (
     <section
       className="customer-form mt-8 border-t pt-8"
@@ -215,7 +224,7 @@ export function CustomerAftercare({
                   <span className="text-xs font-semibold uppercase tracking-wide text-primary">
                     {item.referenceNumber}
                   </span>
-                  <h3 className="mt-1 font-semibold">{item.productName}</h3>
+                  <h3 className="mt-1 font-semibold">{item.productName}</h3><OrderOfferDetails offer={item.offerSnapshot}/><ReturnPhysicalSummary value={item.physical}/><AftercareFollowupSummary value={item.followup}/>{item.currentPublicMessage?<p>{item.currentPublicMessage}</p>:null}
                 </div>
                 <CaseStatus status={item.status} />
               </div>
@@ -233,14 +242,15 @@ export function CustomerAftercare({
               ) : null}
               {item.refundAmountPaisa ? (
                 <p className="mt-3 text-sm font-semibold">
-                  Cash refund: {money(item.refundCashPaisa ?? 0)}
+                  {item.refundProgress?'Original cash refund':'Cash refund'}: {money(item.refundCashPaisa ?? 0)}
                   {item.refundWalletPaisa ? ` + ${money(item.refundWalletPaisa)} shopping credit` : ''} ·{' '}
-                  {item.refundStatus?.replaceAll('_', ' ')}
+                  {item.refundProgress?.label??item.refundPaymentProgress?.label??item.refundStatus?.replaceAll('_', ' ')}<Link className="ml-2 underline" href="/account/refunds">Private refund instructions and payment progress</Link>
+                  {item.refundPaymentProgress?.delay?<span className="block font-normal">{item.refundPaymentProgress.delay.reason} Next update by {new Date(item.refundPaymentProgress.delay.nextUpdateAt).toLocaleString('en-NP',{timeZone:'Asia/Kathmandu'})}.</span>:null}
                   {item.refundPromoPaisa ? <span className="block font-normal">Promo savings: {money(item.refundPromoPaisa)} (not refundable)</span> : null}
                 </p>
               ) : null}
-              {item.status === 'needs_customer_changes' ? (
-                <CustomerReply
+              {(item.status === 'needs_customer_changes'||item.followup?.waitingFor==='customer') ? (
+                <CustomerReply actorId={actorId} viewerScope={viewerScope}
                   endpoint={`/orders/${encodeURIComponent(orderNumber)}/returns/${encodeURIComponent(item.id)}/reply`}
                 />
               ) : null}
@@ -258,7 +268,7 @@ export function CustomerAftercare({
                   </span>
                   <h3 className="mt-1 font-semibold">{item.subject}</h3>
                 </div>
-                <CaseStatus status={item.status} />
+                <AftercareFollowupSummary value={item.followup}/><CaseStatus status={item.status} />
               </div>
               <p className="mt-3 text-sm text-muted-foreground">
                 {item.category.replaceAll('_', ' ')}
@@ -270,7 +280,7 @@ export function CustomerAftercare({
                 </p>
               ) : null}
               {item.status === 'waiting_customer' ? (
-                <CustomerReply
+                <CustomerReply actorId={actorId} viewerScope={viewerScope}
                   endpoint={`/orders/${encodeURIComponent(orderNumber)}/complaints/${encodeURIComponent(item.id)}/reply`}
                 />
               ) : null}
@@ -316,7 +326,7 @@ export function CustomerAftercare({
                     >
                       {returnItems.map((item) => (
                         <option key={item.id} value={item.id}>
-                          {item.productName} · {item.sellerName}
+                          {item.productName}{item.offerSnapshot ? ' · '+item.offerSnapshot.selection.map(option=>option.name+': '+option.value).join(' / ')+' · '+item.offerSnapshot.sku : ''} · {item.sellerName}
                           {item.returnEligible ? '' : ' · defect-only return'}
                         </option>
                       ))}
@@ -376,7 +386,7 @@ export function CustomerAftercare({
                     />
                     <span>
                       This product was supplied with an original seal and that
-                      seal is still intact. HastaBazaar will verify this for the
+                      seal is still intact. Hastabazaar will verify this for the
                       15-calendar-day sealed-goods window.
                     </span>
                   </label>
@@ -444,7 +454,7 @@ export function CustomerAftercare({
                     <option value="">Whole order or service</option>
                     {items.map((item) => (
                       <option key={item.id} value={item.id}>
-                        {item.productName} · {item.sellerName}
+                        {item.productName}{item.offerSnapshot ? ' · '+item.offerSnapshot.selection.map(option=>option.name+': '+option.value).join(' / ')+' · '+item.offerSnapshot.sku : ''} · {item.sellerName}
                       </option>
                     ))}
                   </select>
@@ -459,7 +469,7 @@ export function CustomerAftercare({
                     <option value="delivery">Delivery</option>
                     <option value="seller">Seller</option>
                     <option value="refund">Refund</option>
-                    <option value="service">HastaBazaar service</option>
+                    <option value="service">Hastabazaar service</option>
                     <option value="safety">Safety or urgent concern</option>
                     <option value="other">Other</option>
                   </select>
@@ -540,8 +550,13 @@ function money(paisa: number) {
   }).format(paisa / 100);
 }
 
-function CustomerReply({ endpoint }: { endpoint: string }) {
+function CustomerReply(props:{endpoint:string;actorId?:string|null;viewerScope?:string}){
+ const scope=useOwnedFormScope(JSON.stringify([props.viewerScope??props.actorId??'legacy-receipt',props.endpoint]));
+ return <ScopedCustomerReply key={scope.key} {...props} isCurrent={scope.isCurrent}/>;
+}
+function ScopedCustomerReply({endpoint,actorId,isCurrent}:{endpoint:string;actorId?:string|null;viewerScope?:string;isCurrent:()=>boolean}) {
   const replyId = useId();
+  const [accessDenied,setAccessDenied]=useState(false);
   const router = useRouter();
   const [message, setMessage] = useState('');
   const [key, setKey] = useState(newKey);
@@ -553,23 +568,27 @@ function CustomerReply({ endpoint }: { endpoint: string }) {
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json',...(actorId===undefined?{}:{[ACTOR_INTENT_HEADER]:actorId??''}) },
         body: JSON.stringify({ message, locale: 'en-NP', idempotencyKey: key }),
       });
       const result = (await response.json()) as { error?: string };
+      if(!isCurrent())return;
+      if([401,403,404].includes(response.status)){setMessage('');setAccessDenied(true);router.refresh();}
       if (!response.ok)
         throw new Error(result.error || 'Reply could not be sent.');
       setKey(newKey());
       setMessage('');
       router.refresh();
     } catch (cause) {
+      if(!isCurrent())return;
       setError(
         cause instanceof Error ? cause.message : 'Reply could not be sent.',
       );
     } finally {
-      setPending(false);
+      if(isCurrent())setPending(false);
     }
   }
+  if(accessDenied)return <p role="alert">Account or case access changed. Reload the current order before using previous private reply content.</p>;
   return (
     <div className="mt-4 space-y-2">
       <Label htmlFor={replyId}>Requested information</Label>

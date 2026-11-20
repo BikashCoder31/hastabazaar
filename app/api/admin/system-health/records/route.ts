@@ -1,0 +1,6 @@
+import {env} from 'cloudflare:workers';
+import {requireStaffApi,StaffAuthorizationError} from '@/lib/auth/staff';
+import {requireDatabase} from '@/lib/db/d1';
+import {searchSystemRecords} from '@/lib/operations/system-records';
+import {formHealthRuntimeScope,FormHealthAccessError} from '@/lib/operations/form-health';
+export async function GET(request:Request){const headers={'cache-control':'private, no-store',Vary:'Cookie'};try{const actor=await requireStaffApi('system.health.view'),params=new URL(request.url).searchParams,scope=formHealthRuntimeScope(env as unknown as Record<string,string|undefined>);if([...params.keys()].some(key=>!['reference','type','actor','from','to','status','action'].includes(key)))return Response.json({error:'Use the scoped record filters.'},{status:400,headers});const filters=Object.fromEntries(params);return Response.json(await searchSystemRecords(requireDatabase(env as unknown as {DB?:D1Database}),actor.id,{...filters,environment:scope.environment}),{headers});}catch(error){const denied=error instanceof StaffAuthorizationError||error instanceof FormHealthAccessError;return Response.json({error:denied?error.message:'The scoped records could not be read. Check the filters and current access.'},{status:denied?error.status:400,headers});}}

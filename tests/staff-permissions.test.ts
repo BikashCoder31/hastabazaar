@@ -6,6 +6,12 @@ import {
   configurableAdminPermissions,
   validateAdminPermissions,
 } from '../lib/marketplace/permissions';
+void test('global email delivery authority remains reserved to the Super Admin',()=>{
+ assert.equal(can('super_admin','email.delivery.manage'),true);
+ for(const role of ['admin','seller','customer'] as const)assert.equal(can(role,'email.delivery.manage'),false);
+ assert.equal(can({role:'admin',permissions:['email.delivery.manage']},'email.delivery.manage'),false);
+ assert.throws(()=>validateAdminPermissions(['email.delivery.manage']));
+});
 void test('legacy Admin access survives while explicit empty access revokes operational permissions', () => {
   assert.equal(can({ role: 'admin' }, 'order.manage'), true);
   assert.equal(can({ role: 'admin', permissions: [] }, 'order.manage'), false);
@@ -56,7 +62,7 @@ import {
 function fixture() {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec(
-    'CREATE TABLE users(id TEXT PRIMARY KEY,auth_subject TEXT,status TEXT);CREATE TABLE user_roles(user_id TEXT,role TEXT);CREATE TABLE audit_logs(id TEXT,actor_id TEXT,action TEXT,subject_type TEXT,subject_id TEXT,reason TEXT,previous_json TEXT,next_json TEXT,request_id TEXT,ip_hash TEXT,created_at INTEGER)',
+    'CREATE TABLE users(id TEXT PRIMARY KEY,auth_subject TEXT,status TEXT);CREATE TABLE user_roles(user_id TEXT,role TEXT);CREATE TABLE audit_logs(id TEXT PRIMARY KEY,actor_id TEXT,action TEXT,subject_type TEXT,subject_id TEXT,reason TEXT,previous_json TEXT,next_json TEXT,request_id TEXT,ip_hash TEXT,created_at INTEGER)',
   );
   sqlite.exec(
     'CREATE TABLE notification_messages(id TEXT PRIMARY KEY,recipient_user_id TEXT,audience_role TEXT,channel TEXT,template_key TEXT,subject_en TEXT,subject_ne TEXT,body_en TEXT,body_ne TEXT,related_type TEXT,related_id TEXT,status TEXT,provider_reference TEXT,failure_reason TEXT,request_id TEXT UNIQUE,created_at INTEGER,sent_at INTEGER,read_at INTEGER)',
@@ -71,6 +77,10 @@ function fixture() {
   sqlite.exec('PRAGMA foreign_keys=OFF;');
   sqlite.exec(staffUpgrade);
   sqlite.exec('PRAGMA foreign_keys=ON;');
+  // Current access commands atomically retain actual ownership/coverage journals.
+  // Load their real additive schemas; never bypass the production hook in this fixture.
+  for(const source of ['0080_review_task_ownership.sql','0147_durable_email_delivery.sql','0149_team_governance.sql'])
+    sqlite.exec(readFileSync('drizzle/'+source,'utf8'));
   for (const [id, role] of [
     ['sa1', 'super_admin'],
     ['sa2', 'super_admin'],

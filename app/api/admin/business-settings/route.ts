@@ -1,3 +1,4 @@
+import {hasActorIntentMismatch} from '@/lib/http/actor-intent';
 import { env } from 'cloudflare:workers';
 
 import { requireStaffApi, StaffAuthorizationError } from '@/lib/auth/staff';
@@ -9,7 +10,7 @@ import { requireDatabase } from '@/lib/db/d1';
 import {
   BusinessSettingConflictError,
   createBusinessSettingDraft,
-  getEffectiveBusinessSetting,
+  getBusinessSettingForManagement,
   saveBusinessSettingChange,
   validateBusinessSettingForm,
 } from '@/lib/db/repositories/business-settings';
@@ -38,9 +39,10 @@ async function requestBody(request: Request): Promise<Record<string, unknown>> {
   return value as Record<string, unknown>;
 }
 
-export async function GET(): Promise<Response> {
+export async function GET(request?:Request): Promise<Response> {
   try {
     const staff = await requireStaffApi('business_settings.view');
+    if(request &&hasActorIntentMismatch(request,staff.id))throw new StaffAuthorizationError('The signed-in account changed. Refresh this settings view.',403);
     const database = requireDatabase(env as unknown as { DB?: D1Database });
     const now = Date.now();
     const settings = await Promise.all(
@@ -54,7 +56,7 @@ export async function GET(): Promise<Response> {
         snapshotOnTransaction: definition.snapshotOnTransaction,
         affectedSurfaces: definition.affectedSurfaces,
         requiredCapability: definition.requiredCapability,
-        effective: await getEffectiveBusinessSetting(
+        effective: await getBusinessSettingForManagement(
           database,
           definition.key,
           now,
@@ -71,13 +73,20 @@ export async function GET(): Promise<Response> {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  // A status/error alone cannot prove rollback once a domain mutation was invoked.
+  let mutationInvoked = false;
+  const errorJson = (body: Record<string, unknown>, status: number) =>
+    json({ ...body, phase: mutationInvoked ? 'outcome_unconfirmed' : 'rejected_before_write' }, status);
   if (!isTrustedMutationRequest(request)) {
-    return json({ error: 'Cross-site requests are not allowed.' }, 403);
+    return errorJson({ error: 'Cross-site requests are not allowed.' }, 403);
   }
   try {
     const actor = await requireStaffApi('business_settings.manage');
+    if(request &&hasActorIntentMismatch(request,actor.id))throw new StaffAuthorizationError('The signed-in account changed. Refresh this settings view.',403);
     const body = await requestBody(request);
     const key = parseBusinessSettingKey(body.key);
+    if (key === 'independent_seller_commission_bps' || key === 'managed_sale_linked_platform_retention_bps')
+      return errorJson({ error: 'Review and publish both covered routes together in Commission.', href: '/admin/commission#rate-management' }, 409);
     const database = requireDatabase(env as unknown as { DB?: D1Database });
     const requestId = typeof body.requestId === 'string' ? body.requestId : '';
     const form = await validateBusinessSettingForm(database, key, body, requestId);
@@ -89,6 +98,7 @@ export async function POST(request: Request): Promise<Response> {
       const bindings = env as unknown as Record<string, string | undefined>;
       const runtime = resolveRuntimeEnvironment({ runtimeEnvironment: bindings.HASTABAZAAR_RUNTIME_ENV,
         nodeEnvironment: bindings.NODE_ENV, appOrigin: bindings.APP_ORIGIN });
+      mutationInvoked = true;
       const version = await saveBusinessSettingChange(database, { key, value: body.value,
         actorId: actor.id, reason: typeof body.reason === 'string' ? body.reason : '', requestId,
         now: Date.now(), effectiveFrom: body.effectiveFrom === null ? null : Number(body.effectiveFrom),
@@ -97,6 +107,7 @@ export async function POST(request: Request): Promise<Response> {
     }
     if (body.action !== undefined && body.action !== 'draft')
       throw new RangeError('Select a valid business-setting action.');
+    mutationInvoked = true;
     const draft = await createBusinessSettingDraft(
       database,
       {
@@ -112,23 +123,23 @@ export async function POST(request: Request): Promise<Response> {
     return json({ draft }, 201);
   } catch (error) {
     if (error instanceof StaffAuthorizationError) {
-      return json({ error: error.message }, error.status);
+      return errorJson({ error: error.message,code:mutationInvoked?'outcome_unconfirmed':'access_denied_before_write' }, error.status);
     }
     if (error instanceof BodyTooLargeError) {
-      return json({ error: error.message }, 413);
+      return errorJson({ error: error.message }, 413);
     }
     if (error instanceof BusinessSettingConflictError) {
-      return json({ error: error.message }, 409);
+      return errorJson({ error: error.message }, 409);
     }
     if (error instanceof FormRuntimeError) {
-      return json({ error: error.message, code: error.code }, error.retryable ? 503 : 409);
+      return errorJson({ error: error.message, code: error.code }, error.retryable ? 503 : 409);
     }
     if (error instanceof FormValidationError) {
-      return json({ error: error.message, fieldId: error.fieldId }, 400);
+      return errorJson({ error: error.message, fieldId: error.fieldId }, 400);
     }
     if (error instanceof RangeError || error instanceof TypeError) {
-      return json({ error: error.message }, 400);
+      return errorJson({ error: error.message }, 400);
     }
-    return json({ error: 'Business setting draft could not be created.' }, 400);
+    return errorJson({ error: 'Business setting draft could not be created.' }, 400);
   }
 }

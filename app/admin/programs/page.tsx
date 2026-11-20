@@ -5,7 +5,7 @@ import { ProgramManagement } from '@/components/admin/program-management';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { managedMakerCapabilities } from '@/lib/configuration/capabilities';
 import { requireDatabase } from '@/lib/db/d1';
-import { getEffectiveBusinessSetting, listBusinessSettingHistory } from '@/lib/db/repositories/business-settings';
+import { CommissionRateUnavailableError, getBusinessSettingForManagement, getEffectiveBusinessSetting, listBusinessSettingHistory } from '@/lib/db/repositories/business-settings';
 import { businessSettingDefinitions } from '@/lib/configuration/definitions';
 import { BusinessSettingsManager, type BusinessSettingsAdminItem } from '@/components/admin/business-settings-manager';
 import { getProgramManagementWorkspace } from '@/lib/managed-commerce/program-management';
@@ -13,10 +13,13 @@ import { resolveRuntimeEnvironment } from '@/lib/staging/environment';
 import { ProgramReadinessChecklist } from '@/components/admin/program-readiness-checklist';
 import { ManagedSettlementControls } from '@/components/admin/managed-settlement-controls';
 import { getManagedFinanceWorkspace, type ManagedFinanceWorkspace } from '@/lib/managed-commerce/finance-workspace';
+import {readFeeProgramCohorts} from '@/lib/admin/fee-program-cohorts';
+import {FeeProgramCohortsView} from '@/components/admin/fee-program-cohorts';
+import {withAdminReturnTo,safeAdminReturnTo} from '@/lib/admin/return-context';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ProgramsPage({searchParams = Promise.resolve({})}: {searchParams?:Promise<{financeAfter?:string}>} = {}) {
+export default async function ProgramsPage({searchParams = Promise.resolve({})}: {searchParams?:Promise<{financeAfter?:string;sellerId?:string;setting?:string;cohortAfter?:string;returnTo?:string}>} = {}) {
   const staff = await requireStaffPage('/admin/programs', 'business_settings.view');
   if (staff.role !== 'super_admin') redirect('/staff-access-denied');
   const database = requireDatabase(env as unknown as { DB?: D1Database });
@@ -28,13 +31,13 @@ export default async function ProgramsPage({searchParams = Promise.resolve({})}:
   const [programMode, activeModel, retention, initialSettings] = await Promise.all([
     getEffectiveBusinessSetting(database, 'managed_maker_program_mode', now),
     getEffectiveBusinessSetting(database, 'managed_maker_active_model', now),
-    getEffectiveBusinessSetting(database, 'managed_sale_linked_platform_retention_bps', now),
+    getEffectiveBusinessSetting(database, 'managed_sale_linked_platform_retention_bps', now).catch(error => { if (error instanceof CommissionRateUnavailableError) return null; throw error; }),
     Promise.all(businessSettingDefinitions.filter((definition) => settingKeys.includes(definition.key)).map(async (definition) => ({
       key: definition.key, label: definition.label, description: definition.description,
       sensitivity: definition.sensitivity, changeControl: definition.changeControl,
       effectiveMode: definition.effectiveMode, snapshotOnTransaction: definition.snapshotOnTransaction,
       affectedSurfaces: definition.affectedSurfaces, requiredCapability: definition.requiredCapability,
-      effective: await getEffectiveBusinessSetting(database, definition.key, now),
+      effective: await getBusinessSettingForManagement(database, definition.key, now),
       history: await listBusinessSettingHistory(database, definition.key),
     }))),
   ]);
@@ -42,9 +45,12 @@ export default async function ProgramsPage({searchParams = Promise.resolve({})}:
     environment, programMode: programMode.value, activeModel: activeModel.value });
   const params = await searchParams;
   let finance: ManagedFinanceWorkspace;
-  try { finance = await getManagedFinanceWorkspace(database,{actorId:staff.id,now,after:params.financeAfter}); }
+  try { finance = await getManagedFinanceWorkspace(database,{actorId:staff.id,now,after:params.financeAfter,sellerId:params.sellerId?.slice(0,100)}); }
   catch { finance = {makers:[],nextCursor:null,error:'Maker payment details are unavailable. Reload the page or review local readiness before taking action.'}; }
   const company = initialSettings.find(item=>item.key === 'managed_maker_company_account')?.effective.value as {entityReference?:string;storeName?:string} | undefined;
+  let cohort;try{cohort=await readFeeProgramCohorts(database,{id:staff.id,authSubject:staff.authSubject},{now,route:'managed_maker',after:params.cohortAfter,limit:10});}catch(error){if(error&&typeof error==='object'&&'status'in error&&error.status===403)throw error;}
+  const query=new URLSearchParams();for(const[key,value]of Object.entries(params))if(typeof value==='string')query.set(key,value);if(query.has('returnTo'))query.set('returnTo',safeAdminReturnTo(query.get('returnTo')));const currentHref='/admin/programs'+(query.size?'?'+query:'');
+  const nextQuery=new URLSearchParams(query);if(cohort?.nextCursor)nextQuery.set('cohortAfter',cohort.nextCursor);
 
   return (
     <div className="space-y-6">
@@ -68,14 +74,15 @@ export default async function ProgramsPage({searchParams = Promise.resolve({})}:
         capabilities={managedMakerCapabilities}
         environment={environment}
         environmentVerified={Boolean(bindings.HASTABAZAAR_RUNTIME_ENV?.trim())}
-        platformRetentionBps={retention.value}
+        platformRetentionBps={retention?.value}
         workspace={workspace}
       />
+      {cohort?<FeeProgramCohortsView cohort={cohort} currentHref={currentHref} nextHref={cohort.nextCursor?withAdminReturnTo('/admin/programs?'+nextQuery+'#native-program-cohorts',params.returnTo):null}/>:<output className="block">Native managed acceptance, live-readiness and ownership sources are unavailable. No empty result is treated as zero or ready.</output>}
       <ManagedSettlementControls ownerId={staff.id} workspace={finance} asOf={now}
         simulationAllowed={Boolean(bindings.HASTABAZAAR_RUNTIME_ENV?.trim()) && environment.simulationAllowed} />
       <section id="program-settings" className="min-w-0 space-y-4 scroll-mt-6">
         <div><h2 className="font-heading text-2xl">Program settings</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">Review current values, save or schedule a change, and inspect its history. Model and activation changes follow the environment’s existing readiness checks.</p></div>
-        <BusinessSettingsManager initialSettings={initialSettings as readonly BusinessSettingsAdminItem[]} asOf={now} />
+        <BusinessSettingsManager actorId={staff.id} initialSettings={initialSettings as readonly BusinessSettingsAdminItem[]} asOf={now} initialKey={initialSettings.find(item=>item.key===params.setting)?.key} simulationAllowed={Boolean(bindings.HASTABAZAAR_RUNTIME_ENV?.trim())&&environment.simulationAllowed} />
       </section>
     </div>
   );

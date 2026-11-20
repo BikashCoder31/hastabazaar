@@ -26,7 +26,7 @@ import { sendJson } from '@/lib/http/client-request';
 import type { ShippingJobRow } from '@/lib/db/repositories/operations';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 
 const requestBaseKeys = ['orderId', 'direction', 'note', 'requestId', 'sellerId', 'formVersion', 'customAnswers'];

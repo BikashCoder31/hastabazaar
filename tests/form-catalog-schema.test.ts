@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { copyMariaDbGeneratorInputs } from './helpers/copy-mariadb-generator-inputs';
 
 async function fixture() {
   const sqlite = new DatabaseSync(':memory:');
@@ -136,10 +137,8 @@ void test('identifier equality stays case and trailing-space sensitive in D1 and
     assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM form_answer_sets WHERE subject_id='profile-1'").get()?.count, 2);
 
     const projectRoot = new URL('../', import.meta.url);
-    const folders = ['scripts', 'drizzle/meta', 'deployment/babal'];
-    for (const folder of folders) await mkdir(join(reviewRoot, folder), { recursive: true });
-    await copyFile(new URL('../scripts/generate-mariadb-schema.mjs', import.meta.url), join(reviewRoot, 'scripts/generate-mariadb-schema.mjs'));
-    await copyFile(new URL('../drizzle/meta/0020_snapshot.json', import.meta.url), join(reviewRoot, 'drizzle/meta/0020_snapshot.json'));
+    await copyMariaDbGeneratorInputs(reviewRoot);
+    await mkdir(join(reviewRoot, 'deployment/babal'), { recursive: true });
     for (const name of await readdir(new URL('deployment/babal/', projectRoot))) {
       if (name.startsWith('mariadb-') && name.endsWith('.sql')) {
         await copyFile(new URL(`deployment/babal/${name}`, projectRoot), join(reviewRoot, 'deployment/babal', name));

@@ -34,7 +34,7 @@ export default async function AddressesPage({ searchParams }: {
       formId: 'account.address', after: params?.addressId === address.id ? after : undefined }),
   })));
   return <>
-    <AddressManager addresses={addresses} />
+    <AddressManager actorId={customer.userId} addresses={addresses} />
     {history.filter(({ page }) => page.answers.length).map(({ address, page }) => <section key={address.id}
       className="mt-6 space-y-4" aria-label={`${address.label} address answer history`}>
       <h2 className="font-heading text-2xl">{address.label} · previous address answers</h2>

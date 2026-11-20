@@ -225,6 +225,8 @@ export function RecordedDateRangeFields({
   initialCalendar = 'ad',
   fromField,
   toField,
+  idPrefix = 'report',
+  onDateChange,
   children,
   emptyDateHelp = 'No date selected; the standard reporting default applies.',
 }: {
@@ -233,19 +235,24 @@ export function RecordedDateRangeFields({
   initialCalendar?: DateCalendar;
   fromField: QueryFieldPresentation;
   toField: QueryFieldPresentation;
+  idPrefix?: string;
+  onDateChange?: (bound: 'from' | 'to', value: string) => void;
   children?: ReactNode;
   emptyDateHelp?: string;
 }) {
   const [calendar, setCalendar] = useState(initialCalendar),
-    [start, setStart] = useState(from),
-    [end, setEnd] = useState(to);
+    [formStart, setFormStart] = useState(from),
+    [formEnd, setFormEnd] = useState(to);
+  const start = onDateChange ? from : formStart;
+  const end = onDateChange ? to : formEnd;
+  const calendarId = idPrefix + '-date-calendar';
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <Field className="min-w-0 sm:max-w-xs">
-          <FieldLabel htmlFor="report-date-calendar">Date calendar</FieldLabel>
+          <FieldLabel htmlFor={calendarId}>Date calendar</FieldLabel>
           <NativeSelect
-            id="report-date-calendar"
+            id={calendarId}
             name="calendar"
             value={calendar}
             className="w-full"
@@ -269,21 +276,21 @@ export function RecordedDateRangeFields({
         <CalendarDateField
           key={'from-' + calendar}
           name="from"
-          id="report-from"
+          id={idPrefix + '-from'}
           field={fromField}
           calendar={calendar}
           value={start}
-          onChange={setStart}
+          onChange={onDateChange ? (value) => onDateChange('from', value) : setFormStart}
           emptyDateHelp={emptyDateHelp}
         />
         <CalendarDateField
           key={'to-' + calendar}
           name="to"
-          id="report-to"
+          id={idPrefix + '-to'}
           field={toField}
           calendar={calendar}
           value={end}
-          onChange={setEnd}
+          onChange={onDateChange ? (value) => onDateChange('to', value) : setFormEnd}
           emptyDateHelp={emptyDateHelp}
         />
         {children}

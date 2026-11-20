@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRef, useState, useSyncExternalStore, type SyntheticEvent } from 'react';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 
 const BASE_KEYS = ['invoiceId', 'kind', 'amount', 'amountPaisa', 'reasonCode', 'note', 'requestId'];

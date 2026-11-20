@@ -1,0 +1,10 @@
+# T34 form presentation and schema fixture reconciliation — 4 November 2026
+
+Six owned test files only, with original copies and owned hashes in `.test-artifacts/t34/form-presentation-regression-root-20261104/`. Actual schema generator fixture now copies its public feedback parser and0154 input. Staff-route inventory explicitly covers the11 newly inventoried staff-audience contracts while preserving this generic configuration route's existing Super Admin default; separate native action authority is not granted by that assertion.
+
+Presentation fixtures supply actual current framework exports and anchor behavior. Seller query rendering explicitly models an approved seller-center shell and retains original seller/search/status assertions; the unused provider-authentication boundary throws if called. Catalog rendering now uses the real migrated memory commission fixture and current persisted owner authority, including disabled-owner denial. Settings SSR uses an anchor-preserving NextLink boundary. The seller/product client bundle also has that Link adapter, but its four mounted cases remain queued.
+
+Final five-file memory/SSR/source-generator command passed109/109,0skips,exit0,31.588s:
+`node --import tsx --test --test-concurrency=1 tests/form-catalog-schema.test.ts tests/form-catalog-routes.test.ts tests/form-catalog-query-presentation.test.ts tests/form-catalog-simplification-ui.test.ts tests/form-catalog-programmatic-settings.test.ts`
+
+Retained diagnostics: first group38/40, second13/14, focused seller1/1, focused settings1/1. Do not add overlapping totals. The first generator run used the sandbox default temporary directory and disposed its owned fixture in finally; subsequent commands explicitly pin TEMP/TMP to the project `.test-artifacts/t34/tmp`. No canonical data or production source changed. No Chrome/native/compiler/global suite pass is claimed. Queue: `node --import tsx --test --test-concurrency=1 tests/form-catalog-seller-product-success.test.ts` with root-local TEMP/TMP and the approved Chrome runtime.

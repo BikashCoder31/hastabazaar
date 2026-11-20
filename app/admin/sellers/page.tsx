@@ -1,3 +1,6 @@
+import {SharedReviewQueue} from '@/components/admin/shared-review-queue';
+import {listReviewTasks} from '@/lib/workflows/review-tasks';
+import {getSellerReadiness} from '@/lib/sellers/readiness';
 import { AdminQueueFields } from '@/components/admin/admin-queue-fields';
 import { Button } from '@/components/ui/button';
 import { loadQueryPresentationConfig } from '@/lib/catalog/shop-query';
@@ -8,6 +11,9 @@ import {
 } from '@/lib/admin/queue-filters';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
+import {redirect,notFound} from 'next/navigation';
+import {resolveManagedLiveNotice} from '@/lib/managed-commerce/live-commands';
+import {ManagedLiveError} from '@/lib/managed-commerce/live-activation-support';
 import { ArrowLeft, ArrowRight, Inbox } from 'lucide-react';
 
 import { StatusBadge } from '@/components/admin/status-badge';
@@ -35,7 +41,8 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-const pageSize = 50;
+const pageSize = 20;
+const directoryHref=(href:string)=>href+(href.includes('?')?'&':'?')+'workspace=directory';
 const dateFormatter = new Intl.DateTimeFormat('en-NP', {
   dateStyle: 'medium',
   timeZone: 'Asia/Kathmandu',
@@ -49,11 +56,16 @@ function normalizedPage(value: string | undefined): number {
 export default async function SellerRegistryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; q?: string; status?: string }>;
+  searchParams: Promise<{ page?: string; q?: string; status?: string; workspace?:string;liveActivation?:string }>;
 }) {
-  await requireStaffPage('/admin/sellers', 'seller.application.review');
+  const staff=await requireStaffPage('/admin/sellers', 'seller.application.review');
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const params = await searchParams;
+  if(params.liveActivation){
+    let sellerId:string;
+    try{sellerId=await resolveManagedLiveNotice(database,staff.id,params.liveActivation);}catch(error){if(error instanceof ManagedLiveError&&(error.status===403||error.status===404))notFound();throw error;}
+    redirect('/admin/sellers/'+encodeURIComponent(sellerId)+'#seller-readiness');
+  }
   const filters = normalizeQueueFilters(params, sellerQueueStatuses);
   const [counts, matchingCounts, presentation] = await Promise.all([
     getSellerRegistryCounts(database),
@@ -65,6 +77,9 @@ export default async function SellerRegistryPage({
   const page = Math.min(requestedPage, pageCount);
   const sellers = await listSellerRegistry(database, page, pageSize, filters);
 
+  const reviewTasks=await listReviewTasks(database,staff.id).catch(()=>null);
+  const readiness=new Map(params.workspace==='directory'?await Promise.all(sellers.map(async seller=>[seller.id,await getSellerReadiness(database,seller.id).catch(()=>null)] as const)):[]);
+  const returnTo=directoryHref(queuePageHref('/admin/sellers',filters,page));
   const summaries = [
     { label: 'Total registered', value: counts.total },
     { label: 'Approved', value: counts.approved },
@@ -83,16 +98,18 @@ export default async function SellerRegistryPage({
       <div>
         <p className="eyebrow">Seller controls</p>
         <h1 className="mt-2 font-heading text-4xl tracking-tight">
-          Registered sellers
+          Seller management
         </h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
           Review every seller profile, including approved, rejected and
-          suspended accounts. Open a seller to inspect registration, tax,
-          contact, address, documents and moderation history.
+          suspended accounts. Open a seller to review registration, documents and
+          moderation history. Super Admins can also see the seller’s onboarding checklist.
         </p>
       </div>
 
-      <Card>
+      <a className="section-link inline-flex min-h-11 items-center" href={params.workspace==='directory'?'/admin/sellers':'/admin/sellers?workspace=directory#seller-directory'}>{params.workspace==='directory'?'Return to review tasks':'Open the seller directory'} →</a>
+      <SharedReviewQueue tasks={reviewTasks??[]} actorId={staff.id} unavailable={reviewTasks===null} sellerDirectoryAvailable/>
+      {params.workspace==='directory'?<><Card>
         <CardHeader>
           <CardTitle>Find a seller</CardTitle>
           <CardDescription>
@@ -107,6 +124,7 @@ export default async function SellerRegistryPage({
             action="/admin/sellers"
             className="flex flex-col gap-4"
           >
+            <input type="hidden" name="workspace" value="directory"/>
             <AdminQueueFields
               id="seller-registry"
               formId="staff.seller-registry-filter"
@@ -121,7 +139,7 @@ export default async function SellerRegistryPage({
                   className="flex-1 sm:flex-none"
                   variant="outline"
                   nativeButton={false}
-                  render={<Link href="/admin/sellers" />}
+                  render={<Link href="/admin/sellers?workspace=directory" />}
                 >
                   Clear filters
                 </Button>
@@ -157,7 +175,7 @@ export default async function SellerRegistryPage({
 
       <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
         <div>
-          <h2 className="font-heading text-2xl">Seller registry</h2>
+          <h2 id="seller-directory" className="scroll-mt-28 font-heading text-2xl">Seller registry</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Newest registrations appear first. Showing {sellers.length} of{' '}
             {matchingCounts.total} matching seller profiles.
@@ -195,7 +213,7 @@ export default async function SellerRegistryPage({
                 <TableHead>Location</TableHead>
                 <TableHead>Registration</TableHead>
                 <TableHead>Activity</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>Readiness</TableHead>
                 <TableHead>Registered</TableHead>
                 <TableHead>
                   <span className="sr-only">Open seller</span>
@@ -206,7 +224,7 @@ export default async function SellerRegistryPage({
               {sellers.map((seller) => (
                 <TableRow key={seller.id}>
                   <TableCell className="max-w-64 pl-4 whitespace-normal">
-                    <p className="font-semibold">{seller.tradingName}</p>
+                    <p className="font-semibold">{readiness.get(seller.id)?.displayName??seller.tradingName}</p>
                     <p className="text-xs text-muted-foreground">
                       {seller.legalName}
                     </p>
@@ -247,14 +265,16 @@ export default async function SellerRegistryPage({
                     </p>
                   </TableCell>
                   <TableCell>
-                    <StatusBadge status={seller.status} />
+                    <StatusBadge status={seller.status === 'under_review' && seller.applicationStage === 'approved_for_activation'
+                      ? 'approved_for_activation' : seller.status} />
+                    {readiness.get(seller.id)?<div className="mt-2 min-w-48 space-y-1 text-xs"><p>Submission: {readiness.get(seller.id)!.submitProducts?'available':'held'}</p><p>Public listings: {readiness.get(seller.id)!.publicListings?'visible':'none available'}</p><p>New orders: {readiness.get(seller.id)!.newOrders?'eligible':'held'}</p><p>Payouts: {readiness.get(seller.id)!.payouts?'eligible for review':'not currently eligible'}</p><p>{readiness.get(seller.id)!.blockers[0]?.reason}</p></div>:<output className="block">Readiness unavailable</output>}
                   </TableCell>
                   <TableCell>
                     {dateFormatter.format(new Date(seller.createdAt))}
                   </TableCell>
                   <TableCell className="pr-4 text-right">
                     <Link
-                      href={`/admin/sellers/${seller.id}`}
+                      href={`/admin/sellers/${seller.id}?returnTo=${encodeURIComponent(returnTo)}`}
                       className="inline-flex min-h-11 items-center gap-1 font-semibold text-primary hover:underline"
                     >
                       <span className="sr-only">
@@ -277,7 +297,7 @@ export default async function SellerRegistryPage({
         >
           {page > 1 ? (
             <Link
-              href={queuePageHref('/admin/sellers', filters, page - 1)}
+              href={directoryHref(queuePageHref('/admin/sellers', filters, page - 1))}
               className="inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-semibold hover:bg-muted"
             >
               <ArrowLeft className="size-4" /> Previous
@@ -287,14 +307,14 @@ export default async function SellerRegistryPage({
           )}
           {page < pageCount ? (
             <Link
-              href={queuePageHref('/admin/sellers', filters, page + 1)}
+              href={directoryHref(queuePageHref('/admin/sellers', filters, page + 1))}
               className="inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-semibold hover:bg-muted"
             >
               Next <ArrowRight className="size-4" />
             </Link>
           ) : null}
         </nav>
-      ) : null}
+      ) : null}</>:null}
     </div>
   );
 }

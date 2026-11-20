@@ -3,7 +3,10 @@ export type FeaturedProduct = Partial<PublicSellingIdentity> & {
   slug: string;
   name: string;
   price: string;
-  pricePaisa?: number;
+  pricePaisa?: number | null;
+  priceFrom?: boolean;
+  maximumPricePaisa?: number | null;
+  purchasable?: boolean;
   compareAtPricePaisa?: number | null;
   category: string;
   categorySlug?: string;

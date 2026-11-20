@@ -149,6 +149,11 @@ function fixture(fields: unknown[] = [{ id: 'context_note', key: 'context_note',
   sqlite.exec(readFileSync('drizzle/0034_exception_work.sql', 'utf8'));
   for (const statement of readFileSync('drizzle/0056_form_catalog.sql', 'utf8').split('--> statement-breakpoint'))
     if (statement.trim()) sqlite.exec(statement);
+  // Keep the isolated legacy-operation fixture on the actual retained source
+  // contracts; classification must still reject a linked publication workspace.
+  for (const migration of ['0092_product_intake_workspace.sql', '0093_product_publication_versions.sql', '0151_form_health_records.sql'])
+    for (const statement of readFileSync(`drizzle/${migration}`, 'utf8').split('--> statement-breakpoint'))
+      if (statement.trim()) sqlite.exec(statement);
   for (const formId of ['staff.catalog', 'staff.product-classification', 'staff.exception-work', 'staff.invoice-adjustment', 'staff.managed-maker-activation', 'staff.parcel-control'])
     sqlite.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
       VALUES (?, ?,1,1,'published',?,'Fixture','admin',1,'admin',1,'admin',1,?)`)
@@ -934,7 +939,7 @@ void test('mounted staff marketplace, parcel, and payout forms send published co
             courierName:null,trackingCode:null,trackingUrl:null,deliveredAt:null,paymentMode:'cod',openBoxRequired:0,
             openBoxSnapshotJson:null,riderFinanceSnapshotJson:null,latitude:null,longitude:null,accuracy:null,
             positionAt:null,courierCostPaisa:0}]} />
-        <PayoutRequestActions id="request-one" />
+        <PayoutRequestActions id="request-one" actorId="admin" />
         <PrivacyActions id="privacy-one" canDecide={true} status="submitted" requestType="correction"
           assignedToCurrentStaff={false} />
         <RiderAdminAction action="review" fields={{userId:'rider-one',version:0}} label="Record Super Admin decision" />

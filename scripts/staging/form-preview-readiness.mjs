@@ -8,12 +8,18 @@ import { FEATURE_MANAGED_BASELINE_FORM_IDS } from '../../lib/db/repositories/for
 import { FORM_REGISTRY } from '../../lib/forms/registry.ts';
 import { isFormCatalogEditable } from '../../lib/forms/catalog-presentation.ts';
 import { validateFormDraft } from '../../lib/forms/validation.ts';
+import { coreFormContract } from '../../lib/forms/core-contracts.ts';
+import { NATIVE_TASK_FORM_IDS,PUBLIC_NATIVE_FORM_IDS } from '../../lib/forms/catalog-policy.ts';
+import { FIXED_PREVIEW_FORM_IDS,PROTECTED_PREVIEW_FORM_IDS } from '../../lib/forms/preview-contracts.ts';
+import { inspectCoreReceiptStorage,inspectPublicCoreReceiptStorage,inspectPublishedReceiptStorage } from '../../lib/forms/core-readiness.mjs';
+import { inspectCurrentRuntimeSchema } from '../../lib/operations/runtime-schema-readiness.mjs';
 import { assertHostedAuthReadinessContext, inspectHostedAuthSchema } from './hosted-auth-readiness.mjs';
 import { readAndVerifyStagingMarker, resolveDisposableStagingPaths } from './guards.mjs';
 import { locateLocalD1Database } from './local-d1.mjs';
 
 export const REQUIRED_PREVIEW_FORM_IDS = Object.freeze([...new Set([
   ...FEATURE_MANAGED_BASELINE_FORM_IDS,
+  ...NATIVE_TASK_FORM_IDS,...FIXED_PREVIEW_FORM_IDS,...PROTECTED_PREVIEW_FORM_IDS,
   ...Object.values(FORM_REGISTRY).filter(form => isFormCatalogEditable(form) || form.capabilities.answerBehavior === 'record').map(form => form.id),
 ])].sort());
 
@@ -27,23 +33,59 @@ export function inspectFormPreviewReadiness(sqlite) {
   } catch (error) { errors.push(`Sign-in setup: ${error.message}`); }
   const missingForms = [];
   const invalidForms = [];
+  const coreForms = [], blockedCoreForms = [],fixedForms=[],blockedFixedForms=[],blockedPublishedForms=[];
+  let coreStorageProblems,publicCoreStorageProblems,publishedStorageProblems;
+  let fixedSchema;
   const hasStore = Boolean(sqlite.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='form_config_versions'").get());
   if (!hasStore) errors.push('Missing form settings table: form_config_versions');
   for (const formId of REQUIRED_PREVIEW_FORM_IDS) {
-    const row = hasStore ? sqlite.prepare(`SELECT version, config_json, published_at FROM form_config_versions
-      WHERE form_id=? AND status='published' ORDER BY version DESC LIMIT 1`).get(formId) : null;
-    if (!row) { missingForms.push(formId); continue; }
+    let row;
+    try {row = hasStore ? sqlite.prepare(`SELECT version, config_json, published_at FROM form_config_versions
+      WHERE form_id=? AND status='published' ORDER BY version DESC LIMIT 1`).get(formId) : null;}
+    catch {invalidForms.push(formId);errors.push(`Form settings could not be read: ${formId}`);continue;}
+    if(FIXED_PREVIEW_FORM_IDS.has(formId)){
+      try{
+        const contract=FORM_REGISTRY[formId];
+        assert.equal(contract.mode,'system');assert.equal(contract.capabilities.answerBehavior,'none');
+        assert.equal(contract.capabilities.customFieldTypes.length,0);
+        assert.ok(contract.baseFields.every(field=>field.capability==='protected'));
+        if(row){assert.ok(Number.isSafeInteger(row.version)&&row.version>0);assert.ok(Number.isSafeInteger(row.published_at)&&row.published_at>=0);assert.ok(typeof row.config_json==='string'&&Buffer.byteLength(row.config_json,'utf8')<=65536);validateFormDraft(formId,JSON.parse(row.config_json));}
+        fixedSchema??=inspectCurrentRuntimeSchema(sqlite);
+        if(fixedSchema.ready)fixedForms.push(formId);else blockedFixedForms.push(formId);
+      }catch{blockedFixedForms.push(formId);errors.push(`Fixed native contract/storage could not be verified: ${formId}`);}
+      continue;
+    }
+    if (!row) {
+      const core=hasStore?coreFormContract(formId):null;
+      if(!core){missingForms.push(formId);continue;}
+      try{
+        validateFormDraft(formId,{formId:core.formId,fields:core.fields});
+        coreStorageProblems??=inspectCoreReceiptStorage(sqlite);
+        if(PUBLIC_NATIVE_FORM_IDS.has(formId))publicCoreStorageProblems??=inspectPublicCoreReceiptStorage(sqlite);
+        if(coreStorageProblems.length||(PUBLIC_NATIVE_FORM_IDS.has(formId)&&publicCoreStorageProblems.length))blockedCoreForms.push(formId);
+        else coreForms.push(formId);
+      }catch{blockedCoreForms.push(formId);errors.push(`Native form contract/storage could not be verified: ${formId}`);}
+      continue;
+    }
     try {
       assert.ok(Number.isSafeInteger(row.version) && row.version > 0);
       assert.ok(Number.isSafeInteger(row.published_at) && row.published_at >= 0);
       assert.ok(typeof row.config_json === 'string' && Buffer.byteLength(row.config_json, 'utf8') <= 65536);
       validateFormDraft(formId, JSON.parse(row.config_json));
+      if(FORM_REGISTRY[formId].capabilities.answerBehavior==='record'){
+        publishedStorageProblems??=inspectPublishedReceiptStorage(sqlite);
+        if(publishedStorageProblems.length)blockedPublishedForms.push(formId);
+      }
     } catch { invalidForms.push(formId); }
   }
-  return { ready: authReady && hasStore && !missingForms.length && !invalidForms.length,
+  for(const problem of coreStorageProblems??[])errors.push('Native form receipt storage: '+problem);
+  for(const problem of publicCoreStorageProblems??[])errors.push('Native public receipt storage: '+problem);
+  for(const problem of publishedStorageProblems??[])errors.push('Published form receipt storage: '+problem);
+  if(fixedSchema&&!fixedSchema.ready)errors.push('Current native schema incomplete: '+[...fixedSchema.missing,...fixedSchema.changed].join(', '));
+  return { ready: authReady && hasStore && !missingForms.length && !invalidForms.length && !blockedCoreForms.length&&!blockedFixedForms.length&&!blockedPublishedForms.length,
     requiredForms: REQUIRED_PREVIEW_FORM_IDS.length,
-    readyForms: REQUIRED_PREVIEW_FORM_IDS.length - missingForms.length - invalidForms.length,
-    missingForms, invalidForms, errors };
+    readyForms: REQUIRED_PREVIEW_FORM_IDS.length - missingForms.length - invalidForms.length - blockedCoreForms.length-blockedFixedForms.length-blockedPublishedForms.length,
+    missingForms, invalidForms, coreForms, blockedCoreForms,fixedForms,blockedFixedForms,blockedPublishedForms,fixedSchema, errors };
 }
 
 async function main() {

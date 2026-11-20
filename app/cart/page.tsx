@@ -1,4 +1,7 @@
 import type { Metadata } from 'next';
+import { env } from 'cloudflare:workers';
+import { requireDatabase } from '@/lib/db/d1';
+import { getPlatformServiceFee } from '@/lib/db/repositories/platform-service-fee';
 
 import { CartView } from '@/components/commerce/cart-view';
 import { CheckoutSteps } from '@/components/commerce/checkout-steps';
@@ -7,7 +10,9 @@ import { SiteHeader } from '@/components/layout/site-header';
 
 export const metadata: Metadata = { title: 'Your cart' };
 
-export default function CartPage() {
+export const dynamic = 'force-dynamic';
+export default async function CartPage() {
+  const serviceFee=await getPlatformServiceFee(requireDatabase(env as unknown as {DB?:D1Database}));
   return (
     <div className="min-h-screen bg-background">
       <SiteHeader />
@@ -21,7 +26,7 @@ export default function CartPage() {
           Review your cart before these finds make their way to you.
         </p>
         <div className="mt-8">
-          <CartView />
+          <CartView serviceFee={serviceFee}/>
         </div>
       </main>
       <SiteFooter />

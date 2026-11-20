@@ -1,3 +1,4 @@
+import {addOfferCartLine,type UpdateOfferCartChoice} from '@/lib/cart/offer-cart';
 import { env } from 'cloudflare:workers';
 
 import { recordRequestTrafficEvent } from '@/lib/analytics/request';
@@ -57,13 +58,14 @@ async function cartIdentity(
   request: Request,
 ): Promise<{ hash: string; cookie?: string }> {
   const existing = readCookie(request, CART_COOKIE);
+  const validExisting=Boolean(existing&&existing.length>=32&&existing.length<=128);
   const token =
-    existing && existing.length >= 32 && existing.length <= 128
-      ? existing
+    validExisting
+      ? existing!
       : createOpaqueToken();
   return {
     hash: await hashOpaqueToken(token),
-    cookie: existing ? undefined : cartCookie(request, token),
+    cookie: validExisting ? undefined : cartCookie(request, token),
   };
 }
 
@@ -83,8 +85,8 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const submitted: unknown = await request.json();
     if (!submitted || typeof submitted !== 'object' || Array.isArray(submitted) ||
-      Object.keys(submitted).some((key) => key !== 'productId' && key !== 'quantity'))
-      return json({ error: 'Cart actions accept only a product and quantity.' }, 400, identity.cookie);
+      Object.keys(submitted).some(key=>!['productId','quantity','offerId','versionId','publicVersionId','pricePaisa','requestId'].includes(key)))
+      return json({ error: 'Choose a product, an exact option when required, and its quantity.' }, 400, identity.cookie);
     const body = submitted as Record<string, unknown>;
     const productId = typeof body.productId === 'string' ? body.productId : '';
     if (!productId || productId.length > 64)
@@ -94,13 +96,12 @@ export async function POST(request: Request): Promise<Response> {
         identity.cookie,
       );
     const db = database();
-    const cart = await addCartItem(
-      db,
-      identity.hash,
-      productId,
-      parseQuantity(body.quantity),
-      Date.now(),
-    );
+    const offered=Object.hasOwn(body,'offerId');
+    if(!offered&&Object.keys(body).some(key=>!['productId','quantity'].includes(key)))return json({error:'An exact offer is required for these cart fields.'},400,identity.cookie);
+    if(offered&&(typeof body.offerId!=='string'||typeof body.versionId!=='string'||(typeof body.publicVersionId!=='string'&&body.publicVersionId!==null)||typeof body.pricePaisa!=='number'||typeof body.quantity!=='number'||typeof body.requestId!=='string'))return json({error:'Review the exact option and its current price.'},400,identity.cookie);
+    const now=Date.now();
+    if(offered)await addOfferCartLine(db,identity.hash,{productId,offerId:body.offerId as string,versionId:body.versionId as string,publicVersionId:body.publicVersionId as string|null,pricePaisa:body.pricePaisa as number,quantity:body.quantity as number,requestId:body.requestId as string},now);
+    const cart=offered?await getCart(db,identity.hash):await addCartItem(db,identity.hash,productId,parseQuantity(body.quantity),now);
     const response = json(cart, 200, identity.cookie);
     try {
       const analytics = await recordRequestTrafficEvent(db, request, {
@@ -133,7 +134,9 @@ export async function PATCH(request: Request): Promise<Response> {
     return rejectedOrigin(request);
   const identity = await cartIdentity(request);
   try {
-    const body = (await request.json()) as Record<string, unknown>;
+    const submitted:unknown=await request.json();if(!submitted||typeof submitted!=='object'||Array.isArray(submitted)||Object.keys(submitted).some(key=>!['itemId','quantity','revision','requestId','refresh'].includes(key)))return json({error:'Use the saved cart line and current quantity.'},400,identity.cookie);
+    const body=submitted as Record<string,unknown>;
+    if(body.refresh!==undefined&&(!body.refresh||typeof body.refresh!=='object'||Array.isArray(body.refresh)||Object.keys(body.refresh).some(key=>!['versionId','publicVersionId','pricePaisa'].includes(key))))return json({error:'Review the current option before confirming its update.'},400,identity.cookie);
     const itemId = typeof body.itemId === 'string' ? body.itemId : '';
     if (!itemId || itemId.length > 64)
       return json(
@@ -147,6 +150,7 @@ export async function PATCH(request: Request): Promise<Response> {
       itemId,
       parseQuantity(body.quantity),
       Date.now(),
+      Object.hasOwn(body,'revision')||Object.hasOwn(body,'requestId')?{revision:body.revision as number,requestId:body.requestId as string,refresh:body.refresh as UpdateOfferCartChoice['refresh']}:undefined,
     );
     return json(cart, 200, identity.cookie);
   } catch (error) {

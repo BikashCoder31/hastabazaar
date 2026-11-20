@@ -7,6 +7,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { registerHooks } from 'node:module';
 import { createHash } from 'node:crypto';
 import { SELLER_AGREEMENT_VERSION } from '../lib/content/legal-policies';
+import {readyCheckoutSeller} from './helpers/checkout-contact';
+import {addCommissionRegressionOffer} from './helpers/commission-regression-offer';
+import {getCart} from '../lib/db/repositories/cart';
 registerHooks({
   resolve(specifier, context, next) {
     if (specifier === 'cloudflare:workers')
@@ -40,6 +43,7 @@ declare global {
 
 function fixture() {
   const sqlite = new DatabaseSync(':memory:');
+  sqlite.exec('PRAGMA foreign_keys=ON');
   for (const file of readdirSync('drizzle')
     .filter((name) => /^\d{4}_.+\.sql$/.test(name))
     .sort())
@@ -47,7 +51,7 @@ function fixture() {
   sqlite.exec(
     'CREATE TABLE user_credentials(user_id TEXT PRIMARY KEY,password_hash TEXT,password_salt TEXT,password_version INTEGER DEFAULT 1,created_at INTEGER,updated_at INTEGER); CREATE TABLE user_sessions(token_hash TEXT PRIMARY KEY,user_id TEXT,expires_at INTEGER,created_at INTEGER,last_seen_at INTEGER); CREATE TABLE email_login_challenges(token_hash TEXT PRIMARY KEY,user_id TEXT)',
   );
-  let beforeBatch: (() => void | Promise<void>) | undefined;
+  let beforeBatch: ((statements:{run():Promise<unknown>;sql?:string}[]) => void | Promise<void>) | undefined;
   const db = {
     prepare(sql: string) {
       let values: SQLInputValue[] = [];
@@ -75,7 +79,7 @@ function fixture() {
     async batch(statements: { run(): Promise<unknown> }[]) {
       const action = beforeBatch;
       beforeBatch = undefined;
-      await action?.();
+      await action?.(statements);
       sqlite.exec('BEGIN');
       try {
         const results = [];
@@ -97,7 +101,7 @@ function fixture() {
     db,
     sqlite,
     actor: { userId: 'buyer', authSubject: 'buyer-subject', sessionHash },
-    race(action: () => void | Promise<void>) {
+    race(action: (statements:{run():Promise<unknown>;sql?:string}[]) => void | Promise<void>) {
       beforeBatch = action;
     },
   };
@@ -1096,9 +1100,11 @@ void test('global send budget prevents transport costs across different users an
 
 void test('legacy guest and signed-in receipt replays survive new contact requirements without changing records', async () => {
   const { createCodOrder } = await import('../lib/db/repositories/orders');
-  for (const customerId of [null, 'buyer']) {
+  const { parseCheckoutInput } = await import('../lib/checkout/validation');
+  for (const {customerId, parserShape} of [null, 'buyer'].flatMap(customerId =>
+    [false, true].map(parserShape => ({customerId, parserShape})))) {
     const f = fixture();
-    const input = {
+    const originalInput = {
       customerEmail: 'buyer@local.hastabazaar.test',
       customerPhone: '9811111111',
       locale: 'en-NP' as const,
@@ -1113,8 +1119,29 @@ void test('legacy guest and signed-in receipt replays survive new contact requir
         locality: 'Legacy locality',
       },
     };
+    // Frozen historical parser shape: changing today's defaults must not change
+    // the stored old digest and its expected replay together.
+    const historicalInput = parserShape ? {
+      customerEmail: originalInput.customerEmail,
+      customerPhone: originalInput.customerPhone,
+      deliveryFor: 'self' as const,
+      recipientEmail: undefined,
+      selectedAddressId: undefined,
+      saveAddressForFuture: false,
+      saveAddressLabel: undefined,
+      locale: originalInput.locale,
+      termsAccepted: true,
+      idempotencyKey: originalInput.idempotencyKey,
+      deliveryRateVersion: undefined,
+      useWallet: false,
+      referralCode: '',
+      formVersion: undefined,
+      customAnswers: undefined,
+      address: { ...originalInput.address, ward: undefined, landmark: undefined, postalCode: undefined, location: undefined },
+    } : originalInput;
+    const input = parserShape ? parseCheckoutInput(originalInput).value! : originalInput;
     const digest = createHash('sha256')
-      .update(JSON.stringify({ customerId, ...input }))
+      .update(JSON.stringify({ customerId, ...historicalInput }))
       .digest('hex');
     try {
       f.sqlite
@@ -1181,13 +1208,18 @@ async function realCart(f: ReturnType<typeof fixture>) {
     INSERT INTO products(id,seller_id,category_id,slug,sku,name_en,description_en,price_paisa,inventory_quantity,producer,country_of_origin,materials,return_eligible,status,created_at,updated_at)
     VALUES ('product','seller','category','fixture-product','FIX-SKU','Fixture product','Fictional',10000,100,'Maker','NP','Fibre',1,'published',1,1);
     INSERT INTO carts(id,anonymous_token_hash,currency,expires_at,created_at,updated_at) VALUES ('cart','cart','NPR',253402300799999,1,1);
-    INSERT INTO cart_items(id,cart_id,product_id,quantity,created_at,updated_at) VALUES ('item','cart','product',1,1,1);
+    INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('buyer','seller',1),('other','super_admin',1);
     INSERT INTO wallet_accounts(user_id,referral_code,created_at) VALUES ('buyer','REF-FIXTURE',1);`);
   f.sqlite
     .prepare(
       "UPDATE seller_profiles SET seller_agreement_version=?,seller_agreement_accepted_at=1 WHERE id='seller'",
     )
     .run(SELLER_AGREEMENT_VERSION);
+  const { historicalCommissionFixture } = await import('./helpers/historical-commission-fixture');
+  historicalCommissionFixture(f.sqlite,'buyer',true);
+  await readyCheckoutSeller({database:f.db,sqlite:f.sqlite},'seller','buyer','other',2);
+  await addCommissionRegressionOffer({database:f.db,sqlite:f.sqlite},{productId:'product',reviewerId:'other',tokenHash:'cart',now:3});
+  assert.equal((await getCart(f.db,'cart')).hasUnavailableItems,false);
   const { getDeliveryRates } =
     await import('../lib/db/repositories/delivery-rates');
   const rates = await getDeliveryRates(f.db);
@@ -1216,12 +1248,16 @@ void test('email-only release policy places a real COD order without SMS proof w
   const f = fixture();
   try {
     const input = await realCart(f);
+    const stock=f.sqlite.prepare('SELECT * FROM offer_stock').all();
+    const savedCart=f.sqlite.prepare('SELECT * FROM cart_offer_lines').all();
     f.sqlite.exec("DELETE FROM account_phone_verifications WHERE user_id='buyer'");
     await assert.rejects(
       createCodOrder(f.db, 'cart', 'receipt', input, 1000, 'buyer'),
       /verify.*phone/i,
     );
     assert.equal(f.sqlite.prepare('SELECT count(*) AS n FROM orders').get()?.n, 0);
+    assert.deepEqual(f.sqlite.prepare('SELECT * FROM offer_stock').all(),stock);
+    assert.deepEqual(f.sqlite.prepare('SELECT * FROM cart_offer_lines').all(),savedCart);
     const placed = await createCodOrder(
       f.db, 'cart', 'receipt', input, 1000, 'buyer', undefined, 'email_only',
     );
@@ -1286,28 +1322,19 @@ void test('actual order insertion rolls back if proof disappears between reading
   const f = fixture();
   try {
     const input = await realCart(f);
-    f.race(() =>
-      f.sqlite.exec(
-        "DELETE FROM account_phone_verifications WHERE user_id='buyer'",
-      ),
-    );
-    await assert.rejects(
-      createCodOrder(f.db, 'cart', 'receipt', input, 1000, 'buyer'),
-      /changed|verify|contact|Availability/i,
-    );
+    const stock=f.sqlite.prepare('SELECT * FROM offer_stock').all();
+    const savedCart=f.sqlite.prepare('SELECT * FROM cart_offer_lines').all();
+    let raced=false;
+    f.race(statements=>{assert.ok(statements.some(statement=>/INSERT INTO orders\s*\(/.test(statement.sql??'')),'Remove proof at the actual order insertion batch.');raced=true;f.sqlite.exec("DELETE FROM account_phone_verifications WHERE user_id='buyer'");});
+    await assert.rejects(createCodOrder(f.db,'cart','receipt',input,1000,'buyer'),/changed|verify|contact|Availability/i);
+    assert.equal(raced,true,'The fixture must reach the real commit boundary.');
     assert.equal(
       f.sqlite.prepare('SELECT count(*) AS n FROM orders').get()?.n,
       0,
     );
-    assert.equal(
-      f.sqlite.prepare('SELECT inventory_quantity FROM products').get()
-        ?.inventory_quantity,
-      100,
-    );
-    assert.equal(
-      f.sqlite.prepare('SELECT count(*) AS n FROM cart_items').get()?.n,
-      1,
-    );
+    assert.deepEqual(f.sqlite.prepare('SELECT * FROM offer_stock').all(),stock);
+    assert.deepEqual(f.sqlite.prepare('SELECT * FROM cart_offer_lines').all(),savedCart);
+    assert.equal(f.sqlite.prepare('SELECT count(*) AS n FROM offer_stock_reservations').get()?.n,0);
   } finally {
     f.sqlite.close();
   }

@@ -1,4 +1,6 @@
 'use client';
+import { SellerDisclosure } from './seller-disclosure';
+import { CustomerServiceFeeBreakdown } from './customer-service-fee-breakdown';
 
 import Image from 'next/image';
 import Link from 'next/link';
@@ -10,11 +12,14 @@ import {
   Plus,
   Trash2,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import {notifyPublicCartStorage,usePublicCartStorage} from '@/hooks/use-public-cart-storage';
+import { type PlatformServiceFeeSnapshot } from '@/lib/checkout/platform-service-fee';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { sendJson } from '@/lib/http/client-request';
+import { HttpResponseError,sendJson } from '@/lib/http/client-request';
+import type {CartSelectedOffer} from '@/lib/cart/offer-cart';
 import {
   mediaFrameClass,
   mediaObjectClass,
@@ -27,10 +32,13 @@ interface CartItem {
   slug: string;
   nameEn: string;
   tradingName: string;
+  makerName?: string | null;
   participationRoute?: string;
   storeName?: string | null;
   legalSellerName?: string | null;
-  pricePaisa: number;
+  pricePaisa: number|null;
+  offerId?:string;revision?:number;selectedOffer?:CartSelectedOffer;unavailableReason?:string|null;
+  currentChoice?:{versionId:string;publicVersionId:string|null;pricePaisa:number;orderable:boolean}|null;
   quantity: number;
   inventoryQuantity: number;
   productStatus: string;
@@ -44,18 +52,30 @@ interface CartData {
   hasUnavailableItems: boolean;
 }
 
-function money(paisa: number): string {
+function money(paisa: number|null): string {
+  if(paisa===null)return 'Price unavailable';
   return new Intl.NumberFormat('en-NP', {
     style: 'currency',
     currency: 'NPR',
   }).format(paisa / 100);
 }
 
-export function CartView() {
+type PendingCartEdit={method:'PATCH'|'DELETE';body:Record<string,unknown>;label:string};
+function readPendingCartEdit(raw:string|null|undefined):PendingCartEdit|null{
+  try{const saved=JSON.parse(raw??'null') as PendingCartEdit|null;return saved&&['PATCH','DELETE'].includes(saved.method)&&typeof saved.body?.itemId==='string'&&typeof saved.label==='string'?saved:null;}catch{return null;}
+}
+
+export function CartView({serviceFee}:{serviceFee?:PlatformServiceFeeSnapshot} = {}) {
   const [cart, setCart] = useState<CartData | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const [pendingOverride,setPending]=useState<PendingCartEdit|null|undefined>(undefined);
+  const pendingRaw=usePublicCartStorage('hb:cart-edit');
+  const restored=useMemo(()=>readPendingCartEdit(pendingRaw),[pendingRaw]);
+  const pending=pendingOverride===undefined?restored:pendingOverride;
+
+  function remember(action:PendingCartEdit|null){setPending(action);try{if(action)sessionStorage.setItem('hb:cart-edit',JSON.stringify(action));else sessionStorage.removeItem('hb:cart-edit');notifyPublicCartStorage('hb:cart-edit');}catch{}}
 
   useEffect(() => {
     let active = true;
@@ -78,23 +98,14 @@ export function CartView() {
     };
   }, [loadAttempt]);
 
-  async function mutate(itemId: string, quantity?: number) {
-    if (busy) return;
-    setBusy(itemId);
-    setError('');
-    try {
-      const result = await sendJson<CartData>('/api/cart',
-        quantity === undefined ? 'DELETE' : 'PATCH',
-        quantity === undefined ? { itemId } : { itemId, quantity },
-        'We couldn’t update your cart. Please try again.');
-      setCart(result);
-    } catch (reason) {
-      setError(
-        reason instanceof Error ? reason.message : 'Cart could not be updated.',
-      );
-    } finally {
-      setBusy(null);
-    }
+  async function run(action:PendingCartEdit){if(busy)return;setBusy(String(action.body.itemId));setError('');remember(action);
+    try{const result=await sendJson<CartData>('/api/cart',action.method,action.body,'The cart response could not be confirmed. Retry the exact saved action.');setCart(result);remember(null);window.dispatchEvent(new Event('cart:updated'));}
+    catch(reason){if(reason instanceof HttpResponseError&&reason.status<500){remember(null);setLoadAttempt(value=>value+1);}setError(`${action.label}: ${reason instanceof Error?reason.message:'The response was interrupted.'}`);}
+    finally{setBusy(null);}
+  }
+  async function mutate(itemId:string,quantity?:number,refresh=false){if(busy||pending||pendingRaw===undefined)return;const item=cart?.items.find(row=>row.id===itemId);if(!item)return;
+    const label=[item.nameEn,...(item.selectedOffer?.selection.map(choice=>`${choice.name}: ${choice.value}`)??[])].join(' · '),body:Record<string,unknown>=quantity===undefined?{itemId}:{itemId,quantity,...(item.offerId?{revision:item.revision,requestId:crypto.randomUUID(),...(refresh&&item.currentChoice?{refresh:{versionId:item.currentChoice.versionId,publicVersionId:item.currentChoice.publicVersionId,pricePaisa:item.currentChoice.pricePaisa}}:{})}:{})};
+    await run({method:quantity===undefined?'DELETE':'PATCH',body,label:quantity===undefined?`Remove ${label}`:`${label}, requested quantity ${quantity}`});
   }
 
   if (!cart && !error)
@@ -144,6 +155,7 @@ export function CartView() {
     <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem]">
       <div className="space-y-4">
         {cart.items.map((item) => {
+          const itemLabel=[item.nameEn,...(item.selectedOffer?.selection.map(choice=>`${choice.name}: ${choice.value}`)??[])].join(' · ');
           const available =
             item.productStatus === 'published' &&
             item.inventoryQuantity >= item.quantity;
@@ -153,7 +165,7 @@ export function CartView() {
               className="grid grid-cols-[5rem_minmax(0,1fr)] gap-4 rounded-2xl border bg-card p-4 sm:grid-cols-[8rem_minmax(0,1fr)_auto]"
             >
               <Link
-                href={`/products/${item.slug}`}
+                href={`/products/${item.slug}${item.offerId?`?offer=${encodeURIComponent(item.offerId)}`:''}`}
                 aria-label={`View ${item.nameEn}`}
                 className={mediaFrameClass(
                   'cover',
@@ -176,32 +188,35 @@ export function CartView() {
               <div>
                 <p className="text-sm font-semibold text-primary">
                   {item.tradingName}
-                  {item.participationRoute === 'managed_maker' ? <span className="block text-xs">Made by this maker · Sold by {item.storeName ?? 'company store — terms review pending'}</span> : null}
+                  <SellerDisclosure managed={item.participationRoute === 'managed_maker'} supplierName={item.makerName ?? item.tradingName} legalSellerName={item.legalSellerName} />
                 </p>
                 <Link
-                  href={`/products/${item.slug}`}
+                  href={`/products/${item.slug}${item.offerId?`?offer=${encodeURIComponent(item.offerId)}`:''}`}
                   className="mt-1 block text-base font-semibold hover:underline"
                 >
                   {item.nameEn}
                 </Link>
+                {item.selectedOffer?<p className="mt-2 text-sm">{item.selectedOffer.selection.map(choice=>`${choice.name}: ${choice.value}`).join(' · ')||'Standard option'}<span className="mt-1 block text-muted-foreground">{item.selectedOffer.unitsPerOffer} {item.selectedOffer.baseUnit}{item.selectedOffer.unitsPerOffer===1?'':'s'} per sales unit · SKU {item.selectedOffer.sku}</span></p>:null}
                 <p className="mt-2 text-lg font-semibold">
-                  {money(item.pricePaisa * item.quantity)}
+                  {money(item.pricePaisa===null?null:item.pricePaisa * item.quantity)}
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {money(item.pricePaisa)} each
                 </p>
                 {!available ? (
                   <p className="mt-2 text-sm font-semibold text-destructive">
-                    Availability changed — reduce or remove this item.
+                    {item.unavailableReason??'Availability changed. Review this item before checkout.'}
                   </p>
                 ) : null}
+                {!available&&item.currentChoice?.orderable?<div className="mt-3 space-y-2 text-sm"><p>Current price: {money(item.currentChoice.pricePaisa)} per sales unit.</p><Button variant="outline" disabled={busy!==null||Boolean(pending)||item.quantity>item.inventoryQuantity} onClick={()=>void mutate(item.id,item.quantity,true)}>Confirm current option and price</Button></div>:null}
+                {!available?<Link className="mt-3 inline-block text-sm font-semibold text-primary underline" href={`/products/${item.slug}${item.offerId?`?offer=${encodeURIComponent(item.offerId)}`:''}`}>Review product options</Link>:null}
               </div>
               <div className="col-span-2 col-start-1 flex flex-wrap items-center gap-2 self-end sm:col-span-1 sm:col-start-3 sm:row-start-1 sm:self-center">
                 <Button
                   size="icon"
                   variant="outline"
-                  aria-label={`Decrease ${item.nameEn} quantity`}
-                  disabled={busy !== null || item.quantity <= 1}
+                  aria-label={`Decrease ${itemLabel} quantity`}
+                  disabled={busy !== null || Boolean(pending) || item.quantity <= 1}
                   onClick={() => void mutate(item.id, item.quantity - 1)}
                 >
                   <Minus />
@@ -215,9 +230,9 @@ export function CartView() {
                 <Button
                   size="icon"
                   variant="outline"
-                  aria-label={`Increase ${item.nameEn} quantity`}
+                  aria-label={`Increase ${itemLabel} quantity`}
                   disabled={
-                    busy !== null ||
+                    busy !== null || Boolean(pending) ||
                     item.quantity >= Math.min(10, item.inventoryQuantity)
                   }
                   onClick={() => void mutate(item.id, item.quantity + 1)}
@@ -227,8 +242,8 @@ export function CartView() {
                 <Button
                   size="icon"
                   variant="ghost"
-                  aria-label={`Remove ${item.nameEn}`}
-                  disabled={busy !== null}
+                  aria-label={`Remove ${itemLabel}`}
+                  disabled={busy !== null||Boolean(pending)}
                   onClick={() => void mutate(item.id)}
                 >
                   <Trash2 />
@@ -237,6 +252,7 @@ export function CartView() {
             </article>
           );
         })}
+        {pending?<div className="rounded-xl border bg-secondary/30 p-4 text-sm"><output className="block">Saved action: {pending.label}. Confirm its result before making another change.</output><Button className="mt-3" disabled={busy!==null} onClick={()=>void run(pending)}>Retry exact cart action</Button></div>:null}
         {error ? (
           <p
             role="alert"
@@ -255,15 +271,16 @@ export function CartView() {
           <span className="text-muted-foreground">
             Items ({cart.itemCount})
           </span>
-          <strong>{money(cart.itemSubtotalPaisa)}</strong>
+          <strong>{cart.items.some(item=>item.pricePaisa===null)?'Review unpriced items':money(cart.itemSubtotalPaisa)}</strong>
         </div>
         <div className="mt-3 flex justify-between text-sm">
           <span className="text-muted-foreground">Delivery</span>
           <span>At checkout</span>
         </div>
+        {serviceFee ? <div className="mt-3"><CustomerServiceFeeBreakdown standardPaisa={'standardPaisa' in serviceFee ? serviceFee.standardPaisa : serviceFee.chargedPaisa} waivedPaisa={'waivedPaisa' in serviceFee ? serviceFee.waivedPaisa : 0} netPaisa={serviceFee.chargedPaisa} campaignName={'campaign' in serviceFee ? serviceFee.campaign?.name ?? null : null} source="estimate" /></div> : null}
         <div className="mt-5 flex justify-between gap-3 border-t pt-5 font-semibold">
-          <span>Subtotal</span>
-          <span>{money(cart.itemSubtotalPaisa)}</span>
+          <span>Subtotal before delivery</span>
+          <span>{cart.items.some(item=>item.pricePaisa===null)?'Review unpriced items':money(cart.itemSubtotalPaisa+(serviceFee?.chargedPaisa??0))}</span>
         </div>
         <p className="mt-4 flex items-start gap-2 text-sm leading-6 text-muted-foreground">
           <Banknote className="mt-1 size-5 shrink-0 text-primary" />
@@ -271,13 +288,13 @@ export function CartView() {
           checkout.
         </p>
         <Button
-          nativeButton={cart.hasUnavailableItems || busy !== null}
+          nativeButton={cart.hasUnavailableItems || busy !== null || Boolean(pending)}
           render={
-            !cart.hasUnavailableItems && busy === null ? (
+            !cart.hasUnavailableItems && busy === null && !pending ? (
               <Link href="/checkout" />
             ) : undefined
           }
-          disabled={cart.hasUnavailableItems || busy !== null}
+          disabled={cart.hasUnavailableItems || busy !== null || Boolean(pending)}
           className="mt-6 h-12 w-full rounded-full text-base"
         >
           Continue to checkout <ArrowRight className="size-4" />

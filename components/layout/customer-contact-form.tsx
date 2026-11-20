@@ -7,7 +7,7 @@ import { feedbackTopics } from '@/lib/feedback/customer-feedback';
 import { clearFeedbackAttemptId, reserveFeedbackAttemptId } from '@/lib/feedback/attempt-id';
 import { ConfiguredFields, fieldDisplay } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { readConfiguredSubmission } from '@/lib/forms/submission';
+import { readConfiguredSubmission } from '@/lib/forms/client-submission';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -71,7 +71,7 @@ export function CustomerContactForm({
       setMessage(
         kind === 'feedback'
           ? `Thank you for your feedback.${reference ? ` Reference: ${reference}.` : ''}`
-          : `Thank you. Your message has been sent to the HastaBazaar support team.${reference ? ` Reference: ${reference}.` : ''}`,
+          : `Thank you. Your message has been sent to the Hastabazaar support team.${reference ? ` Reference: ${reference}.` : ''}`,
       );
     } catch (caught) {
       setError(
@@ -214,7 +214,7 @@ export function CustomerContactForm({
           className="mt-1 size-4 accent-primary"
         />
         <span>
-          I understand that HastaBazaar will use these details to respond, as
+          I understand that Hastabazaar will use these details to respond, as
           described in the{' '}
           <Link
             href="/privacy"

@@ -1,0 +1,4 @@
+import type {FormDefinition} from '../forms/types';
+export const CATEGORY_POLICY_FORM:FormDefinition=Object.freeze({id:'system.category-policy',adapterId:'system.category-policy',mode:'system',audience:'super_admin',route:'/api/admin/category-contracts',
+ baseFields:Object.freeze(['categoryId','contract','recommendedGroups','publicationRules','orderingRules','eligibilityRequirements','labels','field','reason','when','equals','requestId','expectedRevision'].map(key=>({key,label:key,type:'existing',capability:'protected' as const,explanation:'Versioned category policy uses fixed supported fields, privacy mappings and current Super Admin authority.'}))),
+ capabilities:Object.freeze({customFieldTypes:Object.freeze([]),answerBehavior:'none',explanation:'Category policy versions and their command receipts are the retained history. Form customization cannot change field meaning, private visibility, condition scope or exact-version authority.'})});

@@ -3,6 +3,7 @@
 import { FormGuide } from '@/components/forms/form-guide';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { productDiscountLabel } from '@/lib/products/discount';
+import { nepalDateOnlyIso } from '@/lib/dates/nepal-calendar';
 import Link from 'next/link';
 import {
   CheckCircle2,
@@ -50,7 +51,7 @@ type SubmissionState =
   | { status: 'error'; message: string }
   | { status: 'success' };
 
-const catalogBaseKeys = ['nameEn', 'nameNe', 'descriptionEn', 'descriptionNe', 'sku', 'price', 'pricePaisa', 'inventoryQuantity',
+const catalogBaseKeys = ['nameEn', 'nameNe', 'descriptionEn', 'descriptionNe', 'sku', 'sellerSku', 'price', 'pricePaisa', 'inventoryQuantity',
   'image', 'video', 'reviewRequestId', 'categoryId', 'occasionIds', 'sellerId', 'producer', 'materials',
   'requestId', 'formVersion', 'customAnswers', 'countryOfOrigin', 'originEvidenceReference', 'originEvidenceStatus'];
 const uncertainSubmissionMessage = 'Submission status is uncertain. Your product or private media may already have been saved. Check your products before starting a new attempt.';
@@ -85,7 +86,7 @@ function setFormValue(
 }
 
 function dateInputValue(value: number | null | undefined): string {
-  return value ? new Date(value).toISOString().slice(0, 10) : '';
+  return value == null ? '' : nepalDateOnlyIso(value);
 }
 
 function discountPercentage(price: string, originalPrice: string): string {
@@ -499,7 +500,7 @@ export function ProductSubmissionForm({
             name: 'prepare_product_submission',
             title: 'Prepare product submission',
             description:
-              'Fill the main text and pricing fields for a HastaBazaar product listing. The seller must review the form, choose a category, attach real product photos, and submit it.',
+              'Fill the main text and pricing fields for a Hastabazaar product listing. The seller must review the form, choose a category, attach real product photos, and submit it.',
             inputSchema: {
               type: 'object',
               properties: {
@@ -622,7 +623,7 @@ export function ProductSubmissionForm({
         <p className="mt-3 max-w-xl leading-7 text-muted-foreground">
           {mode === 'draft'
             ? 'This draft is available only to you and authorised reviewers. It cannot be published or ordered while activation requirements remain outstanding.'
-            : 'HastaBazaar will verify the listing before it can appear in the public shop.'}
+            : 'Hastabazaar will verify the listing before it can appear in the public shop.'}
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <Link
@@ -667,7 +668,7 @@ export function ProductSubmissionForm({
       <FieldSet>
         <FieldLegend>Listing identity</FieldLegend>
         <FieldDescription>
-          Each new product receives a unique SKU automatically. Existing SKUs
+          Each new product receives a unique platform SKU automatically. Existing SKUs
           are retained.
         </FieldDescription>
         <FieldGroup className="grid gap-5 md:grid-cols-2">
@@ -688,7 +689,12 @@ export function ProductSubmissionForm({
               ))}
             </NativeSelect>
           </Field>
-          {initial ? <p className="text-sm">SKU: {initial.sku}</p> : null}
+          {initial ? <p className="break-all text-sm">Platform SKU: {initial.sku}</p> : null}
+          <Field>
+            <FieldLabel htmlFor="sellerSku">Seller SKU</FieldLabel>
+            <Input id="sellerSku" name="sellerSku" maxLength={80} defaultValue={initial?.sellerSku ?? ''} />
+            <FieldDescription>Your own stock code, if you use one. The platform SKU stays unchanged.</FieldDescription>
+          </Field>
           <Field>
             <FieldLabel htmlFor="nameEn">{fieldDisplay(catalog.config, 'nameEn')?.label ?? 'Product name — English'} *</FieldLabel>
             <Input
@@ -1004,7 +1010,7 @@ export function ProductSubmissionForm({
           {discount ? `Customer price discount: ${discount}` : ''}
         </output>
         <FieldDescription>
-          Enter Nepalese rupees. HastaBazaar stores money precisely in paisa.
+          Enter Nepalese rupees. Hastabazaar stores money precisely in paisa.
         </FieldDescription>
         <FieldGroup className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
           <Field>
@@ -1096,7 +1102,7 @@ export function ProductSubmissionForm({
             onCheckedChange={(checked) => setReturnEligible(Boolean(checked))}
           />
           <FieldLabel htmlFor="returnEligible" className="font-normal">
-            Eligible for the standard HastaBazaar return policy
+            Eligible for the standard Hastabazaar return policy
           </FieldLabel>
         </Field>
       </FieldSet>

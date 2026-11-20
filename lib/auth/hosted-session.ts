@@ -1,5 +1,13 @@
 import { mailboxClaimStatements } from './mailbox-verification';
 import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
+import { ADMIN_ABSOLUTE_MS } from '../security/model';
+import { SecurityStore } from '../security/store';
+import { passwordChallengeStatements } from '../security/password-challenge';
+import {
+  staffSessionIsVerified,
+  sellerSessionIsVerified,
+  passwordOnlyProofStatements,
+} from '../security/session';
 
 export const hostedSessionCookieName = 'hastabazaar_session';
 const sessionLifetimeSeconds = 30 * 24 * 60 * 60;
@@ -55,7 +63,9 @@ export async function passwordRecord(password: string): Promise<{
   salt: string;
 }> {
   const salt = Buffer.from(randomBytes(16)).toString('base64url');
-  const hash = Buffer.from(await derivePassword(password, salt)).toString('base64');
+  const hash = Buffer.from(await derivePassword(password, salt)).toString(
+    'base64',
+  );
   return { hash, salt };
 }
 
@@ -94,7 +104,9 @@ export async function createHostedSession(
   now = Date.now(),
 ): Promise<string> {
   const user = await database
-    .prepare('SELECT id FROM users WHERE auth_subject = ? AND status = \'active\' LIMIT 1')
+    .prepare(
+      "SELECT id FROM users WHERE auth_subject = ? AND status = 'active' LIMIT 1",
+    )
     .bind(authSubject)
     .first<{ id: string }>();
   if (!user) throw new Error('The account is not available.');
@@ -105,59 +117,137 @@ export async function createHostedSessionForUser(
   database: D1Database,
   userId: string,
   now = Date.now(),
-  proof: { mailbox?: boolean; passwordHash?: string } = {},
+  proof: {
+    mailbox?: boolean;
+    passwordHash?: string;
+    securityKey?: string;
+    initialized?: boolean;
+  } = {},
   linkedStatement?: D1PreparedStatement,
   claimStatement?: D1PreparedStatement,
   versionGuard?: D1PreparedStatement | D1PreparedStatement[],
 ): Promise<string> {
   const user = await database
-    .prepare("SELECT id FROM users WHERE id = ? AND status = 'active' LIMIT 1")
+    .prepare(
+      "SELECT id, EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=users.id AND r.role IN ('admin','super_admin')) AS isStaff, EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=users.id AND r.role='seller') AS isSeller FROM users WHERE id = ? AND status = 'active' LIMIT 1",
+    )
     .bind(userId)
-    .first<{ id: string }>();
+    .first<{ id: string; isStaff: number; isSeller: number }>();
   if (!user) throw new Error('The account is not available.');
 
   const token = Buffer.from(randomBytes(32)).toString('base64url');
   const statements = proof.mailbox
     ? mailboxClaimStatements(database, user.id, now)
-    : [database.prepare('UPDATE users SET updated_at=updated_at WHERE id=?').bind(user.id)];
+    : [
+        database
+          .prepare('UPDATE users SET updated_at=updated_at WHERE id=?')
+          .bind(user.id),
+      ];
   // Check proofs after acquiring the account lock, before mailbox rotation
   // deletes the originating session.
-  if (versionGuard) statements.splice(1, 0, ...(Array.isArray(versionGuard) ? versionGuard : [versionGuard]));
+  if (versionGuard)
+    statements.splice(
+      1,
+      0,
+      ...(Array.isArray(versionGuard) ? versionGuard : [versionGuard]),
+    );
   if (claimStatement) {
     statements.push(claimStatement);
-    statements.push(database.prepare(`SELECT CASE WHEN changes()=1
-      THEN 1 ELSE json_extract('invalid', '$') END`));
+    statements.push(
+      database.prepare(`SELECT CASE WHEN changes()=1
+      THEN 1 ELSE json_extract('invalid', '$') END`),
+    );
   }
-  statements.push(database.prepare(`INSERT INTO user_sessions (token_hash, user_id, expires_at, created_at, last_seen_at)
+  statements.push(
+    database
+      .prepare(`INSERT INTO user_sessions (token_hash, user_id, expires_at, created_at, last_seen_at)
     SELECT ?,id,?,?,? FROM users WHERE id=? AND status='active'
     AND (? IS NULL OR EXISTS(SELECT 1 FROM user_credentials c WHERE c.user_id=users.id AND c.password_hash=?))`)
-    .bind(tokenHash(token),now+sessionLifetimeSeconds*1_000,now,now,user.id,proof.passwordHash??null,proof.passwordHash??null));
+      .bind(
+        tokenHash(token),
+        now +
+          (user.isStaff ? ADMIN_ABSOLUTE_MS : sessionLifetimeSeconds * 1_000),
+        now,
+        now,
+        user.id,
+        proof.passwordHash ?? null,
+        proof.passwordHash ?? null,
+      ),
+  );
   const sessionIndex = statements.length - 1;
+  if (
+    (user.isStaff || user.isSeller) &&
+    proof.passwordHash &&
+    proof.securityKey
+  ) {
+    if (user.isStaff)
+      statements.push(
+        ...(await passwordOnlyProofStatements(
+          database,
+          user.id,
+          tokenHash(token),
+          proof.passwordHash,
+          proof.securityKey,
+          proof.initialized ?? false,
+          now,
+        )),
+      );
+    statements.push(
+      ...(await passwordChallengeStatements(
+        new SecurityStore(
+          database,
+          proof.securityKey,
+          proof.initialized ?? false,
+        ),
+        user.id,
+        tokenHash(token),
+        proof.passwordHash,
+        now,
+      )),
+    );
+  }
   if (linkedStatement) {
     // Fail the whole batch if the credential or active-account proof changed
     // after the initial read. A request ID never grants a session.
-    statements.push(database.prepare(`SELECT CASE WHEN EXISTS(
+    statements.push(
+      database
+        .prepare(`SELECT CASE WHEN EXISTS(
       SELECT 1 FROM user_sessions WHERE token_hash=? AND user_id=?
-    ) THEN 1 ELSE json_extract('invalid', '$') END`).bind(tokenHash(token), user.id));
+    ) THEN 1 ELSE json_extract('invalid', '$') END`)
+        .bind(tokenHash(token), user.id),
+    );
     statements.push(linkedStatement);
   }
   const results = await database.batch(statements);
-  if (Number(results[sessionIndex].meta.changes)!==1) throw new Error('Sign-in changed. Please try again.');
+  if (Number(results[sessionIndex].meta.changes) !== 1)
+    throw new Error('Sign-in changed. Please try again.');
   return token;
 }
 
-export async function getHostedIdentity(
+export type HostedSessionIdentity = HostedIdentity & {
+  accountId: string;
+  lastSeenAt: number;
+  createdAt: number;
+  expiresAt: number;
+  isStaff: number;
+  isSeller?: number;
+};
+
+/** Raw first-factor session for the restricted security ceremony only. No activity touch. */
+export async function readHostedSession(
   database: D1Database,
   requestHeaders: Headers,
   now = Date.now(),
-): Promise<HostedIdentity | null> {
+): Promise<HostedSessionIdentity | null> {
   const token = parseCookie(requestHeaders, hostedSessionCookieName);
   if (!token) return null;
   const row = await database
     .prepare(
       `SELECT users.id AS accountId, users.auth_subject AS userId, users.display_name AS displayName,
         users.email, users.display_name AS fullName,
-        user_sessions.last_seen_at AS lastSeenAt,
+        user_sessions.last_seen_at AS lastSeenAt, user_sessions.created_at AS createdAt, user_sessions.expires_at AS expiresAt,
+        EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=users.id AND r.role IN ('admin','super_admin')) AS isStaff,
+        EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=users.id AND r.role='seller') AS isSeller,
         EXISTS(SELECT 1 FROM account_email_verifications v WHERE v.user_id=users.id AND v.email=lower(users.email)) AS mailboxVerified
        FROM user_sessions
        INNER JOIN users ON users.id = user_sessions.user_id
@@ -166,26 +256,110 @@ export async function getHostedIdentity(
        LIMIT 1`,
     )
     .bind(tokenHash(token), now)
-    .first<HostedIdentity & { accountId: string; lastSeenAt: number }>();
+    .first<HostedSessionIdentity>();
+  return row;
+}
+
+/** Only supplies a sign-in message. The expired session never supplies an identity. */
+export async function hasExpiredHostedStaffSession(
+  database: D1Database,
+  requestHeaders: Headers,
+  now = Date.now(),
+): Promise<boolean> {
+  const hash = hostedSessionHash(requestHeaders);
+  if (!hash) return false;
+  return Boolean(await database.prepare(
+    `SELECT 1 FROM user_sessions s JOIN users u ON u.id=s.user_id
+     WHERE s.token_hash=? AND s.expires_at<=? AND u.status='active'
+       AND EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role IN ('admin','super_admin'))`,
+  ).bind(hash, now).first());
+}
+
+export async function getHostedIdentity(
+  database: D1Database,
+  requestHeaders: Headers,
+  now = Date.now(),
+  options: {
+    securityKey?: string;
+    activity?: boolean;
+    initialized?: boolean;
+    readOnly?: boolean;
+  } = {},
+): Promise<HostedIdentity | null> {
+  const row = await readHostedSession(database, requestHeaders, now);
   if (!row) return null;
+  // Recovery and reject-only preflights require an already bound identity.
+  // A valid first-factor session is not permission to repair it on a read.
+  if (options.readOnly && !row.userId) return null;
+  const activity = !options.readOnly && (options.activity ?? true);
+  if (
+    row.isStaff &&
+    !(await staffSessionIsVerified(
+      database,
+      row,
+      hostedSessionHash(requestHeaders)!,
+      options.securityKey,
+      now,
+      activity,
+      options.initialized,
+    ))
+  )
+    return null;
+  if (
+    !row.isStaff &&
+    row.isSeller &&
+    !(await sellerSessionIsVerified(
+      database,
+      row,
+      hostedSessionHash(requestHeaders)!,
+      options.securityKey,
+      now,
+      activity,
+      options.initialized,
+    ))
+  )
+    return null;
   // Seller applications predate sign-in and initially have no auth subject.
   // Only link the account proven by this valid server-side session. Preserve
   // existing provider identities and re-read after the conditional update.
   if (!row.userId) {
-    await database.prepare(
-      'UPDATE users SET auth_subject = ?, updated_at = ? WHERE id = ? AND auth_subject IS NULL',
-    ).bind(`local:${row.accountId}`, now, row.accountId).run();
-    const linked = await database.prepare(
-      "SELECT auth_subject AS userId FROM users WHERE id = ? AND status = 'active' LIMIT 1",
-    ).bind(row.accountId).first<{ userId: string | null }>();
+    await database
+      .prepare(
+        'UPDATE users SET auth_subject = ?, updated_at = ? WHERE id = ? AND auth_subject IS NULL',
+      )
+      .bind(`local:${row.accountId}`, now, row.accountId)
+      .run();
+    const linked = await database
+      .prepare(
+        "SELECT auth_subject AS userId FROM users WHERE id = ? AND status = 'active' LIMIT 1",
+      )
+      .bind(row.accountId)
+      .first<{ userId: string | null }>();
     if (!linked?.userId) return null;
     row.userId = linked.userId;
   }
-  if (now - row.lastSeenAt > 60 * 60_000) {
+  if (
+    !options.readOnly &&
+    (!row.isStaff || activity) &&
+    now - row.lastSeenAt > (row.isStaff ? 60_000 : 60 * 60_000)
+  ) {
     await database
-      .prepare('UPDATE user_sessions SET last_seen_at = ? WHERE token_hash = ?')
-      .bind(now, tokenHash(token))
+      .prepare(
+        'UPDATE user_sessions SET last_seen_at = ? WHERE token_hash = ? AND last_seen_at < ? AND expires_at > ?',
+      )
+      .bind(now, hostedSessionHash(requestHeaders), now, now)
       .run();
+  }
+  if (options.readOnly) {
+    // Assurance verification awaits several reads. Fail closed if the session,
+    // account binding or privileged role changed while it was being checked.
+    const current = await readHostedSession(database, requestHeaders, now);
+    if (
+      !current || current.accountId !== row.accountId ||
+      current.userId !== row.userId || current.isStaff !== row.isStaff ||
+      current.isSeller !== row.isSeller || current.createdAt !== row.createdAt ||
+      current.expiresAt !== row.expiresAt
+    ) return null;
   }
   return {
     userId: row.userId,
@@ -208,9 +382,12 @@ export async function revokeHostedSession(
     .run();
 }
 
-export function hostedSessionCookie(token: string): string {
+export function hostedSessionCookie(
+  token: string,
+  lifetimeSeconds = sessionLifetimeSeconds,
+): string {
   const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
-  return `${hostedSessionCookieName}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${sessionLifetimeSeconds}${secure}`;
+  return `${hostedSessionCookieName}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${lifetimeSeconds}${secure}`;
 }
 
 export function clearHostedSessionCookie(): string {

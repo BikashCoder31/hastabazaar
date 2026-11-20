@@ -1,0 +1,20 @@
+import {getProductIntakeHistory} from '../lib/products/intake-history';
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {completeVersionFixture} from './helpers/complete-version-fixture';
+import {saveFormDraft,publishFormDraft} from '../lib/db/repositories/form-catalog';
+import {resolvePublishedForm} from '../lib/forms/runtime';
+import {getProductWorkspace,saveProductWorkspace,submitProductIntake} from '../lib/products/intake-workspace';
+void test('configured product questions stay optional, retain invalid entered text and freeze their actual historical labels',async()=>{
+ const f=await completeVersionFixture();try{
+  const fields=[{id:'pack_note',key:'pack_note',type:'short_text' as const,label:'Packaging clarification',required:true,order:0,status:'active' as const},{id:'extra_measure',key:'extra_measure',type:'number' as const,label:'Additional measurement',required:true,order:1,status:'active' as const,min:0}],base={formId:'seller.product-submission',actorId:'reviewer',actorRole:'super_admin' as const,expectedPublishedVersion:0,reason:'Provide optional product context without replacing native product controls.',now:f.now};
+  const draft=await saveFormDraft(f.db,{...base,requestId:'intake-form-config',config:{formId:base.formId,fields}});await publishFormDraft(f.db,{...base,draftId:draft.id,expectedDraftRevision:draft.revision,requestId:'intake-form-publish'});const config=await resolvePublishedForm(f.db,base.formId);
+  const ctx={actorId:'registered-owner',requestId:'intake-optional-context',expectedRevision:null,now:f.now+1},input={draftId:null,sellerId:'registered',categoryId:null,answers:{},offers:{axes:[],offers:[]},mediaIds:[],privateReview:{},formContext:{version:config.version,publishedAt:config.publishedAt,answers:[]}};
+  const saved=await saveProductWorkspace(f.db,ctx,input),read=await getProductWorkspace(f.db,ctx.actorId,saved.id);assert.ok(read.formContext,'The optional workspace must retain the shown published question version.');assert.ok(read.formContext.fields.every(field=>!field.required));
+  const entered={...input,draftId:saved.id,formContext:{...input.formContext,answers:[{fieldId:'pack_note',value:'Keep the actual packaging statement.'},{fieldId:'extra_measure',value:'12.'}]}},edited=await saveProductWorkspace(f.db,{...ctx,requestId:'intake-context-entered',expectedRevision:String(saved.revision)},entered),sent=await submitProductIntake(f.db,{...ctx,requestId:'intake-context-help',expectedRevision:String(edited.revision)},{draftId:saved.id,versionId:edited.versionId,intent:'help',note:''});assert.equal(sent.state,'details_needed');
+  const second=await saveFormDraft(f.db,{...base,expectedPublishedVersion:config.version,now:f.now+2,requestId:'intake-form-config-v2',config:{formId:base.formId,fields:fields.map(field=>field.id==='pack_note'?{...field,label:'Updated packaging question'}:field)}});await publishFormDraft(f.db,{...base,expectedPublishedVersion:config.version,now:f.now+2,draftId:second.id,expectedDraftRevision:second.revision,requestId:'intake-form-publish-v2'});
+  const reopened=await getProductWorkspace(f.db,ctx.actorId,saved.id);assert.equal(reopened.formContext!.answers.find(answer=>answer.fieldId==='extra_measure')?.value,'12.');assert.equal(reopened.formContext!.fields.find(field=>field.id==='pack_note')?.label,'Packaging clarification');assert.equal(reopened.submitted!.snapshot.formContext!.version,config.version);assert.ok(reopened.formContext!.issues.some(issue=>issue.fieldId==='extra_measure'));
+  const history=await getProductIntakeHistory(f.db,ctx.actorId,saved.id,{versionId:edited.versionId});assert.equal(history.version?.snapshot.formContext?.fields[0].label,'Packaging clarification');await assert.rejects(getProductIntakeHistory(f.db,'managed-owner',saved.id));
+  await assert.rejects(saveProductWorkspace(f.db,{...ctx,requestId:'intake-forged-context',expectedRevision:String(edited.revision)},{...entered,formContext:{...entered.formContext,fields:[{label:'Forged field context'}]}}));
+ }finally{f.dispose();}
+});

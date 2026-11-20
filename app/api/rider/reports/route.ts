@@ -1,3 +1,4 @@
+import {formAnswerSourceSql} from '@/lib/forms/answer-proof';
 import { isRiderPortalEnabled } from '@/lib/riders/availability';
 import { riderPortalHoldResponse } from '@/lib/riders/portal-hold';
 import { env } from 'cloudflare:workers';
@@ -73,7 +74,7 @@ export async function POST(request: Request) {
     const previous = await db.prepare('SELECT id FROM rider_reports WHERE request_id=? LIMIT 1')
       .bind(requestId).first<{ id: string }>();
     if (previous) {
-      const answer = await db.prepare(`SELECT config_version_id AS versionId FROM form_answer_sets
+      const answer = await db.prepare(`SELECT config_version_id AS versionId FROM ${formAnswerSourceSql(db)} retained_answers
         WHERE form_id='rider.report' AND request_id=? LIMIT 1`)
         .bind(requestId).first<{ versionId: string }>();
       if (!answer) throw new RiderError('This report request reference is already used.');

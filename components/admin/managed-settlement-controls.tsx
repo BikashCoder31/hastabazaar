@@ -1,4 +1,5 @@
 'use client';
+import {LiveManagedFinanceControls} from './live-managed-finance-controls';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -7,7 +8,7 @@ import type { ManagedFinanceMaker, ManagedFinanceWorkspace, ManagedPaymentRow } 
 import { managedFinanceActions, managedFinanceBaseKeys, type ManagedFinanceAction } from '@/lib/managed-commerce/finance-contract';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 import { nepalDateTimeInput, parseNepalDateTime } from '@/lib/incentives/presentation';
 import { createManagedFinanceAttempt, financeAttemptKey, readManagedFinanceAttempts, retainManagedFinanceAttempt,
   verifiedManagedFinanceReceipt, type RetainedManagedFinanceAttempt } from './managed-finance-attempt';
@@ -108,7 +109,7 @@ function MakerPayments({ ownerId, maker, asOf, simulationAllowed, busy, setBusy 
     ].map(([label,value])=><div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="font-semibold">{money(Number(value))}</dd></div>)}</dl>
     <p className="text-sm">{maker.acceptedTermsReady ? 'Accepted company-store terms are recorded.' : 'Review accepted terms before new company-store sales.'} Receiving reference: {maker.preview.receivingReference || 'Review required'}.</p>
     {maker.preview.needsReview || summary.needsReconciliation ? <p role="alert">The balance needs reconciliation. Review the original orders, cases and adjustments before preparing payment.</p> : null}
-    {maker.preview.hasUnpaidReservation ? <p>An unpaid payment already reserves this maker’s balance. Complete or cancel it before preparing another.</p> : null}
+    {maker.preview.hasUnpaidReservation ? <p>An unpaid payment already reserves this maker’s balance. Review its original history and cancel it only when the unpaid reservation is eligible.</p> : null}
     {maker.blockers.length ? <ul className="list-disc space-y-1 pl-5 text-sm">{maker.blockers.map((blocker,index)=><li key={`${blocker.entitlementId}:${index}`}><a className="underline" href={blocker.href}>{blocker.message}</a></li>)}</ul> : null}
     {maker.moreBlockers ? <p className="text-sm">Only the first 50 blocked earnings are shown. Review all original orders and cases.</p> : null}
     <div className="flex flex-wrap gap-4 text-sm"><Link className="underline" href={`/admin/staff-form-history?kind=managed-eligibility-release&id=${encodeURIComponent(maker.sellerId)}`}>Earnings release history</Link><Link className="underline" href="/admin/staff-form-history?kind=managed-payout-preparation">Payment preparation history</Link><Link className="underline" href="/admin/staff-form-history?kind=managed-payout-action">Payment action history</Link></div>
@@ -117,11 +118,12 @@ function MakerPayments({ ownerId, maker, asOf, simulationAllowed, busy, setBusy 
       <h4 className="font-semibold">Recorded operation · {titles[operation.action]}</h4>
       <p className="break-all text-xs">Request: {operation.requestId} · form version {operation.config.version}</p>
       <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs">{JSON.stringify(operation.body,null,2)}</pre>
-      <button type="button" disabled={busy || !simulationAllowed} onClick={()=>void send(operation)} className="rounded-md border px-3 py-2 disabled:opacity-50">Retry recorded operation</button>{' '}
+      {operation.action === 'record_sale_linked_payment' ? <p>This old payment-completion reference is retained for history review. Completion cannot be retried here; this reference does not prove that payment was made.</p> : <button type="button" disabled={busy || !simulationAllowed} onClick={()=>void send(operation)} className="rounded-md border px-3 py-2 disabled:opacity-50">Retry recorded operation</button>}{' '}
       <button type="button" disabled={busy} className="underline" onClick={()=>{
-        if(!window.confirm('Check payment history first. Clearing this local retry record does not cancel a server operation. Start a new attempt only after confirming the original outcome. Continue?')) return;
-        localStorage.removeItem(financeAttemptKey(operation));setPending(current=>current.filter(value=>value.requestId!==operation.requestId));setMessage('Local retry record cleared. Review the current payment state before starting again.');router.refresh();
-      }}>Check history, then start a new attempt</button>
+        const retiredCompletion=operation.action === 'record_sale_linked_payment';
+        if(!window.confirm(retiredCompletion ? 'Check the original payment history first. Clearing this local reference does not prove or cancel a payment. Completion cannot be retried here. Continue?' : 'Check payment history first. Clearing this local retry record does not cancel a server operation. Start a new attempt only after confirming the original outcome. Continue?')) return;
+        localStorage.removeItem(financeAttemptKey(operation));setPending(current=>current.filter(value=>value.requestId!==operation.requestId));setMessage(retiredCompletion ? 'Local reference cleared. Original payment history is unchanged; completion remains unavailable here.' : 'Local retry record cleared. Review the current payment state before starting again.');router.refresh();
+      }}>{operation.action === 'record_sale_linked_payment' ? 'Clear local reference after history review' : 'Check history, then start a new attempt'}</button>
     </section>)}
     {message ? <output className="block">{message}</output> : null}
     <div className="grid gap-4 lg:grid-cols-2">
@@ -134,8 +136,7 @@ function MakerPayments({ ownerId, maker, asOf, simulationAllowed, busy, setBusy 
       <p className="break-all text-sm">Processing: {date(payment.scheduledFor)} Nepal time · {payment.destination}{payment.providerReference ? ` · ${payment.providerReference}` : ''}</p>
       <div className="grid gap-3 lg:grid-cols-2">
         {payment.status === 'prepared' ? <FinanceForm action="approve_sale_linked_payout" maker={maker} payment={payment} asOf={asOf} disabled={blocked} onAttempt={start}/> : null}
-        {payment.status === 'approved' ? <FinanceForm action="record_sale_linked_payment" maker={maker} payment={payment} asOf={asOf} disabled={blocked || payment.scheduledFor>asOf} onAttempt={start}/> : null}
-        {payment.status === 'approved' && payment.scheduledFor>asOf ? <p className="text-sm">Payment recording is available after its processing time.</p> : null}
+        {payment.status === 'approved' ? <p className="text-sm">This retained simulation cannot be completed here. Review its original history; an eligible unpaid reservation can be cancelled below.</p> : null}
         {['prepared','approved','processing','failed'].includes(payment.status) ? <FinanceForm action="cancel_sale_linked_payout" maker={maker} payment={payment} asOf={asOf} disabled={blocked} onAttempt={start}/> : null}
       </div>
     </section>)}</div>}
@@ -147,9 +148,9 @@ export function ManagedSettlementControls({ownerId,workspace,asOf,simulationAllo
   const [busy,setBusy] = useState(false);
   return <section id="maker-payments" className="min-w-0 scroll-mt-6 space-y-4" aria-labelledby="maker-payments-heading">
     <h2 id="maker-payments-heading" className="font-heading text-2xl">Sale-linked maker payments</h2>
-    <p className="text-sm text-muted-foreground">Simulated services only. Review completed customer payment, delivery holds, cases and receiving details before each operation. Fixed supplier payments remain in Supply &amp; payments.</p>
-    {!simulationAllowed ? <p role="alert">These payment controls are unavailable outside the verified local simulation.</p> : null}
-    {workspace.error ? <p role="alert">{workspace.error}</p> : !workspace.makers.length ? <p>No company-store maker financial records yet.</p> : workspace.makers.map(maker=><MakerPayments key={maker.sellerId} ownerId={ownerId} maker={maker} asOf={asOf} simulationAllowed={simulationAllowed} busy={busy} setBusy={setBusy}/>)}
+    <p className="text-sm text-muted-foreground">Actual original live earnings use the protected payout workflow. Retained simulation history stays separate; fixed supplier payments remain in Supply &amp; payments.</p>
+    {!simulationAllowed ? <p role="alert">Retained simulation actions are unavailable outside the verified simulation environment; actual live money has its own protected controls below.</p> : null}
+    {workspace.error ? <p role="alert">{workspace.error}</p> : !workspace.makers.length ? <p>No company-store maker financial records yet.</p> : workspace.makers.map(maker=><section key={maker.sellerId} className="space-y-4"><h3 className="font-semibold">{maker.name}</h3><LiveManagedFinanceControls key={ownerId+':'+maker.sellerId} actorId={ownerId} sellerId={maker.sellerId} initial={maker.live} error={maker.liveError}/><details className="rounded-xl border p-4"><summary className="cursor-pointer font-medium">Retained simulation history</summary><MakerPayments ownerId={ownerId} maker={maker} asOf={asOf} simulationAllowed={simulationAllowed} busy={busy} setBusy={setBusy}/></details></section>)}
     {workspace.nextCursor ? <a className="section-link" href={`/admin/programs?financeAfter=${encodeURIComponent(workspace.nextCursor)}#maker-payments`}>Next 20 makers</a> : null}
   </section>;
 }

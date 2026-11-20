@@ -29,6 +29,7 @@ export function resolveFormPolicyIds(initializer: ts.JsxAttributeValue | undefin
   if (!initializer) return null;
   if (ts.isStringLiteral(initializer)) return [initializer.text];
   if (!ts.isJsxExpression(initializer) || !initializer.expression) return null;
+  const resolving = new Set<ts.VariableDeclaration>();
   function resolve(expression: ts.Expression): readonly string[] | null {
     if (ts.isStringLiteral(expression)) return [expression.text];
     if (ts.isConditionalExpression(expression)) {
@@ -42,8 +43,13 @@ export function resolveFormPolicyIds(initializer: ts.JsxAttributeValue | undefin
     const declaration = declarations[0];
     if (!ts.isVariableDeclaration(declaration) || !ts.isVariableDeclarationList(declaration.parent) ||
       !(declaration.parent.flags & ts.NodeFlags.Const) ||
-      !declaration.initializer || !ts.isStringLiteral(declaration.initializer)) return null;
-    return [declaration.initializer.text];
+      !declaration.initializer ||
+      !(ts.isStringLiteral(declaration.initializer) || ts.isConditionalExpression(declaration.initializer)) ||
+      resolving.has(declaration)) return null;
+    resolving.add(declaration);
+    const ids = resolve(declaration.initializer);
+    resolving.delete(declaration);
+    return ids;
   }
   return resolve(initializer.expression);
 }

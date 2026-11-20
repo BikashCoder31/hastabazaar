@@ -1,3 +1,4 @@
+import {formAnswerSourceSql} from '../forms/answer-proof';
 import {operationalBusinessNotificationStatements} from './business-notifications';
 import {can,validateAdminPermissions,type Permission} from '../marketplace/permissions';
 import {buildFormAnswerInsert} from '../db/repositories/form-answers';
@@ -6,7 +7,7 @@ import type {FormAnswerSnapshot} from '../forms/types';
 export class ExceptionWorkConflictError extends Error {}
 type ExceptionForm={requestId:string;versionId:string;answers:FormAnswerSnapshot};
 async function configuredReplay(db:D1Database,requestId:string,actorId:string,workId:string,form:ExceptionForm){
- const rows=await db.prepare("SELECT actor_id AS actorId,subject_type AS subjectType,subject_id AS subjectId,config_version_id AS versionId FROM form_answer_sets WHERE form_id='staff.exception-work' AND request_id=? LIMIT 2")
+ const rows=await db.prepare(`SELECT actor_id AS actorId,subject_type AS subjectType,subject_id AS subjectId,config_version_id AS versionId FROM ${formAnswerSourceSql(db)} original_answers WHERE form_id='staff.exception-work' AND request_id=? LIMIT 2`)
   .bind(requestId).all<{actorId:string;subjectType:string;subjectId:string;versionId:string}>();
  const row=rows.results[0];if(rows.results.length!==1||row.actorId!==actorId||row.subjectType!=='exception_work'||row.subjectId!==workId||row.versionId!==form.versionId)
   throw new ExceptionWorkConflictError('Request reference already used for different form context.');

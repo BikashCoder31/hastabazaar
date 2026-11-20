@@ -25,7 +25,11 @@ export const permissions = [
   'tax_policy.manage',
   'shipping_credentials.manage',
   'payment_credentials.manage',
+  'payment.receipt.verify',
   'admin.invite',
+  'email.delivery.manage',
+  'system.health.view',
+  'system.incidents.manage',
   'admin.permissions.manage',
   'legal_content.publish',
   'audit_log.view',
@@ -79,9 +83,12 @@ export interface PermissionSubject {
   permissions?: readonly Permission[];
 }
 
-export const configurableAdminPermissions = adminPermissions.filter(
+export const defaultAdminPermissions = adminPermissions.filter(
   (permission) => !customerPermissions.includes(permission),
 );
+
+/** Special finance and technical grants are explicit; legacy Admin access is unchanged. */
+export const configurableAdminPermissions:readonly Permission[]=[...defaultAdminPermissions,'payment.receipt.verify','system.health.view','system.incidents.manage'];
 
 export function validateAdminPermissions(value: unknown): Permission[] {
   if (!Array.isArray(value) || value.some((item) => !configurableAdminPermissions.includes(item))) {

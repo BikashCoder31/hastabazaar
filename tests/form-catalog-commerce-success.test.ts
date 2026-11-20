@@ -21,7 +21,9 @@ function bundle() {
       createRoot(document.getElementById('root')).render(mode.startsWith('customer-')?
         <CustomerAftercare orderNumber="HK-TEST" orderStatus="delivered" items={[{id:'item',productName:'Product',sellerName:'Shop',quantity:1,returnEligible:true}]} returns={[]} complaints={[]}/>:
         mode.startsWith('seller-')?<SellerCaseResponseForm kind={mode==='seller-return'?'return':'complaint'} id="case-1" disabled={false}/>:
-        mode.startsWith('gift-')?<GiftCardForm issue={mode==='gift-issue'}/>:<CheckoutForm customerId="customer-fixture"/>);` },
+        mode.startsWith('gift-')?<GiftCardForm actorId="gift-success-fixture" issue={mode==='gift-issue'}/>:<CheckoutForm policyContext={'a'.repeat(64)} customerId="customer-fixture" customerEmail="buyer@example.test" customerPhone="9811111111"
+          paymentCapabilities={{cod:true,manual_bank:false,state:'ready'}}
+          savedAddresses={[{id:'fixture-address',label:'Home',isDefault:1,recipientName:'Fixture Buyer',phone:'9811111111',province:'Madhesh',district:'Dhanusha',municipality:'Janakpur',locality:'Fixture locality',ward:null,landmark:null,postalCode:null}]}/>);` },
     bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' }, plugins: [{ name: 'navigation-fixture', setup(builder) {
       builder.onResolve({ filter: /^next\/navigation$|^next\/link$|^@\/components\/delivery\/location-picker$/ },
@@ -43,7 +45,7 @@ async function fill(page: FixturePage, mode: string, form: FixtureLocator) {
     await form.getByLabel(mode === 'gift-issue' ? 'Amount in NPR' : 'Gift card code').fill(mode === 'gift-issue' ? '100' : 'HG-SIMULATED');
   else {
     for (const [label, value] of [['Recipient name', 'Maya Buyer'], ['Recipient phone', '9811111111'],
-      ['Order email', 'buyer@example.test'], ['Contact phone', '9811111111'], ['District', 'Dhanusha'],
+      ['District', 'Dhanusha'],
       ['Municipality / rural municipality', 'Janakpur'], ['Street, tole or locality', 'Ward 1']])
       await form.getByLabel(label).fill(value);
     await form.locator('label[for="checkout-terms"]').click();
@@ -135,6 +137,16 @@ for (const [mode, formId] of modes) void test(`${formId} retains attempts and in
       { amountPaisa: 1.5 }, { duplicate: 'false' }, ...(mode === 'gift-issue' ? [{ code: {} }, { code: null }] : [])])
       invalidBodies.push(JSON.stringify({ id: 'gift-1', amountPaisa: 10000, duplicate: false,
         ...(mode === 'gift-issue' ? { code: 'HG-SIMULATED' } : {}), ...invalid }));
+    if(mode.startsWith('gift-')){
+      // Gift ambiguity retains one frozen RAM payload; reload checks the native
+      // opaque receipt rather than reconstructing private answers for another POST.
+      const send=async()=>{const completed=await page.evaluate(()=>(window as unknown as{__completed:number}).__completed);const retry=page.getByRole('button',{name:'Retry original request',exact:true});if(await retry.count())await retry.click();else await form.getByRole('button',{name:/Issue gift card|Redeem into wallet/}).click();await page.waitForFunction(previous=>(window as unknown as{__completed:number}).__completed>previous,completed);await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));};
+      for(const body of invalidBodies){reply={status:200,body};await send();await page.getByRole('alert').first().waitFor();assert.deepEqual(await retainedValues(form),expectedValues);assert.equal(await form.getByRole('button',{name:/Issue gift card|Redeem into wallet/}).isDisabled(),true);assert.equal(await page.getByRole('button',{name:'Retry original request',exact:true}).isEnabled(),true);}
+      for(const failure of ['lost',{status:409,body:'{"error":"Unclassified original conflict."}'}]as const){reply=failure;await send();await page.getByRole('alert').first().waitFor();assert.deepEqual(await retainedValues(form),expectedValues);}
+      const firstId=payloads[0].id;assert.ok(payloads.every(row=>row.id===firstId));assert.ok(payloads.every(row=>row.body===payloads[0].body));assert.equal(await page.evaluate(()=>(window as unknown as{__refreshes:number}).__refreshes),0);
+      reply={status:200,body:JSON.stringify({id:'gift-1',amountPaisa:10000,duplicate:true,...(mode==='gift-issue'?{code:null}:{})})};await send();await page.waitForFunction(()=>(window as unknown as{__refreshes:number}).__refreshes===1);await page.getByText(mode==='gift-issue'?'Gift card issuance is recorded.':'Gift card redemption is recorded.',{exact:false}).waitFor();
+      form=await mount();reply={status:409,body:'{"error":"Current config changed.","code":"stale_version"}'};await send();await page.getByText(/This form changed while/).first().waitFor();assert.equal(await form.getByRole('button',{name:/Issue gift card|Redeem into wallet/}).isDisabled(),true);assert.notEqual(payloads.at(-1)?.id,firstId);return;
+    }
     for (const body of invalidBodies) {
       reply = { status: 200, body };
       await submitAttempt(page, form);

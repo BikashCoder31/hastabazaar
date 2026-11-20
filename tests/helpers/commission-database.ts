@@ -1,8 +1,9 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { SELLER_AGREEMENT_VERSION } from '../../lib/content/legal-policies';
+import { historicalCommissionFixture } from './historical-commission-fixture';
 
-export async function commissionDatabase() {
+export async function commissionDatabase(options:{seedSellers?:boolean}={}) {
   const sqlite = new DatabaseSync(':memory:');
   sqlite?.exec('PRAGMA foreign_keys = ON');
   if (sqlite)
@@ -81,7 +82,7 @@ export async function commissionDatabase() {
         .bind(id, role)
         .run();
     }
-    for (const suffix of ['a', 'b']) {
+    for (const suffix of options.seedSellers===false?[]:['a', 'b']) {
       await database
         .prepare(`INSERT INTO seller_profiles(id,user_id,legal_name,trading_name,registration_authority,registration_number,tax_mode,tax_registration_number,representative_name,support_phone,support_email,province,district,municipality,locality,payout_account_reference,status,seller_agreement_version,seller_agreement_accepted_at,created_at,updated_at)
       VALUES (?,?,'Maker',?,'Local',?,'PAN',?,'Maker','9800000000',?,'Bagmati','Kathmandu','Kathmandu','Ward 1',?,'approved',?,1,1,1)`)
@@ -99,6 +100,7 @@ export async function commissionDatabase() {
     }
     return {
       database,
+      sqlite,
       dispose: async () => {
         sqlite.close();
       },
@@ -107,4 +109,11 @@ export async function commissionDatabase() {
     sqlite.close();
     throw error;
   }
+}
+
+/** Opt in only for tests whose scenario includes a configured historical rate. */
+export async function historicalCommissionDatabase(acceptExistingSellers = false) {
+  const fixture = await commissionDatabase();
+  historicalCommissionFixture(fixture.sqlite,'owner',acceptExistingSellers);
+  return fixture;
 }

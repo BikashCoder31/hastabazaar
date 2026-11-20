@@ -1,0 +1,7 @@
+import {protectedAdminGET,protectedAdminPOST,validateProtectedReview} from '@/lib/sellers/protected-admin-api';
+import {reviewSellerBankDetails} from '@/lib/sellers/bank-details';
+export const GET=protectedAdminGET('bank-details');
+export async function POST(request:Request,context:{params:Promise<{id:string}>}){return protectedAdminPOST(request,context,'bank-details',async(db,body,input)=>{
+ validateProtectedReview(!Object.keys(body).some(key=>!['revision','reference','reason','ownershipBasis','identityEvidenceConfirmed','releaseBankHold','commandId','changeRequestId'].includes(key))&&typeof body.revision==='string'&&typeof body.reference==='string'&&body.reference.trim().length>=4&&body.reference.trim().length<=200&&typeof body.reason==='string'&&body.reason.trim().length>=8&&body.reason.trim().length<=1000&&['same_person','same_legal_entity'].includes(String(body.ownershipBasis))&&body.identityEvidenceConfirmed===true&&typeof body.releaseBankHold==='boolean'&&(body.changeRequestId===undefined||typeof body.changeRequestId==='string'));
+ return reviewSellerBankDetails(db,{...input,sellerId:input.caseId,commandId:input.requestId,revision:body.revision as string,reference:body.reference as string,reason:body.reason as string,ownershipBasis:body.ownershipBasis as 'same_person'|'same_legal_entity',identityEvidenceConfirmed:true,releaseBankHold:body.releaseBankHold as boolean,...(typeof body.changeRequestId==='string'?{changeRequestId:body.changeRequestId}:{})});
+});}

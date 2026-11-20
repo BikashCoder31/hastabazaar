@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Operations · Seller review</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/39ae600ed082352c03509106609818ff">
+<link rel="stylesheet" href="/_blob/d1603bdfcb29428264731bbedb89e050">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&amp;family=Instrument+Sans:wght@400..700&amp;family=JetBrains+Mono:wght@500&amp;display=swap">
+<style>
+body{margin:0;background:#F7F3EC}
+a{color:#14213D}a:hover{color:#A8232E}
+.helpbtn{all:unset;cursor:pointer;width:28px;height:28px;border-radius:50%;border:1px solid #D3C5AD;display:inline-flex;align-items:center;justify-content:center;color:#46536F;transition:background-color 160ms ease,color 160ms ease,transform 160ms ease}
+.helpbtn:hover{background:#fff;color:#14213D}.helpbtn:active{transform:scale(.95)}
+.helpbtn:focus-visible{outline:2px solid #A8232E;outline-offset:2px}
+.pop{position:absolute;z-index:20;background:#fff;color:#2C3B5C;border:1px solid #E4DACA;border-radius:14px;box-shadow:0 18px 40px -18px rgba(20,33,61,.35);animation:popin 180ms cubic-bezier(.23,1,.32,1)}
+@keyframes popin{from{opacity:0;transform:translateY(-4px) scale(.98)}}
+@media (prefers-reduced-motion:reduce){.pop{animation:none}}
+</style>
+</helmet>
+<div class="hb shell" style="background: #F7F3EC; min-height: 100vh">
+  <aside class="side" style="background: #14213D; color: #C9D0DD; padding: 18px 12px; display: flex; flex-direction: column; gap: 18px; max-width: 236px; flex-basis: 220px">
+    <a href="#" style="display: flex; align-items: center; gap: 10px; padding: 0 6px; color: #fff"><img src="/_blob/65b39bff773bb375aa5d23ab420967a3" alt="" style="width: 34px; height: 34px; background: #FFFCF7; border-radius: 8px; padding: 2px"><span style="display: flex; flex-direction: column; line-height: 1.1"><span class="serif" style="font-size: 19px; font-weight: 600; color: #fff">Hastabazaar</span><span style="font-size: 12px; font-weight: 600; color: #E2B65C">Operations</span></span></a>
+    <nav class="navd" aria-label="Operations">
+      <a href="Admin-Overview.dc.html"><span class="ic s18 i-home"></span>Today<span class="cnt">7</span></a>
+      <a href="Admin-Orders.dc.html"><span class="ic s18 i-receipt"></span>Orders<span class="cnt q">3</span></a>
+      <a href="Admin-Care.dc.html"><span class="ic s18 i-message"></span>Care<span class="cnt q">2</span></a>
+      <a href="Admin-Sellers.dc.html" class="on"><span class="ic s18 i-store"></span>Sellers<span class="cnt q">9</span></a>
+      <a href="Admin-Moderation.dc.html"><span class="ic s18 i-package"></span>Catalog</a>
+      <a href="Admin-Payouts.dc.html"><span class="ic s18 i-wallet"></span>Money<span class="cnt q">2</span></a>
+      <a href="#"><span class="ic s18 i-percent"></span>Growth</a>
+      <a href="#"><span class="ic s18 i-chart"></span>Reports</a>
+      <a href="#"><span class="ic s18 i-sliders"></span>Settings</a>
+    </nav>
+    <div style="margin-top: auto; display: flex; flex-direction: column; gap: 10px">
+      <a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; font-size: 14px; color: #C9D0DD"><span class="ic s18 i-arrow-ur"></span>Open marketplace</a>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; background: rgba(255,252,247,.07)">
+        <span class="avatar" style="width: 34px; height: 34px; background: #E2B65C; color: #14213D; font-size: 13px">NS</span>
+        <span style="flex: 1; line-height: 1.25"><b style="color: #fff; font-size: 14px; display: block">Nisha S.</b><span style="font-size: 12.5px">Super Admin</span></span>
+        <button class="btn btn-sm btn-icon" aria-label="Sign out" style="color: #C9D0DD; width: 32px; height: 32px"><span class="ic s18 i-logout"></span></button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main" style="display: flex; flex-direction: column">
+    <div style="height: 68px; display: flex; align-items: center; gap: 12px; padding: 0 32px; position: relative">
+      <h1 class="serif" style="font-size: 28px">Sellers</h1>
+      <button class="helpbtn" aria-label="How seller review works" aria-expanded="{{helpOpen}}" onClick="{{toggleHelp}}"><span class="ic s16 i-help"></span></button>
+      <sc-if value="{{helpOpen}}" hint-placeholder-val="{{ false }}">
+        <div class="pop" role="dialog" aria-label="How seller review works" style="top: 58px; left: 32px; width: 420px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; font-size: 14px">
+          <b style="font-size: 15px; color: #14213D">How seller review works</b>
+          <p>A new seller goes through three steps: registration, documents, then the agreement. You are on the documents step.</p><p>Mark each document as Matches or Problem. If anything has a problem, the seller gets your note and a link to fix it, and Approve stays locked until it’s fixed.</p><p>Documents open in a private viewer, and every download is recorded.</p>
+          <a href="#" class="tlink" style="font-size: 13.5px">Full staff procedure</a>
+        </div>
+      </sc-if>
+      <div class="cmdk hide-m" style="margin-left: auto; width: 380px"><span class="ic s18 i-search"></span><span style="flex: 1">Jump to anything…</span><span class="kbd">⌘K</span></div>
+    </div>
+    <nav class="subtabs" aria-label="Sellers sections">
+      <a href="#" class="on">Applications <span class="n">4</span></a><a href="#">All sellers <span class="n">27</span></a><a href="#">Documents</a><a href="#">Updated documents <span class="n">1</span></a><a href="#">Bank &amp; owner changes <span class="n">1</span></a><a href="#">Shop detail fixes</a>
+    </nav>
+
+    <div style="display: flex; flex-wrap: wrap; flex: 1">
+      <!-- queue -->
+      <aside style="flex: 1 1 280px; max-width: 300px; border-right: 1px solid #E4DACA; padding: 16px 12px; display: flex; flex-direction: column; gap: 6px" aria-label="Applications">
+        <a href="#" style="display: flex; gap: 12px; padding: 12px; border-radius: 12px; background: #fff; border: 1px solid #14213D; box-shadow: 0 0 0 1px #14213D">
+          <span class="avatar" style="width: 38px; height: 38px; background: #A8232E; color: #fff; font-size: 13px">PC</span>
+          <span style="flex: 1; min-width: 0"><b style="display: block; font-size: 14.5px">Patan Clay Studio</b><span style="font-size: 13px; color: #46536F">Pottery · Lalitpur</span><span style="display: flex; gap: 6px; margin-top: 6px"><span class="badge info" style="height: 20px; font-size: 11.5px">Documents in</span><span class="num" style="font-size: 12px; color: #675B4E">2 d</span></span></span>
+        </a>
+        <a href="#" class="tile" style="display: flex; gap: 12px; padding: 12px; border-radius: 12px">
+          <span class="avatar" style="width: 38px; height: 38px; background: #2C6A4A; color: #fff; font-size: 13px">DW</span>
+          <span style="flex: 1; min-width: 0"><b style="display: block; font-size: 14.5px">Dhaka Weavers Collective</b><span style="font-size: 13px; color: #46536F">Textiles · Palpa</span><span style="display: flex; gap: 6px; margin-top: 6px"><span class="badge info" style="height: 20px; font-size: 11.5px">Documents in</span><span class="num" style="font-size: 12px; color: #675B4E">1 d</span></span></span>
+        </a>
+        <a href="#" class="tile" style="display: flex; gap: 12px; padding: 12px; border-radius: 12px">
+          <span class="avatar" style="width: 38px; height: 38px; background: #8A5A0B; color: #fff; font-size: 13px">BB</span>
+          <span style="flex: 1; min-width: 0"><b style="display: block; font-size: 14.5px">Bamboo &amp; Beyond</b><span style="font-size: 13px; color: #46536F">Wood &amp; bamboo · Dhading</span><span style="display: flex; gap: 6px; margin-top: 6px"><span class="badge warn" style="height: 20px; font-size: 11.5px">Waiting on seller</span></span></span>
+        </a>
+        <a href="#" class="tile" style="display: flex; gap: 12px; padding: 12px; border-radius: 12px">
+          <span class="avatar" style="width: 38px; height: 38px; background: #46536F; color: #fff; font-size: 13px">MA</span>
+          <span style="flex: 1; min-width: 0"><b style="display: block; font-size: 14.5px">Mithila Art House</b><span style="font-size: 13px; color: #46536F">Art · Janakpur</span><span style="display: flex; gap: 6px; margin-top: 6px"><span class="badge" style="height: 20px; font-size: 11.5px">No documents yet</span></span></span>
+        </a>
+      </aside>
+
+      <!-- detail -->
+      <main style="flex: 999 1 560px; min-width: 0; padding: 24px 32px 120px; display: flex; flex-direction: column; gap: 20px; position: relative">
+        <div style="display: flex; gap: 16px; align-items: center">
+          <span class="avatar" style="width: 56px; height: 56px; background: #A8232E; color: #fff; font-size: 18px">PC</span>
+          <div style="flex: 1"><h2 class="serif" style="font-size: 32px; line-height: 1.05">Patan Clay Studio</h2><p style="color: #46536F; font-size: 14.5px">Applied 17 Nov · Owner Sunil P. · Patan, Lalitpur · sells as an individual</p></div>
+          <span class="badge info dot">Step 2 of 3 · documents</span>
+        </div>
+
+        <ol style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+          <li style="padding: 12px 14px; border-radius: 12px; background: #E1EEE5; font-size: 14px"><b style="display: flex; gap: 6px; align-items: center; color: #2C6A4A"><span class="ic s16 i-check"></span>Registration</b>Contact and shop details checked</li>
+          <li style="padding: 12px 14px; border-radius: 12px; background: #fff; border: 2px solid #14213D; font-size: 14px"><b style="display: flex; gap: 6px; align-items: center"><span class="ic s16 i-file"></span>Documents</b>3 of 3 uploaded · you are here</li>
+          <li style="padding: 12px 14px; border-radius: 12px; background: #EDE4D3; font-size: 14px; color: #46536F"><b style="display: flex; gap: 6px; align-items: center; color: #14213D"><span class="ic s16 i-flag"></span>Agreement &amp; go live</b>After documents pass</li>
+        </ol>
+
+        <section class="panel" style="padding: 22px; display: flex; flex-direction: column; gap: 16px" aria-label="Documents">
+          <div style="display: flex; justify-content: space-between; align-items: center"><h3 style="font-size: 17px; font-weight: 650">Documents</h3><span style="font-size: 13.5px; color: #46536F">Files open in a private viewer. We record every download.</span></div>
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px">
+            <div style="border: 1px solid #E4DACA; border-radius: 12px; overflow: hidden">
+              <div style="aspect-ratio: 16 / 10; background: repeating-linear-gradient(135deg, #F3EDE2 0 10px, #EFE7D9 10px 20px); display: flex; align-items: center; justify-content: center; color: #675B4E"><span class="ic s28 i-file"></span></div>
+              <div style="padding: 12px 14px; display: flex; flex-direction: column; gap: 8px"><b style="font-size: 14.5px">PAN certificate</b><span class="mono" style="font-size: 12.5px; color: #46536F">PAN ending ••21</span><div style="display: flex; gap: 6px"><button class="btn btn-xs" style="background: #E1EEE5; color: #2C6A4A; flex: 1"><span class="ic s16 i-check"></span>Matches</button><button class="btn btn-ghost btn-xs" style="flex: 1">Problem</button></div></div>
+            </div>
+            <div style="border: 1px solid #E4DACA; border-radius: 12px; overflow: hidden">
+              <div style="aspect-ratio: 16 / 10; background: repeating-linear-gradient(135deg, #F3EDE2 0 10px, #EFE7D9 10px 20px); display: flex; align-items: center; justify-content: center; color: #675B4E"><span class="ic s28 i-user"></span></div>
+              <div style="padding: 12px 14px; display: flex; flex-direction: column; gap: 8px"><b style="font-size: 14.5px">Citizenship · both sides</b><span style="font-size: 12.5px; color: #46536F">Name matches registration</span><div style="display: flex; gap: 6px"><button class="btn btn-xs" style="background: #E1EEE5; color: #2C6A4A; flex: 1"><span class="ic s16 i-check"></span>Matches</button><button class="btn btn-ghost btn-xs" style="flex: 1">Problem</button></div></div>
+            </div>
+            <div style="border: 2px solid #A8232E; border-radius: 12px; overflow: hidden">
+              <div style="aspect-ratio: 16 / 10; background: repeating-linear-gradient(135deg, #F8E9E6 0 10px, #F4DFDB 10px 20px); display: flex; align-items: center; justify-content: center; color: #A8232E"><span class="ic s28 i-alert"></span></div>
+              <div style="padding: 12px 14px; display: flex; flex-direction: column; gap: 8px"><b style="font-size: 14.5px">Bank cheque / statement</b><span style="font-size: 12.5px; color: #A8232E; font-weight: 600">Account name differs: “S. Prajapati”</span><div style="display: flex; gap: 6px"><button class="btn btn-ghost btn-xs" style="flex: 1">Matches</button><button class="btn btn-xs" style="background: #F8E1DE; color: #A8232E; flex: 1"><span class="ic s16 i-flag"></span>Problem</button></div></div>
+            </div>
+          </div>
+        </section>
+
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px">
+          <section class="panel" style="padding: 22px; display: flex; flex-direction: column; gap: 10px" aria-label="Business details">
+            <h3 style="font-size: 16px; font-weight: 650">Shop details</h3>
+            <dl style="margin: 0; display: grid; grid-template-columns: 140px 1fr; row-gap: 9px; font-size: 14.5px">
+              <dt style="color: #46536F">Shop name</dt><dd style="margin: 0">Patan Clay Studio</dd>
+              <dt style="color: #46536F">Crafts</dt><dd style="margin: 0">Pottery, terracotta décor</dd>
+              <dt style="color: #46536F">Pickup area</dt><dd style="margin: 0">Patan Durbar Square area, Lalitpur</dd>
+              <dt style="color: #46536F">Contact</dt><dd style="margin: 0">studio@patanclay.example</dd>
+            </dl>
+          </section>
+          <section class="panel" style="padding: 22px; display: flex; flex-direction: column; gap: 10px" aria-label="History">
+            <h3 style="font-size: 16px; font-weight: 650">History</h3>
+            <p style="font-size: 14px"><b>Sunil P.</b> uploaded 3 documents <span style="color: #675B4E">· 17 Nov</span></p>
+            <p style="font-size: 14px"><b>Ramesh</b> checked registration <span style="color: #675B4E">· 17 Nov</span></p>
+            <p style="font-size: 14px"><b>Sunil P.</b> submitted registration <span style="color: #675B4E">· 16 Nov</span></p>
+          </section>
+        </div>
+
+        <!-- decision bar -->
+        <div style="position: absolute; left: 32px; right: 32px; bottom: 24px; display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 14px; background: #14213D; color: #fff; box-shadow: 0 18px 40px -20px rgba(20,33,61,.6)">
+          <span style="flex: 1; font-size: 14.5px"><b>1 problem flagged.</b> <span style="color: #C9D0DD">The seller will get your note and a link to fix it.</span></span>
+          <button class="btn btn-sm" style="color: #fff; border-color: rgba(255,255,255,.3)">Reject…</button>
+          <button class="btn btn-light btn-sm"><span class="ic s18 i-message"></span>Ask seller to fix bank document</button>
+          <button class="btn btn-sm" style="background: rgba(255,255,255,.12); color: rgba(255,255,255,.55)" disabled title="Resolve flagged problems first">Approve documents</button>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1260}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { helpOpen: false }; }
+  renderVals() { return { helpOpen: this.state.helpOpen, toggleHelp: () => this.setState({ helpOpen: !this.state.helpOpen }) }; }
+}
+</script>
+</body>
+</html>

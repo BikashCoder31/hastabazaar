@@ -3,17 +3,17 @@ import { env } from 'cloudflare:workers';
 import { PackageOpen } from 'lucide-react';
 import { SellerHeading, SellerEmpty } from '@/components/seller/workspace-ui';
 import { SellerOrderList } from '@/components/seller/seller-order-list';
-import { requireSellerPage } from '@/lib/auth/seller';
+import { requireSellerCenterPage } from '@/lib/auth/seller-center';
 import { requireDatabase } from '@/lib/db/d1';
 import { listOrdersForSeller } from '@/lib/db/repositories/orders';
 
 export const dynamic = 'force-dynamic';
 export default async function SellerOrdersPage() {
-  const seller = await requireSellerPage('/seller/orders');
-  const orders = await listOrdersForSeller(
+  const seller = await requireSellerCenterPage('/seller/orders');
+  const orders = seller.sellerId ? await listOrdersForSeller(
     requireDatabase(env as unknown as { DB?: D1Database }),
     seller.sellerId,
-  );
+  ) : [];
   const displayedOrders = await withFirstCodPresentation(
     requireDatabase(env as unknown as { DB?: D1Database }),
     orders,
@@ -23,7 +23,7 @@ export default async function SellerOrdersPage() {
       <SellerHeading
         eyebrow="Fulfilment"
         title="Your orders"
-        description="Prepare only the items from your shop. HastaBazaar coordinates dispatch and confirms delivery."
+        description="Prepare only the items from your shop. Hastabazaar coordinates dispatch and confirms delivery."
       />
       <p className="rounded-xl border bg-card p-4 text-sm leading-6 text-muted-foreground">
         Confirmed → Packing → Ready for pickup → Dispatched → Delivered. Each

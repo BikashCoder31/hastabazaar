@@ -1,6 +1,9 @@
+import {aftercareFollowup,publicAftercareFollowup,type PublicAftercareFollowup} from '../../returns/followup';
+import {checkoutCommitClock} from '../../checkout/commit-policy-guards';
 import { caseBusinessNotificationStatements } from '../../operations/business-notifications';
 import { buildFormAnswerInsert } from './form-answers';
 import { assertCommerceFormReplay, type CommerceForm } from './commerce-form-replay';
+import { currentFormVersionGuards } from '@/lib/forms/native-version';
 import { staffMutationGuard } from './staff-mutation-guard';
 import { digestFormRequest } from '@/lib/forms/submission';
 import type { StaffRole } from '@/lib/auth/staff';
@@ -56,8 +59,14 @@ export async function createCustomerComplaint(
     requestId: string;
     now: number;
     form?: CommerceForm;
+    /** Trusted staff intake only. Public customer handlers never accept these fields. */
+    supportIntake?:{actorId:string;receivedAt:number;channel:'email'|'support';sourceReference:string};
   },
 ): Promise<{ id: string; referenceNumber: string; duplicate: boolean }> {
+  const intake=options.supportIntake,firstReceivedAt=intake?.receivedAt??options.now,clock=checkoutCommitClock(database);
+  const intakeAuthority=intake?await staffMutationGuard(database,intake.actorId,'support.manage',ComplaintConflictError):null;
+  if(intake){const current=await database.prepare(`SELECT ${clock} AS now`).first<{now:number}>();if(!Number.isSafeInteger(firstReceivedAt)||firstReceivedAt<=0||firstReceivedAt>current!.now||!['email','support'].includes(intake.channel)||typeof intake.sourceReference!=='string'||intake.sourceReference.trim().length<8||intake.sourceReference.length>500)throw new ComplaintConflictError('Retain the actual first received time and its supported source evidence.');}
+  async function assertIntake(id:string){const row=await database.prepare('SELECT created_at AS receivedAt,intake_channel AS channel,intake_recorded_by AS actorId,received_evidence_reference AS reference FROM complaints WHERE id=?').bind(id).first<{receivedAt:number;channel:string;actorId:string|null;reference:string|null}>();if(!row||row.channel!==(intake?.channel??'web')||row.actorId!==(intake?.actorId??null)||row.reference!==(intake?.sourceReference.trim()??null)||intake&&row.receivedAt!==firstReceivedAt)throw new ComplaintConflictError('This reference already records different original intake evidence.');}
   const previous = await database
     .prepare(
       `SELECT complaints.id, complaints.reference_number AS referenceNumber,
@@ -75,10 +84,11 @@ export async function createCustomerComplaint(
     )
     .first<ComplaintReplayRow>();
   if (previous) {
+    await assertIntake(previous.id);
     assertComplaintReplay(previous, options);
     await assertCommerceFormReplay(database, { formId: 'commerce.complaint',
       requestId: options.requestId, subjectType: 'complaint', subjectId: previous.id,
-      actorId: options.customerId ?? null, form: options.form, conflictError: ComplaintConflictError });
+      actorId: intake?.actorId??options.customerId ?? null, form: options.form, conflictError: ComplaintConflictError });
     return { id: previous.id, referenceNumber: previous.referenceNumber, duplicate: true };
   }
   const order = await database
@@ -120,9 +130,9 @@ export async function createCustomerComplaint(
             id, reference_number, customer_id, order_id, order_item_id, seller_id,
             category, subject, detail, locale, priority, status, assigned_to,
             resolution, resolution_ne, created_request_id, operation_request_id,
-            created_at, updated_at, resolved_at
+            created_at, updated_at, resolved_at,recorded_at,intake_channel,intake_recorded_by,received_evidence_reference
           ) SELECT ?, ?, ?, id, ?, ?, ?, ?, ?, ?, ?, 'open', NULL,
-            NULL, NULL, ?, ?, ?, ?, NULL FROM orders
+            NULL, NULL, ?, ?, ?, ?, NULL,${clock},?,?,? FROM orders
             WHERE id = ? AND order_number = ?
               AND (receipt_token_hash = ? OR customer_id = ?)`,
         )
@@ -139,8 +149,9 @@ export async function createCustomerComplaint(
           priority,
           options.requestId,
           options.requestId,
+          firstReceivedAt,
           options.now,
-          options.now,
+          intake?.channel??'web',intake?.actorId??null,intake?.sourceReference.trim()??null,
           order.orderId,
           options.orderNumber,
           options.receiptTokenHash,
@@ -158,13 +169,14 @@ export async function createCustomerComplaint(
             id, complaint_id, from_status, to_status, action, actor_id,
             actor_type, public_message_en, public_message_ne, internal_note,
             request_id, created_at
-          ) SELECT ?, id, NULL, 'open', 'customer_created', NULL, 'customer',
-            'Complaint received. HastaBazaar will review it.',
+          ) SELECT ?, id, NULL, 'open', ?, ?, ?,
+            'Complaint received. Hastabazaar will review it.',
             'गुनासो प्राप्त भयो। हथकृतिले यसको समीक्षा गर्नेछ।', NULL, ?, ?
             FROM complaints WHERE id = ? AND created_request_id = ?`,
         )
         .bind(
           crypto.randomUUID(),
+          intake?'support_recorded':'customer_created',intake?.actorId??options.customerId??null,intakeAuthority?.role??'customer',
           options.requestId,
           options.now,
           id,
@@ -175,11 +187,12 @@ export async function createCustomerComplaint(
           `INSERT INTO audit_logs (
             id, actor_id, action, subject_type, subject_id, reason,
             previous_json, next_json, request_id, ip_hash, created_at
-          ) SELECT ?, NULL, 'complaint.customer.created', 'complaint', id, ?,
+          ) SELECT ?, ?, ?, 'complaint', id, ?,
             NULL, ?, ?, NULL, ? FROM complaints WHERE id = ? AND created_request_id = ?`,
         )
         .bind(
           crypto.randomUUID(),
+          intake?.actorId??options.customerId??null,intake?'complaint.support.recorded':'complaint.customer.created',
           options.detail,
           JSON.stringify({
             referenceNumber,
@@ -194,18 +207,19 @@ export async function createCustomerComplaint(
       ...(options.form ? [buildFormAnswerInsert(database, {
         formId: 'commerce.complaint', requestId: options.requestId,
         versionId: options.form.versionId, subjectType: 'complaint', subjectId: id,
-        actorId: options.customerId ?? null, answers: options.form.answers, now: options.now,
+        actorId: intake?.actorId??options.customerId ?? null, answers: options.form.answers, now: options.now,
       })] : []),
+      ...(intakeAuthority?.statements??[]),
       ...(await caseBusinessNotificationStatements(database, {
         sourceType: 'complaint',
         sourceId: id,
         eventId: options.requestId,
-        actorId: options.customerId,
+        actorId: intake?.actorId??options.customerId,
         action: 'created',
         now: options.now,
       })),
     ]);
-    if ((results[0].meta.changes ?? 0) !== 1)
+    if ((results[0].meta.changes ?? 0) < 1)
       throw new ComplaintConflictError(
         'The complaint could not be linked to this order.',
       );
@@ -221,10 +235,11 @@ export async function createCustomerComplaint(
         .bind(options.requestId)
         .first<ComplaintReplayRow>();
       if (duplicate) {
+        await assertIntake(duplicate.id);
         assertComplaintReplay(duplicate, options);
         await assertCommerceFormReplay(database, { formId: 'commerce.complaint',
           requestId: options.requestId, subjectType: 'complaint', subjectId: duplicate.id,
-          actorId: options.customerId ?? null, form: options.form, conflictError: ComplaintConflictError });
+          actorId: intake?.actorId??options.customerId ?? null, form: options.form, conflictError: ComplaintConflictError });
         return { id: duplicate.id, referenceNumber: duplicate.referenceNumber, duplicate: true };
       }
     }
@@ -234,6 +249,7 @@ export async function createCustomerComplaint(
 }
 
 export interface ComplaintRow {
+  followup?:PublicAftercareFollowup;
   id: string;
   referenceNumber: string;
   orderNumber: string;
@@ -270,6 +286,7 @@ export interface ComplaintEventRow {
 }
 
 export interface ComplaintDetail extends ComplaintRow {
+  staffFollowup?:Awaited<ReturnType<typeof aftercareFollowup>>;
   customerEmail?: string;
   customerPhone?: string;
   sellerId?: string | null;
@@ -296,6 +313,7 @@ const complaintSelect = `SELECT complaints.id,
 async function complaintEvents(
   database: D1Database,
   complaintId: string,
+  privateAccess=true,
 ): Promise<readonly ComplaintEventRow[]> {
   const result = await database
     .prepare(
@@ -307,7 +325,7 @@ async function complaintEvents(
     )
     .bind(complaintId)
     .all<ComplaintEventRow>();
-  return result.results;
+  return privateAccess?result.results:result.results.map(event=>({...event,internalNote:null}));
 }
 
 export async function listComplaintsForCustomerReceipt(
@@ -322,7 +340,7 @@ export async function listComplaintsForCustomerReceipt(
     )
     .bind(orderNumber, receiptTokenHash, customerId)
     .all<ComplaintRow>();
-  return result.results;
+  return Promise.all(result.results.map(async row=>({...row,followup:await publicAftercareFollowup(database,'complaint',row.id),escalationReason:null,assignedTo:null,assignedName:null})));
 }
 
 export async function getCustomerComplaintDetail(
@@ -339,7 +357,7 @@ export async function getCustomerComplaintDetail(
     .bind(complaintId, orderNumber, receiptTokenHash, customerId)
     .first<ComplaintRow>();
   return row
-    ? { ...row, events: await complaintEvents(database, row.id) }
+    ? { ...row, followup:await publicAftercareFollowup(database,'complaint',row.id),escalationReason:null,assignedTo:null,assignedName:null, events: await complaintEvents(database, row.id,false) }
     : null;
 }
 
@@ -427,7 +445,7 @@ export async function addCustomerComplaintReply(
       now: options.now,
     })),
   ]);
-  if ((results[0].meta.changes ?? 0) !== 1)
+  if ((results[0].meta.changes ?? 0) < 1)
     throw new ComplaintConflictError(
       'This complaint is not waiting for a customer reply.',
     );
@@ -444,7 +462,7 @@ export async function listComplaintsForSeller(
     )
     .bind(sellerId, limit)
     .all<ComplaintRow>();
-  return result.results;
+  return Promise.all(result.results.map(async row=>({...row,followup:await publicAftercareFollowup(database,'complaint',row.id),escalationReason:null,assignedTo:null,assignedName:null})));
 }
 
 export async function getSellerComplaintDetail(
@@ -459,7 +477,7 @@ export async function getSellerComplaintDetail(
     .bind(complaintId, sellerId)
     .first<ComplaintRow>();
   return row
-    ? { ...row, events: await complaintEvents(database, row.id) }
+    ? { ...row, followup:await publicAftercareFollowup(database,'complaint',row.id),escalationReason:null,assignedTo:null,assignedName:null, events: await complaintEvents(database, row.id,false) }
     : null;
 }
 
@@ -594,7 +612,7 @@ export async function respondToComplaintAsSeller(
       now: options.now,
     })),
   ]);
-  if ((results[0].meta.changes ?? 0) !== 1)
+  if ((results[0].meta.changes ?? 0) < 1)
     throw new ComplaintConflictError(
       'This complaint already has a seller response or is closed.',
     );
@@ -635,7 +653,7 @@ export async function getOperationsComplaintDetail(
       }
     >();
   return row
-    ? { ...row, events: await complaintEvents(database, row.id) }
+    ? { ...row, staffFollowup:await aftercareFollowup(database,'complaint',row.id),events: await complaintEvents(database, row.id) }
     : null;
 }
 
@@ -667,15 +685,15 @@ export async function updateComplaintAsAdmin(
 ): Promise<void> {
   if (options.form && options.form.answers.formId !== 'staff.complaint-case-action')
     throw new ComplaintConflictError('Complaint form context is invalid.');
-  const authority = options.form ? await staffMutationGuard(database, options.actorId,
-    'support.manage', ComplaintConflictError, options.actorRole) : null;
-  const catalogDigest = options.form ? await digestFormRequest({ caseId: options.complaintId,
+  const authority = await staffMutationGuard(database, options.actorId,
+    'support.manage', ComplaintConflictError, options.actorRole);
+  const catalogDigest = await digestFormRequest({ caseId: options.complaintId,
     actorId: options.actorId, actorRole: options.actorRole, action: options.action,
     note: options.note, publicMessageEn: options.publicMessageEn,
     publicMessageNe: options.publicMessageNe, resolutionEn: options.resolutionEn ?? null,
-    resolutionNe: options.resolutionNe ?? null, versionId: options.form.versionId,
-    answers: options.form.answers }) : null;
-  if (options.form) {
+    resolutionNe: options.resolutionNe ?? null, versionId: options.form?.versionId??null,
+    answers: options.form?.answers??null });
+  {
     const prior = await database.prepare(`SELECT complaint_id AS caseId, actor_id AS actorId,
       action FROM complaint_events WHERE request_id=? LIMIT 1`).bind(options.requestId)
       .first<{ caseId: string; actorId: string; action: string }>();
@@ -695,13 +713,6 @@ export async function updateComplaintAsAdmin(
       return;
     }
   }
-  if (
-    await database
-      .prepare(`SELECT id FROM complaint_events WHERE request_id = ? LIMIT 1`)
-      .bind(options.requestId)
-      .first()
-  )
-    return;
   const current = await database
     .prepare(`SELECT status FROM complaints WHERE id = ? LIMIT 1`)
     .bind(options.complaintId)
@@ -849,10 +860,7 @@ export async function updateComplaintAsAdmin(
         options.complaintId,
         options.requestId,
       ),
-    ...(options.form ? [database.prepare(`SELECT CASE WHEN (SELECT id FROM form_config_versions
-      WHERE form_id='staff.complaint-case-action' AND status='published'
-      ORDER BY version DESC LIMIT 1)=? THEN 1
-      ELSE json_extract('stale-staff-complaint-form', '$') END`).bind(options.form.versionId),
+    ...(options.form ? [...currentFormVersionGuards(database, 'staff.complaint-case-action', options.form.versionId),
     database.prepare(`SELECT CASE WHEN EXISTS (SELECT 1 FROM complaints
       WHERE id=? AND operation_request_id=? AND status=?) THEN 1
       ELSE json_extract('invalid-staff-complaint-transition', '$') END`)
@@ -862,6 +870,7 @@ export async function updateComplaintAsAdmin(
       subjectId: options.complaintId, actorId: options.actorId, answers: options.form.answers,
       now: options.now })] : []),
     ...(authority?.statements ?? []),
+    database.prepare(`SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM complaints c JOIN orders o ON o.id=c.order_id WHERE c.id=? AND o.customer_id=?) AND NOT EXISTS(SELECT 1 FROM complaints c JOIN order_items i ON i.order_id=c.order_id JOIN seller_profiles s ON s.id=i.seller_id WHERE c.id=? AND s.user_id=?) THEN 1 ELSE json_extract('personally-conflicted-complaint-operator','$') END`).bind(options.complaintId,options.actorId,options.complaintId,options.actorId),
     ...(await caseBusinessNotificationStatements(database, {
       sourceType: 'complaint',
       sourceId: options.complaintId,
@@ -871,7 +880,7 @@ export async function updateComplaintAsAdmin(
       now: options.now,
     })),
   ]);
-  if ((results[0].meta.changes ?? 0) !== 1)
+  if ((results[0].meta.changes ?? 0) < 1)
     throw new ComplaintConflictError(
       'The complaint changed. Refresh and try again.',
     );

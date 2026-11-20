@@ -1,0 +1,73 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {registerHooks} from 'node:module';
+import {manualOrderFixture} from './helpers/manual-payment-fixture';
+import {fixtureWithOverrides} from './helpers/fixture-delegation';
+import {ManualPaymentError,submitPaymentClaim} from '../lib/payments/manual-receipts';
+const state={db:null as D1Database|null,bucket:null as R2Bucket|null,subject:'customer'};
+(globalThis as typeof globalThis&{claimAuthorityFixture:typeof state}).claimAuthorityFixture=state;
+registerHooks({resolve(specifier,context,next){const modules:Record<string,string>={
+ 'cloudflare:workers':'export const env={get DB(){return globalThis.claimAuthorityFixture.db},get MEDIA(){return globalThis.claimAuthorityFixture.bucket},HASTABAZAAR_RUNTIME_ENV:"test",APP_ORIGIN:"https://claim-authority.test"};',
+ 'next/navigation':'export function redirect(url){throw Error(url)};',
+ '@/app/auth':'export async function getAuthenticatedUser(){const id=globalThis.claimAuthorityFixture.subject;return{userId:id,email:id+"@local.hastabazaar.test",fullName:"Fictional actor",mailboxVerified:true}};export const requireAuthenticatedUser=getAuthenticatedUser;'
+};return modules[specifier]?{url:'data:text/javascript,'+encodeURIComponent(modules[specifier]),shortCircuit:true}:next(specifier,context);}});
+async function fixture(){const f=await manualOrderFixture();assert.ok(f.sqlite.prepare('PRAGMA database_list').all().every(row=>row.file===''));assert.equal(f.sqlite.prepare('PRAGMA foreign_keys').get()!.foreign_keys,1);f.sqlite.prepare("UPDATE users SET auth_subject=id WHERE id IN('customer','reviewer')").run();state.db=f.db;state.subject='customer';return f;}
+const input=()=>({amountPaisa:10000,paymentDate:new Date().toISOString().slice(0,10),bankReference:null,note:'Fictional private claim',evidenceIds:[]});
+const req=(orderId:string,wire:unknown)=>new Request(`https://claim-authority.test/api/account/payments/${orderId}/claim`,{method:'POST',headers:{origin:'https://claim-authority.test','Content-Type':'application/json','X-Hastabazaar-Actor':'customer'},body:JSON.stringify(wire)});
+void test('claim body consumption cannot carry removed customer authority into the native commit',async()=>{
+ const f=await fixture();try{const {customerPaymentClaim}=await import('../lib/payments/payment-http');const request=req(f.orderId,{requestId:crypto.randomUUID(),expectedRevision:null,input:input()}),reader=request.body!.getReader();let changed=false;
+ const body=new ReadableStream<Uint8Array>({async pull(controller){const chunk=await reader.read();if(!changed){changed=true;f.sqlite.prepare("DELETE FROM user_roles WHERE user_id='customer' AND role='customer'").run();}if(chunk.done)controller.close();else controller.enqueue(chunk.value);}});
+ const response=await customerPaymentClaim(new Request(request.url,{method:'POST',headers:request.headers,body,duplex:'half'} as RequestInit),f.orderId);assert.equal(response.status,403);assert.equal((await response.json() as {notApplied?:boolean}).notApplied,undefined);assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM manual_payment_claims').get()!.n,0);
+ }finally{state.db=null;f.dispose();}
+});
+void test('claim transaction rejects subject rebinding and role removal at the actual batch boundary',async t=>{
+ for(const change of ['subject','role'])await t.test(change,async()=>{const f=await fixture();try{const {customerPaymentClaim}=await import('../lib/payments/payment-http');state.db=fixtureWithOverrides(f.db,{async batch<T>(statements:D1PreparedStatement[]){f.sqlite.prepare(change==='subject'?"UPDATE users SET auth_subject='replacement-subject' WHERE id='customer'":"DELETE FROM user_roles WHERE user_id='customer' AND role='customer'").run();return f.db.batch<T>(statements);}});
+ const response=await customerPaymentClaim(req(f.orderId,{requestId:crypto.randomUUID(),expectedRevision:null,input:input()}),f.orderId);assert.equal(response.status,403);assert.equal((await response.json() as {notApplied?:boolean}).notApplied,undefined);assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM manual_payment_claims').get()!.n,0);
+ }finally{state.db=null;f.dispose();}});
+});
+void test('post-commit authority loss denies success while arbitrary native failure never attests not applied',async t=>{
+ for(const failure of ['rebind','unknown400'])await t.test(failure,async()=>{const f=await fixture();try{const {customerPaymentClaim}=await import('../lib/payments/payment-http');state.db=fixtureWithOverrides(f.db,{async batch<T>(statements:D1PreparedStatement[]){const result=await f.db.batch<T>(statements);if(failure==='rebind')f.sqlite.prepare("UPDATE users SET auth_subject='replacement-subject' WHERE id='customer'").run();else throw new ManualPaymentError('Commit acknowledgement unavailable.',400);return result;},prepare(sql:string){if(failure==='unknown400'&&sql.startsWith('SELECT command_digest AS digest')&&f.sqlite.prepare('SELECT COUNT(*) n FROM manual_payment_claims').get()!.n)throw new ManualPaymentError('Readback unavailable.',400);return f.db.prepare(sql);}});
+ const response=await customerPaymentClaim(req(f.orderId,{requestId:crypto.randomUUID(),expectedRevision:null,input:input()}),f.orderId);assert.equal(response.status,failure==='rebind'?403:400);assert.equal((await response.json() as {notApplied?:boolean}).notApplied,undefined);assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM manual_payment_claims').get()!.n,1);
+ }finally{state.db=null;f.dispose();}});
+});
+void test('legacy receipt cannot be adopted as proof by a replacement authenticated subject',async()=>{
+ const f=await fixture();try{const {customerPaymentClaim}=await import('../lib/payments/payment-http'),requestId=crypto.randomUUID(),context={actorId:'customer',requestId,expectedRevision:null,now:Date.now()},payload={...input(),orderId:f.orderId};const saved=await submitPaymentClaim(f.db,context,payload);assert.deepEqual(await submitPaymentClaim(f.db,context,payload),saved,'Legacy direct contract still replays its unchanged result');f.sqlite.prepare("UPDATE users SET auth_subject='replacement-subject' WHERE id='customer'").run();state.subject='replacement-subject';const before=f.sqlite.prepare('SELECT total_changes() n').get()!.n;
+ const response=await customerPaymentClaim(new Request(`https://claim-authority.test/api/account/payments/${f.orderId}/claim?attempt=${requestId}`,{headers:{'X-Hastabazaar-Actor':'customer'}}),f.orderId);assert.equal(response.status,409);assert.equal(f.sqlite.prepare('SELECT total_changes() n').get()!.n,before,'No provenance backfill on historical lookup');
+ }finally{state.db=null;f.dispose();}
+});
+void test('upload commit rejects a subject rebound while object storage is in flight',async()=>{
+ const f=await fixture();try{const {PDFDocument}=await import('pdf-lib'),pdf=await PDFDocument.create();pdf.addPage([200,200]);const bytes=await pdf.save({useObjectStreams:false});let puts=0;
+ state.bucket={async get(){return null;},async put(){puts++;f.sqlite.prepare("UPDATE users SET auth_subject='replacement-subject' WHERE id='customer'").run();return{};}} as unknown as R2Bucket;
+ const form=new FormData();form.set('requestId',crypto.randomUUID());form.set('file',new File([new Uint8Array(bytes)],'fictional.pdf',{type:'application/pdf'}));const response=await (await import('../lib/payments/payment-http')).customerPaymentUpload(new Request(`https://claim-authority.test/api/account/payments/${f.orderId}/files`,{method:'POST',headers:{origin:'https://claim-authority.test','X-Hastabazaar-Actor':'customer'},body:form}),f.orderId);
+ assert.equal(puts,1);assert.equal(response.status,403);assert.equal((await response.json() as {notApplied?:boolean}).notApplied,undefined);assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM manual_payment_claim_files').get()!.n,0);
+ }finally{state.db=null;state.bucket=null;f.dispose();}
+});
+void test('release transaction rejects authenticated-subject rebinding without releasing fulfillment',async()=>{
+ const f=await fixture();try{const p=await import('../lib/payments/manual-receipts'),{claimReleaseHttp}=await import('../lib/payments/claim-release-http'),context=(requestId:string,expectedRevision:string|null)=>({actorId:'reviewer',requestId,expectedRevision,now:Date.now()});state.subject='reviewer';
+ const receipt=await p.recordBankReceipt(f.db,context('authority-bank',null),{accountVersionId:f.accountVersionId,transactionIdentity:'FICTIONAL-AUTHORITY-BANK',bankAt:Date.now()-1000,amountMinor:f.order.grandTotalPaisa,currency:'NPR',payerReference:'Fictional buyer',payerUserId:'customer',evidenceReference:'FICTIONAL-AUTHORITY-EVIDENCE',completedCreditConfirmed:true,conflictUserIds:[],reason:'Independent actual fictional company bank receipt.'});
+ f.sqlite.prepare("UPDATE users SET status='suspended' WHERE id='customer'").run();await p.allocateBankReceipt(f.db,context('authority-allocate','0'),{receiptId:receipt.id,orderId:f.orderId,amountPaisa:f.order.grandTotalPaisa,expectedWindowRevision:0,matchingBasis:'Original exact buyer and fictional bank evidence.',exceptionApproval:null});f.sqlite.prepare("UPDATE users SET status='active' WHERE id='customer'").run();
+ state.db=fixtureWithOverrides(f.db,{async batch<T>(statements:D1PreparedStatement[]){f.sqlite.prepare("UPDATE users SET auth_subject='replacement-reviewer' WHERE id='reviewer'").run();return f.db.batch<T>(statements);}});
+ const response=await claimReleaseHttp(new Request(`https://claim-authority.test/api/admin/payments/orders/${f.orderId}/release`,{method:'POST',headers:{origin:'https://claim-authority.test','Content-Type':'application/json','X-Hastabazaar-Actor':'reviewer'},body:JSON.stringify({action:'release',requestId:crypto.randomUUID(),expectedRevision:String(f.sqlite.prepare('SELECT revision FROM manual_payment_windows WHERE order_id=?').get(f.orderId)!.revision),input:{orderId:f.orderId,reason:'Independent actual eligible release review.'}})}),f.orderId,'release');
+ assert.equal(response.status,403);assert.equal((await response.json() as {notApplied?:boolean}).notApplied,undefined);assert.equal(f.sqlite.prepare('SELECT released_at FROM manual_payment_windows WHERE order_id=?').get(f.orderId)!.released_at,null);
+ }finally{state.db=null;f.dispose();}
+});
+void test('new native provenance is immutable across authenticated-subject rebinding and cannot be backfilled on replay',async()=>{
+ const f=await fixture();try{const {customerPaymentClaim}=await import('../lib/payments/payment-http'),requestId=crypto.randomUUID(),wire={requestId,expectedRevision:null,input:input()};const saved=await customerPaymentClaim(req(f.orderId,wire),f.orderId);assert.equal(saved.status,200);const original=await saved.json();const proof=f.sqlite.prepare("SELECT next_json FROM audit_logs WHERE action='manual.payment.authority.proven'").get()!.next_json;
+ f.sqlite.prepare("UPDATE users SET auth_subject='replacement-subject' WHERE id='customer'").run();state.subject='replacement-subject';const before=f.sqlite.prepare('SELECT total_changes() n').get()!.n;
+ assert.equal((await customerPaymentClaim(new Request(`https://claim-authority.test/api/account/payments/${f.orderId}/claim?attempt=${requestId}`,{headers:{'X-Hastabazaar-Actor':'customer'}}),f.orderId)).status,409);
+ const replay=await customerPaymentClaim(req(f.orderId,wire),f.orderId);assert.equal(replay.status,409);assert.equal((await replay.json() as {notApplied?:boolean}).notApplied,undefined);assert.equal(f.sqlite.prepare('SELECT total_changes() n').get()!.n,before);assert.equal(f.sqlite.prepare("SELECT next_json FROM audit_logs WHERE action='manual.payment.authority.proven'").get()!.next_json,proof);
+ f.sqlite.prepare("UPDATE users SET auth_subject='customer' WHERE id='customer'").run();state.subject='customer';assert.deepEqual(await (await customerPaymentClaim(req(f.orderId,wire),f.orderId)).json(),original);assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM manual_payment_claim_events').get()!.n,1);
+ }finally{state.db=null;f.dispose();}
+});
+void test('a legacy partial upload is unconfirmed and cannot gain authenticated provenance from a later retry',async()=>{
+ const f=await fixture();try{const {uploadPaymentClaimFile}=await import('../lib/payments/payment-claim-files'),{PDFDocument}=await import('pdf-lib'),pdf=await PDFDocument.create();pdf.addPage([200,200]);const bytes=await pdf.save({useObjectStreams:false}),file=new File([new Uint8Array(bytes)],'fictional-legacy.pdf',{type:'application/pdf'}),objects=new Map<string,ArrayBuffer>();let lost=true;
+ const bucket={async get(key:string){const bytes=objects.get(key);return bytes?{arrayBuffer:async()=>bytes.slice(0)}:null;},async put(key:string,value:ArrayBuffer){objects.set(key,value.slice(0));if(lost){lost=false;throw new Error('Fictional saved object lost acknowledgement.');}return{};}} as unknown as R2Bucket;
+ const context={actorId:'customer',requestId:crypto.randomUUID(),expectedRevision:null,now:Date.now()};await assert.rejects(uploadPaymentClaimFile(f.db,bucket,context,f.orderId,file),/lost acknowledgement/);
+ await assert.rejects(uploadPaymentClaimFile(f.db,bucket,{...context,authSubject:'customer'},f.orderId,file),/unconfirmed/);assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM manual_payment_claim_files').get()!.n,0);assert.equal(f.sqlite.prepare("SELECT COUNT(*) n FROM audit_logs WHERE action='manual.payment.authority.proven'").get()!.n,0);const started=JSON.parse(String(f.sqlite.prepare("SELECT next_json FROM audit_logs WHERE action='manual.payment.file.started'").get()!.next_json));assert.equal(started.authSubject,undefined);
+ const saved=await uploadPaymentClaimFile(f.db,bucket,context,f.orderId,file);assert.equal(saved.name,file.name,'Legacy native contract is retained without inventing authenticated provenance');
+ }finally{state.db=null;f.dispose();}
+});
+void test('a case-insensitive customer lookup cannot substitute its stored subject for the actual authenticated subject',async()=>{
+ const f=await fixture();try{f.sqlite.prepare("UPDATE users SET auth_subject='CUSTOMER' WHERE id='customer'").run();state.db=fixtureWithOverrides(f.db,{prepare(sql:string){return f.db.prepare(sql.replace('WHERE users.auth_subject = ? AND users.status', 'WHERE users.auth_subject COLLATE NOCASE = ? AND users.status'));}});const {customerPaymentClaim}=await import('../lib/payments/payment-http'),request=req(f.orderId,{requestId:crypto.randomUUID(),expectedRevision:null,input:input()});const response=await customerPaymentClaim(request,f.orderId);assert.equal(response.status,403);assert.equal(request.bodyUsed,false);assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM manual_payment_claims').get()!.n,0);
+ }finally{state.db=null;f.dispose();}
+});

@@ -1,5 +1,6 @@
 import type { ConfiguredField, FormConfigDraft, FormId } from '../../forms/types';
 import { validateFormDraft } from '../../forms/validation';
+import {assertQuestionPublicationPolicy} from '../../forms/editor-policy';
 
 export class FormCatalogConflictError extends Error {
   constructor(message = 'Form configuration changed or this action is not permitted.') {
@@ -309,6 +310,7 @@ export async function saveFormDraft(db: D1Database, input: { formId: FormId; dra
     throw new FormCatalogConflictError('Request ID was already used.');
   }
   if (await usedRequest(db, data.requestId)) throw new FormCatalogConflictError('Request ID was already used.');
+  assertQuestionPublicationPolicy(config);
   if (await currentPublished(db, input.formId) !== data.expectedPublishedVersion) throw new FormCatalogConflictError();
   await assertIdentity(db, input.formId, config);
   const configJson = JSON.stringify(config);
@@ -380,6 +382,7 @@ export async function publishFormDraft(db: D1Database, input: { formId: FormId; 
       draft.version <= data.expectedPublishedVersion ||
       await currentPublished(db, input.formId) !== data.expectedPublishedVersion) throw new FormCatalogConflictError();
   const config = validateFormDraft(input.formId, draft.config);
+  assertQuestionPublicationPolicy(config);
   await assertIdentity(db, input.formId, config);
   try {
     await db.batch([
@@ -437,6 +440,7 @@ export async function restoreFormVersion(db: D1Database, input: { formId: FormId
     if (!fields.some((field) => field.id === old.id)) fields.push({ ...old, status: 'archived', order: fields.length });
   }
   const config = validateFormDraft(input.formId, { formId: input.formId, fields });
+  assertQuestionPublicationPolicy(config);
   await assertIdentity(db, input.formId, config);
   const newVersion = await nextVersion(db, input.formId);
   const id = crypto.randomUUID();

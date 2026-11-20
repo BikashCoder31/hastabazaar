@@ -56,8 +56,9 @@ function activationFixture() {
     INSERT INTO seller_participation_profiles(seller_id,participation_route,application_stage,version)
       VALUES ('seller-one','managed_maker','approved_for_activation',0);
     INSERT INTO products VALUES ('product-one','seller-one','approved');`);
-  for (const sql of readFileSync('drizzle/0056_form_catalog.sql', 'utf8').split('--> statement-breakpoint'))
-    if (sql.trim()) sqlite.exec(sql);
+  for (const migration of ['0056_form_catalog.sql', '0151_form_health_records.sql'])
+    for (const sql of readFileSync(`drizzle/${migration}`, 'utf8').split('--> statement-breakpoint'))
+      if (sql.trim()) sqlite.exec(sql);
   sqlite.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,
     reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
     VALUES ('managed-v1','staff.managed-maker-activation',1,1,'published',?,'Fixture','admin',1,'admin',1,'admin',1,'seed-managed')`)

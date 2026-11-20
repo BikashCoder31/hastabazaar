@@ -32,17 +32,17 @@ class Database {
 function fixture() {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec(`
-    CREATE TABLE users (id TEXT PRIMARY KEY, auth_subject TEXT, display_name TEXT, status TEXT);
+    CREATE TABLE users (id TEXT PRIMARY KEY, auth_subject TEXT, display_name TEXT, status TEXT, email TEXT);
     CREATE TABLE user_roles (user_id TEXT, role TEXT);
     CREATE TABLE staff_permission_profiles(user_id TEXT,permissions_json TEXT,version INTEGER,updated_by TEXT,updated_at INTEGER);
-    CREATE TABLE seller_profiles (id TEXT PRIMARY KEY, user_id TEXT, status TEXT,seller_agreement_version TEXT,seller_agreement_accepted_at INTEGER,updated_at INTEGER);
+    CREATE TABLE seller_profiles (id TEXT PRIMARY KEY, user_id TEXT, status TEXT,seller_agreement_version TEXT,seller_agreement_accepted_at INTEGER,updated_at INTEGER,trading_name TEXT);
     CREATE TABLE seller_participation_profiles(seller_id TEXT PRIMARY KEY);
     CREATE TABLE audit_logs (id TEXT PRIMARY KEY,actor_id TEXT,action TEXT,subject_type TEXT,subject_id TEXT,reason TEXT,previous_json TEXT,next_json TEXT,request_id TEXT,ip_hash TEXT,created_at INTEGER);
     CREATE TABLE business_setting_versions (id TEXT PRIMARY KEY,setting_key TEXT,version INTEGER,value_json TEXT,status TEXT,revision INTEGER,change_control TEXT,effective_from INTEGER,effective_until INTEGER,reason TEXT,created_by TEXT,created_at INTEGER,submitted_by TEXT,submitted_at INTEGER,approved_by TEXT,approved_at INTEGER,published_by TEXT,published_at INTEGER,decision_note TEXT,supersedes_id TEXT,last_request_id TEXT);
     CREATE TABLE operation_transaction_guards (id TEXT PRIMARY KEY, valid INTEGER CHECK(valid=1));
     CREATE TABLE seller_agreement_acceptance_history (id TEXT PRIMARY KEY,seller_id TEXT,agreement_version TEXT,language_presented TEXT,commission_setting_version_id TEXT,commission_bps INTEGER,acceptance_request_id TEXT,accepted_by TEXT,accepted_at INTEGER,simulation_label TEXT,UNIQUE(acceptance_request_id),UNIQUE(seller_id,agreement_version,language_presented,commission_setting_version_id));
     CREATE TABLE order_items(id TEXT PRIMARY KEY,commission_bps INTEGER,commission_paisa INTEGER);
-    INSERT INTO users VALUES ('customer','customer-subject','Fictional Customer','active'),('other','other-subject','Other Customer','active'),('seller','seller-subject','Fictional Seller','active'),('super','super-subject','Super Admin','active'),('disabled','disabled-subject','Disabled','suspended');
+    INSERT INTO users (id,auth_subject,display_name,status) VALUES ('customer','customer-subject','Fictional Customer','active'),('other','other-subject','Other Customer','active'),('seller','seller-subject','Fictional Seller','active'),('super','super-subject','Super Admin','active'),('disabled','disabled-subject','Disabled','suspended');
     INSERT INTO user_roles VALUES ('customer','customer'),('other','customer'),('seller','seller'),('super','super_admin'),('disabled','customer');
     INSERT INTO seller_profiles(id,user_id,status) VALUES ('store','seller','approved');
     INSERT INTO order_items VALUES ('past',900,9000);
@@ -51,6 +51,9 @@ function fixture() {
     sqlite.prepare(`INSERT INTO business_setting_versions VALUES (?,?,?,?,'published',3,'controlled',?,NULL,'SIMULATED approved rate','super',1,'super',1,'super',1,'super',1,'Approved',NULL,?)`)
       .run(id,'independent_seller_commission_bps',version,JSON.stringify(bps),from,id+'-request');
   }
+  // Explicit fictional managed terms; application code has no default rate.
+  sqlite.prepare(`INSERT INTO business_setting_versions VALUES (?,?,1,'900','published',3,'controlled',1,NULL,'Isolated historical terms','super',1,'super',1,'super',1,'super',1,'Approved',NULL,?)`)
+    .run('managed-fixture','managed_sale_linked_platform_retention_bps','managed-fixture-request');
   return { sqlite, database: new Database(sqlite), publish };
 }
 
@@ -185,9 +188,32 @@ void test('public seller landing reads no rates; private form and agreement are 
     await assert.rejects(render(apply),/REDIRECT:\/sell/);await assert.rejects(render(agreement),/REDIRECT:\/sell/);assert.equal(f.database.rateReads,0);
     const access=await import('../lib/db/repositories/seller-commercial-access');
     await access.startSellerRegistration(f.database as unknown as D1Database,{userId:'customer',requestId:'page-start',now:101});
-    const application=await render(apply);assert.match(application,/independent-seller 10% commission/);assert.match(application,/name="sellerAgreementContext"/);
+    const application=await render(apply);assert.match(application,/Seller registration/);assert.match(application,/data-form-id="seller.application"/);
+    const terms=await settings.getRegisteredSellerTerms(f.database as unknown as D1Database,101);assert.equal(terms.percent,10);assert.ok(terms.context);
+    assert.match(application,/name="managedAgreementContext"/);
     const document=await render(agreement);assert.match(document,/10% commission/);assert.match(document,/commission is NPR 100/);assert.doesNotMatch(document,/9% commission/);
   } finally { f.sqlite.close(); }
+});
+
+void test('staff with a customer account must explicitly start before continuing seller registration',async()=>{
+  const f=fixture();
+  try {
+    f.sqlite.exec("INSERT INTO user_roles VALUES ('super','customer')");
+    const state={database:f.database,identity:{userId:'super-subject',email:'staff@example.test',displayName:'Fictional Staff',fullName:null},customer:{userId:'super',email:'staff@example.test'}};
+    const landing=await loadBoundary('app/sell/page.tsx',state);
+    const apply=await loadBoundary('app/sell/apply/page.tsx',state);
+    const render=async(page:Record<string,unknown>)=>renderToStaticMarkup(await (page.default as ()=>Promise<ReactElement>)());
+    const before=await render(landing);
+    assert.match(before,/<button[^>]*>Start seller registration<\/button>/);
+    assert.doesNotMatch(before,/Continue seller registration/);
+    await assert.rejects(render(apply),/^Error: REDIRECT:\/sell$/);
+    assert.equal(f.database.rateReads,0);
+
+    const {startSellerRegistration}=await import('../lib/db/repositories/seller-commercial-access');
+    await startSellerRegistration(f.database as unknown as D1Database,{userId:'super',requestId:'staff-page-start',now:101});
+    assert.match(await render(landing),/Continue seller registration/);
+    assert.match(await render(apply),/data-form-id="seller.application"/);
+  } finally {f.sqlite.close();}
 });
 
 void test('renewal acceptance refuses suspended profiles or revoked seller roles even when customer role remains', async()=>{

@@ -14,6 +14,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { copyMariaDbGeneratorInputs } from './helpers/copy-mariadb-generator-inputs';
 
 void test('release generators include category schema, hash inventory, checks and safe parent ordering', async () => {
   const root = await mkdtemp(join(tmpdir(), 'hb-category-deployment-'));
@@ -28,15 +29,11 @@ void test('release generators include category schema, hash inventory, checks an
       await mkdir(dirname(target), { recursive: true });
       await copyFile(join(sqlRoot, name), target);
     }
-    for (const name of [
-      'scripts/generate-release-manifest.mjs',
-      'scripts/generate-mariadb-schema.mjs',
-      'drizzle/meta/0020_snapshot.json',
-    ]) {
-      const target = join(root, name);
-      await mkdir(dirname(target), { recursive: true });
-      await copyFile(join(project, name), target);
-    }
+    await copyMariaDbGeneratorInputs(root);
+    await copyFile(
+      join(project, 'scripts/generate-release-manifest.mjs'),
+      join(root, 'scripts/generate-release-manifest.mjs'),
+    );
     const run = (name: string) =>
       promisify(execFile)(process.execPath, [join(root, 'scripts', name)], {
         cwd: root,
@@ -116,9 +113,36 @@ void test('release generators include category schema, hash inventory, checks an
       schema.includes(companion.trim()),
       'Bootstrap must embed maintained companion verbatim',
     );
+    // The reviewed migration 156 prefix and reset are preserved byte for byte.
+    const historicalSchema = Buffer.from(schema).subarray(0, 974_510);
+    assert.equal(
+      createHash('sha256').update(historicalSchema).digest('hex'),
+      'eda83b438b617d1ef97e3d9fcbdf42bc30613995c0dd4adcc2e1f7905b618c52',
+    );
+    assert.equal(
+      createHash('sha256').update(recovery).digest('hex'),
+      'f71cbde53af46afe3156b2d4df3391c11a1c47590360c23faa41c0ea8b1ffdd3',
+    );
     assert.ok(
-      recovery.endsWith(schema),
-      'Recovery must contain the exact generated schema',
+      recovery.endsWith(historicalSchema.toString('utf8')),
+      'Recovery must end with the exact historical schema',
+    );
+    const currentCompanions = await Promise.all(
+      [
+        'bootstrap-prerequisites',
+        'bootstrap-completion',
+        'fresh-bootstrap-defaults',
+        'check-parity',
+        'text-length-parity',
+        'native-order-stock-governance',
+      ].map(async (name) => {
+        const sql = await readFile(join(root, `deployment/babal/mariadb-${name}.sql`), 'utf8');
+        return sql.replace(/\r\n/g, '\n');
+      }),
+    );
+    assert.ok(
+      schema === [historicalSchema.toString('utf8'), ...currentCompanions].join('\n'),
+      'Current bootstrap must append every reviewed companion in order',
     );
     for (const check of [
       'category_media.category_media_size',

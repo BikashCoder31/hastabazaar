@@ -16,9 +16,11 @@ export function orderPresentation(
   status: string,
   paymentStatus: string,
   firstCodPending = false,
+  paymentMode = 'cod',
 ) {
   return {
     title:
+      paymentMode==='prepaid'&&status==='placed'?(paymentStatus==='paid'?'Payment is verified; fulfillment is under review.':'Your order is awaiting bank payment.'):
       firstCodPending && status !== 'cancelled'
         ? 'Your order is awaiting COD confirmation.'
         : (titles[status] ?? 'Your order details.'),
@@ -26,9 +28,9 @@ export function orderPresentation(
       paymentStatus === 'refunded'
         ? 'Refund recorded'
         : paymentStatus === 'paid'
-          ? 'Cash on delivery collected'
+          ? paymentMode==='prepaid'?'Bank payment verified':'Cash on delivery collected'
           : status === 'cancelled'
             ? 'No payment due'
-            : 'Cash on delivery',
+            : paymentMode==='prepaid'?'Awaiting verified bank payment':'Cash on delivery',
   };
 }

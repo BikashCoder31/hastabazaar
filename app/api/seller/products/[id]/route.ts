@@ -66,6 +66,8 @@ export async function PATCH(
       id,
     );
     if (!current) return json({ error: 'Product not found.' }, 404);
+    const linked=await database.prepare('SELECT draft_id AS draftId FROM product_publication_links WHERE product_id=?').bind(id).first<{draftId:string}>();
+    if(linked)return json({error:'Continue the retained private workspace to change this product.',workspaceHref:'/seller/products/new?draftId='+encodeURIComponent(linked.draftId)},409);
     const rateLimit = await consumeRequestRateLimit(database, request, {
       scope: `seller-product-revision:${seller.sellerId}`, limit: 20, windowMs: 60 * 60_000,
     });

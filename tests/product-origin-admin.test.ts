@@ -19,12 +19,17 @@ void test('protected product review renders actual stored origin, evidence statu
     const form=new FormData();Object.entries({categoryId:'cat',nameEn:'Decorative hanging',descriptionEn:'A decorative hanging for an entrance.',price:'824',compareAtPrice:'1648',inventoryQuantity:'10',preparationDays:'3',returnEligible:'no',occasionIds:'hastabazaar-occasion-others'}).forEach(([key,value])=>form.set(key,value));
     const parsed=parseProductSubmission(form);assert.deepEqual(parsed.errors,[]);
     await createProductSubmission(f.db,{productId:'product',sellerId:'seller',actorId:'seller-user',slug:'review-origin',input:parsed.input!,images:[],now:2});
-    const bridge={product:await getProductForReview(f.db,'product')};
+    f.sqlite.exec(`INSERT INTO users(id,auth_subject,email,display_name,locale,status,created_at,updated_at)
+      VALUES('staff','staff','staff@local.hastabazaar.test','Fictional product reviewer','en-NP','active',1,1);
+      INSERT INTO user_roles(user_id,role,assigned_at) VALUES('staff','admin',1);
+      INSERT INTO staff_permission_profiles(user_id,permissions_json,version,updated_by,updated_at)
+      VALUES('staff','["product.review"]',1,'staff',1);`);
+    const bridge={db:f.db,product:await getProductForReview(f.db,'product')};
     const stubs:Record<string,string>={
       'cloudflare:workers':'exports.env={};',
       'next/navigation':'exports.notFound=()=>{throw Error("Unexpected missing product")};',
-      '@/lib/auth/staff':'exports.requireStaffPage=async()=>({userId:"staff",role:"admin",permissions:["product.review"]});',
-      '@/lib/db/d1':'exports.requireDatabase=()=>({});',
+      '@/lib/auth/staff':'exports.requireStaffPage=async()=>({id:"staff",role:"admin",permissions:["product.review"]});',
+      '@/lib/db/d1':'exports.requireDatabase=()=>originFixture.db;',
       '@/lib/db/repositories/products':'exports.getProductForReview=async()=>originFixture.product;exports.listActiveCategories=async()=>[];exports.listActiveOccasions=async()=>[];',
       '@/components/admin/staff-form-history-links':'exports.StaffFormHistoryLinks=()=>null;',
       '@/components/admin/product-review-actions':'exports.ProductReviewActions=()=>null;',
@@ -33,7 +38,7 @@ void test('protected product review renders actual stored origin, evidence statu
     };
     const compiled=await build({entryPoints:['app/admin/products/[id]/page.tsx'],jsx:'automatic',bundle:true,write:false,platform:'node',format:'cjs',external:['react','react/*','react-dom','react-dom/*'],plugins:[{name:'origin-review-fixture',setup(b){stubFixtureLink(b);stubFixtureImage(b);b.onResolve({filter:/.*/},({path})=>path in stubs?{path,namespace:'origin-stub'}:undefined);b.onLoad({filter:/.*/,namespace:'origin-stub'},({path})=>({contents:stubs[path],loader:'js'}));}}]});
     const renderedModule={exports:{} as {default:(props:{params:Promise<{id:string}>})=>Promise<ReactNode>}};
-    runInNewContext(compiled.outputFiles[0].text,{require:createRequire(import.meta.url),module:renderedModule,exports:renderedModule.exports,process,originFixture:bridge});
+    runInNewContext(compiled.outputFiles[0].text,{require:createRequire(import.meta.url),module:renderedModule,exports:renderedModule.exports,process,URL,crypto,originFixture:bridge});
     for(const [country,status,reference,wantOrigin,wantStatus] of [
       ['India','seller_declared','Private supplier REF-42','India','Seller declared; unverified'],
       ['','unverified',null,'Unknown','Unverified stored value'],
@@ -51,4 +56,5 @@ void test('protected product review renders actual stored origin, evidence statu
     }
   } finally {f.dispose();}
 });
+
 

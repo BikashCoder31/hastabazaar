@@ -1,0 +1,58 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { companyStoreMakerFixture } from './helpers/company-store-maker-fixture';
+import { createProductSubmission, getProductForReview, getProductMediaObject, getPublishedProductBySlug, listHomepageLatestProducts, listPublishedProducts, reviewProduct } from '../lib/db/repositories/products';
+import { parseProductSubmission } from '../lib/products/submission';
+import { publicProductEligibility } from '../lib/products/eligibility';
+import { getPublicMakerProfile, listPublishedProductsByMaker, listWishlist, setWishlistItem } from '../lib/db/repositories/customers';
+import { addCartItem } from '../lib/db/repositories/cart';
+import { sitemapProducts } from '../lib/seo/discovery';
+import { recordRecentlyViewedProduct, listRecentlyViewedProducts } from '../lib/db/repositories/recently-viewed';
+
+void test('an approved maker product is browsable after publication but cannot be purchased before activation', async () => {
+  const f = await companyStoreMakerFixture();
+  try {
+    f.sqlite.exec(`INSERT INTO categories(id,slug,name_en,is_active,sort_order,created_at,updated_at) VALUES('visibility-category','visibility-craft','Craft',1,1,1,1);
+      INSERT INTO occasions(id,slug,name_en,is_active,sort_order,created_at,updated_at) VALUES('visibility-occasion','visibility-gift','Gift',1,1,1,1);
+      UPDATE seller_participation_profiles SET application_stage='approved_for_activation' WHERE seller_id='maker';
+      UPDATE seller_profiles SET status='under_review' WHERE id='maker';`);
+    const form = new FormData();
+    for (const [key, value] of Object.entries({ categoryId: 'visibility-category', nameEn: 'Fictional handmade cup', descriptionEn: 'A fictional cup.', price: '1000', inventoryQuantity: '2', preparationDays: '1', occasionIds: 'visibility-occasion' })) form.set(key, value);
+    const parsed = parseProductSubmission(form); assert.ok(parsed.input, parsed.errors.join('\n'));
+    const images = Array.from({ length: 4 }, (_, index) => ({ id: `visibility-photo-${index}`, objectKey: `private/product-media/maker/visibility-product/photo-${index}`, originalName: `SIMULATED-${index}.png`, mimeType: 'image/png', sizeBytes: 100, altEn: 'Fictional cup', altNe: null, sortOrder: index }));
+    await createProductSubmission(f.db, { productId: 'visibility-product', sellerId: f.sellerId, actorId: f.actorId, slug: 'fictional-visibility-cup', input: parsed.input, images, intent: 'submit', workspaceMode: 'maker', now: f.now });
+    assert.equal(await getPublishedProductBySlug(f.db, 'fictional-visibility-cup'), null);
+    for (const action of ['start_review', 'approve', 'publish'] as const) await reviewProduct(f.db, { productId: 'visibility-product', actorId: 'reviewer', action, requestId: `visibility-${action}`, reason: 'Fictional product review.', now: f.now + 1 });
+    const listing = await getPublishedProductBySlug(f.db, 'fictional-visibility-cup');
+    assert.ok(listing, 'published maker product should be visible');
+    assert.equal(listing.purchasable, false);
+    const staffView = await getProductForReview(f.db, 'visibility-product');
+    assert.equal(staffView?.publiclyVisible, true);
+    assert.equal(staffView?.purchasable, false);
+    assert.ok((await listPublishedProducts(f.db)).some(product => product.id === 'visibility-product'));
+    assert.ok((await sitemapProducts(f.db, 1)).some(product => product.slug === 'fictional-visibility-cup'));
+    assert.equal((await getProductMediaObject(f.db, 'visibility-photo-0'))?.productStatus, 'published');
+    assert.equal((await getPublicMakerProfile(f.db, f.sellerId))?.productCount, 1);
+    assert.equal((await listPublishedProductsByMaker(f.db, f.sellerId)).length, 1);
+    await setWishlistItem(f.db, { userId: f.actorId, productId: 'visibility-product', saved: true, now: f.now });
+    assert.equal((await listWishlist(f.db, f.actorId)).length, 1);
+    const history = { userId: f.actorId, productId: 'visibility-product', now: f.now, policy: { maxItems: 12, retentionDays: 90 } };
+    assert.equal(await recordRecentlyViewedProduct(f.db, history), true);
+    assert.equal((await listRecentlyViewedProducts(f.db, history))[0]?.available, false);
+    assert.equal((await listHomepageLatestProducts(f.db)).find(product => product.slug === 'fictional-visibility-cup')?.purchasable, false);
+    const available = f.sqlite.prepare(`SELECT COUNT(*) AS count FROM products WHERE id='visibility-product' AND ${publicProductEligibility()}`).get();
+    assert.equal(available?.count, 0, 'the commercial purchase gate remains closed');
+    await assert.rejects(addCartItem(f.db, 'fictional-cart-token', 'visibility-product', 1, f.now), /currently unavailable/i);
+    f.sqlite.exec("INSERT INTO seller_restrictions(seller_id,mode,obligation_mode,reason_code,private_reason,applied_by,applied_at,updated_at) VALUES ('maker','disabled','admin_review','test','Fictional restriction','reviewer',1,1)");
+    assert.equal(await getPublishedProductBySlug(f.db, 'fictional-visibility-cup'), null);
+    assert.equal((await getProductMediaObject(f.db, 'visibility-photo-0'))?.productStatus, 'archived');
+    f.sqlite.exec("DELETE FROM seller_restrictions WHERE seller_id='maker'; INSERT INTO product_deletions(product_id,deleted_by,deleted_at,request_id) VALUES ('visibility-product','reviewer',1,'fictional-deletion')");
+    assert.equal(await getPublishedProductBySlug(f.db, 'fictional-visibility-cup'), null);
+    f.sqlite.exec("DELETE FROM product_deletions WHERE product_id='visibility-product'");
+    f.sqlite.exec("UPDATE seller_participation_profiles SET application_stage='under_review' WHERE seller_id='maker'");
+    assert.equal(await getPublishedProductBySlug(f.db, 'fictional-visibility-cup'), null);
+    assert.equal((await getProductMediaObject(f.db, 'visibility-photo-0'))?.productStatus, 'archived');
+    f.sqlite.exec("UPDATE seller_participation_profiles SET application_stage='approved_for_activation' WHERE seller_id='maker'; UPDATE seller_profiles SET status='suspended' WHERE id='maker'");
+    assert.equal(await getPublishedProductBySlug(f.db, 'fictional-visibility-cup'), null);
+  } finally { f.dispose(); }
+});

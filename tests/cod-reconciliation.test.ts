@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {manualOrderFixture} from './helpers/manual-payment-fixture';
+import {recordBankReceipt} from '../lib/payments/manual-receipts';
+import {operateParcel} from '../lib/operations/parcels';
+void test('a remittance reference remains pending; actual net cash and approved evidenced company carrier costs reconcile gross collection without fictional cash',async()=>{
+ const loadedFixtureModule=await import('../lib/payments/cod-reconciliation').catch(()=>null);assert.equal(typeof loadedFixtureModule?.reconcileCodReceipt,'function','COD needs separate actual receipt, collector allocation and approved deduction records.');
+ const f=await manualOrderFixture({method:'cod'});try{const total=f.order.grandTotalPaisa,fee=2000,jobId='fictional-cod-job',now=Date.now();
+ f.sqlite.prepare("UPDATE orders SET status='delivered',payment_status='paid' WHERE id=?").run(f.orderId);
+ const seller=f.sqlite.prepare('SELECT seller_id FROM order_items WHERE order_id=?').get(f.orderId)!;
+ f.sqlite.prepare("INSERT INTO shipping_jobs(id,order_id,seller_id,direction,status,created_by,created_request_id,created_at,updated_at) VALUES(?,?,?,'outbound','delivered','reviewer','fictional-cod-job-create',?,?)").run(jobId,f.orderId,seller.seller_id,now,now);
+ f.sqlite.prepare("INSERT INTO shipping_parcels(shipping_job_id,cod_due_paisa,collected_paisa,remitted_paisa,method,courier_name,delivered_at,created_at) VALUES(?,?,?,0,'courier','Fictional courier',?,?)").run(jobId,total,total,now,now);
+ f.sqlite.prepare("INSERT INTO parcel_cash_records(id,shipping_job_id,kind,amount_paisa,evidence_reference,status,created_by,created_at) VALUES('fictional-actual-collection',?,'collection',?,'FICTIONAL-COLLECTION-EVIDENCE','posted','reviewer',?)").run(jobId,total,now);
+ await operateParcel(f.db,{jobId,actorId:'reviewer',action:'propose_remittance',version:0,requestId:'fictional-cod-remittance-claim',now,note:'Carrier claimed net bank remittance; this is not verified company receipt.',amountPaisa:total-fee,reference:'FICTIONAL-CARRIER-REMITTANCE-CLAIM'});
+ assert.equal(f.sqlite.prepare('SELECT remitted_paisa n FROM shipping_parcels WHERE shipping_job_id=?').get(jobId)!.n,0);const record=f.sqlite.prepare("SELECT id,status FROM parcel_cash_records WHERE kind='remittance'").get()!;assert.equal(record.status,'pending');
+ f.sqlite.prepare("INSERT INTO parcel_courier_costs(id,shipping_job_id,amount_paisa,evidence_reference,created_by,note,created_at) VALUES('fictional-carrier-cost',?,?,'FICTIONAL-CARRIER-INVOICE','reviewer','Company-paid cost under original carrier terms',?)").run(jobId,fee,now);
+ const receipt=await recordBankReceipt(f.db,{actorId:'reviewer',requestId:'fictional-cod-actual-credit',expectedRevision:null,now:Date.now()},{accountVersionId:f.accountVersionId,transactionIdentity:'FICTIONAL-COD-NET-BANK-CREDIT',bankAt:now,amountMinor:total-fee,currency:'NPR',payerReference:'Fictional carrier independently matched to parcel',payerUserId:null,evidenceReference:'FICTIONAL-COMPLETED-CARRIER-CREDIT',completedCreditConfirmed:true,conflictUserIds:[],reason:'Independently verify the actual company net credit from the carrier.'});
+ const command={actorId:'reviewer',requestId:'fictional-cod-reconciliation',expectedRevision:'1',now:Date.now()},input={jobId,receiptId:receipt.id,expectedReceiptRevision:0,amountPaisa:total-fee,cashRecordId:String(record.id),deductions:[{courierCostId:'fictional-carrier-cost',amountPaisa:fee,termsEvidence:'FICTIONAL-ORIGINAL-CARRIER-COMPANY-COST-TERMS'}],evidenceReference:'FICTIONAL-PARCEL-BANK-ALLOCATION',reason:'Match actual cash and separately approved company carrier costs to this parcel.'};
+ await assert.rejects(loadedFixtureModule!.reconcileCodReceipt(f.db,{...command,actorId:'delegate'},input));await loadedFixtureModule!.reconcileCodReceipt(f.db,command,input);await loadedFixtureModule!.reconcileCodReceipt(f.db,command,input);
+ assert.equal(f.sqlite.prepare('SELECT remitted_paisa n FROM shipping_parcels WHERE shipping_job_id=?').get(jobId)!.n,total-fee);assert.equal(f.sqlite.prepare('SELECT SUM(amount_minor) n FROM company_money_receipts').get()!.n,total-fee);const state=f.sqlite.prepare('SELECT * FROM cod_reconciliation_balances WHERE shipping_job_id=?').get(jobId)!;assert.equal(state.actual_cash_paisa,total-fee);assert.equal(state.approved_deductions_paisa,fee);assert.equal(state.remaining_paisa,0);assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM cod_company_receipt_allocations').get()!.n,1);
+ await assert.rejects(loadedFixtureModule!.reconcileCodReceipt(f.db,{...command,requestId:'fictional-double-cod-credit',expectedRevision:'2'},{...input,expectedReceiptRevision:1}));
+ }finally{f.dispose();}
+});

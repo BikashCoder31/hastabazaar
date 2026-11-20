@@ -48,7 +48,7 @@ export default async function AccountPage() {
     <div className="space-y-7">
       <section className="rounded-3xl bg-[#17345f] p-6 text-white sm:p-8">
         <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#f4c46b]">
-          Your little corner of HastaBazaar
+          Your little corner of Hastabazaar
         </p>
         <h1 className="mt-4 break-words font-heading text-4xl tracking-tight sm:text-5xl">
           Hello, {customer.displayName.split(' ')[0]}.

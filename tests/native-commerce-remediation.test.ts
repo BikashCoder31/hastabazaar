@@ -2,13 +2,21 @@ import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import mysql, { type Pool } from 'mysql2/promise';
 import { env } from '../lib/runtime/node-bindings';
-import { createCustomerReturnRequest, reviewReturnAsAdmin, advanceReturnAsAdmin, decideHighValueRefund } from '../lib/db/repositories/returns';
+import { createCustomerReturnRequest, reviewReturnAsAdmin, decideHighValueRefund } from '../lib/db/repositories/returns';
 import { accrueManagedEntitlements, getManagedFinanceSummary } from '../lib/db/repositories/managed-settlements';
 import { createCodOrder } from '../lib/db/repositories/orders';
 import { prepareSellerParcels, operateParcel, listParcels } from '../lib/operations/parcels';
 import { SELLER_AGREEMENT_VERSION } from '../lib/content/legal-policies';
 import { assertNativeFixtureScope } from './helpers/native-fixture-scope';
 import { cancellationPreview, cancelSelectedParcels } from '../lib/cancellation/repository';
+import { allocateOriginalDelivery, ORIGINAL_DELIVERY_ALLOCATION } from '../lib/returns/delivery-allocation';
+import { getReturnHandling, recordReturnHandling } from '../lib/returns/handling';
+import { getRegisteredSellerTerms, prepareSellerCommissionAcceptance } from '../lib/db/repositories/marketplace-settings';
+import { saveBusinessSettingChange } from '../lib/db/repositories/business-settings';
+import { verifySellerDocument } from '../lib/sellers/document-review';
+import { recordRefundPacketOutcome } from '../lib/payments/refund-obligations';
+import { seedVerifiedCheckoutContact } from './helpers/checkout-contact';
+import { executeFixtureRefund } from './helpers/execute-fixture-refund';
 
 // Explicit opt-in: this harness only writes fictional rows in the coordinator's
 // isolated loopback MariaDB database. It never creates/imports schema or deletes data.
@@ -27,10 +35,17 @@ if (enabled) {
 after(async () => { await Promise.all(pools.map(pool => pool.end())); mysql.createPool = originalCreatePool; });
 const db = env.DB;
 const now = Date.now();
+const financeActor = 'native-commerce-reviewer';
 const policy = {generalRequestWindowDays:7,sealedGoodsWindowDays:15,deliveryDamageEvidenceWindowHours:48,
   changeOfMindEnabled:true,highValueRefundThresholdPaisa:1000000,refundInitiationBusinessDays:2,codRefundEstimateBusinessDays:[3,7]};
 
 async function fixture(label: string) {
+  if (!await db.prepare('SELECT id FROM users WHERE id=?').bind(financeActor).first()) {
+    await db.batch([
+      db.prepare("INSERT INTO users(id,auth_subject,email,display_name,status,created_at,updated_at) VALUES (?,?,?,'Fictional commerce reviewer','active',?,?)").bind(financeActor,financeActor,financeActor+'@example.test',now,now),
+      db.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES (?,'super_admin',?)").bind(financeActor,now),
+    ]);
+  }
   const prefix = `native-${label}-${crypto.randomUUID().slice(0,8)}`;
   const phone='98'+String(crypto.getRandomValues(new Uint32Array(1))[0]%100000000).padStart(8,'0');
   const admin=prefix+'-admin',owner=prefix+'-owner',seller=prefix+'-seller',buyer=prefix+'-buyer',order=prefix+'-order';
@@ -39,10 +54,10 @@ async function fixture(label: string) {
       VALUES (?,?,?,'SIMULATED native commerce user','en-NP','active',?,?)`).bind(id,id,id+'@example.test',now,now).run();
     await db.prepare('INSERT INTO user_roles(user_id,role,assigned_at) VALUES (?,?,?)').bind(id,role,now).run();
   }
-  await db.prepare(`INSERT INTO seller_profiles(id,user_id,legal_name,trading_name,registration_authority,registration_number,tax_mode,
+  await db.prepare(`INSERT INTO seller_profiles(id,user_id,applicant_type,legal_name,trading_name,registration_authority,registration_number,tax_mode,
     tax_registration_number,representative_name,support_phone,support_email,province,district,municipality,locality,
     payout_account_reference,status,approved_at,seller_agreement_version,seller_agreement_accepted_at,created_at,updated_at)
-    VALUES (?,?,'SIMULATED Maker','SIMULATED Shop','Local',?,'PAN',?,'SIMULATED Representative','9800000000',?,
+    VALUES (?,?,'individual','SIMULATED Maker','SIMULATED Shop','Local',?,'PAN',?,'SIMULATED Representative','9800000000',?,
       'Madhesh','Dhanusha','Janakpur','Ward 1','SIM-PAYOUT','approved',?,?,?,?,?)`)
     .bind(seller,owner,prefix+'-REG',prefix+'-PAN',owner+'@example.test',now-100*86400000,SELLER_AGREEMENT_VERSION,now,now,now).run();
   await db.prepare("INSERT INTO categories(id,slug,name_en,is_active,sort_order,created_at,updated_at) VALUES (?,?,'SIMULATED native',1,1,?,?)")
@@ -70,6 +85,60 @@ async function fixture(label: string) {
   return {prefix,admin,owner,seller,buyer,order,items,products,phone,receipt:prefix+'-receipt'};
 }
 type Fixture = Awaited<ReturnType<typeof fixture>>;
+
+async function saveOriginalDelivery(f: Fixture) {
+  const original = await db.prepare('SELECT delivery_charge_paisa AS delivery,placed_at AS placed FROM orders WHERE id=?')
+    .bind(f.order).first<{delivery:number;placed:number}>();
+  assert.ok(original);
+  const items = (await db.prepare('SELECT id,seller_id AS sellerId,line_total_paisa AS amount,quantity FROM order_items WHERE order_id=? ORDER BY id')
+    .bind(f.order).all<{id:string;sellerId:string;amount:number;quantity:number}>()).results;
+  const shares = allocateOriginalDelivery(original.delivery,items);
+  assert.deepEqual([...shares.values()],[30000,30000]);
+  await db.batch(items.map(item=>db.prepare('INSERT INTO order_delivery_allocations(order_item_id,order_id,seller_id,amount_paisa,original_quantity,policy_version,created_at) VALUES(?,?,?,?,?,?,?)')
+    .bind(item.id,f.order,item.sellerId,shares.get(item.id)!,item.quantity,ORIGINAL_DELIVERY_ALLOCATION,original.placed)));
+}
+
+async function readyCheckoutSeller(f: Fixture) {
+  if (!await db.prepare("SELECT id FROM business_setting_versions WHERE setting_key='independent_seller_commission_bps'").first()) {
+    await saveBusinessSettingChange(db,{key:'independent_seller_commission_bps',value:1200,actorId:financeActor,
+      reason:'Fictional historical current seller commission already completed its full notice interval.',requestId:'native-commerce-current-commission',
+      now:now-1296000002,effectiveFrom:now-1,expectedVersion:0});
+  }
+  for (const kind of ['representative_identity','pan_certificate']) {
+    const id=f.prefix+'-'+kind;
+    await db.prepare("INSERT INTO seller_documents(id,seller_id,kind,object_key,original_name,mime_type,size_bytes,status,uploaded_at) VALUES (?,?,?,?,'fictional.pdf','application/pdf',100,'pending',?)")
+      .bind(id,f.seller,kind,'private/seller-documents/'+f.seller+'/'+id,now).run();
+    await verifySellerDocument(db,{sellerId:f.seller,documentId:id,actorId:financeActor,reason:'Independently verify exact fictional registered seller evidence.',commandId:'verify-'+id,now,expectedReviewId:null});
+  }
+  const terms=await getRegisteredSellerTerms(db,now);
+  const accepted=await prepareSellerCommissionAcceptance(db,{sellerId:f.seller,actorId:f.owner,context:terms.context,requestId:f.prefix+'-terms',now,mode:'approved_seller'});
+  await db.batch([db.prepare('UPDATE seller_profiles SET seller_agreement_version=?,seller_agreement_accepted_at=? WHERE id=?').bind(terms.agreementVersion,now,f.seller),...accepted.statements]);
+}
+
+async function executeReturnRefund(f: Fixture, caseId: string, target = db) {
+  const source=await target.prepare('SELECT id FROM refunds WHERE return_request_id=?').bind(caseId).first<{id:string}>();
+  assert.ok(source);
+  return executeFixtureRefund(target,{actorId:financeActor,kind:'return_refund',sourceId:source.id,customerId:f.buyer,deferCompletion:true});
+}
+
+async function collectOriginalOrder(f: Fixture) {
+  await db.prepare("UPDATE orders SET customer_id=?,status='confirmed',payment_status='pending',delivered_at=NULL WHERE id=?").bind(f.buyer,f.order).run();
+  await db.prepare("UPDATE payments SET status='pending' WHERE order_id=?").bind(f.order).run();
+  await db.prepare("UPDATE order_items SET fulfillment_status='confirmed' WHERE order_id=?").bind(f.order).run();
+  await seedVerifiedCheckoutContact(db,f.buyer,f.phone,now);
+  await prepareSellerParcels(db,{orderId:f.order,actorId:f.admin,requestId:f.prefix+'-original-parcels',now});
+  for (const initial of await listParcels(db,f.order)) {
+    for (const action of ['assign','dispatch','deliver','collect'] as const) {
+      const parcel=(await listParcels(db,f.order)).find(row=>row.id===initial.id)!;
+      if (action==='dispatch')await db.prepare("UPDATE order_items SET fulfillment_status='ready_for_pickup' WHERE order_id=? AND seller_id=?").bind(f.order,parcel.sellerId).run();
+      await operateParcel(db,{jobId:parcel.id,actorId:f.admin,action,version:parcel.version,now,
+        note:'Record actual fictional original courier and COD collection.',requestId:f.prefix+'-'+parcel.id+'-'+action,
+        ...(action==='assign'?{method:'courier' as const,courierName:'Fictional Original Courier',trackingCode:'FICTIONAL-'+parcel.id}:{}),
+        ...(action==='collect'?{amountPaisa:parcel.codDuePaisa,reference:f.prefix+'-original-cash'}:{})});
+    }
+  }
+  assert.ok((await listParcels(db,f.order)).every(parcel=>parcel.collectedPaisa===parcel.codDuePaisa));
+}
 async function createReturn(f:Fixture,index=0,customerId?:string) {
   return createCustomerReturnRequest(db,{orderNumber:f.order,receiptTokenHash:f.receipt,orderItemId:f.items[index],quantity:1,
     reason:'defective',requestedResolution:'refund',detail:'SIMULATED native defective delivered item.',locale:'en-NP',
@@ -80,48 +149,67 @@ function review(f:Fixture,id:string,requestId:string,deliveryRefundPaisa=0) {
     note:'SIMULATED native review.',publicMessageEn:'Approved.',publicMessageNe:'Approved.',responsibility:'seller' as const,
     outcome:'refund' as const,itemRefundPaisa:0,deliveryRefundPaisa,requestId,now};
 }
-function simultaneousBatches(database:D1Database,count=2):D1Database {
-  let reached=0;let release!:()=>void;
-  const ready=new Promise<void>(resolve=>{release=resolve;});
-  return {prepare:database.prepare.bind(database),batch:async(statements:D1PreparedStatement[])=>{
-    reached++;if(reached===count)release();await ready;return database.batch(statements);
-  }} as D1Database;
+function withBatch(database:D1Database,batch:(statements:D1PreparedStatement[])=>Promise<D1Result[]>):D1Database {
+  return Object.assign(Object.create(database),{prepare:database.prepare.bind(database),batch});
 }
+
+function simultaneousBatches(database:D1Database,label:string):D1Database {
+  let reached=0,release!:()=>void,reject!:(error:Error)=>void;
+  let timer:ReturnType<typeof setTimeout>;
+  const ready=new Promise<void>((resolve,fail)=>{release=resolve;reject=fail;});
+  return withBatch(database,async statements=>{
+    if(++reached===1)timer=setTimeout(()=>reject(new Error(`Both ${label} commands must reach an actual batch.`)),10000);
+    else if(reached===2){clearTimeout(timer);release();}
+    await ready;
+    return database.batch(statements);
+  });
+}
+
 function beforeBatch(database:D1Database,interleave:()=>Promise<unknown>):D1Database {
-  return {prepare:database.prepare.bind(database),batch:async(statements:D1PreparedStatement[])=>{
-    await interleave();return database.batch(statements);
-  }} as D1Database;
+  return withBatch(database,async statements=>{await interleave();return database.batch(statements);});
 }
 
 void test('native F02 independent competing approvals reserve one current delivery allowance',{skip:!enabled},async()=>{
   const f=await fixture('f02');
+  await saveOriginalDelivery(f);
   await db.prepare('UPDATE orders SET current_delivery_paisa=40000,current_subtotal_paisa=200000,current_total_paisa=240000,current_wallet_paisa=0,current_discount_paisa=0 WHERE id=?').bind(f.order).run();
   const [a,b]=[await createReturn(f),await createReturn(f,1)];
-  await assert.rejects(reviewReturnAsAdmin(db,review(f,a.id,f.prefix+'-oversized',60000)),/remaining delivery charge/);
-  const concurrent=simultaneousBatches(db);
-  const results=await Promise.allSettled([reviewReturnAsAdmin(concurrent,review(f,a.id,f.prefix+'-approve-a',40000)),reviewReturnAsAdmin(concurrent,review(f,b.id,f.prefix+'-approve-b',40000))]);
+  await assert.rejects(reviewReturnAsAdmin(db,review(f,a.id,f.prefix+'-oversized',60000)),/exact attributable original delivery/);
+  const concurrent=simultaneousBatches(db,'delivery approval');
+  const results=await Promise.allSettled([reviewReturnAsAdmin(concurrent,review(f,a.id,f.prefix+'-approve-a',30000)),reviewReturnAsAdmin(concurrent,review(f,b.id,f.prefix+'-approve-b',30000))]);
   assert.equal(results.filter(result=>result.status==='fulfilled').length,1);
   const failure=results.find(result=>result.status==='rejected') as PromiseRejectedResult;
   assert.match(String(failure.reason),/stale-delivery-refund-capacity/);
-  assert.equal((await db.prepare('SELECT SUM(delivery_amount_paisa) AS n FROM refunds WHERE order_id=?').bind(f.order).first<{n:number}>())?.n,40000);
+  assert.equal((await db.prepare('SELECT SUM(delivery_amount_paisa) AS n FROM refunds WHERE order_id=?').bind(f.order).first<{n:number}>())?.n,30000);
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM return_requests WHERE order_item_id IN (?,?) AND status='requested'").bind(...f.items).first<{n:number}>())?.n,1);
+  const totals=await db.prepare('SELECT delivery_charge_paisa AS originalDelivery,grand_total_paisa AS originalTotal,current_delivery_paisa AS currentDelivery,current_total_paisa AS currentTotal FROM orders WHERE id=?').bind(f.order).first();
+  assert.deepEqual({...totals},{originalDelivery:60000,originalTotal:260000,currentDelivery:40000,currentTotal:240000});
 });
 
 void test('native F03 real checkout consumes the last unit before replacement batch and all return effects roll back',{skip:!enabled},async()=>{
   const f=await fixture('f03'),created=await createReturn(f);
   await reviewReturnAsAdmin(db,{...review(f,created.id,f.prefix+'-approve'),outcome:'replacement'});
+  await readyCheckoutSeller(f);
   await db.prepare('UPDATE users SET phone=? WHERE id=?').bind('+977'+f.phone,f.buyer).run();
   await db.prepare('INSERT INTO account_email_verifications(user_id,email,verified_at) VALUES (?,?,?)').bind(f.buyer,f.buyer+'@example.test',now).run();
   await db.prepare('INSERT INTO account_phone_verifications(user_id,phone,verified_at) VALUES (?,?,?)').bind(f.buyer,'+977'+f.phone,now).run();
   await db.prepare("INSERT INTO carts(id,anonymous_token_hash,currency,created_at,updated_at) VALUES (?,?,'NPR',?,?)").bind(f.prefix+'-cart',f.prefix+'-cart-token',now,now).run();
   await db.prepare('INSERT INTO cart_items(id,cart_id,product_id,quantity,created_at,updated_at) VALUES (?,?,?,1,?,?)').bind(f.prefix+'-cart-item',f.prefix+'-cart',f.products[0],now,now).run();
   const beforeNotifications=(await db.prepare('SELECT COUNT(*) AS n FROM notification_messages WHERE related_id=?').bind(created.id).first<{n:number}>())!.n;
-  const raced=beforeBatch(db,()=>createCodOrder(db,f.prefix+'-cart-token',f.prefix+'-new-receipt',{
+  let purchased=false;
+  const raced=beforeBatch(db,async()=>{await createCodOrder(db,f.prefix+'-cart-token',f.prefix+'-new-receipt',{
     customerEmail:f.buyer+'@example.test',customerAuthSubject:f.buyer,customerPhone:f.phone,locale:'en-NP',termsAccepted:true,
     idempotencyKey:crypto.randomUUID(),address:{recipientName:'SIMULATED Buyer',phone:f.phone,province:'Madhesh',district:'Dhanusha',municipality:'Janakpur',locality:'Ward 1'},
-  },now,f.buyer));
-  await assert.rejects(advanceReturnAsAdmin(raced,{returnRequestId:created.id,actorId:f.admin,actorRole:'admin',action:'resolve_replacement',
-    note:'SIMULATED native stock race.',publicMessageEn:'Replaced.',publicMessageNe:'Replaced.',reference:f.prefix+'-replacement',requestId:f.prefix+'-resolve',now}),/lost-return-inventory-transition/);
+  },now,f.buyer);purchased=true;});
+  const handling=await getReturnHandling(db,created.id);
+  assert.ok(handling);
+  await assert.rejects(recordReturnHandling(raced,{actorId:f.admin,expectedRevision:String(handling.revision),requestId:f.prefix+'-resolve',now:Date.now()},
+    {caseId:created.id,action:'prepare_replacement',occurredAt:handling.now,publicMessage:'Prepare the customer-agreed fictional replacement.',privateNote:'SIMULATED native stock race.',evidenceReference:'FICTIONAL-REPLACEMENT-EVIDENCE',customerAgreementReference:'FICTIONAL-CUSTOMER-AGREEMENT',promisedAt:Date.now()+86400000}),
+    (error:unknown)=>typeof error==='object'&&error!==null&&'errno' in error&&error.errno===4025&&'message' in error&&/operation_transaction_guards.*valid/.test(String(error.message)));
+  assert.equal(purchased,true,'The independent checkout must consume the last unit before replacement commits.');
+  assert.equal(await db.prepare('SELECT id FROM return_replacement_shipments WHERE case_id=?').bind(created.id).first(),null);
+  assert.equal(await db.prepare('SELECT id FROM return_stock_actions WHERE case_id=?').bind(created.id).first(),null);
+  assert.equal((await getReturnHandling(db,created.id))?.revision,handling.revision);
   assert.equal((await db.prepare('SELECT status FROM return_requests WHERE id=?').bind(created.id).first<{status:string}>())?.status,'approved');
   assert.equal(await db.prepare('SELECT id FROM return_outcomes WHERE return_request_id=?').bind(created.id).first(),null);
   assert.equal(await db.prepare('SELECT id FROM return_request_events WHERE request_id=?').bind(f.prefix+'-resolve').first(),null);
@@ -142,7 +230,7 @@ void test('native F07 independent accrual requests claim and credit one managed 
     .bind(snapshot,f.items[0],f.seller,now).run();
   await db.prepare("INSERT INTO managed_entitlements(id,snapshot_id,seller_id,status,calculated_paisa,created_at,updated_at) VALUES (?,?,?,'calculated',91000,?,?)")
     .bind(entitlement,snapshot,f.seller,now,now).run();
-  const concurrent=simultaneousBatches(db);
+  const concurrent=simultaneousBatches(db,'managed accrual');
   const amounts=await Promise.all([accrueManagedEntitlements(concurrent,{orderId:f.order,actorId:f.admin,requestId:f.prefix+'-accrue-a',now}),accrueManagedEntitlements(concurrent,{orderId:f.order,actorId:f.admin,requestId:f.prefix+'-accrue-b',now})]);
   assert.deepEqual(amounts.sort((a,b)=>a-b),[0,1]);
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM managed_settlement_entries WHERE entitlement_id=? AND type='earned'").bind(entitlement).first<{n:number}>())?.n,1);
@@ -155,10 +243,12 @@ void test('native F07 independent accrual requests claim and credit one managed 
 
 void test('native F06 first parcel refund waits for collected whole-order facts and competing accrual credits net once',{skip:!enabled},async()=>{
   const f=await fixture('f06'),other=await fixture('f06-other');
-  await db.prepare("UPDATE orders SET status='confirmed',payment_status='pending',delivered_at=NULL WHERE id=?").bind(f.order).run();
+  await db.prepare("UPDATE orders SET customer_id=?,status='confirmed',payment_status='pending',delivered_at=NULL WHERE id=?").bind(f.buyer,f.order).run();
   await db.prepare("UPDATE payments SET status='pending' WHERE order_id=?").bind(f.order).run();
   await db.prepare("UPDATE order_items SET fulfillment_status='confirmed' WHERE order_id=?").bind(f.order).run();
   await db.prepare('UPDATE order_items SET seller_id=?,product_id=? WHERE id=?').bind(other.seller,other.products[0],f.items[1]).run();
+  await saveOriginalDelivery(f);
+  await seedVerifiedCheckoutContact(db,f.buyer,f.phone,now);
   await db.prepare("UPDATE order_items SET commission_paisa=0,commission_bps=0,commission_rule_version='managed-sale-linked' WHERE id=?").bind(f.items[0]).run();
   const snapshot=f.prefix+'-snapshot',entitlement=f.prefix+'-entitlement';
   await db.prepare(`INSERT INTO managed_commercial_snapshots(id,order_item_id,seller_id,participation_route,commercial_model,
@@ -183,24 +273,33 @@ void test('native F06 first parcel refund waits for collected whole-order facts 
     await op(parcel.id,'dispatch');
   }
   await op(first.id,'deliver');await op(first.id,'collect',{amountPaisa:first.codDuePaisa,reference:f.prefix+'-first-cash'});
-  const created=await createReturn(f);
-  await reviewReturnAsAdmin(db,{...review(f,created.id,f.prefix+'-review'),itemRefundPaisa:50000});
-  const common={returnRequestId:created.id,actorId:f.admin,actorRole:'admin' as const,note:'SIMULATED native unearned refund.',publicMessageEn:'Paid.',publicMessageNe:'Paid.',now};
-  await advanceReturnAsAdmin(db,{...common,action:'start_refund',requestId:f.prefix+'-start'});
-  const complete={...common,action:'complete_refund' as const,reference:f.prefix+'-refund-ref',requestId:f.prefix+'-complete'};
-  await advanceReturnAsAdmin(db,complete);await advanceReturnAsAdmin(db,complete);
+  const created=await createReturn(f,0,f.buyer);
+  await reviewReturnAsAdmin(db,{...review(f,created.id,f.prefix+'-review',30000),itemRefundPaisa:50000});
+  const refund=await db.prepare('SELECT id,item_amount_paisa AS merchandise,delivery_amount_paisa AS delivery,amount_paisa AS cash FROM refunds WHERE return_request_id=?')
+    .bind(created.id).first<{id:string;merchandise:number;delivery:number;cash:number}>();
+  assert.ok(refund);
+  assert.deepEqual([refund.merchandise,refund.delivery,refund.cash],[50000,30000,80000]);
+  const execution=await executeReturnRefund(f,created.id);
+  const paid=await execution.complete();
+  assert.deepEqual(await execution.complete(),paid);
+  const costs=(await db.prepare('SELECT component,party,seller_id AS seller,amount_paisa AS amount FROM refund_cost_allocations WHERE refund_id=? ORDER BY component')
+    .bind(refund.id).all<{component:string;party:string;seller:string;amount:number}>()).results;
+  assert.ok(costs.some(row=>row.component==='original_delivery'&&row.party==='seller'&&row.seller===f.seller&&row.amount===30000));
+  const outgoing=await db.prepare("SELECT amount_paisa AS cash FROM company_outgoing_bank_identities WHERE packet_kind='refund' AND packet_id=?")
+    .bind(execution.packetId).all<{cash:number}>();
+  assert.deepEqual(outgoing.results.map(row=>row.cash),[80000]);
   assert.equal((await getManagedFinanceSummary(db,f.seller,now)).balancePaisa,0);
   await op(second.id,'deliver');assert.equal((await getManagedFinanceSummary(db,f.seller,now)).balancePaisa,0);
   let batches=0;
-  const competing={prepare:db.prepare.bind(db),batch:async(statements:D1PreparedStatement[])=>{
+  const competing=withBatch(db,async statements=>{
     if(++batches!==2)return db.batch(statements);
-    const concurrent=simultaneousBatches(db);
+    const concurrent=simultaneousBatches(db,'final parcel accrual');
     const [result]=await Promise.all([concurrent.batch(statements),accrueManagedEntitlements(concurrent,{orderId:f.order,actorId:f.admin,requestId:f.prefix+'-competing-accrual',now})]);
     return result;
-  }} as D1Database;
+  });
   await op(second.id,'collect',{amountPaisa:second.codDuePaisa,reference:f.prefix+'-second-cash'},competing);
-  assert.equal((await getManagedFinanceSummary(db,f.seller,now)).balancePaisa,45500);
-  assert.deepEqual((await db.prepare('SELECT type,amount_paisa AS amount FROM managed_settlement_entries WHERE entitlement_id=? ORDER BY amount_paisa DESC').bind(entitlement).all<{type:string;amount:number}>()).results.map(row=>({...row})),[{type:'earned',amount:91000},{type:'refund_adjustment',amount:-45500}]);
+  assert.equal((await getManagedFinanceSummary(db,f.seller,now)).balancePaisa,15500);
+  assert.deepEqual((await db.prepare('SELECT type,amount_paisa AS amount FROM managed_settlement_entries WHERE entitlement_id=? ORDER BY amount_paisa DESC').bind(entitlement).all<{type:string;amount:number}>()).results.map(row=>({...row})),[{type:'earned',amount:91000},{type:'dispute_adjustment',amount:-30000},{type:'refund_adjustment',amount:-45500}]);
   assert.equal((await db.prepare('SELECT payment_status AS status FROM orders WHERE id=?').bind(f.order).first<{status:string}>())?.status,'part_refunded');
   assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM seller_ledger_entries WHERE order_item_id=?').bind(f.items[0]).first<{n:number}>())?.n,0);
   const invoices=await db.prepare('SELECT snapshot_json AS snapshot FROM managed_invoice_groups WHERE order_id=?').bind(f.order).all<{snapshot:string}>();
@@ -212,12 +311,13 @@ void test('native F06 first parcel refund waits for collected whole-order facts 
 
 void test('native F04 high-value checker blocks requester owner and owner-change decisions with rollback',{skip:!enabled},async()=>{
   const f=await fixture('f04'),checker=f.prefix+'-checker';
+  await saveOriginalDelivery(f);
   await db.prepare("INSERT INTO users(id,auth_subject,email,display_name,locale,status,created_at,updated_at) VALUES (?,?,?,'SIMULATED high-value checker','en-NP','active',?,?)")
     .bind(checker,checker,checker+'@example.test',now,now).run();
   for(const role of ['super_admin','customer'])await db.prepare('INSERT INTO user_roles(user_id,role,assigned_at) VALUES (?,?,?)').bind(checker,role,now).run();
   await db.prepare('UPDATE orders SET customer_id=?,return_policy_snapshot_json=? WHERE id=?').bind(checker,JSON.stringify({...policy,highValueRefundThresholdPaisa:50000}),f.order).run();
   const created=await createReturn(f,0,checker);
-  await reviewReturnAsAdmin(db,{...review(f,created.id,f.prefix+'-admin-review'),itemRefundPaisa:100000});
+  await reviewReturnAsAdmin(db,{...review(f,created.id,f.prefix+'-admin-review',30000),itemRefundPaisa:100000});
   const decision=(approve:boolean,requestId:string)=>({returnRequestId:created.id,actorId:checker,approve,
     note:'SIMULATED high-value owner review.',publicMessageEn:'Reviewed.',publicMessageNe:'Reviewed.',requestId,now});
   for(const approve of [true,false])await assert.rejects(decideHighValueRefund(db,decision(approve,f.prefix+'-self-'+approve)),/cannot review/);
@@ -240,35 +340,50 @@ void test('native F04 high-value checker blocks requester owner and owner-change
   assert.equal((await db.prepare('SELECT status FROM refunds WHERE return_request_id=?').bind(created.id).first<{status:string}>())?.status,'approved');
 });
 
-void test('native F02 failed refund restart and new approval compete for one current delivery reservation',{skip:!enabled},async()=>{
+void test('native F02 failed refund restart and new approval retain distinct original delivery reservations',{skip:!enabled},async()=>{
   const f=await fixture('f02-restart');
-  await db.prepare('UPDATE orders SET current_delivery_paisa=40000,current_subtotal_paisa=200000,current_total_paisa=240000,current_wallet_paisa=0,current_discount_paisa=0 WHERE id=?').bind(f.order).run();
-  const a=await createReturn(f),b=await createReturn(f,1);
-  await reviewReturnAsAdmin(db,review(f,a.id,f.prefix+'-approve-a',40000));
-  const action=(id:string,action:'start_refund'|'fail_refund'|'complete_refund',requestId:string)=>({returnRequestId:id,actorId:f.admin,actorRole:'admin' as const,action,
-    note:'SIMULATED native refund restart.',publicMessageEn:'Reviewed.',publicMessageNe:'Reviewed.',requestId,now,reference:action==='complete_refund'?f.prefix+'-paid-ref':undefined});
-  await advanceReturnAsAdmin(db,action(a.id,'start_refund',f.prefix+'-start-a'));
-  await advanceReturnAsAdmin(db,action(a.id,'fail_refund',f.prefix+'-fail-a'));
-  const concurrent=simultaneousBatches(db);
-  const results=await Promise.allSettled([
-    advanceReturnAsAdmin(concurrent,action(a.id,'start_refund',f.prefix+'-restart-race')),
-    reviewReturnAsAdmin(concurrent,review(f,b.id,f.prefix+'-approval-race',40000)),
+  await saveOriginalDelivery(f);
+  await collectOriginalOrder(f);
+  const a=await createReturn(f,0,f.buyer),b=await createReturn(f,1,f.buyer);
+  await reviewReturnAsAdmin(db,review(f,a.id,f.prefix+'-approve-a',30000));
+  const original=await executeReturnRefund(f,a.id);
+  await recordRefundPacketOutcome(db,{actorId:financeActor,requestId:f.prefix+'-confirmed-no-debit',expectedRevision:'2',now:Date.now()},
+    {packetId:original.packetId,outcome:'failed',failureBasis:'no_debit',evidenceReference:'FICTIONAL-ORIGINAL-NO-DEBIT',reason:'Independent fictional bank evidence confirms the original instruction made no debit.'});
+  assert.equal((await db.prepare('SELECT status FROM refunds WHERE return_request_id=?').bind(a.id).first<{status:string}>())?.status,'failed');
+  await assert.rejects(reviewReturnAsAdmin(db,review(f,b.id,f.prefix+'-would-steal-original',60000)),/exact attributable original delivery/);
+  const concurrent=simultaneousBatches(db,'delivery approval and retry packet');
+  const retryDb=withBatch(db,statements=>{
+    const preparesPacket=statements.some(statement=>(statement as D1PreparedStatement&{sql?:string}).sql?.startsWith('INSERT INTO outgoing_payment_packets'));
+    return (preparesPacket?concurrent:db).batch(statements);
+  });
+  const [retry]=await Promise.all([
+    executeReturnRefund(f,a.id,retryDb),
+    reviewReturnAsAdmin(concurrent,review(f,b.id,f.prefix+'-parallel-approval',30000)),
   ]);
-  assert.equal(results.filter(result=>result.status==='fulfilled').length,1);
-  const failure=results.find(result=>result.status==='rejected') as PromiseRejectedResult;
-  assert.match(String(failure.reason),/stale-refund-restart-capacity|stale-delivery-refund-capacity/);
-  assert.equal((await db.prepare("SELECT SUM(delivery_amount_paisa) AS n FROM refunds WHERE order_id=? AND status NOT IN ('failed','rejected')").bind(f.order).first<{n:number}>())?.n,40000);
-  if(results[0].status==='fulfilled')await advanceReturnAsAdmin(db,action(a.id,'complete_refund',f.prefix+'-complete-a'));
-  else{
-    await advanceReturnAsAdmin(db,action(b.id,'start_refund',f.prefix+'-start-b'));
-    await advanceReturnAsAdmin(db,action(b.id,'complete_refund',f.prefix+'-complete-b'));
-    await assert.rejects(advanceReturnAsAdmin(db,action(a.id,'start_refund',f.prefix+'-retry-denied')),/remaining delivery charge/);
-  }
-  assert.equal((await db.prepare("SELECT SUM(delivery_amount_paisa) AS n FROM refunds WHERE order_id=? AND status='paid'").bind(f.order).first<{n:number}>())?.n,40000);
+  assert.equal(retry.obligationId,original.obligationId);
+  assert.notEqual(retry.packetId,original.packetId);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM outgoing_payment_packets WHERE obligation_id=? AND state='processing'").bind(original.obligationId).first<{n:number}>())?.n,1);
+  await assert.rejects(executeReturnRefund(f,a.id),/current original obligation|pending payment attempt/);
+  const other=await executeReturnRefund(f,b.id);
+  const firstPaid=await retry.complete();
+  assert.deepEqual(await retry.complete(),firstPaid);
+  const secondPaid=await other.complete();
+  assert.deepEqual(await other.complete(),secondPaid);
+  assert.deepEqual((await db.prepare("SELECT delivery_amount_paisa AS delivery FROM refunds WHERE order_id=? AND status='paid' ORDER BY return_request_id")
+    .bind(f.order).all<{delivery:number}>()).results.map(row=>row.delivery),[30000,30000]);
+  assert.equal((await db.prepare('SELECT delivery_charge_paisa AS original FROM orders WHERE id=?').bind(f.order).first<{original:number}>())?.original,60000);
+  const failed=await db.prepare('SELECT state FROM outgoing_payment_packets WHERE id=?').bind(original.packetId).first<{state:string}>();
+  assert.equal(failed?.state,'failed');
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM refund_obligations WHERE source_kind='return_refund' AND source_id=(SELECT id FROM refunds WHERE return_request_id=?)")
+    .bind(a.id).first<{n:number}>())?.n,1);
+  const wireCount=await db.prepare("SELECT COUNT(*) AS n FROM company_outgoing_bank_identities WHERE packet_kind='refund' AND packet_id IN (?,?)")
+    .bind(retry.packetId,other.packetId).first<{n:number}>();
+  assert.equal(wireCount?.n,2);
 });
 
 void test('native real email-only COD checkout cancellation restores stock once and preserves original totals on replay', {skip: !enabled}, async () => {
   const f = await fixture('release-cancellation');
+  await readyCheckoutSeller(f);
   await db.prepare('UPDATE users SET phone=? WHERE id=?').bind('+977' + f.phone, f.buyer).run();
   await db.prepare('INSERT INTO account_email_verifications(user_id,email,verified_at) VALUES (?,?,?)').bind(f.buyer, f.buyer + '@example.test', now).run();
   assert.equal(await db.prepare('SELECT user_id FROM account_phone_verifications WHERE user_id=?').bind(f.buyer).first(), null);

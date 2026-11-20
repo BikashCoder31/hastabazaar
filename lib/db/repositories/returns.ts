@@ -1,7 +1,22 @@
+import {paymentGuard} from '../../payments/manual-receipts';
+import {readRefundCurrentProgress,readReturnRefundPaymentProgress,refundBankReturnSettlementSql,type CustomerRefundPaymentProgress,type RefundCurrentProgress} from '../../payments/refund-current-progress';
+import {originalReturnDelivery,effectiveDeliveryAllocationSql} from '../../returns/delivery-allocation';
+import { prepareRefundDeliveryUnitClaims, usesSellerShipmentDelivery } from '../../returns/seller-shipment-delivery';
+import { originalVoluntaryDeliveryTerms } from '../../returns/priced-return-policy';
+import { prepareOriginalBuyerMerchandiseRefundGuard, quoteOriginalBuyerMerchandiseRefund } from '../../incentives/original-benefit-refunds';
+import {aftercareFollowup,publicAftercareFollowup,type PublicAftercareFollowup} from '../../returns/followup';
+import {returnHandlingWorkspace,publicReturnHandling,type ReturnHandlingWorkspace,type PublicReturnHandling} from '../../returns/handling';
+import {checkoutCommitClock} from '../../checkout/commit-policy-guards';
+import {itemDeliverySql} from '../../returns/item-delivery';
+import {withOrderOfferSnapshots,getOrderItemOfferSnapshot} from '../../products/offer-order-contract';
 import { buildManagedRefundAdjustmentStatements } from './managed-settlements';
+import {managedRefundResponsibilityStatements} from '../../managed-commerce/refund-responsibility';
+import { lawfulServiceFeeRefundTotalSql } from './platform-service-fee-refunds';
+import { payableOrderTotalSql } from './platform-service-fee';
 import { caseBusinessNotificationStatements } from '../../operations/business-notifications';
 import { buildFormAnswerInsert } from './form-answers';
 import { assertCommerceFormReplay, type CommerceForm } from './commerce-form-replay';
+import { currentFormVersionGuards } from '@/lib/forms/native-version';
 import { staffMutationGuard } from './staff-mutation-guard';
 import { digestFormRequest } from '@/lib/forms/submission';
 import type { StaffRole } from '@/lib/auth/staff';
@@ -114,6 +129,8 @@ export async function createCustomerReturnRequest(
     evidence: readonly ReturnEvidenceInput[];
     now: number;
     form?: CommerceForm;
+    /** Trusted staff intake only; customer HTTP handlers do not accept this field. */
+    supportIntake?:{actorId:string;receivedAt:number;channel:'email'|'support';sourceReference:string};
   },
 ): Promise<{
   id: string;
@@ -121,6 +138,16 @@ export async function createCustomerReturnRequest(
   eligibilityDecision: string;
   duplicate: boolean;
 }> {
+  const intake=options.supportIntake,firstReceivedAt=intake?.receivedAt??options.now;
+  const intakeAuthority=intake?await staffMutationGuard(database,intake.actorId,'support.manage',ReturnConflictError):null;
+  if(intake){
+    const clock=await database.prepare(`SELECT ${checkoutCommitClock(database)} AS now`).first<{now:number}>();
+    if(!Number.isSafeInteger(intake.receivedAt)||intake.receivedAt<=0||intake.receivedAt>clock!.now||!['email','support'].includes(intake.channel)||intake.sourceReference.trim().length<8||intake.sourceReference.length>500)throw new ReturnConflictError('Record the actual first received time and the retained support source evidence.');
+  }
+  async function assertIntakeReplay(id:string){
+    const row=await database.prepare('SELECT requested_at AS receivedAt,intake_channel AS channel,intake_recorded_by AS actorId,received_evidence_reference AS reference FROM return_requests WHERE id=?').bind(id).first<{receivedAt:number;channel:string;actorId:string|null;reference:string|null}>();
+    if(!row||row.channel!==(intake?.channel??'web')||row.actorId!==(intake?.actorId??null)||row.reference!==(intake?.sourceReference.trim()??null)||intake&&row.receivedAt!==intake.receivedAt)throw new ReturnConflictError('This request reference belongs to different original intake evidence.');
+  }
   const previous = await database
     .prepare(
       `SELECT return_requests.id, return_requests.reference_number AS referenceNumber,
@@ -145,11 +172,12 @@ export async function createCustomerReturnRequest(
     )
     .first<ReturnReplayRow>();
   if (previous) {
+    await assertIntakeReplay(previous.id);
     assertReturnReplay(previous, options);
     await assertReturnEvidenceReplay(database, previous.id, options.idempotencyKey, options.evidence);
     await assertCommerceFormReplay(database, { formId: 'commerce.return-request',
       requestId: options.idempotencyKey, subjectType: 'return_request', subjectId: previous.id,
-      actorId: options.customerId ?? null, form: options.form, conflictError: ReturnConflictError });
+      actorId: intake?.actorId??options.customerId ?? null, form: options.form, conflictError: ReturnConflictError });
     return { id: previous.id, referenceNumber: previous.referenceNumber,
       eligibilityDecision: previous.eligibilityDecision, duplicate: true };
   }
@@ -158,7 +186,7 @@ export async function createCustomerReturnRequest(
     .prepare(
       `SELECT orders.id AS orderId, order_items.id AS orderItemId,
         CASE WHEN EXISTS(SELECT 1 FROM shipping_jobs j JOIN shipping_parcels p ON p.shipping_job_id=j.id WHERE j.order_id=orders.id AND j.seller_id=order_items.seller_id AND p.delivered_at IS NOT NULL) THEN 'delivered' ELSE orders.status END AS orderStatus, order_items.fulfillment_status AS fulfillmentStatus,
-        COALESCE((SELECT p.delivered_at FROM shipping_jobs j JOIN shipping_parcels p ON p.shipping_job_id=j.id WHERE j.order_id=orders.id AND j.seller_id=order_items.seller_id),orders.delivered_at) AS deliveredAt,
+        ${itemDeliverySql()} AS deliveredAt,
         orders.return_policy_snapshot_json AS policySnapshotJson, orders.locale,
         order_items.quantity AS itemQuantity,
         order_items.line_total_paisa AS lineTotalPaisa,
@@ -182,9 +210,7 @@ export async function createCustomerReturnRequest(
       'The selected delivered item could not be verified.',
     );
   if (
-    item.orderStatus !== 'delivered' ||
-    item.fulfillmentStatus !== 'delivered' ||
-    !item.deliveredAt
+    item.fulfillmentStatus !== 'delivered'
   ) {
     throw new ReturnConflictError(
       'Returns can be requested only after this item is delivered.',
@@ -220,8 +246,8 @@ export async function createCustomerReturnRequest(
   const policy = parseReturnPolicySnapshot(item.policySnapshotJson);
   const eligibility = evaluateReturnEligibility({
     reason: options.reason,
-    deliveredAt: item.deliveredAt,
-    now: options.now,
+    deliveredAt: item.deliveredAt??0,
+    now: firstReceivedAt,
     productReturnEligible: Boolean(item.returnEligible),
     originalSealIntact: Boolean(options.originalSealIntact),
     policy,
@@ -239,13 +265,13 @@ export async function createCustomerReturnRequest(
           status, responsibility,
           eligibility_decision, eligibility_reason_en, eligibility_reason_ne,
           policy_snapshot_json, created_request_id, operation_request_id,
-          requested_at, updated_at, resolved_at, reviewed_by
+          requested_at, updated_at, resolved_at, reviewed_by,recorded_at,intake_channel,intake_recorded_by,received_evidence_reference,delivered_at_snapshot
         ) SELECT ?, ?, order_items.id, ?, ?, ?, ?, ?, ?, ?, 'requested',
-          'undetermined', ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL
+          'undetermined', ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL,${checkoutCommitClock(database)},?,?,?,?
           FROM order_items INNER JOIN orders ON orders.id = order_items.order_id
           WHERE order_items.id = ? AND orders.order_number = ?
             AND (orders.receipt_token_hash = ? OR orders.customer_id = ?)
-            AND (orders.status = 'delivered' OR EXISTS(SELECT 1 FROM shipping_jobs j JOIN shipping_parcels p ON p.shipping_job_id=j.id WHERE j.order_id=orders.id AND j.seller_id=order_items.seller_id AND p.delivered_at IS NOT NULL))
+            AND COALESCE(${itemDeliverySql()},-1)=?
             AND order_items.fulfillment_status = 'delivered'
             AND NOT EXISTS (
               SELECT 1 FROM return_requests WHERE order_item_id = order_items.id
@@ -272,12 +298,14 @@ export async function createCustomerReturnRequest(
         item.policySnapshotJson,
         options.idempotencyKey,
         options.idempotencyKey,
+        firstReceivedAt,
         options.now,
-        options.now,
+        intake?.channel??'web',intake?.actorId??null,intake?.sourceReference.trim()??null,item.deliveredAt,
         options.orderItemId,
         options.orderNumber,
         options.receiptTokenHash,
         options.customerId ?? null,
+        item.deliveredAt??-1,
         options.quantity,
       ),
     database
@@ -286,13 +314,14 @@ export async function createCustomerReturnRequest(
           id, return_request_id, from_status, to_status, action, actor_id,
           actor_type, public_message_en, public_message_ne, internal_note,
           request_id, created_at
-        ) SELECT ?, id, NULL, 'requested', 'customer_requested', NULL,
-          'customer', 'Return request received for review.',
+        ) SELECT ?, id, NULL, 'requested', ?, ?,
+          ?, 'Return request received for review.',
           'फिर्ता अनुरोध समीक्षाका लागि प्राप्त भयो।', NULL, ?, ?
           FROM return_requests WHERE id = ? AND created_request_id = ?`,
       )
       .bind(
         eventId,
+        intake?'support_recorded':'customer_requested',intake?.actorId??null,intakeAuthority?.role??'customer',
         options.idempotencyKey,
         options.now,
         id,
@@ -336,12 +365,13 @@ export async function createCustomerReturnRequest(
         `INSERT INTO audit_logs (
           id, actor_id, action, subject_type, subject_id, reason,
           previous_json, next_json, request_id, ip_hash, created_at
-        ) SELECT ?, NULL, 'return.customer.requested', 'return_request', id, ?,
+        ) SELECT ?, ?, ?, 'return_request', id, ?,
           NULL, ?, ?, NULL, ? FROM return_requests
           WHERE id = ? AND created_request_id = ?`,
       )
       .bind(
         crypto.randomUUID(),
+        intake?.actorId??options.customerId??null,intake?'return.support.recorded':'return.customer.requested',
         options.detail,
         JSON.stringify({
           referenceNumber,
@@ -363,7 +393,7 @@ export async function createCustomerReturnRequest(
   if (options.form) statements.push(buildFormAnswerInsert(database, {
     formId: 'commerce.return-request', requestId: options.idempotencyKey,
     versionId: options.form.versionId, subjectType: 'return_request', subjectId: id,
-    actorId: options.customerId ?? null, answers: options.form.answers, now: options.now,
+    actorId: intake?.actorId??options.customerId ?? null, answers: options.form.answers, now: options.now,
   }));
 
   try {
@@ -372,13 +402,14 @@ export async function createCustomerReturnRequest(
         sourceType: 'return_request',
         sourceId: id,
         eventId: options.idempotencyKey,
-        actorId: options.customerId,
+        actorId: intake?.actorId??options.customerId,
         action: 'created',
         now: options.now,
       })),
     );
+    statements.push(...intakeAuthority?.statements??[]);
     const results = await database.batch(statements);
-    if ((results[0].meta.changes ?? 0) !== 1) {
+    if ((results[0].meta.changes ?? 0) < 1) {
       throw new ReturnConflictError(
         'Another return is open or the remaining item quantity is insufficient.',
       );
@@ -398,11 +429,12 @@ export async function createCustomerReturnRequest(
         .bind(options.idempotencyKey)
         .first<ReturnReplayRow>();
       if (duplicate) {
+        await assertIntakeReplay(duplicate.id);
         assertReturnReplay(duplicate, options);
         await assertReturnEvidenceReplay(database, duplicate.id, options.idempotencyKey, options.evidence);
         await assertCommerceFormReplay(database, { formId: 'commerce.return-request',
           requestId: options.idempotencyKey, subjectType: 'return_request', subjectId: duplicate.id,
-          actorId: options.customerId ?? null, form: options.form, conflictError: ReturnConflictError });
+          actorId: intake?.actorId??options.customerId ?? null, form: options.form, conflictError: ReturnConflictError });
         return { id: duplicate.id, referenceNumber: duplicate.referenceNumber,
           eligibilityDecision: duplicate.eligibilityDecision, duplicate: true };
       }
@@ -421,6 +453,10 @@ export async function createCustomerReturnRequest(
 }
 
 export interface ReturnCaseRow {
+  followup?:PublicAftercareFollowup;
+  currentPublicMessage?:string|null;
+  physical?:PublicReturnHandling;
+  offerSnapshot?: import('../../products/offer-order-contract').OrderOfferSnapshot | null;
   id: string;
   referenceNumber: string;
   orderNumber: string;
@@ -448,12 +484,21 @@ export interface ReturnCaseRow {
   resolvedAt: number | null;
   refundId: string | null;
   refundStatus: string | null;
+  refundProgress?:RefundCurrentProgress|null;
+  refundPaymentProgress?:CustomerRefundPaymentProgress|null;
   refundAmountPaisa: number | null;
   refundWalletPaisa: number | null;
   refundDiscountPaisa: number | null;
   refundPromoPaisa: number | null;
   refundCashPaisa: number | null;
   refundProviderReference: string | null;
+}
+
+async function withCurrentRefundProgress<T extends ReturnCaseRow>(db:D1Database,row:T){
+  const refundProgress=row.refundId?await readRefundCurrentProgress(db,row.refundId):null;
+  const refundPaymentProgress=row.refundId&&!refundProgress?await readReturnRefundPaymentProgress(db,row.refundId):null;
+  return {...row,refundProgress,refundPaymentProgress,
+    currentPublicMessage:refundProgress?.message??refundPaymentProgress?.message??row.currentPublicMessage};
 }
 
 export interface CaseEventRow {
@@ -478,6 +523,11 @@ export interface EvidenceRow {
 }
 
 export interface ReturnCaseDetail extends ReturnCaseRow {
+  deliveryEntitlement?:Awaited<ReturnType<typeof originalReturnDelivery>>;
+  pricingEntitlement?: {kind:'ready';itemPaisa:number;deliveryPaisa:number;cashPaisa:number;usesVariantPricing?:boolean;canRetainVoluntaryDelivery?:boolean}
+    | {kind:'needs_reconciliation'} | null;
+  staffFollowup?:Awaited<ReturnType<typeof aftercareFollowup>>;
+  handling?:ReturnHandlingWorkspace;physical?:PublicReturnHandling;
   customerEmail?: string;
   customerPhone?: string;
   sellerId?: string;
@@ -502,6 +552,7 @@ const returnSelect = `SELECT return_requests.id,
   return_requests.requested_resolution AS requestedResolution,
   return_requests.original_seal_intact AS originalSealIntact,
   return_requests.status, return_requests.responsibility,
+  (SELECT e.public_message_en FROM return_request_events e WHERE e.return_request_id=return_requests.id AND e.request_id=return_requests.operation_request_id LIMIT 1) AS currentPublicMessage,
   return_requests.eligibility_decision AS eligibilityDecision,
   return_requests.eligibility_reason_en AS eligibilityReasonEn,
   return_requests.eligibility_reason_ne AS eligibilityReasonNe,
@@ -525,7 +576,7 @@ const returnSelect = `SELECT return_requests.id,
   INNER JOIN orders ON orders.id = order_items.order_id
   LEFT JOIN refunds ON refunds.return_request_id = return_requests.id`;
 
-async function returnCaseParts(database: D1Database, returnRequestId: string) {
+async function returnCaseParts(database: D1Database, returnRequestId: string,privateAccess=true) {
   const [events, evidence] = await Promise.all([
     database
       .prepare(
@@ -547,7 +598,7 @@ async function returnCaseParts(database: D1Database, returnRequestId: string) {
       .bind(returnRequestId)
       .all<EvidenceRow>(),
   ]);
-  return { events: events.results, evidence: evidence.results };
+  return { events: privateAccess?events.results:events.results.map(event=>({...event,internalNote:null})), evidence: evidence.results };
 }
 
 export async function listReturnsForCustomerReceipt(
@@ -565,7 +616,8 @@ export async function listReturnsForCustomerReceipt(
     )
     .bind(orderNumber, receiptTokenHash, customerId)
     .all<ReturnCaseRow>();
-  return result.results;
+  const rows=await withOrderOfferSnapshots(database,result.results,row=>row.orderItemId);
+  return Promise.all(rows.map(async row=>withCurrentRefundProgress(database,{...row,investigationSummary:null,followup:await publicAftercareFollowup(database,'return_request',row.id),physical:await publicReturnHandling(database,row.id)})));
 }
 
 export async function getCustomerReturnDetail(
@@ -584,7 +636,7 @@ export async function getCustomerReturnDetail(
     .bind(returnRequestId, orderNumber, receiptTokenHash, customerId)
     .first<ReturnCaseRow>();
   if (!row) return null;
-  return { ...row, ...(await returnCaseParts(database, row.id)) };
+  return withCurrentRefundProgress(database,{ ...row,investigationSummary:null,followup:await publicAftercareFollowup(database,'return_request',row.id),physical:await publicReturnHandling(database,row.id), offerSnapshot:await getOrderItemOfferSnapshot(database,row.orderItemId), ...(await returnCaseParts(database, row.id,false)) });
 }
 
 export async function addCustomerReturnClarification(
@@ -600,15 +652,19 @@ export async function addCustomerReturnClarification(
     now: number;
   },
 ): Promise<void> {
-  const duplicate = await database.prepare(`SELECT id FROM return_request_events WHERE request_id = ? LIMIT 1`)
-    .bind(options.requestId).first();
-  if (duplicate) return;
+  if(options.message.trim().length<10||options.message.length>4000)throw new ReturnConflictError('Provide the actual requested clarification.');
+  const source=await database.prepare(`SELECT r.status,h.waiting_for AS waitingFor,h.clarification_at AS clarificationAt FROM return_requests r JOIN order_items i ON i.id=r.order_item_id JOIN orders o ON o.id=i.order_id LEFT JOIN return_handling h ON h.case_id=r.id WHERE r.id=? AND o.order_number=? AND (o.receipt_token_hash=? OR o.customer_id=?)`).bind(options.returnRequestId,options.orderNumber,options.receiptTokenHash,options.customerId??null).first<{status:string;waitingFor:string|null;clarificationAt:number|null}>();
+  if(!source)throw new ReturnConflictError('This original return is unavailable.');
+  const duplicate=await database.prepare('SELECT return_request_id AS caseId,action,internal_note AS message FROM return_request_events WHERE request_id=?').bind(options.requestId).first<{caseId:string;action:string;message:string}>();
+  if(duplicate){if(duplicate.caseId!==options.returnRequestId||duplicate.action!=='customer_clarified'||duplicate.message!==options.message)throw new ReturnConflictError('This reference already records different clarification content.');return;}
+  if(['resolved','rejected'].includes(source.status)||source.status!=='needs_customer_changes'&&source.waitingFor!=='customer')throw new ReturnConflictError('This case is not waiting for customer clarification.');
+  const toStatus=source.status==='needs_customer_changes'?'under_investigation':source.status;
   const results = await database.batch([
     database
       .prepare(
-        `UPDATE return_requests SET status = 'under_investigation', detail = detail || ?,
+        `UPDATE return_requests SET status = ?, detail = detail || ?,
           locale = ?, operation_request_id = ?, updated_at = ?
-         WHERE id = ? AND status = 'needs_customer_changes'
+         WHERE id = ? AND status = ? AND (status='needs_customer_changes' OR EXISTS(SELECT 1 FROM return_handling h WHERE h.case_id=return_requests.id AND h.waiting_for='customer' AND COALESCE(h.clarification_at,-1)=?))
            AND EXISTS (
              SELECT 1 FROM order_items INNER JOIN orders ON orders.id = order_items.order_id
              WHERE order_items.id = return_requests.order_item_id
@@ -617,11 +673,12 @@ export async function addCustomerReturnClarification(
            )`,
       )
       .bind(
+        toStatus,
         `\n\nCustomer clarification: ${options.message}`,
         options.locale,
         options.requestId,
         options.now,
-        options.returnRequestId,
+        options.returnRequestId,source.status,source.clarificationAt??-1,
         options.orderNumber,
         options.receiptTokenHash,
         options.customerId ?? null,
@@ -632,14 +689,14 @@ export async function addCustomerReturnClarification(
           id, return_request_id, from_status, to_status, action, actor_id,
           actor_type, public_message_en, public_message_ne, internal_note,
           request_id, created_at
-        ) SELECT ?, id, 'needs_customer_changes', 'under_investigation',
+        ) SELECT ?, id, ?, ?,
           'customer_clarified', NULL, 'customer',
           'Customer supplied the requested information.',
           'ग्राहकले मागिएको जानकारी उपलब्ध गराउनुभयो।', ?, ?, ?
           FROM return_requests WHERE id = ? AND operation_request_id = ?`,
       )
       .bind(
-        crypto.randomUUID(),
+        crypto.randomUUID(),source.status,toStatus,
         options.message,
         options.requestId,
         options.now,
@@ -658,13 +715,14 @@ export async function addCustomerReturnClarification(
       .bind(
         crypto.randomUUID(),
         options.message,
-        JSON.stringify({ status: 'needs_customer_changes' }),
-        JSON.stringify({ status: 'under_investigation' }),
+        JSON.stringify({ status: source.status }),
+        JSON.stringify({ status: toStatus }),
         options.requestId,
         options.now,
         options.returnRequestId,
         options.requestId,
       ),
+    database.prepare(`SELECT CASE WHEN EXISTS(SELECT 1 FROM return_requests WHERE id=? AND operation_request_id=?) THEN 1 ELSE json_extract('stale-return-clarification','$') END`).bind(options.returnRequestId,options.requestId),
     ...(await caseBusinessNotificationStatements(database, {
       sourceType: 'return_request',
       sourceId: options.returnRequestId,
@@ -694,7 +752,8 @@ export async function listReturnsForSeller(
     )
     .bind(sellerId, limit)
     .all<ReturnCaseRow>();
-  return result.results;
+  const rows=await withOrderOfferSnapshots(database,result.results,row=>row.orderItemId);
+  return rows.map(row=>({...row,investigationSummary:null,refundProviderReference:null}));
 }
 
 export async function getSellerReturnDetail(
@@ -710,7 +769,7 @@ export async function getSellerReturnDetail(
     .bind(returnRequestId, sellerId)
     .first<ReturnCaseRow>();
   if (!row) return null;
-  return { ...row, ...(await returnCaseParts(database, row.id)) };
+  return { ...row,investigationSummary:null,refundProviderReference:null,followup:await publicAftercareFollowup(database,'return_request',row.id),physical:await publicReturnHandling(database,row.id), offerSnapshot:await getOrderItemOfferSnapshot(database,row.orderItemId), ...(await returnCaseParts(database, row.id,false)) };
 }
 
 export async function respondToReturnAsSeller(
@@ -804,7 +863,7 @@ export async function respondToReturnAsSeller(
           actor_type, public_message_en, public_message_ne, internal_note,
           request_id, created_at
         ) SELECT ?, id, 'requested', 'under_investigation', 'seller_responded', ?,
-          'seller', 'Seller response received; HastaBazaar is investigating.',
+          'seller', 'Seller response received; Hastabazaar is investigating.',
           'विक्रेताको जवाफ प्राप्त भयो; हथकृति जाँच गर्दैछ।', ?, ?, ?
           FROM return_requests WHERE id = ? AND operation_request_id = ?`,
       )
@@ -869,7 +928,7 @@ export async function listReturnsForOperations(
     .prepare(`${returnSelect} ORDER BY return_requests.updated_at DESC LIMIT ?`)
     .bind(limit)
     .all<ReturnCaseRow>();
-  return result.results;
+  return withOrderOfferSnapshots(database,result.results,row=>row.orderItemId);
 }
 
 export async function getOperationsReturnDetail(
@@ -884,7 +943,7 @@ export async function getOperationsReturnDetail(
         order_items.line_total_paisa AS lineTotalPaisa,
         order_items.tax_paisa AS taxPaisa,
         orders.delivery_charge_paisa AS deliveryChargePaisa,
-        return_requests.policy_snapshot_json AS policySnapshotJson,
+        return_requests.policy_snapshot_json AS policySnapshotJson, orders.id AS pricingOrderId,
         refunds.approved_by AS approvedBy,
         refunds.high_value_approved_by AS highValueApprovedBy,
         refunds.is_high_value AS isHighValue
@@ -898,10 +957,24 @@ export async function getOperationsReturnDetail(
     .bind(returnRequestId)
     .first<
       ReturnCaseRow &
-        Omit<ReturnCaseDetail, keyof ReturnCaseRow | 'events' | 'evidence'>
+        Omit<ReturnCaseDetail, keyof ReturnCaseRow | 'events' | 'evidence'> & {pricingOrderId:string}
     >();
   if (!row) return null;
-  return { ...row, ...(await returnCaseParts(database, row.id)) };
+  const deliveryEntitlement=await originalReturnDelivery(database,row.id);
+  let pricingEntitlement:ReturnCaseDetail['pricingEntitlement']=null;
+  if (['requested','under_investigation','needs_customer_changes'].includes(row.status)) {
+    try {
+      const quote=await quoteOriginalBuyerMerchandiseRefund(database,{orderId:row.pricingOrderId,
+        orderItemId:row.orderItemId,quantity:row.quantity,
+        unitOrdinals:deliveryEntitlement.kind==='ready'?deliveryEntitlement.units?.map(unit=>unit.unitOrdinal):undefined});
+      if (quote) pricingEntitlement=deliveryEntitlement.kind==='ready'
+        ? {kind:'ready',itemPaisa:quote.itemPaisa,deliveryPaisa:deliveryEntitlement.amountPaisa,
+          cashPaisa:quote.cashMerchandisePaisa+deliveryEntitlement.amountPaisa,usesVariantPricing:quote.usesVariantPricing,
+          canRetainVoluntaryDelivery:quote.usesVariantPricing&&row.reason==='change_of_mind'&&Boolean(originalVoluntaryDeliveryTerms(row.policySnapshotJson!))}
+        : {kind:'needs_reconciliation'};
+    } catch { pricingEntitlement={kind:'needs_reconciliation'}; }
+  }
+  return withCurrentRefundProgress(database,{ ...row,deliveryEntitlement,pricingEntitlement,staffFollowup:await aftercareFollowup(database,'return_request',row.id),handling:await returnHandlingWorkspace(database,row.id),followup:await publicAftercareFollowup(database,'return_request',row.id),physical:await publicReturnHandling(database,row.id), offerSnapshot:await getOrderItemOfferSnapshot(database,row.orderItemId), ...(await returnCaseParts(database, row.id)) });
 }
 
 export type AdminReturnReviewAction = 'request_changes' | 'reject' | 'approve';
@@ -910,7 +983,7 @@ export type ReturnOutcome = 'refund' | 'replacement' | 'return_to_origin';
 
 async function assertStaffReturnReplay(database: D1Database, options: {
   requestId: string; returnRequestId: string; actorId: string; eventAction: string;
-  auditAction: string; digest: string; form: CommerceForm;
+  auditAction: string; digest: string; form?: CommerceForm;
 }): Promise<boolean> {
   const event = await database.prepare(`SELECT return_request_id AS caseId, actor_id AS actorId,
     action FROM return_request_events WHERE request_id=? LIMIT 1`).bind(options.requestId)
@@ -925,7 +998,7 @@ async function assertStaffReturnReplay(database: D1Database, options: {
     event.action !== options.eventAction || audit?.actorId !== options.actorId ||
     audit.action !== options.auditAction || savedDigest !== options.digest)
     throw new ReturnConflictError('This request reference was already used for different return content.');
-  await assertCommerceFormReplay(database, { formId: 'staff.return-case-action', requestId: options.requestId,
+  if(options.form) await assertCommerceFormReplay(database, { formId: 'staff.return-case-action', requestId: options.requestId,
     subjectType: 'return_request', subjectId: options.returnRequestId, actorId: options.actorId,
     form: options.form, conflictError: ReturnConflictError });
   return true;
@@ -935,10 +1008,7 @@ function returnFormStatements(database: D1Database, options: { returnRequestId: 
   actorId: string; requestId: string; now: number; form?: CommerceForm }, expectedStatus: string,
   expectedRefundStatus?: string | null): D1PreparedStatement[] {
   if (!options.form) return [];
-  return [database.prepare(`SELECT CASE WHEN (SELECT id FROM form_config_versions
-    WHERE form_id='staff.return-case-action' AND status='published'
-    ORDER BY version DESC LIMIT 1)=? THEN 1
-    ELSE json_extract('stale-staff-return-form', '$') END`).bind(options.form.versionId),
+  return [...currentFormVersionGuards(database, 'staff.return-case-action', options.form.versionId),
   database.prepare(`SELECT CASE WHEN EXISTS (SELECT 1 FROM return_requests
     WHERE id=? AND operation_request_id=? AND status=?) THEN 1
     ELSE json_extract('invalid-staff-return-transition', '$') END`)
@@ -966,6 +1036,8 @@ export async function reviewReturnAsAdmin(
     outcome?: ReturnOutcome;
     itemRefundPaisa?: number;
     deliveryRefundPaisa?: number;
+    decisionEvidenceReference?: string;
+    correctSellerFulfillment?: boolean;
     requestId: string;
     now: number;
     form?: CommerceForm;
@@ -975,28 +1047,22 @@ export async function reviewReturnAsAdmin(
     throw new ReturnConflictError('Return form context is invalid.');
   const authority = await staffMutationGuard(database, options.actorId,
     'refund.approve.standard', ReturnConflictError, options.actorRole);
-  const catalogDigest = options.form ? await digestFormRequest({ caseId: options.returnRequestId,
+  const decisionEvidenceReference=options.decisionEvidenceReference?.trim();
+  const catalogDigest = await digestFormRequest({ caseId: options.returnRequestId,
     actorId: options.actorId, actorRole: options.actorRole, action: options.action, note: options.note,
     publicMessageEn: options.publicMessageEn, publicMessageNe: options.publicMessageNe,
     responsibility: options.responsibility ?? null, outcome: options.outcome ?? null,
     itemRefundPaisa: options.itemRefundPaisa ?? null, deliveryRefundPaisa: options.deliveryRefundPaisa ?? null,
-    versionId: options.form.versionId, answers: options.form.answers }) : null;
-  if (options.form && await assertStaffReturnReplay(database, { requestId: options.requestId,
+    ...(decisionEvidenceReference?{decisionEvidenceReference}:{}),
+    ...(options.correctSellerFulfillment===true?{correctSellerFulfillment:true}:{}),
+    versionId: options.form?.versionId ?? null, answers: options.form?.answers ?? null });
+  if (await assertStaffReturnReplay(database, { requestId: options.requestId,
     returnRequestId: options.returnRequestId, actorId: options.actorId,
     eventAction: `admin_${options.action}`, auditAction: `return.admin.${options.action}`,
     digest: catalogDigest!, form: options.form })) return;
-  if (
-    await database
-      .prepare(
-        `SELECT id FROM return_request_events WHERE request_id = ? LIMIT 1`,
-      )
-      .bind(options.requestId)
-      .first()
-  )
-    return;
   const current = await database
     .prepare(
-      `SELECT return_requests.status, return_requests.requested_by AS requestedBy,
+      `SELECT return_requests.status, return_requests.reason AS caseReason,return_requests.requested_by AS requestedBy,
         return_requests.quantity, return_requests.policy_snapshot_json AS policySnapshotJson,
         orders.id AS orderId, orders.customer_id AS customerId,
         COALESCE(orders.current_delivery_paisa,orders.delivery_charge_paisa)
@@ -1019,6 +1085,7 @@ export async function reviewReturnAsAdmin(
     .first<{
       status: string;
       requestedBy: string | null;
+      caseReason:string;
       customerId: string | null;
       quantity: number;
       policySnapshotJson: string;
@@ -1059,18 +1126,56 @@ export async function reviewReturnAsAdmin(
   let isHighValue = false;
   let itemRefundPaisa = 0;
   let deliveryRefundPaisa = 0;
+  let deliverySourceVersion=0;
+  let deliveryUnits: readonly { unitOrdinal: number; amountPaisa: number }[] | undefined;
+  let pricedRefund: Awaited<ReturnType<typeof quoteOriginalBuyerMerchandiseRefund>> = null;
+  let savedDeliveryShare = 0;
+  let voluntaryPolicyVersion: string | null = null;
+  let trackRetainedDelivery = false;
   let amountPaisa = 0;
   let commissionBaseRefundedPaisa = 0;
   let refundCredit: {walletPaisa:number;discountPaisa:number;basePaisa:number;promoPaisa?:number} = { walletPaisa: 0, discountPaisa: 0, basePaisa: 0 };
 
   if (options.action === 'approve') {
-    if (!options.outcome || !options.responsibility)
+    if (!options.outcome || !['refund','replacement','return_to_origin'].includes(options.outcome) ||
+        !options.responsibility || !['buyer','seller','carrier','platform'].includes(options.responsibility))
       throw new ReturnConflictError(
         'Select the approved outcome and responsible party.',
       );
     if (options.outcome === 'refund') {
-      itemRefundPaisa = options.itemRefundPaisa ?? 0;
-      deliveryRefundPaisa = options.deliveryRefundPaisa ?? 0;
+      const deliveryEntitlement=await originalReturnDelivery(database,options.returnRequestId);
+      if(deliveryEntitlement.kind!=='ready')throw new ReturnConflictError('Reconcile the original saved delivery allocation before approving this refund.');
+      deliverySourceVersion=deliveryEntitlement.sourceVersion;
+      deliveryUnits = deliveryEntitlement.units;
+      try {
+        pricedRefund=await quoteOriginalBuyerMerchandiseRefund(database,{orderId:current.orderId,
+          orderItemId:current.orderItemId,quantity:current.quantity,unitOrdinals:deliveryUnits?.map(unit=>unit.unitOrdinal)});
+      } catch { throw new ReturnConflictError('Reconcile the original saved merchandise and tender before approving this refund.'); }
+      if (pricedRefund?.usesVariantPricing) {
+        if (!decisionEvidenceReference || decisionEvidenceReference.length<8 || decisionEvidenceReference.length>191 || options.note.trim().length<8)
+          throw new ReturnConflictError('Record the reviewed evidence reference and the reason for the refund decision.');
+        const namedEvidence=await database.prepare('SELECT return_request_id AS caseId FROM return_evidence WHERE id=?')
+          .bind(decisionEvidenceReference).first<{caseId:string}>();
+        if (namedEvidence&&namedEvidence.caseId!==options.returnRequestId)
+          throw new ReturnConflictError('The named evidence belongs to a different return case.');
+        if ((options.responsibility==='platform'||options.responsibility==='carrier') && options.correctSellerFulfillment!==true)
+          throw new ReturnConflictError('Confirm from the reviewed evidence that the seller fulfilled correctly.');
+        if (options.responsibility==='seller' && (options.correctSellerFulfillment===true||current.caseReason==='change_of_mind'))
+          throw new ReturnConflictError('Record separately established seller fault before charging the seller.');
+        const savedVoluntaryTerms=originalVoluntaryDeliveryTerms(current.policySnapshotJson);
+        trackRetainedDelivery=Boolean(savedVoluntaryTerms);
+        if (current.caseReason==='change_of_mind' && options.responsibility==='buyer')
+          voluntaryPolicyVersion=savedVoluntaryTerms?.version??null;
+      }
+      itemRefundPaisa=options.itemRefundPaisa??pricedRefund?.itemPaisa??0;
+      savedDeliveryShare=deliveryEntitlement.amountPaisa;
+      const approvedDelivery=voluntaryPolicyVersion?0:savedDeliveryShare;
+      deliveryRefundPaisa=options.deliveryRefundPaisa??approvedDelivery;
+      if(deliveryRefundPaisa!==approvedDelivery)throw new ReturnConflictError(voluntaryPolicyVersion
+        ? 'Use the delivery amount in the accepted voluntary return terms.'
+        : 'Refund the exact attributable original delivery allocation, including eligible no-fault returns.');
+      if (pricedRefund && itemRefundPaisa!==pricedRefund.itemPaisa)
+        throw new ReturnConflictError('Use the exact saved buyer merchandise amount for the approved units.');
       if (!Number.isSafeInteger(itemRefundPaisa) || itemRefundPaisa<0 ||
           !Number.isSafeInteger(deliveryRefundPaisa) || deliveryRefundPaisa<0)
         throw new ReturnConflictError('Refund amounts must be non-negative safe integers.');
@@ -1078,7 +1183,7 @@ export async function reviewReturnAsAdmin(
       if (grossRefund>BigInt(Number.MAX_SAFE_INTEGER))
         throw new ReturnConflictError('The refund total exceeds the supported amount.');
       amountPaisa = Number(grossRefund);
-      const maximumItemRefund = Math.round(
+      const maximumItemRefund = pricedRefund?.itemPaisa ?? Math.round(
         ((current.lineTotalPaisa + current.taxPaisa) * current.quantity) /
           current.itemQuantity,
       );
@@ -1086,7 +1191,7 @@ export async function reviewReturnAsAdmin(
         .prepare(
           `SELECT COALESCE(SUM(refunds.delivery_amount_paisa), 0) AS amount
            FROM refunds WHERE refunds.order_id = ?
-             AND refunds.status<>'rejected' AND (refunds.status<>'failed' OR EXISTS(SELECT 1 FROM orders WHERE orders.id=refunds.order_id AND orders.promo_discount_paisa>0))`,
+             AND refunds.status<>'rejected'`,
         )
         .bind(current.orderId)
         .first<{ amount: number }>();
@@ -1125,6 +1230,7 @@ export async function reviewReturnAsAdmin(
         itemRefundPaisa,
         maximumCommissionBaseRefund,
       );
+      if (pricedRefund?.usesVariantPricing) commissionBaseRefundedPaisa=options.responsibility==='seller'?pricedRefund.sellerPrincipalPaisa:0;
       const existingCommissionBase = await database
         .prepare(
           `SELECT COALESCE(SUM(refunds.commission_base_refunded_paisa), 0) AS amount
@@ -1149,7 +1255,7 @@ export async function reviewReturnAsAdmin(
       toStatus = isHighValue && authority.role!=='super_admin' ? 'pending_high_value_approval' : 'approved';
       refundStatus = toStatus;
       refundId = crypto.randomUUID();
-      refundCredit = await splitCreditRefund(
+      refundCredit = pricedRefund ?? await splitCreditRefund(
         database,
         current.orderId,
         itemRefundPaisa,
@@ -1183,6 +1289,12 @@ export async function reviewReturnAsAdmin(
   ];
 
   if (refundId && refundStatus && options.responsibility) {
+    const versioned=pricedRefund?.usesVariantPricing===true;
+    const merchandiseParty=versioned&&options.responsibility==='seller'&&commissionBaseRefundedPaisa===0?'platform':options.responsibility;
+    const merchandiseAmount=versioned&&merchandiseParty==='seller'?commissionBaseRefundedPaisa:itemRefundPaisa;
+    const deliveryParty=versioned||current.caseReason==='change_of_mind'?'platform':options.responsibility;
+    const retainedDelivery=trackRetainedDelivery?`-COALESCE((SELECT SUM(effect.retained_outbound_paisa) FROM refund_variant_pricing_effects effect
+      JOIN refunds r ON r.id=effect.refund_id WHERE effect.order_item_id=original_item.id AND r.status<>'rejected'),0)`:'';
     statements.push(
       // Reserve remaining delivery cash for every financial model in this batch.
       // Promo completion already reduces the current snapshot, so add paid
@@ -1194,10 +1306,16 @@ export async function reviewReturnAsAdmin(
             THEN COALESCE((SELECT SUM(r.delivery_amount_paisa) FROM refunds r WHERE r.order_id=o.id AND r.status='paid'),0)
             ELSE 0 END
           -COALESCE((SELECT SUM(r.delivery_amount_paisa) FROM refunds r
-            WHERE r.order_id=o.id AND r.status<>'rejected'
-              AND (r.status<>'failed' OR o.promo_discount_paisa>0)),0)>=?)
+            WHERE r.order_id=o.id AND r.status<>'rejected'),0)>=?)
         THEN 1 ELSE json_extract('stale-delivery-refund-capacity','$') END`)
         .bind(current.orderId,deliveryRefundPaisa),
+      ...(pricedRefund?prepareOriginalBuyerMerchandiseRefundGuard(database,pricedRefund):[]),
+      ...(versioned?paymentGuard(database,`NOT EXISTS(SELECT 1 FROM return_evidence WHERE id=? AND return_request_id<>?)`,
+        [decisionEvidenceReference!,options.returnRequestId]):[]),
+      ...(deliveryUnits ? paymentGuard(database, 'EXISTS(SELECT 1 FROM orders WHERE id=? AND cancellation_version=?)',
+        [current.orderId, deliverySourceVersion])
+        : paymentGuard(database,`EXISTS(SELECT 1 FROM orders o JOIN order_items original_item ON original_item.order_id=o.id WHERE original_item.id=? AND o.cancellation_version=?
+        AND (${effectiveDeliveryAllocationSql()})-COALESCE((SELECT SUM(r.delivery_amount_paisa) FROM refunds r JOIN return_requests rr ON rr.id=r.return_request_id WHERE rr.order_item_id=original_item.id AND r.status<>'rejected'),0)${retainedDelivery}>=?)`,[current.orderItemId,deliverySourceVersion,savedDeliveryShare])),
       database
         .prepare(
           `INSERT INTO refunds (
@@ -1235,24 +1353,22 @@ export async function reviewReturnAsAdmin(
           options.returnRequestId,
           options.requestId,
         ),
-      database
-        .prepare(
-          `INSERT INTO refund_liability_entries (
-            id, refund_id, seller_id, party, amount_paisa, description, created_at
-          ) SELECT ?, ?, ?, ?, ?, ?, ?
-            WHERE EXISTS (SELECT 1 FROM refunds WHERE id = ? AND operation_request_id = ?)`,
-        )
-        .bind(
-          crypto.randomUUID(),
-          refundId,
-          options.responsibility === 'seller' ? current.sellerId : null,
-          options.responsibility,
-          amountPaisa,
-          `Approved ${options.responsibility} liability for return ${options.returnRequestId}`,
-          options.now,
-          refundId,
-          options.requestId,
-        ),
+      ...(deliveryUnits ? prepareRefundDeliveryUnitClaims(database, {
+        refundId, orderItemId: current.orderItemId, units: deliveryUnits, now: options.now,
+      }) : []),
+      ...(pricedRefund?.usesVariantPricing?[database.prepare(`INSERT INTO refund_variant_pricing_effects
+        (refund_id,order_item_id,policy_version,quantity,unit_ordinals_json,gross_item_paisa,seller_principal_paisa,
+         platform_addition_paisa,tax_paisa,unallocated_merchandise_paisa,saved_delivery_share_paisa,retained_outbound_paisa,
+         voluntary_policy_version,decision_evidence_reference,correct_seller_fulfillment,approved_by,created_at)
+        VALUES (?,?,'saved_variant_return_v1',?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(refundId,current.orderItemId,
+        current.quantity,JSON.stringify(pricedRefund.unitOrdinals),itemRefundPaisa,commissionBaseRefundedPaisa,
+        pricedRefund.platformAdditionPaisa,pricedRefund.taxPaisa,itemRefundPaisa-merchandiseAmount,
+        savedDeliveryShare,savedDeliveryShare-deliveryRefundPaisa,voluntaryPolicyVersion,
+        decisionEvidenceReference!,options.correctSellerFulfillment===true?1:0,options.actorId,options.now)]:[]),
+      ...([{component:'merchandise',amount:merchandiseAmount,party:merchandiseParty},{component:'original_delivery',amount:deliveryRefundPaisa,party:deliveryParty}].filter(part=>part.amount>0).flatMap(part=>[
+        database.prepare(`INSERT INTO refund_cost_allocations(refund_id,component,party,seller_id,amount_paisa,policy_version,created_by,created_at) VALUES(?,?,?,?,?,'approved_original_refund_costs_v1',?,?)`).bind(refundId,part.component,part.party,part.party==='seller'?current.sellerId:null,part.amount,options.actorId,options.now),
+        database.prepare('INSERT INTO refund_liability_entries(id,refund_id,seller_id,party,amount_paisa,description,created_at) VALUES(?,?,?,?,?,?,?)').bind(crypto.randomUUID(),refundId,part.party==='seller'?current.sellerId:null,part.party,part.amount,'Approved original '+part.component+' allocation for '+options.returnRequestId,options.now),
+      ])),
     );
   }
   statements.push(
@@ -1299,6 +1415,8 @@ export async function reviewReturnAsAdmin(
           highValueApprovedBy:isHighValue && authority.role==='super_admin'?options.actorId:null,
           outcome: options.outcome,
           responsibility: options.responsibility,
+          ...(pricedRefund?.usesVariantPricing?{pricingPolicyVersion:'saved_variant_return_v1',decisionEvidenceReference,
+            correctSellerFulfillment:options.correctSellerFulfillment===true,voluntaryPolicyVersion}:{}),
           refundAmountPaisa: amountPaisa || undefined,
           refundWalletPaisa: refundCredit.walletPaisa,
           refundDiscountPaisa: refundCredit.discountPaisa,
@@ -1356,29 +1474,20 @@ export async function decideHighValueRefund(
     throw new ReturnConflictError('Return form context is invalid.');
   const authority = await staffMutationGuard(database, options.actorId,
     'refund.approve.high_value', ReturnConflictError, 'super_admin');
-  const catalogDigest = options.form ? await digestFormRequest({ caseId: options.returnRequestId,
+  const catalogDigest = await digestFormRequest({ caseId: options.returnRequestId,
     actorId: options.actorId, action: options.approve ? 'high_value_approve' : 'high_value_reject',
     note: options.note, publicMessageEn: options.publicMessageEn,
-    publicMessageNe: options.publicMessageNe, versionId: options.form.versionId,
-    answers: options.form.answers }) : null;
-  if (options.form && await assertStaffReturnReplay(database, { requestId: options.requestId,
+    publicMessageNe: options.publicMessageNe, versionId: options.form?.versionId ?? null,
+    answers: options.form?.answers ?? null });
+  if (await assertStaffReturnReplay(database, { requestId: options.requestId,
     returnRequestId: options.returnRequestId, actorId: options.actorId,
     eventAction: options.approve ? 'high_value_approved' : 'high_value_rejected',
     auditAction: options.approve ? 'refund.high_value.approved' : 'refund.high_value.rejected',
     digest: catalogDigest!, form: options.form })) return;
-  if (
-    await database
-      .prepare(
-        `SELECT id FROM return_request_events WHERE request_id = ? LIMIT 1`,
-      )
-      .bind(options.requestId)
-      .first()
-  )
-    return;
   const current = await database
     .prepare(
       `SELECT return_requests.status, return_requests.requested_by AS requestedBy,
-        orders.customer_id AS customerId, refunds.id AS refundId,
+        orders.customer_id AS customerId, orders.delivery_rate_snapshot_json AS deliverySnapshot, refunds.id AS refundId,
         refunds.approved_by AS approvedBy FROM return_requests
        INNER JOIN order_items ON order_items.id=return_requests.order_item_id
        INNER JOIN orders ON orders.id=order_items.order_id
@@ -1387,7 +1496,7 @@ export async function decideHighValueRefund(
        LIMIT 1`,
     )
     .bind(options.returnRequestId)
-    .first<{ status: string; refundId: string; approvedBy: string | null; requestedBy:string|null; customerId:string|null }>();
+    .first<{ status: string; refundId: string; approvedBy: string | null; requestedBy:string|null; customerId:string|null; deliverySnapshot:string|null }>();
   if (!current || current.status !== 'pending_high_value_approval')
     throw new ReturnConflictError(
       'This refund is not awaiting Super Admin approval.',
@@ -1427,6 +1536,11 @@ export async function decideHighValueRefund(
         current.approvedBy,
         current.approvedBy,
       ),
+    ...(!options.approve && usesSellerShipmentDelivery(current.deliverySnapshot)
+      ? [database.prepare(`DELETE FROM order_delivery_unit_claims WHERE refund_id=? AND EXISTS (
+           SELECT 1 FROM refunds WHERE id=? AND status='rejected' AND operation_request_id=?
+         )`).bind(current.refundId, current.refundId, options.requestId)]
+      : []),
     database
       .prepare(
         `INSERT INTO return_request_events (
@@ -1514,11 +1628,12 @@ export type ReturnOperationsAction =
   | 'mark_received'
   | 'resolve_replacement'
   | 'resolve_return_to_origin'
+  | 'close_paid_refund'
   | 'start_refund'
   | 'complete_refund'
   | 'fail_refund';
 
-export async function advanceReturnAsAdmin(
+export async function prepareReturnOperationStatements(
   database: D1Database,
   options: {
     returnRequestId: string;
@@ -1534,30 +1649,24 @@ export async function advanceReturnAsAdmin(
     now: number;
     form?: CommerceForm;
   },
-): Promise<void> {
+  execution?:{packetId:string},
+): Promise<D1PreparedStatement[]> {
   if (options.form && options.form.answers.formId !== 'staff.return-case-action')
     throw new ReturnConflictError('Return form context is invalid.');
-  const authority = options.form ? await staffMutationGuard(database, options.actorId,
-    'refund.approve.standard', ReturnConflictError, options.actorRole) : null;
-  const catalogDigest = options.form ? await digestFormRequest({ caseId: options.returnRequestId,
+  const financial=['start_refund','complete_refund','fail_refund'].includes(options.action);
+  const authority = await staffMutationGuard(database, options.actorId,
+    financial?'refund.approve.standard':'order.manage', ReturnConflictError, financial?'super_admin':options.actorRole);
+  if(financial&&!execution)throw new ReturnConflictError('Use the verified refund funding packet and its actual bank outcome.');
+  const catalogDigest = await digestFormRequest({ caseId: options.returnRequestId,
     actorId: options.actorId, actorRole: options.actorRole, action: options.action,
     note: options.note, publicMessageEn: options.publicMessageEn,
     publicMessageNe: options.publicMessageNe, reference: options.reference?.trim() || null,
-    restockQuantity: options.restockQuantity ?? 0, versionId: options.form.versionId,
-    answers: options.form.answers }) : null;
-  if (options.form && await assertStaffReturnReplay(database, { requestId: options.requestId,
+    restockQuantity: options.restockQuantity ?? 0, versionId: options.form?.versionId??null,
+    answers: options.form?.answers??null });
+  if (await assertStaffReturnReplay(database, { requestId: options.requestId,
     returnRequestId: options.returnRequestId, actorId: options.actorId,
     eventAction: options.action, auditAction: `return.operations.${options.action}`,
-    digest: catalogDigest!, form: options.form })) return;
-  if (
-    await database
-      .prepare(
-        `SELECT id FROM return_request_events WHERE request_id = ? LIMIT 1`,
-      )
-      .bind(options.requestId)
-      .first()
-  )
-    return;
+    digest: catalogDigest, form: options.form })) return [];
   const current = await database
     .prepare(
       `SELECT return_requests.status, return_requests.resolution_outcome AS outcome,
@@ -1567,7 +1676,7 @@ export async function advanceReturnAsAdmin(
         products.inventory_quantity AS inventoryQuantity,
         refunds.id AS refundId, refunds.status AS refundStatus,
         refunds.amount_paisa AS refundAmountPaisa,
-        refunds.liability AS refundLiability,
+        refunds.liability AS refundLiability,COALESCE((SELECT SUM(cost.amount_paisa) FROM refund_cost_allocations cost WHERE cost.refund_id=refunds.id AND cost.party='seller'),0) AS sellerRefundLiabilityPaisa,
         refunds.commission_base_refunded_paisa AS commissionBaseRefundedPaisa,
         COALESCE(order_items.commission_base_paisa,
           order_items.line_total_paisa - order_items.seller_discount_paisa) AS originalCommissionBasePaisa,
@@ -1597,6 +1706,7 @@ export async function advanceReturnAsAdmin(
       refundStatus: string | null;
       refundAmountPaisa: number | null;
       refundLiability: string | null;
+      sellerRefundLiabilityPaisa:number;
       commissionBaseRefundedPaisa: number | null;
       originalCommissionBasePaisa: number;
       originalCommissionPaisa: number;
@@ -1604,11 +1714,10 @@ export async function advanceReturnAsAdmin(
       entitlementId: string | null;
     }>();
   if (!current) throw new ReturnConflictError('Return request not found.');
-  const restock = options.restockQuantity ?? 0;
-  if (!Number.isInteger(restock) || restock < 0 || restock > current.quantity)
-    throw new ReturnConflictError(
-      'Restock quantity must be within the approved return quantity.',
-    );
+  const handling=await database.prepare('SELECT revision,received_quantity AS receivedQuantity,inspected_quantity AS inspectedQuantity,waived_quantity AS waivedQuantity,restocked_quantity AS restockedQuantity FROM return_handling WHERE case_id=?').bind(options.returnRequestId).first<{revision:number;receivedQuantity:number;inspectedQuantity:number;waivedQuantity:number;restockedQuantity:number}>();
+  const restock=handling?.restockedQuantity??0,physicalComplete=!!handling&&handling.inspectedQuantity+handling.waivedQuantity>=current.quantity;
+  if(options.restockQuantity!==undefined&&options.restockQuantity!==0&&options.restockQuantity!==restock)throw new ReturnConflictError('Record actual receipt, inspection and stock disposition before claiming a restocked quantity.');
+  if(['mark_in_transit','mark_received'].includes(options.action))throw new ReturnConflictError('Use physical handling to record actual custody, quantity, time and evidence.');
   const reference = options.reference?.trim() || null;
   const fromStatus = current.status;
   let toStatus = current.status;
@@ -1641,6 +1750,7 @@ export async function advanceReturnAsAdmin(
       );
     toStatus = 'received';
   } else if (options.action === 'resolve_replacement') {
+    if(!physicalComplete||!await database.prepare("SELECT 1 FROM return_replacement_shipments WHERE case_id=? AND state='delivered' AND quantity=? AND carrier_reference=?").bind(options.returnRequestId,current.quantity,reference).first())throw new ReturnConflictError('The required return disposition and actual replacement delivery must be recorded before completion.');
     if (
       !['approved', 'received'].includes(current.status) ||
       current.outcome !== 'replacement'
@@ -1655,6 +1765,7 @@ export async function advanceReturnAsAdmin(
     toStatus = 'resolved';
     resolvedOutcome = 'replacement';
   } else if (options.action === 'resolve_return_to_origin') {
+    if(!handling||handling.inspectedQuantity<current.quantity)throw new ReturnConflictError('Record actual receipt and inspection before completing return to origin.');
     if (
       !['approved', 'received'].includes(current.status) ||
       current.outcome !== 'return_to_origin'
@@ -1668,9 +1779,13 @@ export async function advanceReturnAsAdmin(
       );
     toStatus = 'resolved';
     resolvedOutcome = 'return_to_origin';
+  } else if (options.action === 'close_paid_refund') {
+    if(!physicalComplete||current.outcome!=='refund'||current.refundStatus!=='paid'||!['approved','in_transit','received'].includes(current.status))throw new ReturnConflictError('Complete the original refund and required physical disposition before closing this case.');
+    if(!current.refundId||!await database.prepare('SELECT 1 WHERE '+refundBankReturnSettlementSql('?')).bind(current.refundId).first())throw new ReturnConflictError('Resolve the returned-credit review and complete any continuing refund before closing this case as paid.');
+    toStatus='resolved';resolvedOutcome='refund';
   } else if (options.action === 'start_refund') {
     if (
-      !['approved', 'received'].includes(current.status) ||
+      !['approved', 'in_transit', 'received'].includes(current.status) ||
       current.outcome !== 'refund' ||
       !['approved', 'failed'].includes(current.refundStatus || '')
     )
@@ -1686,7 +1801,7 @@ export async function advanceReturnAsAdmin(
     refundTo = 'processing';
   } else if (options.action === 'complete_refund') {
     if (
-      !['approved', 'received'].includes(current.status) ||
+      !['approved', 'in_transit', 'received'].includes(current.status) ||
       current.outcome !== 'refund' ||
       current.refundStatus !== 'processing'
     )
@@ -1699,8 +1814,8 @@ export async function advanceReturnAsAdmin(
       );
     refundFrom = 'processing';
     refundTo = 'paid';
-    toStatus = 'resolved';
-    resolvedOutcome = 'refund';
+    toStatus = physicalComplete?'resolved':current.status;
+    resolvedOutcome = physicalComplete?'refund':null;
   } else {
     if (!current.refundId || current.refundStatus !== 'processing')
       throw new ReturnConflictError(
@@ -1840,64 +1955,13 @@ export async function advanceReturnAsAdmin(
           options.requestId,
         ),
     );
-    const replacementOut =
-      resolvedOutcome === 'replacement' ? current.quantity : 0;
-    const inventoryDelta = restock - replacementOut;
-    if (
-      inventoryDelta < 0 &&
-      (current.inventoryQuantity ?? 0) + inventoryDelta < 0
-    ) {
-      throw new ReturnConflictError(
-        'There is not enough inventory to issue this replacement.',
-      );
-    }
-    if (current.productId && inventoryDelta !== 0) {
-      statements.push(
-        database
-          .prepare(
-            `UPDATE products SET inventory_quantity = inventory_quantity + ?, updated_at = ?
-             WHERE id = ? AND inventory_quantity + ? >= 0
-               AND EXISTS (SELECT 1 FROM return_outcomes WHERE return_request_id = ? AND request_id = ?)`,
-          )
-          .bind(
-            inventoryDelta,
-            options.now,
-            current.productId,
-            inventoryDelta,
-            options.returnRequestId,
-            options.requestId,
-          ),
-        database.prepare(`SELECT CASE WHEN changes()=1 THEN 1
-          ELSE json_extract('lost-return-inventory-transition','$') END`),
-        database
-          .prepare(
-            `INSERT INTO inventory_adjustments (
-              id, product_id, seller_id, actor_id, previous_quantity,
-              next_quantity, reason, created_at
-            ) SELECT ?, id, ?, ?, inventory_quantity - ?, inventory_quantity, ?, ?
-              FROM products WHERE id = ?
-                AND EXISTS (SELECT 1 FROM return_outcomes WHERE return_request_id = ? AND request_id = ?)`,
-          )
-          .bind(
-            crypto.randomUUID(),
-            current.sellerId,
-            options.actorId,
-            inventoryDelta,
-            `Return outcome ${resolvedOutcome}: ${options.note}`,
-            options.now,
-            current.productId,
-            options.returnRequestId,
-            options.requestId,
-          ),
-      );
-    }
+    // Physical handling already performs each inspected restock and replacement stock movement once.
   }
   if (
-    resolvedOutcome === 'refund' &&
+    refundTo === 'paid' &&
     current.refundId &&
     !current.commercialModel &&
-    current.refundLiability === 'seller' &&
-    current.refundAmountPaisa
+    current.sellerRefundLiabilityPaisa
   ) {
     statements.push(
       database
@@ -1913,7 +1977,7 @@ export async function advanceReturnAsAdmin(
           current.sellerId,
           current.orderItemId,
           current.refundId,
-          -current.refundAmountPaisa,
+          -current.sellerRefundLiabilityPaisa,
           options.now,
           `Seller liability for paid refund ${current.refundId}`,
           options.now,
@@ -1923,23 +1987,23 @@ export async function advanceReturnAsAdmin(
       database
         .prepare(
           `UPDATE orders SET payment_status = CASE
-            WHEN CASE WHEN promo_discount_paisa>0 THEN (SELECT COALESCE(SUM(item_amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid') >= item_subtotal_paisa-COALESCE((SELECT SUM(item_removed_paisa) FROM order_cancellation_events WHERE order_id=orders.id),0) AND (SELECT COALESCE(SUM(delivery_amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid') >= delivery_charge_paisa+buyer_platform_fee_paisa-COALESCE((SELECT SUM(json_extract(previous_json,'$.delivery')-json_extract(next_json,'$.delivery')) FROM order_cancellation_events WHERE order_id=orders.id),0) ELSE (SELECT COALESCE(SUM(amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid') >= COALESCE(current_total_paisa,grand_total_paisa)+COALESCE(current_wallet_paisa,wallet_credit_paisa)+COALESCE(current_discount_paisa,referral_discount_paisa) END THEN 'refunded'
+            WHEN CASE WHEN promo_discount_paisa>0 THEN (SELECT COALESCE(SUM(item_amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid') >= item_subtotal_paisa-COALESCE((SELECT SUM(item_removed_paisa) FROM order_cancellation_events WHERE order_id=orders.id),0) AND (SELECT COALESCE(SUM(delivery_amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid')+${lawfulServiceFeeRefundTotalSql()} >= delivery_charge_paisa+buyer_platform_fee_paisa-COALESCE((SELECT SUM(json_extract(previous_json,'$.delivery')-json_extract(next_json,'$.delivery')) FROM order_cancellation_events WHERE order_id=orders.id),0) ELSE (SELECT COALESCE(SUM(amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid')+${lawfulServiceFeeRefundTotalSql()} >= ${payableOrderTotalSql()}+COALESCE(current_wallet_paisa,wallet_credit_paisa)+COALESCE(current_discount_paisa,referral_discount_paisa) END THEN 'refunded'
             ELSE 'part_refunded' END, updated_at = ? WHERE id = ?`,
         )
         .bind(options.now, current.orderId),
     );
-  } else if (resolvedOutcome === 'refund') {
+  } else if (refundTo === 'paid') {
     statements.push(
       database
         .prepare(
           `UPDATE orders SET payment_status = CASE
-            WHEN CASE WHEN promo_discount_paisa>0 THEN (SELECT COALESCE(SUM(item_amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid') >= item_subtotal_paisa-COALESCE((SELECT SUM(item_removed_paisa) FROM order_cancellation_events WHERE order_id=orders.id),0) AND (SELECT COALESCE(SUM(delivery_amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid') >= delivery_charge_paisa+buyer_platform_fee_paisa-COALESCE((SELECT SUM(json_extract(previous_json,'$.delivery')-json_extract(next_json,'$.delivery')) FROM order_cancellation_events WHERE order_id=orders.id),0) ELSE (SELECT COALESCE(SUM(amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid') >= COALESCE(current_total_paisa,grand_total_paisa)+COALESCE(current_wallet_paisa,wallet_credit_paisa)+COALESCE(current_discount_paisa,referral_discount_paisa) END THEN 'refunded'
+            WHEN CASE WHEN promo_discount_paisa>0 THEN (SELECT COALESCE(SUM(item_amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid') >= item_subtotal_paisa-COALESCE((SELECT SUM(item_removed_paisa) FROM order_cancellation_events WHERE order_id=orders.id),0) AND (SELECT COALESCE(SUM(delivery_amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid')+${lawfulServiceFeeRefundTotalSql()} >= delivery_charge_paisa+buyer_platform_fee_paisa-COALESCE((SELECT SUM(json_extract(previous_json,'$.delivery')-json_extract(next_json,'$.delivery')) FROM order_cancellation_events WHERE order_id=orders.id),0) ELSE (SELECT COALESCE(SUM(amount_paisa),0) FROM refunds WHERE order_id=orders.id AND status='paid')+${lawfulServiceFeeRefundTotalSql()} >= ${payableOrderTotalSql()}+COALESCE(current_wallet_paisa,wallet_credit_paisa)+COALESCE(current_discount_paisa,referral_discount_paisa) END THEN 'refunded'
             ELSE 'part_refunded' END, updated_at = ? WHERE id = ?`,
         )
         .bind(options.now, current.orderId),
     );
   }
-  if (resolvedOutcome === 'refund' && current.refundId && current.commercialModel==='managed_sale_linked_percentage_v1') {
+  if (refundTo === 'paid' && current.refundId && current.commercialModel==='managed_sale_linked_percentage_v1') {
     if(!current.entitlementId)throw new ReturnConflictError('Managed refund entitlement requires reconciliation.');
     statements.push(...await buildManagedRefundAdjustmentStatements(database, {
       entitlementId:current.entitlementId,refundId:current.refundId,
@@ -1947,13 +2011,15 @@ export async function advanceReturnAsAdmin(
       reasonCode:'completed_customer_refund',requestId:options.requestId+':managed-refund',now:options.now,
       completedRefundRequestId:options.requestId,
     }));
+    statements.push(...managedRefundResponsibilityStatements(database,{entitlementId:current.entitlementId,refundId:current.refundId,actorId:options.actorId,requestId:options.requestId+':managed-responsibility',now:options.now,completedRefundRequestId:options.requestId}));
   }
-  if (resolvedOutcome === 'refund' && current.refundId) {
+  if (refundTo === 'paid' && current.refundId) {
     statements.push(
       database
         .prepare(
           `UPDATE refunds AS current_refund
            SET commission_reversal_paisa = CASE
+             WHEN current_refund.commission_base_refunded_paisa=0 THEN 0
              WHEN (SELECT COALESCE(commission_base_paisa,
                     line_total_paisa - seller_discount_paisa)
                    FROM order_items WHERE id = ?) = 0 THEN 0
@@ -2021,6 +2087,7 @@ export async function advanceReturnAsAdmin(
     );
   }
   statements.push(
+    ...(options.action==='close_paid_refund'?paymentGuard(database,refundBankReturnSettlementSql('?'),[current.refundId]):[]),
     database
       .prepare(
         `INSERT INTO return_request_events (
@@ -2079,13 +2146,26 @@ export async function advanceReturnAsAdmin(
       now: options.now,
     })),
   );
-  const results = await database.batch(statements);
-  if ((results[0].meta.changes ?? 0) !== 1)
-    throw new ReturnConflictError(
-      'The return request changed. Refresh and try again.',
-    );
-  if (refundFrom && (results[1]?.meta.changes ?? 0) < 1)
-    throw new ReturnConflictError('The refund changed. Refresh and try again.');
+  statements.push(
+    ...(resolvedOutcome?[database.prepare(`SELECT CASE WHEN EXISTS(SELECT 1 FROM return_handling WHERE case_id=? AND revision=? AND inspected_quantity+waived_quantity>=?) THEN 1 ELSE json_extract('stale-return-physical-source','$') END`).bind(options.returnRequestId,handling?.revision??-1,current.quantity)]:[]),
+    ...(resolvedOutcome==='replacement'?[database.prepare("SELECT CASE WHEN EXISTS(SELECT 1 FROM return_replacement_shipments WHERE case_id=? AND state='delivered' AND quantity=? AND carrier_reference=?) THEN 1 ELSE json_extract('replacement-delivery-unconfirmed','$') END").bind(options.returnRequestId,current.quantity,reference)]:[]),
+  );
+  const mutationGuard=crypto.randomUUID();
+  statements.push(database.prepare(`INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM return_requests WHERE id=? AND status=? AND operation_request_id=?) THEN 1 ELSE 0 END`).bind(mutationGuard,options.returnRequestId,toStatus,options.requestId),database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(mutationGuard));
+  if(financial){
+    const guardId=crypto.randomUUID(),state=options.action==='start_refund'?'processing':options.action==='complete_refund'?'paid':'failed';
+    statements.push(database.prepare(`INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM outgoing_payment_packets p JOIN refund_obligations o ON o.id=p.obligation_id JOIN refunds r ON r.id=o.source_id WHERE p.id=? AND o.source_kind='return_refund' AND r.id=? AND p.state=? AND p.amount_paisa=r.amount_paisa-r.wallet_credit_paisa-r.referral_discount_paisa-r.promo_discount_paisa AND (CASE WHEN ?='processing' THEN p.started_by ELSE p.recorded_by END)=? AND (?<>'paid' OR p.amount_paisa=0 OR p.bank_at IS NOT NULL AND p.transaction_identity_hash IS NOT NULL AND length(p.evidence_reference)>=8)) THEN 1 ELSE 0 END`).bind(guardId,execution!.packetId,current.refundId,state,state,options.actorId,state),database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(guardId));
+  }
+  return statements;
+}
+
+/** Legacy physical operation entry point. Money can only be recorded by the evidenced execution protocol. */
+export async function advanceReturnAsAdmin(database:D1Database,options:Parameters<typeof prepareReturnOperationStatements>[1]):Promise<void>{
+ const statements=await prepareReturnOperationStatements(database,options);
+ if(statements.length)try{await database.batch(statements);}catch(error){
+  if(options.action==='close_paid_refund'&&!await database.prepare('SELECT 1 WHERE '+refundBankReturnSettlementSql('(SELECT id FROM refunds WHERE return_request_id=?)')).bind(options.returnRequestId).first())throw new ReturnConflictError('The current returned-credit or continuing-refund settlement changed. Refresh this case before closing it.');
+  throw error;
+ }
 }
 
 export async function getReturnEvidenceAccess(

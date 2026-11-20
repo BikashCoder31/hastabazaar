@@ -7,7 +7,7 @@ import { sendJson } from '@/lib/http/client-request';
 import { Button } from '@/components/ui/button';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 import type { DeliveryInfo } from '@/lib/delivery/repository';
 
 const baseKeys = ['method', 'riderEmail', 'courierName', 'trackingUrl',

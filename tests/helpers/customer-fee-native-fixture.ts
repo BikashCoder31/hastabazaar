@@ -1,0 +1,145 @@
+import assert from 'node:assert/strict';
+import mysql, { type Pool, type PoolConnection, type RowDataPacket } from 'mysql2/promise';
+import { stagingNativeFixture } from './staging-native-fixture';
+import type { prepareNativeFeeClearanceMedia } from './native-fee-clearance-media';
+import { seedNativeCustomerFeeSources } from './customer-fee-native-sources';
+import { seedLegacyPublishedCampaign, seedLegacyReceipt, seedLegacyOrderFees } from './legacy-fee-history-fixture';
+import { AT, terms, feeWaiverContext } from './customer-fee-waiver-fixture';
+
+type Trace = { thread: number; sql: string; complete: boolean; error?: string; guardBindings?: unknown[] };
+
+/** Materialize a separate original historical order; never rewrite a corrected checkout. */
+export async function seedNativeLegacyHistory(db: D1Database) {
+  const campaign = await seedLegacyPublishedCampaign(db, 'native-retained-seller-history', { ...terms, name: 'Retained historical seller campaign' }, AT);
+  await seedLegacyReceipt(db, feeWaiverContext('native-retained-create', 0, { now: AT }), { type: 'create', terms }, { ...campaign, revision: 1, state: 'draft' });
+  await seedLegacyReceipt(db, feeWaiverContext('native-retained-publish', 1, { now: AT }), { type: 'publish', campaignId: campaign.id }, campaign);
+  const orderId = 'native-original-legacy-order', itemId = 'native-original-legacy-line';
+  await db.prepare(`INSERT INTO orders(id,order_number,customer_email,customer_phone,status,locale,policy_version,shipping_address_json,item_subtotal_paisa,delivery_charge_paisa,buyer_platform_fee_paisa,grand_total_paisa,payment_mode,payment_status,created_at,updated_at)
+    VALUES(?,'native-original-legacy-order','history@example.test','9811111111','confirmed','en-NP','historical','{}',10000,0,1000,11000,'cod','pending',1,1)`).bind(orderId).run();
+  await db.prepare(`INSERT INTO order_items(id,order_id,product_id,seller_id,seller_name_snapshot,product_name_snapshot,sku_snapshot,unit_price_paisa,quantity,commission_bps,commission_paisa,line_total_paisa,created_at)
+    VALUES(?,?,'product','seller-a','Historical fictional shop','Historical craft','OLD-SKU',10000,1,900,900,10000,1)`).bind(itemId, orderId).run();
+  await seedLegacyOrderFees(db, orderId, campaign, 1);
+  return { campaign, orderId, itemId };
+}
+
+type SelectedMedia = Pick<NonNullable<Awaited<ReturnType<typeof prepareNativeFeeClearanceMedia>>>, 'bucket' | 'attestFixture'>;
+
+/** Instrumentation observes actual driver statements; it never substitutes results or transactions. */
+export async function customerFeeNativeFixture(managed = false, selectedMedia?: SelectedMedia) {
+  const scope = selectedMedia ? await selectedMedia.attestFixture() : await stagingNativeFixture();
+  const monitor = await mysql.createConnection(scope);
+  const blocker = await mysql.createConnection(scope).catch(async error => { await monitor.end(); throw error; });
+  const original = mysql.createPool;
+  const pools: Pool[] = [], traces: Trace[] = [];
+  const wrapped = new WeakSet<PoolConnection>();
+  const leaseStart = new WeakMap<PoolConnection, number>();
+  let gate: { matches: RegExp; claimed: boolean; enter(thread: number): void; released: Promise<void> } | undefined;
+  mysql.createPool = ((...args: Parameters<typeof original>) => {
+    if (selectedMedia) {
+      const options = args[0];
+      assert.ok(typeof options === 'object' && options.host === scope.host && options.port === scope.port &&
+        options.user === scope.user && options.password === scope.password && options.database === scope.database,
+        'Native runtime pool must use the attested selected database scope');
+    }
+    const pool = Reflect.apply(original, mysql, args) as Pool;
+    pools.push(pool);
+    const get = pool.getConnection.bind(pool);
+    pool.getConnection = async () => {
+      const c = await get();
+      leaseStart.set(c, traces.length);
+      if (!wrapped.has(c)) {
+        wrapped.add(c);
+        const execute = c.execute.bind(c);
+        c.execute = (async (...parameters: Parameters<typeof execute>) => {
+          const first = parameters[0];
+          const event: Trace = { thread: c.threadId, sql: typeof first === 'string' ? first : first.sql, complete: false };
+          traces.push(event);
+          try { return await Reflect.apply(execute, c, parameters); }
+          catch(error){
+            event.error=String(error);
+            if(event.sql.includes('operation_transaction_guards')&&Array.isArray(parameters[1]))event.guardBindings=parameters[1];
+            throw error;
+          }
+          finally { event.complete = true; }
+        }) as typeof execute;
+        const commit = c.commit.bind(c);
+        c.commit = async () => {
+          if (gate && !gate.claimed && traces.slice(leaseStart.get(c)).some(e => e.thread === c.threadId && gate!.matches.test(e.sql))) {
+            gate.claimed = true;
+            gate.enter(c.threadId);
+            await gate.released;
+          }
+          await commit();
+        };
+      }
+      return c;
+    };
+    return pool;
+  }) as typeof original;
+  async function close() {
+    mysql.createPool = original;
+    const rollback = await Promise.allSettled([blocker.rollback()]);
+    const closed = await Promise.allSettled([blocker.end(), monitor.end(), ...pools.map(pool => pool.end())]);
+    const failures = [...rollback, ...closed].filter(result => result.status === 'rejected').map(result => result.reason);
+    if (failures.length) throw new AggregateError(failures, 'Native fixture cleanup failed');
+  }
+  try {
+  const { env } = await import('../../lib/runtime/node-bindings');
+  const db = env.DB;
+  if (selectedMedia) {
+    for (const connection of [monitor, blocker]) {
+      const [rows] = await connection.query<RowDataPacket[]>('SELECT DATABASE() AS name');
+      assert.equal(rows[0]?.name, scope.database);
+    }
+    assert.equal((await db.prepare('SELECT DATABASE() AS name').first<{ name: string }>())?.name, scope.database);
+    assert.equal(pools.length, 1, 'Selected fixture must own the instrumented runtime pool');
+  }
+  assert.equal((await db.prepare('SELECT COUNT(*) n FROM users').first<{ n: number }>())?.n, 0, 'Runner must supply its empty owned fixture');
+  const fixtureAt = Date.now();
+  const input = await seedNativeCustomerFeeSources(db, fixtureAt, managed, selectedMedia?.bucket);
+  return {
+    db, monitor, blocker, traces, input, fixtureAt,
+    /** Pause only at COMMIT after the real adapter has executed every statement and holds its actual row locks. */
+    holdCommit(matches: RegExp) {
+      assert.ok(!gate || gate.claimed, 'Only one transaction gate at a time');
+      let enter!: (thread: number) => void, release!: () => void;
+      const entered = new Promise<number>(resolve => { enter = resolve; });
+      const released = new Promise<void>(resolve => { release = resolve; });
+      gate = { matches, claimed: false, enter, released };
+      return { entered, release };
+    },
+    async waitForBlocked(sql: RegExp, since = 0, holder = blocker.threadId) {
+      const deadline = performance.now() + 10000;
+      let observations = 0;
+      let lastWaits: { thread: number; holder: number }[] = [];
+      while (performance.now() < deadline) {
+        const [rows] = await monitor.query<RowDataPacket[]>(`SELECT waiting.trx_mysql_thread_id AS thread,holding.trx_mysql_thread_id AS holder
+          FROM information_schema.INNODB_LOCK_WAITS w
+          JOIN information_schema.INNODB_TRX waiting ON waiting.trx_id=w.requesting_trx_id
+          JOIN information_schema.INNODB_TRX holding ON holding.trx_id=w.blocking_trx_id`);
+        observations++;
+        lastWaits = rows.slice(0, 8).map(r => ({ thread: Number(r.thread), holder: Number(r.holder) }));
+        const event = traces.slice(since).find(e => !e.complete && sql.test(e.sql) && rows.some(r => Number(r.thread) === e.thread && Number(r.holder) === holder));
+        if (event) {
+          assert.notEqual(event.thread, holder, 'Competitor uses a different real MariaDB connection');
+          console.log('NATIVE LOCK WAIT: ' + JSON.stringify({ waiter: event.thread, holder, statement: event.sql.slice(0, 100) }));
+          return event;
+        }
+        // MariaDB10.11 trx0i_s.cc requires >100ms since the LAST cache read.
+        // Faster polling can indefinitely retain the initial empty snapshot.
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
+      const recent = traces.slice(since).slice(-12).map(e => ({ thread: e.thread, complete: e.complete,
+        statement: e.sql.replace(/'(?:''|[^'])*'/g, '?').replace(/\s+/g, ' ').slice(0, 160) }));
+      console.log('NATIVE LOCK WAIT TIMEOUT: ' + JSON.stringify({ pattern: sql.source, holder, observations,
+        lastWaits, matchingPending: traces.slice(since).filter(e => !e.complete && sql.test(e.sql)).length, recent }));
+      throw new Error('Expected independent MariaDB lock wait was not observed: ' + sql);
+    },
+    close,
+  };
+  } catch (error) {
+    try { await close(); }
+    catch (cleanup) { throw new AggregateError([error, cleanup], 'Native fixture setup and cleanup failed'); }
+    throw error;
+  }
+}

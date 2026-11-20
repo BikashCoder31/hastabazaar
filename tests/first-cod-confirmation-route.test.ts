@@ -53,6 +53,7 @@ void test('staff COD confirmation endpoint protects origin/auth/body/current per
   try {
     for (const [id, role] of [
       ['buyer', 'customer'],
+      ['seller', 'seller'],
       ['admin', 'admin'],
       ['outsider', 'customer'],
     ]) {
@@ -70,6 +71,17 @@ void test('staff COD confirmation endpoint protects origin/auth/body/current per
     f.sqlite.exec(
       "INSERT INTO orders(id,order_number,receipt_token_hash,customer_id,customer_email,customer_phone,status,locale,currency,policy_version,return_policy_snapshot_json,shipping_address_json,item_subtotal_paisa,seller_discount_paisa,delivery_charge_paisa,buyer_platform_fee_paisa,tax_total_paisa,grand_total_paisa,payment_mode,payment_status,placed_at,created_at,updated_at) VALUES ('held','held','hash','buyer','buyer@example.test','9800000000','confirmed','en-NP','NPR','fixture','{}','{}',490000,0,10000,0,0,500000,'cod','pending',100,100,100)",
     );
+    f.sqlite.exec(`
+      INSERT INTO seller_profiles(id,user_id,legal_name,trading_name,registration_authority,registration_number,tax_mode,tax_registration_number,representative_name,support_phone,support_email,province,district,municipality,locality,status,created_at,updated_at)
+      VALUES ('s','seller','Fictional','Fictional','Local','REG','PAN','PAN','Fictional','9800000000','seller@local.hastabazaar.test','Madhesh','Dhanusha','Janakpur','Ward1','approved',1,1);
+      INSERT INTO categories(id,slug,name_en,is_active,sort_order,created_at,updated_at)
+      VALUES ('category','fictional-cod-category','Fictional',1,1,1,1);
+      INSERT INTO products(id,seller_id,category_id,slug,sku,name_en,description_en,price_paisa,inventory_quantity,producer,country_of_origin,materials,return_eligible,status,created_at,updated_at)
+      VALUES ('product','s','category','fictional-cod-product','FIX-COD','Fictional','Fictional',245000,2,'Fictional Maker','NP','Fibre',1,'published',1,1);
+      INSERT INTO order_items(id,order_id,product_id,seller_id,seller_name_snapshot,product_name_snapshot,sku_snapshot,unit_price_paisa,quantity,seller_discount_paisa,commission_bps,commission_paisa,tax_paisa,line_total_paisa,return_eligible_snapshot,fulfillment_status,created_at)
+      VALUES ('confirmed-item','held','product','s','Fictional','Fictional','FIX-COD',245000,1,0,900,22050,0,245000,1,'confirmed',100),
+             ('packing-item','held','product','s','Fictional','Fictional','FIX-COD',245000,1,0,900,22050,0,245000,1,'packing',100);
+    `);
     await f.db.batch(
       prepareFirstCodReview(f.db, {
         customerId: 'buyer',
@@ -82,13 +94,28 @@ void test('staff COD confirmation endpoint protects origin/auth/body/current per
       await import('../lib/db/repositories/fulfillment');
     const { prepareSellerParcels } = await import('../lib/operations/parcels');
     const { assignDelivery } = await import('../lib/delivery/repository');
+    const beforePreparation = f.sqlite
+      .prepare('SELECT total_changes() AS n').get()!.n;
+    await assert.rejects(
+      () =>
+        transitionSellerFulfillment(f.db, {
+          orderId: 'held',
+          sellerId: 's',
+          actorId: 'buyer',
+          action: 'start_packing',
+          note: 'Fictional wrong-owner gate check',
+          requestId: 'wrong-owner',
+          now: 101,
+        }),
+      /Only the active owner/,
+    );
     for (const action of ['start_packing', 'ready_for_pickup'] as const)
       await assert.rejects(
         () =>
           transitionSellerFulfillment(f.db, {
             orderId: 'held',
             sellerId: 's',
-            actorId: 'buyer',
+            actorId: 'seller',
             action,
             note: 'Fictional gate check',
             requestId: 'gate-' + action,
@@ -96,6 +123,11 @@ void test('staff COD confirmation endpoint protects origin/auth/body/current per
           }),
         /awaiting.*confirmation/,
       );
+    assert.equal(
+      f.sqlite.prepare('SELECT total_changes() AS n').get()!.n,
+      beforePreparation,
+      'Wrong-owner and COD-held preparation attempts perform no writes.',
+    );
     for (const action of ['dispatch', 'deliver'] as const)
       await assert.rejects(
         () =>

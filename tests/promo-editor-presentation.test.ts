@@ -11,6 +11,7 @@ import type { PromoCampaignPage, PromoTerms } from '../lib/incentives/types';
 
 type EditorModule = {
   PromoCodeManager: ComponentType<{
+    actorId:string;
     role: string;
     initialPage: PromoCampaignPage;
     defaultCommissionBps?: number;
@@ -186,7 +187,7 @@ void test('cost illustration reads unsaved amounts before dates, identity and ca
 void test('saved draft renders NPR amounts, Nepal dates and a commission cost illustration without presenting draft as live', async () => {
   const { PromoCodeManager } = await editor();
   const html = renderToStaticMarkup(
-    createElement(PromoCodeManager, {
+    createElement(PromoCodeManager, {actorId:'reviewer',
       role: 'super_admin',
       initialPage: page(),
       defaultCommissionBps: 900,
@@ -202,12 +203,23 @@ void test('saved draft renders NPR amounts, Nepal dates and a commission cost il
   assert.match(html, /data-promo-preview-contribution-paisa="-3550"/);
   assert.match(html, /role="alert"[^>]*>[\s\S]*discount exceeds/);
   const denied = renderToStaticMarkup(
-    createElement(PromoCodeManager, { role: 'admin', initialPage: page() }),
+    createElement(PromoCodeManager, {actorId:'reviewer', role: 'admin', initialPage: page() }),
   );
   assert.doesNotMatch(
     denied,
     /staff\.promo-code|Loaded campaigns|promo-preview/,
   );
+});
+
+void test('promo illustration uses the supplied commission and assumes none when it is absent', async () => {
+  const {PromoCodeManager} = await editor();
+  for (const [rate, amount] of [[0,0],[725,7250],[1250,12500]]) {
+    const html = renderToStaticMarkup(createElement(PromoCodeManager,{actorId:'reviewer',role:'super_admin',initialPage:page(),defaultCommissionBps:rate}));
+    assert.match(html,new RegExp('data-promo-preview-commission-paisa="'+amount+'"'));
+  }
+  const missing = renderToStaticMarkup(createElement(PromoCodeManager,{actorId:'reviewer',role:'super_admin',initialPage:page()}));
+  assert.match(missing,/current saved commission rate is unavailable/);
+  assert.doesNotMatch(missing,/data-promo-preview-commission-paisa=/);
 });
 
 void test('saved percentage displays an ordinary percent and NPR cap in the editor and cost preview', async () => {
@@ -226,9 +238,10 @@ void test('saved percentage displays an ordinary percent and NPR cap in the edit
     budgetPaisa: 100090,
   };
   const html = renderToStaticMarkup(
-    createElement(PromoCodeManager, {
+    createElement(PromoCodeManager, {actorId:'reviewer',
       role: 'super_admin',
       initialPage: page(terms),
+      defaultCommissionBps: 1375,
     }),
   );
   assert.match(html, /id="promo-percentBps"[^>]*value="12\.35"/);

@@ -1,14 +1,22 @@
+import {ReviewBackLink} from '@/components/admin/review-back-link';
+import {safeAdminReturnTo,withAdminReturnTo} from '@/lib/admin/return-context';
+import {AftercareFollowupActions} from '@/components/admin/aftercare-followup-actions';
+import {ReturnHandlingActions} from '@/components/admin/return-handling-actions';
+import {ReturnPhysicalSummary} from '@/components/commerce/return-physical-summary';
+import {OrderOfferDetails} from '@/components/commerce/order-offer-details';
 import { StaffFormHistoryLinks } from '@/components/admin/staff-form-history-links';
 import { can } from '@/lib/marketplace/permissions';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, History, Paperclip } from 'lucide-react';
+import { History, Paperclip } from 'lucide-react';
 import { ReturnCaseActions } from '@/components/admin/return-case-actions';
 import { AnswerDetails } from '@/components/forms/answer-details';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
+import { formatPaisaExact } from '@/lib/marketplace/money-display';
 import { getOperationsReturnDetail } from '@/lib/db/repositories/returns';
+import { recordedReturnCourierExpenses } from '@/lib/returns/courier-expenses';
 import { listFormAnswersForSubjectPage } from '@/lib/db/repositories/form-answers';
 import { authorizeFormAnswerRead } from '@/lib/forms/access';
 
@@ -18,21 +26,25 @@ export default async function AdminReturnCasePage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ historyKind?: string; historyAt?: string; historyId?: string }>;
+  searchParams?: Promise<{ historyKind?: string; historyAt?: string; historyId?: string;returnTo?:string }>;
 }) {
   const { id } = await params;
   const staff = await requireStaffPage(
     `/admin/cases/returns/${id}`,
-    'refund.approve.standard',
   );
+  if(!can(staff,'refund.approve.standard')&&!can(staff,'order.manage')&&!can(staff,'support.manage'))notFound();
   const db = requireDatabase(env as unknown as { DB?: D1Database });
   const item = await getOperationsReturnDetail(db, id);
   if (!item) notFound();
+  const courierReview = can(staff, 'refund.approve.standard') ? await recordedReturnCourierExpenses(db, id) : null;
   const query = await searchParams;
+  const returnTo=safeAdminReturnTo(query?.returnTo,'/admin/cases');
   const kind = query?.historyKind === 'seller' ? 'seller' : 'customer';
   const at = query?.historyAt ? Number(query.historyAt) : NaN;
   const after = Number.isSafeInteger(at) && at >= 0 && query?.historyId && query.historyId.length <= 191
     ? { createdAt: at, id: query.historyId } : undefined;
+  const detailParams=new URLSearchParams({historyKind:kind});if(after){detailParams.set('historyAt',String(after.createdAt));detailParams.set('historyId',after.id);}
+  const detailHref=withAdminReturnTo(`/admin/cases/returns/${encodeURIComponent(id)}?${detailParams}`,returnTo);
   const history = await listFormAnswersForSubjectPage(db, { subjectType: 'return_request',
     subjectId: item.id, formId: kind === 'seller' ? 'seller.case-return-response' : 'commerce.return-request', after });
   const allowed = await Promise.all(history.answers.map((answer) =>
@@ -40,34 +52,38 @@ export default async function AdminReturnCasePage({
   if (allowed.some((value) => !value)) notFound();
   return (
     <div>
-      <Link
-        href="/admin/cases"
-        className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" />
-        Back to cases
-      </Link>
+      <ReviewBackLink returnTo={returnTo} actorId={staff.id}/>
       <div className="mt-6 flex flex-wrap justify-between gap-4">
         <div>
           <p className="eyebrow">{item.referenceNumber}</p>
-          <h1 className="mt-2 font-heading text-4xl">{item.productName}</h1>
+          <h1 className="mt-2 font-heading text-4xl">{item.productName}</h1><OrderOfferDetails offer={item.offerSnapshot}/><ReturnPhysicalSummary value={item.physical}/>
           <p className="mt-2 text-sm text-muted-foreground">
             Order {item.orderNumber} · sold by {item.sellerName}
           </p>
         </div>
         <Status value={item.status} />
       </div>
-      <StaffFormHistoryLinks entries={[{kind:'return-case-action',subjectId:id,label:'Staff decision answers'}]} />
+      {can(staff,'refund.approve.standard')&&item.refundStatus?<Link className="mt-4 block underline" href={withAdminReturnTo('/admin/payments/refunds?case='+encodeURIComponent(item.id),detailHref)}>Review original refund funding and actual payment</Link>:null}
+      <StaffFormHistoryLinks returnTo={detailHref} entries={[{kind:'return-case-action',subjectId:id,label:'Staff decision answers'}]} />
       <div className="mt-8 grid gap-6 2xl:grid-cols-[minmax(0,1fr)_23rem]">
         <div className="space-y-6">
+          {courierReview && (courierReview.expenses.length > 0 || courierReview.needsPricingReconciliation) ? <section className="space-y-3 rounded-2xl border bg-card p-6" aria-label="Recorded courier expenses">
+            <h2 className="font-heading text-2xl">Recorded courier expenses</h2>
+            {courierReview.needsPricingReconciliation ? <p>The saved buyer price needs reconciliation. Review the courier invoices separately.</p> : null}
+            <p>These shipment costs are separate from the original delivery amount paid by the customer. Review the contract and evidence before assigning any seller liability.</p>
+            {courierReview.expenses.length > 0 ? <ul className="space-y-2">{courierReview.expenses.map(expense=><li key={expense.id}>
+              {expense.direction==='outbound'?'Outbound':'Return'} · {formatPaisaExact(expense.amountPaisa)} · Evidence: {expense.evidenceReference}
+              {expense.claimReference?` · Carrier claim: ${expense.claimReference}`:null}
+            </li>)}</ul> : null}
+          </section>:null}
           <section className="space-y-4 rounded-2xl border bg-card p-6" aria-label="Return form answer history">
             <h2 className="font-heading text-2xl">Form answer history</h2>
-            <nav className="flex gap-4 text-sm"><Link className="underline" href={`/admin/cases/returns/${encodeURIComponent(id)}`}>Customer request</Link>
-              <Link className="underline" href={`/admin/cases/returns/${encodeURIComponent(id)}?historyKind=seller`}>Seller response</Link></nav>
+            <nav className="flex gap-4 text-sm"><Link className="underline" href={withAdminReturnTo(`/admin/cases/returns/${encodeURIComponent(id)}`,returnTo)}>Customer request</Link>
+              <Link className="underline" href={withAdminReturnTo(`/admin/cases/returns/${encodeURIComponent(id)}?historyKind=seller`,returnTo)}>Seller response</Link></nav>
             {history.answers.length ? history.answers.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)
               : <p>No saved answers for this action.</p>}
             {history.nextCursor ? <Link className="underline" href={
-              `/admin/cases/returns/${encodeURIComponent(id)}?historyKind=${kind}&historyAt=${history.nextCursor.createdAt}&historyId=${encodeURIComponent(history.nextCursor.id)}`
+              withAdminReturnTo(`/admin/cases/returns/${encodeURIComponent(id)}?historyKind=${kind}&historyAt=${history.nextCursor.createdAt}&historyId=${encodeURIComponent(history.nextCursor.id)}`,returnTo)
             }>Next 50 answers</Link> : null}
           </section>
           <section className="rounded-2xl border bg-card p-6">
@@ -86,9 +102,14 @@ export default async function AdminReturnCasePage({
               <Detail label="Original seal reported intact">
                 {item.originalSealIntact ? 'Yes — verify during review' : 'No'}
               </Detail>
-              <Detail label="Item value">
-                {money(item.lineTotalPaisa || 0)}
-              </Detail>
+              {item.pricingEntitlement?.kind === 'ready' ? (
+                <>
+                  <Detail label="Saved refundable item amount">{formatPaisaExact(item.pricingEntitlement.itemPaisa)}</Detail>
+                  <Detail label={item.pricingEntitlement.canRetainVoluntaryDelivery ? "Original delivery share" : "Applicable original delivery refund"}>{formatPaisaExact(item.pricingEntitlement.deliveryPaisa)}</Detail>
+                </>
+              ) : item.pricingEntitlement?.kind === 'needs_reconciliation' ? (
+                <Detail label="Buyer refund amounts">Original amounts need reconciliation.</Detail>
+              ) : <Detail label="Item value">{money(item.lineTotalPaisa || 0)}</Detail>}
               <Detail label="Original delivery charge (order snapshot)">
                 {money(item.deliveryChargePaisa || 0)}
               </Detail>
@@ -138,8 +159,7 @@ export default async function AdminReturnCasePage({
               </ul>
             ) : (
               <p className="mt-3 text-sm text-muted-foreground">
-                No files supplied; do not reject a statutory claim on this fact
-                alone.
+                No files supplied. Review the available customer, seller and carrier evidence. Missing optional photos alone cannot establish fault or justify rejecting the claim.
               </p>
             )}
           </section>
@@ -174,7 +194,10 @@ export default async function AdminReturnCasePage({
               Amounts are entered in NPR and stored as integer paisa. {staff.role==='super_admin'?'Your refund review applies approval directly, including high-value refunds. Refund processing remains a separate action.':'High-value refunds reviewed by an Admin require Super Admin confirmation.'}
             </p>
             <div className="mt-5">
+              {item.handling&&can(staff,'order.manage')?<ReturnHandlingActions workspace={item.handling} actorId={staff.id} superAdmin={staff.role==='super_admin'}/>:null}
+              {item.staffFollowup&&(can(staff,'support.manage')||can(staff,'order.manage'))?<AftercareFollowupActions sourceType='return_request' source={item.staffFollowup} actorId={staff.id}/>:null}
               <ReturnCaseActions
+                actorId={staff.id}
                 id={item.id}
                 status={item.status}
                 outcome={item.resolutionOutcome}
@@ -182,6 +205,8 @@ export default async function AdminReturnCasePage({
                 role={staff.role}
                 canApproveStandard={can(staff, 'refund.approve.standard')}
                 quantity={item.quantity}
+                deliveryEntitlement={item.deliveryEntitlement}
+                pricingEntitlement={item.pricingEntitlement}
               />
             </div>
           </section>

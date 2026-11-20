@@ -58,14 +58,17 @@ export async function getCommissionReport(
       MIN(i.seller_name_snapshot) AS sellerName, COALESCE(o.placed_at, o.created_at) AS placedAt,
       o.status AS orderStatus, o.payment_status AS paymentStatus, COUNT(*) AS itemCount,
       SUM(COALESCE(i.commission_base_paisa, i.line_total_paisa - i.seller_discount_paisa)) AS eligibleBasePaisa,
-      SUM(i.commission_paisa) AS originalCommissionPaisa, MIN(i.commission_bps) AS minRateBps, MAX(i.commission_bps) AS maxRateBps,
+      SUM(i.commission_paisa) AS originalCommissionPaisa, MIN(COALESCE(f.standard_bps,i.commission_bps)) AS minRateBps, MAX(COALESCE(f.standard_bps,i.commission_bps)) AS maxRateBps,
+      SUM(COALESCE(f.standard_paisa,i.commission_paisa)) AS originalStandardPaisa,
+      SUM(COALESCE(f.waived_paisa,0)) AS originalWaivedPaisa,
       SUM(COALESCE(l.earned,0)) AS earnedPaisa, SUM(COALESCE(l.reversed,0)) AS reversedPaisa,
       SUM(COALESCE(l.earned,0) - COALESCE(l.reversed,0)) AS netPaisa,
       SUM(CASE WHEN COALESCE(l.recorded,0) = 0 AND NOT (${excluded}) THEN i.commission_paisa ELSE 0 END) AS pendingPaisa,
-      SUM(CASE WHEN COALESCE(l.recorded,0) = 0 AND o.status = 'delivered' AND o.payment_status = 'paid' AND i.fulfillment_status = 'delivered'
+      SUM(CASE WHEN i.commission_paisa > 0 AND COALESCE(l.recorded,0) = 0 AND o.status = 'delivered' AND o.payment_status = 'paid' AND i.fulfillment_status = 'delivered'
         AND NOT EXISTS(SELECT 1 FROM shipping_parcels p JOIN shipping_jobs j ON j.id = p.shipping_job_id WHERE j.order_id = o.id AND (j.status NOT IN ('delivered','cancelled') OR p.remitted_paisa <> p.cod_due_paisa)) THEN 1 ELSE 0 END) AS missingEntries,
       CASE WHEN SUM(COALESCE(l.recorded,0)) > 0 THEN 'earned' WHEN SUM(CASE WHEN NOT (${excluded}) THEN 1 ELSE 0 END) > 0 THEN 'pending' ELSE 'cancelled' END AS status
     FROM order_items i JOIN orders o ON o.id = i.order_id LEFT JOIN ledger l ON l.order_item_id = i.id AND l.seller_id = i.seller_id
+    LEFT JOIN order_item_marketplace_fees f ON f.order_item_id=i.id
     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
     GROUP BY o.id, o.order_number, i.seller_id, o.placed_at, o.created_at, o.status, o.payment_status
   )`;
@@ -77,7 +80,8 @@ export async function getCommissionReport(
     : 25;
   const [summary, sellers] = await Promise.all([
     db
-      .prepare(`${cte} SELECT COUNT(*) AS totalRows, COALESCE(SUM(earnedPaisa),0) AS earnedPaisa, COALESCE(SUM(reversedPaisa),0) AS reversedPaisa,
+      .prepare(`${cte} SELECT COUNT(*) AS totalRows, COALESCE(SUM(originalStandardPaisa),0) AS originalStandardPaisa, COALESCE(SUM(originalWaivedPaisa),0) AS originalWaivedPaisa,
+      COALESCE(SUM(earnedPaisa),0) AS earnedPaisa, COALESCE(SUM(reversedPaisa),0) AS reversedPaisa,
       COALESCE(SUM(netPaisa),0) AS netPaisa, COALESCE(SUM(pendingPaisa),0) AS pendingPaisa, COALESCE(SUM(missingEntries),0) AS missingEntries FROM grouped ${status}`)
       .bind(...bindings)
       .first<CommissionTotals & { totalRows: number }>(),
@@ -99,18 +103,33 @@ export async function getCommissionReport(
     .bind(...bindings, pageSize, (page - 1) * pageSize)
     .all<CommissionOrderRow>();
   const totals: CommissionTotals = {
+    originalStandardPaisa: Number(summary?.originalStandardPaisa ?? 0),
+    originalWaivedPaisa: Number(summary?.originalWaivedPaisa ?? 0),
     earnedPaisa: Number(summary?.earnedPaisa ?? 0),
     reversedPaisa: Number(summary?.reversedPaisa ?? 0),
     netPaisa: Number(summary?.netPaisa ?? 0),
     pendingPaisa: Number(summary?.pendingPaisa ?? 0),
     missingEntries: Number(summary?.missingEntries ?? 0),
   };
+  const campaignNames = new Map<string, Set<string>>();
+  const orderIds = [...new Set(rows.results.map(row=>row.orderId))];
+  for(let start=0;start<orderIds.length;start+=90) {
+    const batch=orderIds.slice(start,start+90);
+    const names=await db.prepare(`SELECT DISTINCT i.order_id AS orderId,i.seller_id AS sellerId,r.name
+      FROM order_items i JOIN order_item_marketplace_fees f ON f.order_item_id=i.id
+      JOIN marketplace_fee_waiver_revisions r ON r.campaign_id=f.campaign_id AND r.revision=f.campaign_revision
+      WHERE i.order_id IN (${batch.map(()=>'?').join(',')}) AND ${independentItem}`).bind(...batch).all<{orderId:string;sellerId:string;name:string}>();
+    for(const row of names.results) {
+      const key=JSON.stringify([row.orderId,row.sellerId]);
+      const names=campaignNames.get(key)??new Set<string>();names.add(row.name);campaignNames.set(key,names);
+    }
+  }
   return {
     totals,
     totalRows,
     page,
     pageSize,
-    rows: rows.results,
+    rows: rows.results.map(row=>({...row,campaignNames:[...(campaignNames.get(JSON.stringify([row.orderId,row.sellerId]))??[])].sort()})),
     sellers: sellers.results,
   };
 }

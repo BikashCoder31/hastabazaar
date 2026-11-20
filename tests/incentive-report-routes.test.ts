@@ -28,7 +28,7 @@ registerHooks({
       };
     if (specifier === '@/lib/auth/staff')
       return {
-        url: `data:text/javascript,export class StaffAuthorizationError extends Error{constructor(message,status){super(message);this.status=status}};export async function requireStaffApi(permission){if(permission!=='admin.invite')throw new Error('Wrong staff permission');if(globalThis.incentiveReportAuthRedirect)throw new Error('NEXT_REDIRECT secret private account');if(!globalThis.incentiveReportRouteActor)throw new StaffAuthorizationError('Authentication required.',401);return globalThis.incentiveReportRouteActor;}`,
+        url: `data:text/javascript,export class StaffAuthorizationError extends Error{constructor(message,status){super(message);this.status=status}};export async function requireStaffApi(permission){if(permission!=='commercial_policy.manage')throw new Error('Wrong staff permission');if(globalThis.incentiveReportAuthRedirect)throw new Error('NEXT_REDIRECT secret private account');if(!globalThis.incentiveReportRouteActor)throw new StaffAuthorizationError('Authentication required.',401);return globalThis.incentiveReportRouteActor;}`,
         shortCircuit: true,
       };
     return nextResolve(specifier, context);

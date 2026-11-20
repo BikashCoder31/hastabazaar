@@ -1,21 +1,19 @@
-import { DEFAULT_PLATFORM_SHARE_BPS } from '../configuration/commission-defaults';
+import { LEGACY_LAUNCH_PLATFORM_SHARE_BPS } from '../configuration/commission-defaults';
 import type { EffectivePolicy, MarketplacePolicy } from './types';
 
-export const CURRENT_SELLER_COMMISSION_BPS = DEFAULT_PLATFORM_SHARE_BPS;
 export const COMMISSION_BPS_DENOMINATOR = 10_000;
 export const COMMISSION_RULE_VERSION = 'commission-9pct-v1';
 
 /**
- * Launch defaults, not immutable business rules.
- * Persist a versioned copy when storage is introduced and snapshot the applied
- * commercial terms onto every order.
+ * Historical Phase 1 policy. Current commercial rates come only from saved
+ * Business Settings or an accepted transaction snapshot, never this policy.
  */
 export const phaseOneMarketplacePolicy = {
   version: 'phase-1.1',
   effectiveFrom: '2026-09-18',
   value: {
     identity: {
-      brandName: 'HastaBazaar',
+      brandName: 'Hastabazaar',
       operatingCountry: 'NP',
       currency: 'NPR',
       timezone: 'Asia/Kathmandu',
@@ -35,7 +33,7 @@ export const phaseOneMarketplacePolicy = {
       pricesAreCustomerFinal: true,
     },
     fees: {
-      sellerCommissionBps: CURRENT_SELLER_COMMISSION_BPS,
+      sellerCommissionBps: LEGACY_LAUNCH_PLATFORM_SHARE_BPS,
       buyerPlatformFeePaisa: 0,
       absorbDigitalPaymentFees: true,
       featuredPlacementEnabled: false,
@@ -61,6 +59,7 @@ export const phaseOneMarketplacePolicy = {
       changeOfMindEnabled: true,
       highValueRefundThresholdPaisa: 1_000_000,
       refundInitiationBusinessDays: 2,
+      refundCompletionCalendarDays: 7,
       digitalRefundEstimateBusinessDays: [5, 10],
       codRefundEstimateBusinessDays: [3, 7],
     },
@@ -95,7 +94,7 @@ export function percentageFromBasisPoints(basisPoints: number): number {
 
 export function calculateSellerCommissionPaisa(
   itemSubtotalAfterSellerDiscountPaisa: number,
-  commissionBps: number = CURRENT_SELLER_COMMISSION_BPS,
+  commissionBps: number,
 ): number {
   if (
     !Number.isInteger(itemSubtotalAfterSellerDiscountPaisa) ||

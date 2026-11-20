@@ -233,6 +233,8 @@ export interface PromoQuoteInput {
   readonly userId: string;
   readonly code: string;
   readonly subtotalPaisa: number;
+  /** Optional seller merchandise limit derived by checkout. */
+  readonly discountCapPaisa?: number;
   readonly now: number;
 }
 /** Server-derived canonical checkout intent and original order response. Never copy digest/response from a client. */
@@ -241,6 +243,7 @@ export interface PromoConsumptionInput {
   readonly orderId: string;
   readonly requestId: string;
   readonly quote: PromoQuote;
+  readonly discountCapPaisa?: number;
   readonly now: number;
   readonly payloadDigest: string;
   readonly response: Readonly<Record<string, unknown>>;

@@ -1,8 +1,10 @@
 import { env } from 'cloudflare:workers';
-import { redirect } from 'next/navigation';
+import { redirect,notFound } from 'next/navigation';
+import Link from 'next/link';
+import {safeAdminReturnTo} from '@/lib/admin/return-context';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
-import { listPromoCampaigns } from '@/lib/db/repositories/promo-codes';
+import { listPromoCampaigns,getPromoCampaign } from '@/lib/db/repositories/promo-codes';
 import { PromoCodeManager } from '@/components/admin/promo-code-manager';
 import {
   IncentivePageNav,
@@ -13,6 +15,7 @@ import {
 import { getPromoAdminReport } from '@/lib/db/repositories/incentive-reporting';
 import { getCommissionRateState } from '@/lib/db/repositories/commission-rates';
 import { filtersFromParams } from '@/lib/incentives/reporting';
+import { CommissionRateUnavailableError } from '@/lib/db/repositories/business-settings';
 
 export const dynamic = 'force-dynamic';
 export default async function PromoCodesPage({
@@ -20,10 +23,12 @@ export default async function PromoCodesPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 } = {}) {
-  const staff = await requireStaffPage('/admin/promo-codes', 'admin.invite');
+  const staff = await requireStaffPage('/admin/promo-codes', 'commercial_policy.manage');
   if (staff.role !== 'super_admin') redirect('/staff-access-denied');
   const database = requireDatabase(env as unknown as { DB?: D1Database });
-  const filters = filtersFromParams((await searchParams) ?? {});
+  const params=(await searchParams)??{},selector=params.campaign;
+  if(selector!==undefined&&(typeof selector!=='string'||!selector.trim()||selector.length>191))notFound();
+  const filters = filtersFromParams(params);
   const [initialPage, result, commission] = await Promise.all([
     listPromoCampaigns(database, {
       actorId: staff.id,
@@ -43,11 +48,14 @@ export default async function PromoCodesPage({
         });
         return { report, error: error.message };
       }),
-    getCommissionRateState(database),
+    getCommissionRateState(database).catch(error => { if (error instanceof CommissionRateUnavailableError) return null; throw error; }),
   ]);
   const { report, error: filterError } = result;
+  const selected=typeof selector==='string'?await getPromoCampaign(database,{actorId:staff.id,authSubject:staff.authSubject,campaignId:selector}):null;
+  const focusedPage=selected?{...initialPage,campaigns:[selected,...initialPage.campaigns.filter(c=>c.campaignId!==selected.campaignId)]}:initialPage;
   return (
     <div className="grid min-w-0 gap-6">
+      <Link href={safeAdminReturnTo(params.returnTo,'/admin/fees?view=discounts')} className="underline">Back to previous view</Link>
       <div>
         <p className="eyebrow">Super Admin · Controls</p>
         <h1 className="section-title">Promo codes</h1>
@@ -60,9 +68,10 @@ export default async function PromoCodesPage({
       <PromoReportOverview report={report} />
       <section id="manage" className="scroll-mt-28">
         <PromoCodeManager
+          actorId={staff.id}
           role={staff.role}
-          initialPage={initialPage}
-          defaultCommissionBps={commission.current.basisPoints}
+          initialPage={focusedPage}
+          defaultCommissionBps={commission?.current.basisPoints}
         />
       </section>
       {filterError ? (

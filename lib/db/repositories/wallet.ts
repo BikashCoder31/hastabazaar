@@ -1,7 +1,9 @@
 import { allocateCancellationItems } from '../../cancellation/accounting';
+import {recordedBenefitRefund} from '../../incentives/original-benefit-refunds';
 export class WalletConflictError extends Error {}
 
 export interface ReferralCampaign {
+  updatedAt?:number;
   enabled: number;
   friendDiscountPaisa: number;
   rewardPaisa: number;
@@ -12,10 +14,15 @@ export interface ReferralCampaign {
 export async function getReferralCampaign(
   db: D1Database,
 ): Promise<ReferralCampaign> {
+  return readReferralCampaign(db,false);
+}
+/** Management's original optimistic token never changes checkout/wallet snapshot shapes. */
+export async function getReferralCampaignForManagement(db:D1Database):Promise<ReferralCampaign&{updatedAt:number}>{return await readReferralCampaign(db,true) as ReferralCampaign&{updatedAt:number};}
+async function readReferralCampaign(db:D1Database,management:boolean):Promise<ReferralCampaign>{
   const campaign = await db
     .prepare(`SELECT enabled, friend_discount_paisa AS friendDiscountPaisa,
     reward_paisa AS rewardPaisa, minimum_subtotal_paisa AS minimumSubtotalPaisa,
-    return_window_days AS returnWindowDays FROM referral_campaign WHERE id = 'default'`)
+    return_window_days AS returnWindowDays${management?',updated_at AS updatedAt':''} FROM referral_campaign WHERE id = 'default'`)
     .first<ReferralCampaign>();
   if (!campaign)
     throw new WalletConflictError(
@@ -156,6 +163,7 @@ export async function quoteOrderCredit(
     merchandiseDiscountPaisa?: number;
     phone: string;
     now: number;
+    readOnly?: boolean;
   },
 ) {
   const { userId, subtotalPaisa, now } = options;
@@ -176,10 +184,11 @@ export async function quoteOrderCredit(
       rewardPaisa: 0,
       waitDays: 7,
       phoneKey: '',
+      campaignSnapshot: null,
     };
   }
   // Promo checkout provisions its wallet in the order batch; financial preflight stays read-only.
-  if (options.merchandiseDiscountPaisa === undefined) {
+  if (options.merchandiseDiscountPaisa === undefined && !options.readOnly) {
     await ensureWallet(db, userId, now);
     await releaseReferralRewards(db, userId, now);
   }
@@ -251,6 +260,7 @@ export async function quoteOrderCredit(
     rewardPaisa: campaign.rewardPaisa,
     waitDays: campaign.returnWindowDays,
     phoneKey,
+    campaignSnapshot: campaign,
   };
 }
 
@@ -264,7 +274,7 @@ export async function splitCreditRefund(
 ): Promise<{basePaisa:number;walletPaisa:number;discountPaisa:number;promoPaisa?:number}> {
   const row = await db
     .prepare(`SELECT COALESCE(o.current_subtotal_paisa,o.item_subtotal_paisa) AS subtotal, COALESCE(o.current_wallet_paisa,o.wallet_credit_paisa) AS wallet,
-    o.current_referral_discount_paisa AS discount, o.promo_discount_paisa AS originalPromo, o.wallet_credit_paisa AS originalWallet,
+    o.current_referral_discount_paisa AS discount, o.referral_discount_paisa AS originalReferral, o.promo_discount_paisa AS originalPromo, o.wallet_credit_paisa AS originalWallet,
     COALESCE((SELECT SUM(r.item_amount_paisa) FROM refunds r WHERE r.order_id=o.id AND r.status <> 'rejected'),0) AS refunded,
     COALESCE((SELECT SUM(r.wallet_credit_paisa) FROM refunds r WHERE r.order_id=o.id AND r.status <> 'rejected'),0) AS walletRefunded,
     COALESCE((SELECT SUM(r.referral_discount_paisa) FROM refunds r WHERE r.order_id=o.id AND r.status <> 'rejected'),0) AS discountRefunded
@@ -276,11 +286,16 @@ export async function splitCreditRefund(
       discount: number;
       originalPromo: number;
       originalWallet: number;
+      originalReferral: number;
       refunded: number;
       walletRefunded: number;
       discountRefunded: number;
     }>();
   if (!row) throw new WalletConflictError('Order not found.');
+  if(!row.originalPromo){
+    try{const sealed=await recordedBenefitRefund(db,{orderId,orderItemId,amount:itemPaisa,wallet:row.originalWallet,referral:row.originalReferral});if(sealed)return {basePaisa:row.refunded,...sealed};}
+    catch{throw new WalletConflictError('The original line benefit allocation requires reconciliation before this refund.');}
+  }
   if (row.originalPromo > 0) {
     if (!Number.isSafeInteger(itemPaisa) || itemPaisa < 0)
       throw new WalletConflictError('Refund allocation requires valid merchandise.');
@@ -314,6 +329,7 @@ export async function splitCreditRefund(
   }
   if(![row.subtotal,row.wallet,row.discount,row.refunded,row.walletRefunded,row.discountRefunded,itemPaisa].every(n=>Number.isSafeInteger(n)&&n>=0)||row.subtotal===0)throw new WalletConflictError('Refund allocation requires valid remaining merchandise.');
   const subtotal=BigInt(row.subtotal),cumulative=BigInt(row.refunded)+BigInt(itemPaisa),total=BigInt(row.wallet)+BigInt(row.discount);
+  if(cumulative>subtotal)throw new WalletConflictError('Refund exceeds remaining original merchandise.');
   const allocatedBig=total*(cumulative<subtotal?cumulative:subtotal)/subtotal;
   const wallet=Number(total?allocatedBig*BigInt(row.wallet)/total:BigInt(0)),allocated=Number(allocatedBig);
   return {

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import type { RiderPolicy } from '@/lib/riders/repository';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 const BASE_KEYS=['action','status','note','userId','reportId','version','eligible','requestId'];
 const POLICY_KEYS=['action','version','otpScope','requestId'];

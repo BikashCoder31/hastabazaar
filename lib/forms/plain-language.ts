@@ -49,7 +49,7 @@ const guides: Readonly<Record<string, readonly [string, string, string]>> = {
   'shipping.console-request': ['Request a delivery', 'Create a pickup or delivery request.', 'Have the addresses, contact numbers, and parcel details ready.'],
   'shipping.console-action-seller': ['Update a carrier delivery request', 'Add information to your delivery request with a carrier.', 'Check the current request and explain the update.'],
   'shipping.console-action-staff': ['Manage a delivery request', 'Record the next step for a delivery request.', 'Check the request, carrier details, and any supporting evidence.'],
-  'seller.payout-request': ['Request a payment', 'Ask us to pay your available seller earnings.', 'Add a note explaining your request. Sending the request does not transfer money.'],
+  'seller.payout-request': ['Request available payout', 'Purpose: Seller earnings payout.', 'A note is optional, up to 500 characters. Submitting a request does not transfer money.'],
   'rider.remittance': ['Record cash handed over', 'Record delivery cash you handed over to the business.', 'Have the amount and receipt or reference ready.'],
   'commerce.gift-card-issue': ['Create a gift card', 'Record a gift card for a customer.', 'Have the recipient details, amount, and any message ready.'],
   'staff.invoice-adjustment': ['Correct an invoice', 'Record a correction to an invoice.', 'Check the invoice and explain the amount and reason for the correction.'],
@@ -176,7 +176,7 @@ export function baseFieldCopy(formId: string, key: string): { label: string; hel
     ...(key === 'invoiceId' ? { label: 'Invoice to correct' } : {}),
     ...(key === 'categoryId' ? { label: 'Product category' } : {}),
     ...(key === 'occasionIds' ? { label: 'Gift occasions' } : {}),
-    ...(formId === 'seller.payout-request' && key === 'note' ? { label: 'What is this payment request for?', helpText: 'Explain your request in 8 to 500 characters. For example, payment for your completed orders.' } : {}) };
+    ...(formId === 'seller.payout-request' && key === 'note' ? { label: 'Note (optional)', helpText: 'Add context up to 500 characters if useful. No reason is required for a normal seller earnings payout.' } : {}) };
 }
 
 /** These values are filled by the application, rather than questions for a person. */

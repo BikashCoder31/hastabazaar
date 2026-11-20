@@ -1,5 +1,5 @@
 import { calculatePromoDiscount } from './promo-policy';
-import { calculateSellerCommissionPaisa } from '../marketplace/policy';
+import { calculateMarketplaceFee, type FeeWaiverCampaign } from '../marketplace/fee-waivers';
 import { validateWeeklyPoints } from './loyalty-policy';
 import type { LoyaltyTerms, PromoTerms } from './types';
 const nepalOffset = 20700000;
@@ -97,6 +97,7 @@ export function promoCostPreview(
   terms: PromoTerms,
   subtotalPaisa: number,
   commissionBps: number,
+  _historicalFeeWaiver: FeeWaiverCampaign | null = null,
 ) {
   positiveInteger(subtotalPaisa, 'product subtotal', true);
   positiveInteger(commissionBps, 'commission percentage', true);
@@ -115,11 +116,14 @@ export function promoCostPreview(
   const calculated = calculatePromoDiscount(amountTerms, subtotalPaisa);
   const eligible = subtotalPaisa >= terms.minimumSubtotalPaisa;
   const discountPaisa = eligible ? calculated : 0;
-  const commissionPaisa = calculateSellerCommissionPaisa(subtotalPaisa, commissionBps);
+  const fee = calculateMarketplaceFee(subtotalPaisa, commissionBps, null);
+  const commissionPaisa = fee.netPaisa;
   return {
     eligible,
     discountPaisa,
     commissionPaisa,
+    standardCommissionPaisa: fee.standardPaisa,
+    waivedCommissionPaisa: fee.waivedPaisa,
     contributionPaisa: commissionPaisa - discountPaisa,
     customerSubtotalPaisa: subtotalPaisa - discountPaisa,
   };

@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import type {Page} from 'playwright-core';
+import {completeVersionFixture} from './helpers/complete-version-fixture';
 import test from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -16,11 +18,11 @@ import { validateFormDraft, validateFormDraftForDefinition } from '../lib/forms/
 import { FORM_REGISTRY } from '../lib/forms/registry';
 import type * as FormCatalogRepository from '../lib/db/repositories/form-catalog';
 
-void test('Form catalog appears in Controls for Super Admin alone', () => {
+void test('Form Management keeps the historical route for Super Admin alone', () => {
   const superLink = adminNavigation('super_admin').find((item) => item.href === '/admin/forms');
   assert.ok(superLink);
-  assert.equal(superLink.group, 'Controls');
-  assert.equal(superLink.label, 'Form catalog');
+  assert.equal(superLink.group, 'System health & records');
+  assert.equal(superLink.label, 'Form Management');
   assert.equal(adminNavigation('admin').some((item) => item.href === '/admin/forms'), false);
   assert.equal(adminNavigation('admin', ['business_settings.manage']).some((item) => item.href === '/admin/forms'), false);
 });
@@ -52,6 +54,47 @@ async function mountConcurrencyEditor(versions: readonly CatalogVersion[], form 
   return { browser, page };
 }
 
+async function addQuestion(page:Page,label:string,type='short_text'){
+  assert.equal(await page.getByLabel('New field key',{exact:true}).count(),0);
+  await page.locator('#new-field-label').fill(label);
+  await page.locator('#new-field-type').selectOption(type);
+  await page.getByRole('button',{name:'Add field',exact:true}).click();
+  const id=await page.locator('input[id$="-label"]').evaluateAll((inputs:HTMLInputElement[],question)=>inputs.find(input=>input.value===question)?.closest('[data-editor-field]')?.getAttribute('data-editor-field'),label);
+  assert.ok(id);assert.match(id,/^question_[a-f0-9]{32}$/);return id;
+}
+
+void test('compatibility controls preserve unsaved edits and retry an uncertain policy with the identical request', async () => {
+  const form = FORM_REGISTRY['seller.product-submission'];
+  const versions: CatalogVersion[] = [2, 1].map(version => ({ id: `policy-${version}`, version, revision: 1, status: 'published',
+    reason: 'Fictional wording publication', updatedAt: version, publishedAt: version, config: { formId: form.id, fields: [] } }));
+  const { browser, page } = await mountConcurrencyEditor(versions, form);
+  const attempts: string[] = [];
+  try {
+    // oxlint-disable-next-line typescript/no-explicit-any -- All browser API traffic is intercepted with fictional policy responses.
+    await page.route('https://form.test/api/**', async (route: any) => {
+      if (route.request().method() === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ policy: { mode: 'automatic', reason: '', expiresAt: null } }) });
+      attempts.push(route.request().postData());
+      return route.fulfill({ status: attempts.length === 1 ? 503 : 200, contentType: 'application/json', body: JSON.stringify(attempts.length === 1
+        ? { error: 'Fictional response was lost after commit.' }
+        : { policy: { mode: 'review_equivalent', reason: 'Same packing question', expiresAt: Date.now() + 86400000 } }) });
+    });
+    await page.locator('#catalog-reason').fill('Keep my unsaved publication reason');
+    await page.getByText('Previous-version compatibility', { exact: true }).click();
+    await page.getByText('Only mechanically equivalent spacing and ordering changes are accepted automatically.', { exact: true }).waitFor();
+    await page.locator('#compatibility-reason').fill('Same packing question');
+    await page.getByRole('button', { name: 'Approve equivalent wording for 24 hours', exact: true }).click();
+    await page.getByRole('button', { name: 'Retry identical wording review', exact: true }).waitFor();
+    assert.equal(await page.locator('#catalog-reason').isDisabled(), true);
+    assert.equal(await page.getByRole('button', { name: 'Save draft', exact: true }).isDisabled(), true);
+    await page.getByRole('button', { name: 'Retry identical wording review', exact: true }).click();
+    await page.getByText('Compatibility policy saved. Existing question edits are unchanged.', { exact: true }).waitFor();
+    assert.equal(attempts.length, 2);
+    assert.equal(attempts[0], attempts[1]);
+    assert.equal(await page.locator('#catalog-reason').inputValue(), 'Keep my unsaved publication reason');
+    assert.equal(await page.locator('#catalog-reason').isDisabled(), false);
+  } finally { await browser.close(); }
+});
+
 const orderingForm: FormDefinition = { ...definition, baseFields: [...definition.baseFields,
   { key: 'display_name', type: 'short_text', label: 'Display name', capability: 'display_editable', required: false, status: 'active', explanation: 'Display-only override.' },
   { key: 'nickname', type: 'short_text', label: 'Nickname', capability: 'display_editable', required: false, status: 'active', explanation: 'Display-only override.' },
@@ -80,6 +123,9 @@ void test('Edit display preserves a saved canonical alias and its field identity
     });
     const label = page.locator('#base-display_name-label');
     await label.waitFor();
+    assert.equal(await label.evaluate((input:HTMLInputElement)=>input.labels?.[0]?.textContent),'Question');
+    assert.equal(await page.getByLabel('Guidance',{exact:true}).count(),1);
+    assert.equal(await page.locator('#base-display_name-placeholder').isVisible(),false);
     assert.equal(await label.inputValue(), 'Preferred display');
     assert.equal(await page.getByRole('button', { name: 'Publish draft' }).isDisabled(), false);
     await label.fill('Updated display');
@@ -149,10 +195,8 @@ void test('configured order survives no-op save and additions to an unsorted sto
       assert.deepEqual(await page.locator('[data-editor-field]').evaluateAll((nodes: Element[]) => nodes.map((node) => node.getAttribute('data-editor-field'))), expectedCustom);
       assert.deepEqual(await page.locator('[data-preview-mode="phone"] [data-configured-field]').evaluateAll((nodes: Element[]) => nodes.map((node) => node.getAttribute('data-configured-field'))), expectedCustom);
       if (action === 'custom') {
-        await page.getByLabel('New field key').fill('added');
-        await page.locator('#new-field-label').fill('Added custom');
-        await page.getByRole('button', { name: 'Add field' }).click();
-        expectedCustom.push('added'); expectedSaved.push(['added', 3]);
+        const added=await addQuestion(page,'Added custom');
+        expectedCustom.push(added); expectedSaved.push([added, 3]);
       } else if (action === 'built-in') {
         await page.getByRole('button', { name: 'Edit display', exact: true }).last().click();
         expectedSaved.push(['nickname', 3]);
@@ -216,24 +260,24 @@ void test('configured order remains canonical when save, conflict reload, or res
       assert.equal(await page.getByRole('button', { name: 'Publish draft' }).isDisabled(), adoption === 'restore');
       assert.deepEqual(await page.locator('[data-editor-field]').evaluateAll((nodes: Element[]) => nodes.map((node) => node.getAttribute('data-editor-field'))), ['first', 'later']);
       assert.deepEqual(await page.locator('[data-preview-mode="phone"] [data-configured-field]').evaluateAll((nodes: Element[]) => nodes.map((node) => node.getAttribute('data-configured-field'))), ['first', 'later']);
-      await page.getByLabel('New field key').fill('added');
-      await page.locator('#new-field-label').fill('Added custom');
-      await page.getByRole('button', { name: 'Add field' }).click();
-      assert.deepEqual(await page.locator('[data-editor-field]').evaluateAll((nodes: Element[]) => nodes.map((node) => node.getAttribute('data-editor-field'))), ['first', 'later', 'added']);
+      const added=await addQuestion(page,'Added custom');
+      assert.deepEqual(await page.locator('[data-editor-field]').evaluateAll((nodes: Element[]) => nodes.map((node) => node.getAttribute('data-editor-field'))), ['first', 'later', added]);
       await page.getByLabel('Reason for change').fill('Save after adopting fields');
       await page.getByRole('button', { name: 'Save draft' }).click();
       await page.getByText('Draft saved.', { exact: true }).waitFor();
-      assert.deepEqual(saves.at(-1)!.config.fields.map(({ key, order }) => [key, order]), [['first', 0], ['display_name', 1], ['later', 2], ['added', 3]]);
+      assert.deepEqual(saves.at(-1)!.config.fields.map(({ key, order }) => [key, order]), [['first', 0], ['display_name', 1], ['later', 2], [added, 3]]);
     } finally { await page.close(); await browser.close(); }
   });
 });
 
 void test('valid constructor text field saves once whether active or archived', async (t) => {
   for (const status of ['active', 'archived'] as const) await t.test(status, async () => {
-    const { browser, page } = await mountConcurrencyEditor([]);
+    const existing:ConfiguredField={id:'constructor',key:'constructor',label:'Maker name',type:'short_text',required:false,order:0,status:'active'};
+    const historical:CatalogVersion={id:'draft-1',version:1,revision:1,status:'draft',reason:'Retained constructor identity',updatedAt:1,publishedAt:null,config:{formId:definition.id,fields:[existing]}};
+    const { browser, page } = await mountConcurrencyEditor([historical]);
     const requests: { config: { fields: ConfiguredField[] } }[] = [];
     const errors: string[] = [];
-    let versions: CatalogVersion[] = [];
+    let versions: CatalogVersion[] = [historical];
     page.on('pageerror', (error: Error) => errors.push(error.message));
     try {
       // oxlint-disable-next-line typescript/no-explicit-any -- Playwright route type is external to this package.
@@ -245,9 +289,7 @@ void test('valid constructor text field saves once whether active or archived', 
         versions = [draft];
         return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ draft }) });
       });
-      await page.getByLabel('New field key').fill('constructor');
-      await page.locator('#new-field-label').fill('Maker name');
-      await page.getByRole('button', { name: 'Add field' }).click();
+      await page.locator('#constructor-label').waitFor();
       if (status === 'archived') await page.locator('[data-editor-field="constructor"]').getByRole('button', { name: 'Archive', exact: true }).click();
       await page.getByLabel('Reason for change').fill('Save maker field');
       const outcome = Promise.race([page.waitForEvent('pageerror'), page.getByText('Draft saved.', { exact: true }).waitFor()]);
@@ -262,7 +304,7 @@ void test('valid constructor text field saves once whether active or archived', 
   });
 });
 
-void test('choice buffers ignore inherited constructor and preserve single and multiple choice edits', async (t) => {
+void test('choice rows preserve inherited constructor identities and single and multiple choice edits', async (t) => {
   for (const type of ['single_choice', 'multiple_choice'] as const) await t.test(type, async () => {
     const initial: CatalogVersion = { id: 'draft-1', version: 1, revision: 1, status: 'draft', reason: 'Initial choices', updatedAt: 1, publishedAt: null,
       config: { formId: definition.id, fields: ['constructor', 'gift_wrap'].map((id, order) => ({ id, key: id, label: order ? 'Gift wrap' : 'Maker options', type, required: false, order, status: 'active', choices: [{ value: 'first', label: 'First option' }, { value: 'second', label: 'Second option' }] })) } };
@@ -281,23 +323,18 @@ void test('choice buffers ignore inherited constructor and preserve single and m
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ draft: saved }) });
       });
       for (const id of ['constructor', 'gift_wrap']) {
-        const choices = page.locator(`#${id}-choices`);
-        assert.equal(await choices.inputValue(), 'first | First option\nsecond | Second option', 'unedited choice buffers use stored choices, never inherited properties');
-        await choices.focus();
-        await page.keyboard.press('ControlOrMeta+End');
-        await page.keyboard.press('Enter');
-        assert.equal((await choices.inputValue()).endsWith('\n'), true);
-        await choices.pressSequentially(`third | ${id} third`);
+        const choices = page.getByRole('group',{name:`Choices for ${id==='constructor'?'Maker options':'Gift wrap'}`,exact:true});
+        assert.equal(await choices.getByLabel('Choice 1',{exact:true}).inputValue(),'First option');
+        assert.equal(await choices.getByLabel('Choice 2',{exact:true}).inputValue(),'Second option');
+        await choices.getByRole('button',{name:'Add choice',exact:true}).click();
+        await choices.getByLabel('Choice 3',{exact:true}).fill(`${id} third`);
       }
       await page.getByLabel('Reason for change').fill('Extend choice lists');
       await page.getByRole('button', { name: 'Save draft' }).click();
       await page.getByText('Draft saved.', { exact: true }).waitFor();
       assert.equal(requests.length, 1);
-      assert.deepEqual(requests[0].config.fields.map((field) => field.choices), [
-        [{ value: 'first', label: 'First option' }, { value: 'second', label: 'Second option' }, { value: 'third', label: 'constructor third' }],
-        [{ value: 'first', label: 'First option' }, { value: 'second', label: 'Second option' }, { value: 'third', label: 'gift_wrap third' }],
-      ]);
-      assert.equal(await page.locator('#constructor-choices').inputValue(), 'first | First option\nsecond | Second option\nthird | constructor third', 'clearing saved buffers still falls back to the saved choices');
+      requests[0].config.fields.forEach(field=>{assert.deepEqual(field.choices?.slice(0,2),[{value:'first',label:'First option'},{value:'second',label:'Second option'}]);assert.match(field.choices?.[2].value??'',/^choice_[a-f0-9]{32}$/);assert.equal(field.choices?.[2].label,`${field.id} third`);});
+      assert.equal(await page.getByRole('group',{name:'Choices for Maker options',exact:true}).getByLabel('Choice 3',{exact:true}).inputValue(),'constructor third');
       assert.deepEqual(errors, []);
       assert.equal(await page.getByRole('alert').innerText(), '');
     } finally { await page.close(); await browser.close(); }
@@ -399,7 +436,7 @@ void test('committed mutation with failed readback keeps edits locked and retrie
       assert.match(await page.getByRole('alert').filter({ hasText: 'Readback unavailable' }).first().textContent(), /outcome is unknown/i);
       assert.equal(await page.locator('#delivery_note-label').isDisabled(), true);
       assert.equal(await page.getByLabel('Reason for change').isDisabled(), true);
-      assert.equal(await page.getByLabel('New field key').isDisabled(), true);
+      assert.equal(await page.locator('#new-field-label').isDisabled(), true);
       assert.equal(await page.getByRole('button', { name: 'Publish draft', includeHidden: true }).isDisabled(), true);
       if (action !== 'draft') assert.equal(await page.getByRole('button', { name: 'Save draft', includeHidden: true }).isDisabled(), true);
       await page.keyboard.insertText('MUST NOT REPLACE REVIEWED INPUT');
@@ -666,6 +703,8 @@ void test('protected field controls explain their lock and preview uses the shar
 void test('both admin pages deny ordinary Admin before reading catalog data', async () => {
   const require = createRequire(import.meta.url);
   for (const entry of ['app/admin/forms/page.tsx', 'app/admin/forms/[formId]/page.tsx']) {
+    const fixture=await completeVersionFixture();
+    try{
     let reads = 0;
     const output = await build({ entryPoints: [entry], absWorkingDir: process.cwd(), bundle: true, write: false,
       platform: 'node', format: 'cjs', packages: 'external', plugins: [{ name: 'page-boundary', setup(plugin) {
@@ -674,17 +713,17 @@ void test('both admin pages deny ordinary Admin before reading catalog data', as
           args.path === 'cloudflare:workers' ? 'export const env = {};' :
           args.path === 'next/navigation' ? 'export function redirect(){throw new Error("ACCESS_DENIED")}; export function notFound(){throw new Error("NOT_FOUND")}' :
           args.path === 'next/link' ? 'export default function Link(){return null}' :
-          args.path === '@/lib/auth/staff' ? 'export async function requireStaffPage(){return {role:globalThis.catalogPageRole,id:"staff"}}' :
+          args.path === '@/lib/auth/staff' ? 'export async function requireStaffPage(){return {role:globalThis.catalogPageRole,id:"reviewer"}}' :
           'export function requireDatabase(){globalThis.catalogPageRead();return globalThis.catalogPageDb}', loader: 'js' }));
       } }] });
     const pageModule = { exports: {} as { default: (props?: unknown) => Promise<unknown> } };
-    const context = { require, module: pageModule, exports: pageModule.exports, catalogPageRole: 'admin', catalogPageRead: () => { reads++; }, catalogPageDb: { prepare() { return { bind() { return this; }, async all() { return { results: [] }; } }; } } };
+    const context = { require, TextEncoder, URL, crypto:globalThis.crypto, module: pageModule, exports: pageModule.exports, catalogPageRole: 'admin', catalogPageRead: () => { reads++; }, catalogPageDb:fixture.db };
     runInNewContext(output.outputFiles[0].text, context);
     await assert.rejects(pageModule.exports.default({ params: Promise.resolve({ formId: 'account.profile' }) }), /ACCESS_DENIED/);
     assert.equal(reads, 0, entry);
     context.catalogPageRole = 'super_admin';
     const html = renderToStaticMarkup(await pageModule.exports.default({ params: Promise.resolve({ formId: 'account.profile' }) }) as React.ReactElement);
-    assert.match(html, entry.includes('[formId]') ? /Version history/ : /Form catalog/);
+    assert.match(html, entry.includes('[formId]') ? /Version history/ : /Form Management/);
     if (entry.includes('[formId]')) {
       assert.match(html, /Super Admin · Form history/);
       assert.match(html, /unavailable for editing/);
@@ -692,6 +731,16 @@ void test('both admin pages deny ordinary Admin before reading catalog data', as
       assert.doesNotMatch(html, /Â/);
     }
     assert.equal(reads, 1, entry);
+    if (!entry.includes('[formId]')) {
+      const insert=fixture.sqlite.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id) VALUES(?,?,1,1,'published',?,'Retained compatibility observation','reviewer',1,'reviewer',1,'reviewer',1,?)`);
+      insert.run('editor-compat-valid','public.contact',JSON.stringify({formId:'public.contact',fields:[]}),'editor-compat-valid');
+      insert.run('editor-compat-invalid','public.feedback',JSON.stringify({formId:'public.feedback',fields:[{type:'unsafe'}]}),'editor-compat-invalid');
+      const checked = renderToStaticMarkup(await pageModule.exports.default() as React.ReactElement);
+      assert.match(checked, /Definition checked/);
+      assert.match(checked, /Needs repair/);
+      assert.match(checked, /Core form available/);
+    }
+    }finally{fixture.dispose();}
   }
 });
 
@@ -747,18 +796,14 @@ void test('editor keeps edits on 409, reloads history, and confirms publish and 
     await page.getByRole('button', { name: 'Save draft' }).click();
     assert.equal(await page.evaluate(() => document.activeElement?.id), 'catalog-reason');
     assert.match(await page.getByRole('alert').last().textContent(), /Enter a reason/);
-    await page.getByLabel('New field key').fill('Bad Key');
-    await page.getByLabel('Label', { exact: true }).last().fill('Bad field');
+    assert.equal(await page.getByLabel('New field key',{exact:true}).count(),0);
+    assert.throws(()=>validateFormDraftForDefinition(definition,{formId:definition.id,fields:[{id:'Bad Key',key:'Bad Key',label:'Bad field',type:'short_text',required:false,order:0,status:'active'}]}));
     await page.getByRole('button', { name: 'Add field' }).click();
-    assert.equal(await page.evaluate(() => document.activeElement?.id), 'new-field-key');
-    await page.getByLabel('New field key').fill('delivery_note');
-    await page.getByLabel('Label', { exact: true }).last().fill('Drop-off note');
-    await page.getByRole('button', { name: 'Add field' }).click();
-    await page.getByLabel('New field key').fill('gift_color');
-    await page.getByLabel('Label', { exact: true }).last().fill('Gift colour');
-    await page.getByRole('button', { name: 'Add field' }).click();
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'new-field-label');
+    const deliveryNote=await addQuestion(page,'Drop-off note');
+    const giftColor=await addQuestion(page,'Gift colour');
     await page.getByRole('button', { name: 'Move Gift colour up' }).click();
-    assert.deepEqual(await page.locator('[data-editor-field]').evaluateAll((nodes: Element[]) => nodes.map((node) => node.getAttribute('data-editor-field'))), ['gift_color', 'delivery_note']);
+    assert.deepEqual(await page.locator('[data-editor-field]').evaluateAll((nodes: Element[]) => nodes.map((node) => node.getAttribute('data-editor-field'))), [giftColor, deliveryNote]);
     await page.getByRole('button', { name: 'Required for Gift colour' }).click();
     await page.getByRole('button', { name: 'Required for Gift colour' }).click();
     assert.equal(await page.getByRole('alertdialog').count(), 1, 'making a required field optional needs confirmation');
@@ -771,43 +816,35 @@ void test('editor keeps edits on 409, reloads history, and confirms publish and 
     await page.keyboard.press('Enter');
     assert.equal(await page.getByRole('button', { name: 'Required for Gift colour' }).getAttribute('aria-pressed'), 'false');
     await page.getByRole('button', { name: 'Required for Gift colour' }).click();
-    await page.locator('[data-editor-field="gift_color"]').getByRole('button', { name: 'Archive' }).click();
+    await page.locator(`[data-editor-field="${giftColor}"]`).getByRole('button', { name: 'Archive' }).click();
     assert.equal(await page.getByRole('alertdialog').count(), 1, 'archiving a required field needs confirmation');
-    assert.match(await page.locator('[data-editor-field="gift_color"]').textContent(), /active/);
+    assert.match(await page.locator(`[data-editor-field="${giftColor}"]`).textContent(), /active/);
     await page.getByRole('button', { name: 'Cancel' }).focus();
     await page.keyboard.press('Enter');
-    assert.match(await page.locator('[data-editor-field="gift_color"]').textContent(), /active/);
-    await page.locator('[data-editor-field="gift_color"]').getByRole('button', { name: 'Archive' }).click();
+    assert.match(await page.locator(`[data-editor-field="${giftColor}"]`).textContent(), /active/);
+    await page.locator(`[data-editor-field="${giftColor}"]`).getByRole('button', { name: 'Archive' }).click();
     await page.getByRole('button', { name: 'Confirm archive' }).focus();
     await page.keyboard.press('Enter');
-    assert.match(await page.locator('[data-editor-field="gift_color"]').textContent(), /archived/);
-    await page.locator('[data-editor-field="gift_color"]').getByRole('button', { name: 'Reactivate' }).click();
-    await page.getByLabel('New field key').fill('gift_wrap');
-    await page.getByLabel('Label', { exact: true }).last().fill('Gift wrap');
-    await page.getByLabel('Type').selectOption('single_choice');
-    await page.getByRole('button', { name: 'Add field' }).click();
-    const choices = page.locator('#gift_wrap-choices');
-    await choices.focus();
-    await page.keyboard.press('ControlOrMeta+End');
-    await page.keyboard.press('Enter');
-    assert.equal((await choices.inputValue()).endsWith('\n'), true, 'Enter leaves a new editable choice line');
-    await choices.pressSequentially('third | Third option');
-    assert.match(await choices.inputValue(), /second \| Second option\nthird \| Third option$/);
-    await page.getByLabel('New field key').fill('quantity_hint');
-    await page.getByLabel('Label', { exact: true }).last().fill('Quantity hint');
-    await page.getByLabel('Type').selectOption('number');
-    await page.getByRole('button', { name: 'Add field' }).click();
-    await page.locator('#quantity_hint-min').fill('0');
-    await page.locator('#quantity_hint-max').fill('5');
-    await page.locator('#quantity_hint-min').fill('');
-    assert.equal(await page.locator('#quantity_hint-min').inputValue(), '', 'empty bound remains undefined instead of zero');
-    await page.locator('#quantity_hint-min').fill('0');
+    assert.match(await page.locator(`[data-editor-field="${giftColor}"]`).textContent(), /archived/);
+    if(!await page.locator(`[data-editor-field="${giftColor}"]`).getByRole('button',{name:'Reactivate',exact:true}).isVisible())await page.getByText('Archived questions (1)',{exact:true}).click();
+    await page.locator(`[data-editor-field="${giftColor}"]`).getByRole('button', { name: 'Reactivate' }).click();
+    const giftWrap=await addQuestion(page,'Gift wrap','single_choice');
+    const choices=page.getByRole('group',{name:'Choices for Gift wrap',exact:true});
+    await choices.getByRole('button',{name:'Add choice',exact:true}).click();
+    await choices.getByLabel('Choice 3',{exact:true}).fill('Third option');
+    const quantityHint=await addQuestion(page,'Quantity hint','number');
+    await page.locator(`[data-editor-field="${quantityHint}"]`).getByText('Validation options',{exact:true}).click();
+    await page.locator(`#${quantityHint}-min`).fill('0');
+    await page.locator(`#${quantityHint}-max`).fill('5');
+    await page.locator(`#${quantityHint}-min`).fill('');
+    assert.equal(await page.locator(`#${quantityHint}-min`).inputValue(), '', 'empty bound remains undefined instead of zero');
+    await page.locator(`#${quantityHint}-min`).fill('0');
     await page.getByRole('checkbox', { name: 'Whole numbers only' }).focus();
     await page.keyboard.press('Space');
     await page.getByRole('tab', { name: 'Desktop' }).click();
-    assert.equal(await page.locator('[data-preview-mode="desktop"] input[name="custom.gift_color"]').count(), 1);
+    assert.equal(await page.locator(`[data-preview-mode="desktop"] input[name="custom.${giftColor}"]`).count(), 1);
     await page.getByRole('tab', { name: 'Phone' }).click();
-    const numberPreview = page.locator('[data-preview-mode="phone"] input[name="custom.quantity_hint"]');
+    const numberPreview = page.locator(`[data-preview-mode="phone"] input[name="custom.${quantityHint}"]`);
     assert.equal(await numberPreview.getAttribute('min'), '0');
     assert.equal(await numberPreview.getAttribute('max'), '5');
     assert.equal(await numberPreview.getAttribute('step'), '1');
@@ -821,7 +858,7 @@ void test('editor keeps edits on 409, reloads history, and confirms publish and 
     await page.getByLabel('Reason for change').fill('Improve recipient context');
     await page.getByRole('button', { name: 'Save draft' }).click();
     await page.getByRole('button', { name: 'Reload latest version' }).click();
-    assert.equal(await page.locator('[data-editor-field="gift_color"]').count(), 1);
+    assert.equal(await page.locator(`[data-editor-field="${giftColor}"]`).count(), 1);
     await page.getByRole('button', { name: 'Save draft' }).click();
     await page.getByRole('status').getByText('Draft saved.').waitFor();
     await page.getByLabel('Reason for change').fill('Publish recipient context');
@@ -830,7 +867,7 @@ void test('editor keeps edits on 409, reloads history, and confirms publish and 
     await page.getByRole('button', { name: 'Confirm publish' }).focus();
     await page.keyboard.press('Enter');
     await page.getByRole('status').getByText('Form published.').waitFor();
-    await page.locator('#gift_color-label').fill('Temporary gift colour');
+    await page.locator(`#${giftColor}-label`).fill('Temporary gift colour');
     await page.getByLabel('Reason for change').fill('Save a newer draft');
     await page.getByRole('button', { name: 'Save draft' }).click();
     await page.getByRole('status').getByText('Draft saved.').waitFor();
@@ -839,19 +876,19 @@ void test('editor keeps edits on 409, reloads history, and confirms publish and 
     await page.getByRole('button', { name: 'Confirm restore' }).focus();
     await page.keyboard.press('Enter');
     await page.getByRole('status').getByText('Historical version restored as a new publication.').waitFor();
-    assert.equal(await page.locator('#gift_color-label').inputValue(), 'Gift colour');
+    assert.equal(await page.locator(`#${giftColor}-label`).inputValue(), 'Gift colour');
     assert.equal(await page.getByRole('button', { name: 'Publish draft' }).isDisabled(), true);
     assert.match(await page.getByText('Version 2 · revision 1').textContent(), /stale draft/);
     assert.match(await page.locator('[data-preview-mode="phone"]').textContent(), /Gift colour/);
-    await page.locator('#gift_color-label').fill('After restore colour');
+    await page.locator(`#${giftColor}-label`).fill('After restore colour');
     await page.getByLabel('Reason for change').fill('New edit after restore');
     await page.getByRole('button', { name: 'Save draft' }).click();
     await page.getByRole('status').getByText('Draft saved.').waitFor();
     assert.deepEqual(operations.map((item) => item.action), ['draft', 'draft', 'publish', 'draft', 'restore', 'draft']);
-    assert.equal(operations[1].body.config.fields[0].key, 'gift_color');
+    assert.equal(operations[1].body.config.fields[0].key, giftColor);
     assert.equal(operations[1].body.config.fields[0].required, true);
-    assert.deepEqual(operations[1].body.config.fields.find((field: { key: string }) => field.key === 'gift_wrap').choices[2], { value: 'third', label: 'Third option' });
-    const numberField = operations[1].body.config.fields.find((field: { key: string }) => field.key === 'quantity_hint');
+    const thirdChoice=operations[1].body.config.fields.find((field: { key: string }) => field.key === giftWrap).choices[2];assert.match(thirdChoice.value,/^choice_[a-f0-9]{32}$/);assert.equal(thirdChoice.label,'Third option');
+    const numberField = operations[1].body.config.fields.find((field: { key: string }) => field.key === quantityHint);
     assert.equal(numberField.min, 0);
     assert.equal(numberField.max, 5);
     assert.equal(numberField.integerOnly, true);
@@ -913,6 +950,7 @@ void test('restore commits before history refresh and keeps POST errors inside i
     await page.getByRole('button', { name: 'Confirm restore' }).focus();
     await page.keyboard.press('Enter');
     await page.getByText('Historical version restored as a new publication.').waitFor();
+    await page.getByRole('alertdialog').waitFor({ state: 'detached' });
     assert.equal(await page.getByRole('alertdialog').count(), 0);
     assert.equal(await page.locator('#gift_color-label').inputValue(), 'Original colour');
     assert.equal(await page.getByLabel('Reason for change').inputValue(), '');
@@ -1035,7 +1073,7 @@ void test('ambiguous save retries one request while busy edits lock and successf
     await page.getByRole('button', { name: 'Save draft' }).click();
     await page.waitForFunction(() => document.querySelector('#gift_color-label')?.matches(':disabled'));
     assert.equal(await page.locator('#gift_color-label').isDisabled(), true);
-    assert.equal(await page.getByLabel('New field key').isDisabled(), true);
+    assert.equal(await page.locator('#new-field-label').isDisabled(), true);
     assert.equal(await page.getByRole('button', { name: 'Required for Edited colour' }).isDisabled(), true);
     assert.equal(await page.locator('[data-editor-field="gift_color"]').getByRole('button', { name: 'Archive' }).isDisabled(), true);
     assert.equal(await page.getByLabel('Reason for change').isDisabled(), true);

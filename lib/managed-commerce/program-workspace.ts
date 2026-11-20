@@ -20,6 +20,7 @@ export interface ManagedSupplySummary {
   originalOwedPaisa: number | null;
   adjustedPaisa: number;
   paidPaisa: number;
+  recoveryCreditsPaisa: number;
   createdAt: number;
 }
 
@@ -76,6 +77,7 @@ export async function getManagedProgramWorkspace(
       obligation.original_amount_paisa AS originalOwedPaisa,
       COALESCE((SELECT SUM(amount_paisa) FROM managed_supplier_adjustments WHERE obligation_id=supply.id),0) AS adjustedPaisa,
       COALESCE((SELECT SUM(amount_paisa) FROM managed_supplier_payments WHERE obligation_id=supply.id AND status='paid'),0) AS paidPaisa,
+      COALESCE((SELECT SUM(amount_paisa) FROM managed_supplier_recovery_credits WHERE obligation_id=supply.id),0) AS recoveryCreditsPaisa,
       supply.created_at AS createdAt
       FROM managed_supply_records supply JOIN products ON products.id=supply.product_id
       LEFT JOIN managed_supplier_obligations obligation ON obligation.id=supply.id

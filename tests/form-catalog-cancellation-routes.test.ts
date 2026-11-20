@@ -19,13 +19,15 @@ globalThis.cancellationRouteReviewStatus = 'pending';
 registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier === 'cloudflare:workers') return { url: 'data:text/javascript,export const env={get DB(){return globalThis.cancellationRouteDatabase}}', shortCircuit: true };
   if (specifier === '@/lib/http/request-security') return { url: 'data:text/javascript,export function isTrustedMutationRequest(){return true}', shortCircuit: true };
-  if (specifier === '@/lib/auth/customer') return { url: 'data:text/javascript,export async function getCustomerUser(){return globalThis.cancellationRouteCustomer}', shortCircuit: true };
+  if (specifier === '@/lib/auth/customer') return { url: 'data:text/javascript,export class CustomerAuthorizationError extends Error{constructor(message,status){super(message);this.status=status}};export async function getCustomerUser(){return globalThis.cancellationRouteCustomer};export const requireExistingCustomerApi=getCustomerUser', shortCircuit: true };
   if (specifier === '@/lib/auth/staff') return { url: 'data:text/javascript,export class StaffAuthorizationError extends Error{constructor(message,status){super(message);this.status=status}};export async function requireStaffApi(){return {id:"admin-one"}}', shortCircuit: true };
   if (specifier === '@/lib/email/send-order-updates') return { url: 'data:text/javascript,export async function sendPendingOrderUpdates(){}', shortCircuit: true };
   if (specifier === '@/lib/db/repositories/fulfillment') return { url: 'data:text/javascript,export class FulfillmentConflictError extends Error{};export async function transitionAdminFulfillment(db,input){globalThis.cancellationRouteCalls.push({kind:"fulfillment",input})};export async function transitionCompanyPreparation(){throw Error("Cancellation must not prepare company items")}', shortCircuit: true };
   if (specifier === '@/lib/cart/session') return { url: 'data:text/javascript,export const RECEIPT_COOKIE="receipt";export function readCookie(){return "raw-receipt"};export async function hashOpaqueToken(){return "hashed-receipt"}', shortCircuit: true };
   if (specifier === '@/lib/cancellation/repository') return { url: `data:text/javascript,
     export class CancellationConflictError extends Error{}
+    export async function cancellationOutcome(){return null}
+    export async function continueCancellationSettlement(){throw Error("Continuation is covered by the native settlement fixture") }
     export async function cancellationChoices(){return [{id:'seller-one',eligible:true}]}
     export async function cancellationPreview(db,access,sellerIds){globalThis.cancellationRouteCalls.push({kind:'preview',access,input:sellerIds});return {fingerprint:'current-fingerprint',reviewRequired:false,walletRestored:0,discountRemoved:0,next:{delivery:0,total:1000},deliveryPricingPolicy:null,parcels:[]}}
     export async function cancelSelectedParcels(db,access,input){globalThis.cancellationRouteCalls.push({kind:'confirm',access,input});return {status:'cancelled',id:input.requestId}}
@@ -44,6 +46,7 @@ function fixture() {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec(`CREATE TABLE users(id TEXT PRIMARY KEY);
     INSERT INTO users VALUES('admin-one');
+    CREATE TABLE audit_logs(id TEXT PRIMARY KEY,actor_id TEXT,action TEXT,subject_type TEXT,subject_id TEXT,next_json TEXT,request_id TEXT,command_key TEXT,command_digest TEXT,command_result_json TEXT);
     CREATE TABLE orders(id TEXT PRIMARY KEY,order_number TEXT);
     CREATE TABLE order_cancellation_reviews(id TEXT PRIMARY KEY,order_id TEXT,seller_ids_json TEXT,status TEXT);
     INSERT INTO orders VALUES('order-1','ORDER-1');

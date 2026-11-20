@@ -1,12 +1,16 @@
+import {registrationEvidenceKinds} from '@/lib/sellers/document-policy';
 import { AcceptedAgreementSnapshot } from '@/components/admin/accepted-agreement-snapshot';
-import { getManagedMakerDetailsForReview, getManagedMakerApplicationTerms, ManagedMakerAuthorityError } from '@/lib/db/repositories/managed-maker-details';
+import { AccountRecoveryAssistance } from '@/components/admin/account-recovery-assistance';
+import { getManagedMakerDetailsForReview, getManagedMakerApplicationTerms, ManagedMakerAuthorityError, managedAgreementVersionForSeller } from '@/lib/db/repositories/managed-maker-details';
+import { MANAGED_SUPPLIER_AGREEMENT_VERSION } from '@/lib/sellers/managed-identity';
 import { CompanySellingIdentity } from '@/components/seller/managed-maker-identity-fields';
 import { StaffFormHistoryLinks } from '@/components/admin/staff-form-history-links';
+import {safeAdminReturnTo,withAdminReturnTo} from '@/lib/admin/return-context';
+import {ReviewBackLink} from '@/components/admin/review-back-link';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
-import { notFound, redirect } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import {
-  ArrowLeft,
   ExternalLink,
   FileCheck2,
   History,
@@ -17,6 +21,7 @@ import {
 
 import { SellerReviewActions } from '@/components/admin/seller-review-actions';
 import { ManagedMakerActivationForm } from '@/components/admin/managed-maker-activation-form';
+import {ManagedLiveActivationPanel} from '@/components/admin/managed-live-activation-panel';
 import { getAcceptedManagedTerms } from '@/lib/managed-commerce/accepted-terms';
 import { ManagedProgramReview } from '@/components/admin/managed-program-review';
 import { SellerGovernanceActions } from '@/components/admin/seller-governance-actions';
@@ -27,13 +32,30 @@ import { requireDatabase } from '@/lib/db/d1';
 import { getSellerApplicationForReview } from '@/lib/db/repositories/seller-applications';
 import { getSellerGovernance } from '@/lib/db/repositories/seller-governance';
 import { can } from '@/lib/marketplace/permissions';
-import { managedMakerDisplayName } from '@/lib/sellers/participation';
+
+import { isPendingPayoutReference } from '@/lib/sellers/onboarding';
 import { getManagedProgramWorkspace } from '@/lib/managed-commerce/program-workspace';
+import {privateBankWorkspace} from '@/lib/sellers/bank-details';
+import {SellerBankEvidence} from '@/components/admin/seller-bank-evidence';
+import {PublicProfileReview} from '@/components/admin/public-profile-review';
+import {getPublicProfileWorkspace} from '@/lib/sellers/public-profile';
+import {getSellerReadiness} from '@/lib/sellers/readiness';
+import {SellerReadinessSummary} from '@/components/seller/readiness-summary';
+import {SellerOnboardingChecklist} from '@/components/seller/onboarding-checklist';
+import {getSellerOnboardingChecklist} from '@/lib/sellers/onboarding-checklist';
+
+import {SharedReviewQueue} from '@/components/admin/shared-review-queue';
+import {listReviewTasks} from '@/lib/workflows/review-tasks';
 
 export const dynamic = 'force-dynamic';
 
 function readAcceptedManagedTerms(database: D1Database, sellerId: string) {
   return getAcceptedManagedTerms(database, sellerId, Date.now());
+}
+
+async function readManagedApplicationTerms(database: D1Database, sellerId: string) {
+  const version = await managedAgreementVersionForSeller(database, sellerId);
+  return getManagedMakerApplicationTerms(database, Date.now(), version);
 }
 
 const dateTimeFormatter = new Intl.DateTimeFormat('en-NP', {
@@ -59,15 +81,29 @@ function Detail({
       <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
         {label}
       </dt>
-      <dd className="mt-1 text-sm leading-6">{children || '—'}</dd>
+      <dd className="mt-1 break-words text-sm leading-6">{children || '—'}</dd>
     </div>
   );
 }
 
+/** Capture observation clocks with the authoritative reads, before rendering the view. */
+async function readSellerReviewEvidence(database:D1Database,id:string,staff:{id:string;role:'admin'|'super_admin'}){
+  const observedAt=Date.now(),readiness=await getSellerReadiness(database,id,observedAt).catch(()=>null);
+  const evidence=await getSellerApplicationForReview(database,id,staff.id)
+    .then(application=>({kind:'read' as const,application}))
+    .catch((error:unknown)=>{if(error instanceof ManagedMakerAuthorityError)return{kind:'restricted' as const};throw error;});
+  if(evidence.kind==='restricted')return{kind:'restricted' as const,observedAt,readiness};
+  if(!evidence.application)return{kind:'missing' as const,observedAt,readiness};
+  const publicProfile=await getPublicProfileWorkspace(database,id,staff.id,'staff',Date.now());
+  const bank=staff.role==='super_admin'?await privateBankWorkspace(database,id,staff.id,'staff',Date.now()):null;
+  return{kind:'full' as const,observedAt,readiness,application:evidence.application,publicProfile,bank};
+}
+
 export default async function SellerApplicationPage({
-  params,
+  params,searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?:Promise<{returnTo?:string}>;
 }) {
   const { id } = await params;
   const staff = await requireStaffPage(
@@ -75,28 +111,46 @@ export default async function SellerApplicationPage({
     'seller.application.review',
   );
   const database = requireDatabase(env as unknown as { DB?: D1Database });
-  const application = await getSellerApplicationForReview(database, id, staff.id).catch(error => {
-    if (error instanceof ManagedMakerAuthorityError) redirect('/staff-access-denied');
-    throw error;
-  });
-  if (!application) notFound();
+  const returnTarget=(await searchParams)?.returnTo;
+  const backHref=safeAdminReturnTo(returnTarget,'/admin/sellers');
+  const reviewTasks=await listReviewTasks(database,staff.id,id).catch(()=>null);
+
+  const evidence=await readSellerReviewEvidence(database,id,staff);
+  const {observedAt,readiness}=evidence;
+  if(evidence.kind==='restricted'){
+    const summary=await database.prepare('SELECT p.display_name AS name,s.application_reference AS reference FROM seller_profiles s JOIN seller_public_profile_states p ON p.seller_id=s.id WHERE s.id=?').bind(id).first<{name:string;reference:string|null}>();
+    if(!summary)notFound();
+    const publicWorkspace=await getPublicProfileWorkspace(database,id,staff.id,'staff',observedAt);
+    return <div className="space-y-6"><ReviewBackLink actorId={staff.id} returnTo={backHref}/><header><p className="eyebrow">{summary.reference}</p><h1 className="section-title">{summary.name||'Seller workspace'}</h1><p>Operational summary. Government identity, protected evidence and full bank comparison require their authorized reviewer.</p></header><SellerReadinessSummary readiness={readiness} audience="staff"/><SharedReviewQueue tasks={reviewTasks??[]} actorId={staff.id} unavailable={reviewTasks===null} sellerDirectoryAvailable/><PublicProfileReview actorId={staff.id} sellerId={id} workspace={publicWorkspace} canReview={false}/></div>;
+  }
+  if(evidence.kind==='missing')notFound();
+  const {application,publicProfile,bank}=evidence;
+  const onboarding = staff.role === 'super_admin' ? await getSellerOnboardingChecklist(database, {
+    sellerId: application.id, ownerId: application.userId, stage: application.applicationStage ?? application.status,
+    readiness, viewer: { kind: 'admin', actorId: staff.id },
+  }) : null;
+  const approvedForActivation = application.status === 'under_review' && application.applicationStage === 'approved_for_activation';
+  const registrationIntake = application.status === 'under_review' && Boolean(await database
+    .prepare('SELECT 1 FROM seller_registration_intakes WHERE seller_id=? AND user_id=?')
+    .bind(application.id, application.userId).first());
+  const recoveryTarget = staff.role === 'super_admin' && application.userId !== staff.id
+    ? await database.prepare(`SELECT u.id,u.email,u.display_name AS displayName,CASE WHEN EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role='admin') THEN 'admin' ELSE 'seller' END AS role FROM users u WHERE u.id=? AND u.status='active' AND EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role IN ('seller','admin')) AND NOT EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role='super_admin')`).bind(application.userId).first<{id:string;email:string;displayName:string;role:'admin'|'seller'}>()
+    : null;
   const [managedDetails, managedTerms] = application.participationRoute === 'managed_maker'
-    ? await Promise.all([getManagedMakerDetailsForReview(database,id,staff.id),getManagedMakerApplicationTerms(database)]) : [null,null];
+    ? await Promise.all([getManagedMakerDetailsForReview(database,id,staff.id),readManagedApplicationTerms(database,id)]) : [null,null];
+  const operationalAddresses=await database.prepare(`SELECT purpose,locality FROM seller_operational_addresses WHERE seller_id=? AND purpose IN ('pickup','returns') ORDER BY purpose`)
+    .bind(id).all<{purpose:string;locality:string}>();
   const governance = await getSellerGovernance(database, id);
   const managedProgram = await getManagedProgramWorkspace(database, id);
   const acceptedManagedTerms = application.participationRoute === 'managed_maker'
     ? await readAcceptedManagedTerms(database, id) : null;
 
   return (
-    <div className="space-y-7">
-      <StaffFormHistoryLinks entries={[{kind:'seller-review-action',subjectId:id,label:'Seller review answers'},
+    <StaffReviewAccessBoundary actorId={staff.id} sourceId={id}><div className="space-y-7">
+      {recoveryTarget ? <AccountRecoveryAssistance actorId={staff.id} targetId={recoveryTarget.id} displayName={recoveryTarget.displayName} email={recoveryTarget.email} targetRole={recoveryTarget.role} /> : null}
+      <StaffFormHistoryLinks returnTo={withAdminReturnTo('/admin/sellers/'+encodeURIComponent(id),backHref)} entries={[{kind:'seller-review-action',subjectId:id,label:'Seller review answers'},
         ...(staff.role === 'super_admin' ? [{kind:'seller-governance' as const,subjectId:id,label:'Seller governance answers'}] : [])]} />
-      <Link
-        href="/admin/sellers"
-        className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" /> Back to sellers
-      </Link>
+      <ReviewBackLink actorId={staff.id} returnTo={backHref}/>
 
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
@@ -108,38 +162,24 @@ export default async function SellerApplicationPage({
             Legal name: {application.legalName}
           </p>
         </div>
-        <StatusBadge status={application.status} />
+        <StatusBadge status={approvedForActivation ? 'approved_for_activation' : application.status} />
       </div>
+
+      {onboarding ? <SellerOnboardingChecklist model={onboarding} /> : null}
 
       <nav aria-label="Seller review sections" className="flex flex-wrap gap-2">
         {[['seller-readiness','Readiness'],['seller-identity','Identity & terms'],['seller-registration','Registration'],['seller-evidence','Documents'],['seller-decision','Application decision'],['seller-history','Review history']].filter(([target])=>target!=='seller-identity'||application.participationRoute==='managed_maker').map(([target,label])=><a key={target} href={'#'+target} className="inline-flex min-h-11 items-center rounded-full border bg-card px-4 text-sm font-semibold hover:bg-muted">{label}</a>)}
       </nav>
-      <div id="seller-readiness" className="scroll-mt-28 grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader><CardTitle>Selected route</CardTitle></CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <p className="font-semibold">{application.participationRoute === 'managed_maker' ? 'Hastabazaar Managed Maker' : 'Registered Seller'}</p>
-            <p className="text-muted-foreground">Application stage: {(application.applicationStage ?? application.status).replaceAll('_', ' ')}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle>Recorded maker or seller status</CardTitle></CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <p className="font-semibold">{application.participationRoute==='managed_maker' ? application.applicationStage==='active' ? 'Maker activated' : 'Maker review and activation required' : application.status==='approved' ? 'Registered Seller approved' : 'Seller review required'}</p>
-            <p className="text-muted-foreground">Selling also requires current program settings, accepted terms and separately published products. <Link href="/admin/programs" className="underline">Review current program readiness</Link>.</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle>Outstanding responsibility</CardTitle></CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <p className="font-semibold">{application.participationRoute === 'managed_maker' ? 'Hastabazaar / external adviser' : 'Reviewer'}</p>
-            <p className="text-muted-foreground">{application.participationRoute === 'managed_maker' ? 'Review the recorded commercial model, accepted agreement, company seller, invoice issuer and receiving account below. Program and product readiness are checked separately.' : 'Verify registration evidence, applicable agreement, payout details, and product review requirements.'}</p>
-          </CardContent>
-        </Card>
-      </div>
+      <div id="seller-readiness" className="scroll-mt-28"><SellerReadinessSummary readiness={readiness} audience="staff"/></div>
+      {application.participationRoute==='managed_maker'&&staff.role==='super_admin'&&application.userId!==staff.id
+        ? <div id="seller-live-trading" className="scroll-mt-28"><ManagedLiveActivationPanel key={id} actorId={staff.id} sellerId={id}/></div> : null}
+      <SharedReviewQueue tasks={reviewTasks??[]} actorId={staff.id} unavailable={reviewTasks===null} sellerDirectoryAvailable/>
 
       <div className="grid gap-6 2xl:grid-cols-[minmax(0,1.4fr)_minmax(20rem,0.6fr)]">
         <div className="space-y-6">
+          {bank?<div id="seller-bank" className="scroll-mt-28"><SellerBankEvidence workspace={bank}/></div>:null}
+          {bank?<SellerBankReview actorId={staff.id} sellerId={id} revision={bank.revision} canDecide={application.userId!==staff.id&&bank.change?.status==='open'&&!!bank.proposed}/>:null}
+          {bank?.change?.status==='open'&&bank.proposed&&application.userId===staff.id?<p>You cannot review your own bank evidence. An eligible nonconflicted Super Admin must review this case.</p>:null}
           {managedTerms ? <CompanySellingIdentity terms={managedTerms}/> : null}
           {application.participationRoute === 'managed_maker' ? <Card id="seller-identity" className="scroll-mt-28"><CardHeader><CardTitle>Private Managed Maker agreement and identity</CardTitle></CardHeader><CardContent>
             {managedDetails ? <dl className="grid gap-4 sm:grid-cols-2"><Detail label="Government ID">{managedDetails.governmentIdType.replaceAll('_',' ')} {managedDetails.governmentIdDescription}</Detail>
@@ -148,24 +188,21 @@ export default async function SellerApplicationPage({
               <div className="sm:col-span-2"><Detail label="Historical accepted terms"><AcceptedAgreementSnapshot json={managedDetails.agreementSnapshotJson} /></Detail></div></dl>
               : <p>Current government ID and Managed Maker agreement acceptance have not been supplied. Request changes before approving activation.</p>}
           </CardContent></Card> : null}
-          <ManagedProgramReview sellerId={application.id} workspace={managedProgram} />
+          <ManagedProgramReview sellerId={application.id} workspace={managedProgram} canReviewPaymentTransfers={can(staff, 'payout.prepare') && application.userId !== staff.id} canReviewPaymentHistory={can(staff, 'payout.approve') && application.userId !== staff.id} />
           <Card>
             <CardHeader>
-              <CardTitle>Public maker profile preview</CardTitle>
+              <CardTitle>Recorded commercial references (private)</CardTitle>
             </CardHeader>
             <CardContent>
               <dl className="grid gap-5 sm:grid-cols-2">
-                <Detail label="Public identity">{application.participationRoute === 'managed_maker' && application.publicName ? managedMakerDisplayName(application.publicName) : application.publicName ?? application.tradingName}</Detail>
-                <Detail label="Public city/town">{application.publicCity ?? application.municipality}</Detail>
                 <Detail label="Legal seller reference">{application.legalSellerReference ?? 'Not assigned'}</Detail>
                 <Detail label="Invoice issuer reference">{application.invoiceIssuerReference ?? 'Not assigned'}</Detail>
                 <Detail label="Payout beneficiary reference">{application.payoutBeneficiaryReference ?? 'Not assigned'}</Detail>
                 <Detail label="Return destination">{application.returnDestinationType?.replaceAll('_', ' ') ?? 'Not configured'}</Detail>
               </dl>
-              <p className="mt-4 text-xs leading-5 text-muted-foreground">Private registration, home/workshop address, evidence, commercial terms, and commission values are excluded from this public preview.</p>
             </CardContent>
           </Card>
-
+          <PublicProfileReview actorId={staff.id} sellerId={id} workspace={publicProfile} canReview={staff.role==='super_admin'&&application.userId!==staff.id}/>
           <Card>
             <CardHeader>
               <CardTitle>Seller-role restrictions and deletion safety</CardTitle>
@@ -295,7 +332,7 @@ export default async function SellerApplicationPage({
                       )
                     : '—'}
                 </Detail>
-                <Detail label="Verified receiving account reference">
+                  <Detail label={isPendingPayoutReference(application.payoutAccountReference??'') ? 'Submitted bank details — pending verification' : 'Verified receiving account reference'}>
                   {application.payoutAccountReference}
                 </Detail>
                 <Detail label="Written settlement terms reference">
@@ -344,6 +381,7 @@ export default async function SellerApplicationPage({
                 {application.municipality}, {application.district},{' '}
                 {application.province}, Nepal
               </p>
+              <dl className="mt-4 space-y-3">{operationalAddresses.results.map(address=><Detail key={address.purpose} label={address.purpose==='pickup'?'Private pickup address':'Private return address'}>{address.locality}</Detail>)}</dl>
             </CardContent>
           </Card>
 
@@ -370,6 +408,7 @@ export default async function SellerApplicationPage({
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
+                    {document.kind==='bank_verification' ? <a href={`/api/admin/seller-documents/${document.id}?details=payout`} target="_blank" rel="noreferrer" className="text-sm font-semibold text-primary underline">Submitted bank details</a> : null}
                     <StatusBadge status={document.status} />
                     <a
                       href={`/api/admin/seller-documents/${document.id}`}
@@ -380,6 +419,8 @@ export default async function SellerApplicationPage({
                       Open <ExternalLink className="size-4" />
                     </a>
                   </div>
+                  {staff.role === 'super_admin' && (registrationEvidenceKinds as readonly string[]).includes(document.kind) ? <Link className="section-link" href={`/admin/seller-documents/${document.id}/review`}>Open evidence and decision history →</Link> : null}
+                  {staff.role === 'super_admin' && (registrationEvidenceKinds as readonly string[]).includes(document.kind) ? <SellerDocumentReview actorId={staff.id} sellerId={id} documentId={document.id} expectedReviewId={document.reviewId??null} canDecide={document.status==='pending'}/> : null}
                 </div>
               ))}
             </CardContent>
@@ -397,8 +438,9 @@ export default async function SellerApplicationPage({
                 status={application.status}
                 participationRoute={application.participationRoute}
                 applicationStage={application.applicationStage}
+                registrationIntake={registrationIntake}
               />
-              {application.participationRoute === 'managed_maker' && application.applicationStage === 'approved_for_activation' ? (
+              {application.participationRoute === 'managed_maker' && application.applicationStage === 'approved_for_activation' && managedTerms?.version!==MANAGED_SUPPLIER_AGREEMENT_VERSION ? (
                 <div className="mt-5"><ManagedMakerActivationForm sellerId={application.id} companyAccount={managedTerms?.account} acceptedTerms={acceptedManagedTerms ? { detailId: acceptedManagedTerms.detailId, retentionBps: acceptedManagedTerms.retentionBps, agreementVersion: acceptedManagedTerms.agreementVersion } : null}/></div>
               ) : null}
             </CardContent>
@@ -440,6 +482,10 @@ export default async function SellerApplicationPage({
           </Card>
         </div>
       </div>
-    </div>
+    </div></StaffReviewAccessBoundary>
   );
 }
+import { SellerBankReview } from '@/components/admin/seller-bank-review';
+import { SellerDocumentReview } from '@/components/admin/seller-document-review';
+import {StaffReviewAccessBoundary} from '@/components/admin/staff-review-access-boundary';
+

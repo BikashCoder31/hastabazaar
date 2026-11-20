@@ -16,7 +16,7 @@ export function PublicInformationPage({ pageKey }: { pageKey: PublicPageKey }) {
       <main id="main-content">
         <div className="border-b bg-secondary/30">
           <div className="shell py-10 sm:py-14">
-            <p className="eyebrow">HastaBazaar · Information & support</p>
+            <p className="eyebrow">Hastabazaar · Information & support</p>
             <h1 className="mt-3 font-heading text-4xl tracking-tight sm:text-5xl">
               {page.title}
             </h1>

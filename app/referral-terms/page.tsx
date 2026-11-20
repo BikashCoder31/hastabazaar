@@ -15,7 +15,7 @@ export default async function ReferralTerms() {
       <SiteHeader />
       <main tabIndex={-1} id="main-content" className="shell max-w-3xl py-12">
         <p className="eyebrow">Good finds are better shared</p>
-        <h1 className="mt-4 font-heading text-4xl">Welcome to HastaBazaar</h1>
+        <h1 className="mt-4 font-heading text-4xl">Welcome to Hastabazaar</h1>
         <p className="mt-5 text-lg leading-8">
           Your friend’s invitation gives you Rs. {c.friendDiscountPaisa / 100}{' '}
           off your first order of Rs. {c.minimumSubtotalPaisa / 100} or more in
@@ -83,7 +83,7 @@ export default async function ReferralTerms() {
           <Link href="/account/referrals" className="mr-5 inline-flex min-h-11 items-center font-semibold text-primary underline">Get my referral link →</Link>
           Need help?{' '}
           <Link href="/help" className="text-primary underline">
-            Contact HastaBazaar support
+            Contact Hastabazaar support
           </Link>
           .
         </p>

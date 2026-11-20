@@ -1,0 +1,7 @@
+import {env} from 'cloudflare:workers';
+import {requireSellerCenterApi,SellerCenterAuthorizationError} from '@/lib/auth/seller-center';
+import {requireDatabase,requireMediaBucket} from '@/lib/db/d1';
+import {CategoryContractError} from '@/lib/products/category-contracts';
+import {intakeFailure,intakeId,intakeQuery,intakeReply} from '@/lib/products/intake-http';
+import {readProductConcernMedia} from '@/lib/products/priority-concerns';
+export async function GET(request:Request,context:{params:Promise<{id:string}>}){try{const actor=await requireSellerCenterApi(),{id}=await context.params,query=intakeQuery(request,['caseId']),caseId=query.get('caseId');if(!intakeId(id)||!intakeId(caseId))throw new CategoryContractError('Choose the exact retained report and file.',400);const bindings=env as unknown as {DB?:D1Database;MEDIA?:R2Bucket},file=await readProductConcernMedia(requireDatabase(bindings),requireMediaBucket(bindings),actor.userId,caseId,id);if(file.staff!==false)throw new CategoryContractError('Use the authorized owner or staff report workspace.',403);return new Response(file.body,{headers:{'Content-Type':file.mimeType,'Content-Length':String(file.sizeBytes),'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"}});}catch(error){return error instanceof SellerCenterAuthorizationError?intakeReply({error:error.message},error.status):intakeFailure(error);}}

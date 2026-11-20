@@ -19,8 +19,8 @@ void test('seven finance and staff forms retain opaque attempts across uncertain
     const element=mode==='prepare'?<PreparePayoutButton sellerId="seller-one" sellerName="Fictional Maker" amount="NPR 100"/>
       :mode==='payout'?<PayoutWorkflowActions payoutId="payout-one" status="prepared" canApprove={true} canProcess={true} isPreparer={false}/>
       :mode==='delivery'?<DeliveryRateSettings rates={{version:'rates-v1',zones:{valley:15000,terai:18000,nationwide:25000},districts:{}}}/>
-      :mode==='referral'?<ReferralSettings campaign={{enabled:1,friendDiscountPaisa:1000,rewardPaisa:500,minimumSubtotalPaisa:5000,returnWindowDays:14}}/>
-      :mode==='invitation'?<StaffInvitationManager pendingInvitations={[]}/>
+      :mode==='referral'?<ReferralSettings actorId={'reviewer'} campaign={{updatedAt:1,enabled:1,friendDiscountPaisa:1000,rewardPaisa:500,minimumSubtotalPaisa:5000,returnWindowDays:14}}/>
+      :mode==='invitation'?<StaffInvitationManager actorId="reviewer" pendingInvitations={[]}/>
       :<StaffPermissionManager actorId="reviewer" members={[{userId:'admin-one',displayName:'Fictional Admin',email:'admin@example.test',permissions:[],version:1,updatedAt:0,updatedBy:''}]} requests={mode==='decision'?[{id:'permission-one',userId:'admin-one',status:'pending',permissionsJson:'[]',reason:'Fictional proposal',proposedBy:'proposer',proposedAt:1,expectedVersion:1,decidedBy:null,decisionNote:null}]:[]} presets={[]}/>;
     createRoot(document.getElementById('root')!).render(element);
   `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife',
@@ -46,11 +46,12 @@ void test('seven finance and staff forms retain opaque attempts across uncertain
     { mode: 'decision', form: 'staff.staff-permission-2', path: '/api/admin/staff-permissions', key: 'formRequestId' },
   ] as const;
   try {
-    for (const target of targets) {
+    for (const target of targets.filter(target => !process.env.FINANCE_RETRY_MODE || process.env.FINANCE_RETRY_MODE.split(',').includes(target.mode))) {
       const page = await browser.newPage();
       const bodies: Record<string, unknown>[] = [];
       let response: 'lost' | 'bad' | 'conflict' | 'stale' | 'ambiguous' | 'success' = 'lost';
       let ambiguousBody = '';
+      let outcomeRecorded=false, invitationGets=0;
       let configReads = 0;
       const configVersions = new Map<string, number>();
       try {
@@ -61,6 +62,9 @@ void test('seven finance and staff forms retain opaque attempts across uncertain
             const version = (configVersions.get(formId) ?? 0) + 1;
             configVersions.set(formId, version);
             return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({config:{formId,version,publishedAt:1,fields:[{id:'context_note',key:'context_note',label:'Finance context',type:'short_text',required:true,order:0,status:'active'}]}}) });
+          }
+          if((target.mode==='invitation'||target.mode==='proposal'||target.mode==='decision')&&new URL(route.request().url()).pathname===target.path&&route.request().method()==='GET'){
+            invitationGets++;const operation=target.mode==='proposal'?'propose':'approve',nonce=new URL(route.request().url()).searchParams.get('requestId'),permission={recorded:true,actorId:'reviewer',action:operation,requestId:nonce,sourceId:target.mode==='proposal'?'admin-one':'permission-one',id:target.mode==='proposal'?nonce:'permission-one',status:'approved'};return route.fulfill({status:outcomeRecorded?200:404,contentType:'application/json',body:JSON.stringify(outcomeRecorded?(target.mode==='invitation'?{recorded:true,requestId:new URL(route.request().url()).searchParams.get('requestId'),id:'invited-one',expiresAt:Date.now()+86400000,status:'pending'}:permission):{recorded:false,status:'unconfirmed',code:'outcome_unconfirmed'})});
           }
           if (new URL(route.request().url()).pathname === target.path && route.request().method() !== 'GET') {
             bodies.push(JSON.parse(route.request().postData() ?? '{}') as Record<string, unknown>);
@@ -110,7 +114,7 @@ void test('seven finance and staff forms retain opaque attempts across uncertain
           else if (target.mode === 'payout') { await form.getByRole('button', { name: 'Review decision' }).click(); await page.getByRole('button', { name: 'Confirm decision' }).click(); }
           else if (target.mode === 'invitation') { await form.getByRole('button', { name: 'Review invitation' }).click(); await page.getByRole('button', { name: 'Confirm decision' }).click(); }
           else if (target.mode === 'proposal' || target.mode === 'decision') {
-            await form.evaluate((element: HTMLFormElement) => element.requestSubmit());
+            if(target.mode==='decision')await form.getByRole('button',{name:'Approve',exact:true}).click();else await form.evaluate((element: HTMLFormElement) => element.requestSubmit());
             await page.getByRole('button', { name: target.mode === 'proposal' ? 'Confirm permission changes' : 'Approve access changes' }).click();
           } else await form.evaluate((element: HTMLFormElement) => element.requestSubmit());
           await page.waitForTimeout(80);
@@ -126,12 +130,19 @@ void test('seven finance and staff forms retain opaque attempts across uncertain
         assert.match(original, /^[0-9a-f-]{36}$/i, target.form);
         assert.equal(bodies[0].formVersion, 1);
         assert.deepEqual(bodies[0].customAnswers, [{fieldId:'context_note',value:'Fictional finance review context'}]);
+        if(target.mode==='invitation'||target.mode==='proposal'||target.mode==='decision'){
+          const isInvitation=target.mode==='invitation',retryLabel=isInvitation?'Retry exact invitation':'Retry exact staff access action',checkLabel=isInvitation?'Check original invitation':'Check original staff access action';
+          const wire=JSON.stringify(bodies[0]);
+          const retry=async()=>{const request=page.waitForRequest((request:{url():string;method():string})=>new URL(request.url()).pathname===target.path&&request.method()==='POST');await page.getByRole('button',{name:retryLabel,exact:true}).click();await request;await page.waitForFunction((label:string)=>{const button=Array.from(document.querySelectorAll('button')).find(item=>item.textContent?.trim()===label);return !!button&&!button.disabled;},retryLabel);assert.equal(JSON.stringify(bodies.at(-1)),wire);};
+          response='bad';await retry();response='conflict';await retry();
+          for(const body of ['{}','null','{"id":"unconfirmed","recorded":true}']){response='ambiguous';ambiguousBody=body;await retry();}
+          response='stale';await retry();assert.equal(await page.getByRole('button',{name:'Start a new attempt',exact:true}).count(),0);
+          const beforeReload=bodies.length;await page.reload();await page.addScriptTag({content:bundle.outputFiles[0].text});await page.getByRole('button',{name:checkLabel,exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:retryLabel,exact:true}).count(),0);assert.equal(await page.getByLabel(isInvitation?'Staff email *':target.mode==='proposal'?'Reason *':'Decision reason',{exact:true}).inputValue(),'');await page.getByRole('button',{name:checkLabel,exact:true}).click();await page.getByText(isInvitation?'The original invitation outcome is unconfirmed.':'The original staff access outcome is unconfirmed.',{exact:false}).waitFor();assert.equal(bodies.length,beforeReload);outcomeRecorded=true;await page.getByRole('button',{name:checkLabel,exact:true}).click();await page.getByRole('status').filter({hasText:isInvitation?'The original invitation creation is recorded.':'The original staff access action is recorded.'}).first().waitFor();assert.equal(invitationGets,2);assert.equal(bodies.length,beforeReload);assert.ok((await page.evaluate(()=>Object.values(sessionStorage))).every((value:string)=>!value.includes('Fictional')&&!value.includes('@')));assert.equal(await page.evaluate((id:string)=>Object.values(sessionStorage).some(value=>value.includes(id)),original),false);continue;
+        }
         form = await mount();
         assert.equal(await page.getByRole('button', { name: 'Start a new attempt' }).count(), 1, `${target.form}: pending warning after reload`);
         if (target.mode === 'prepare' || target.mode === 'payout') await form.getByLabel(target.mode === 'prepare' ? 'Preparation note' : 'Operational note').fill('Fictional changed payout note');
         else if (target.mode === 'delivery' || target.mode === 'referral') await form.locator('[name="reason"]').fill('Fictional changed revision');
-        else if (target.mode === 'invitation') await form.getByLabel('Staff email *').fill('changed@example.test');
-        else await form.getByLabel(target.mode === 'proposal' ? 'Reason *' : 'Decision reason').fill('Fictional changed decision');
         response = 'bad'; await send(form); assert.equal(bodies[1][target.key], original, `${target.form}: known 400`);
         response = 'conflict'; await send(form); assert.equal(bodies[2][target.key], original, `${target.form}: domain 409`);
         for (const body of ['{"id":{"unconfirmed":true},"message":{"unconfirmed":true},"saved":"true","ok":"true"}', '{}', 'null', '{"id":" ","message":" "}', '{"id":"unconfirmed","message":"","saved":false,"ok":false}']) {

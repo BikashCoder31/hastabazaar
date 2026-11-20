@@ -9,6 +9,7 @@ import { requireDatabase } from '@/lib/db/d1';
 import { getWallet } from '@/lib/db/repositories/wallet';
 import { listFormAnswersForSubjectPage } from '@/lib/db/repositories/form-answers';
 import { authorizeFormAnswerRead } from '@/lib/forms/access';
+import {readGiftCardViewScope,assertGiftCardViewScope} from '@/lib/gift-cards/view-scope';
 
 export const dynamic = 'force-dynamic';
 const money = formatPaisaExact;
@@ -31,6 +32,7 @@ export default async function WalletPage({ searchParams }: {
 } = {}) {
   const customer = await requireCustomerPage('/account/wallet');
   const db = requireDatabase(env as unknown as { DB?: D1Database });
+  const scope=await readGiftCardViewScope(db,customer.userId,'customer');
   const wallet = await getWallet(
     db,
     customer.userId,
@@ -66,11 +68,12 @@ export default async function WalletPage({ searchParams }: {
       authorizeFormAnswerRead(db, { id: customer.userId, role: 'customer' }, answer)));
     if (allowed.some((value) => !value)) throw new Error('Gift card answer authority changed.');
   }
+  await assertGiftCardViewScope(db,scope,selectedGift?{id:selectedGift.id,owner:'redeemed_by'}:undefined);
   return (
     <div className="space-y-7">
       <section className="rounded-3xl bg-[#17345f] p-6 text-white sm:p-8">
         <Wallet className="size-7 text-[#f4c46b]" />
-        <h1 className="mt-4 font-heading text-4xl">Your HastaBazaar wallet</h1>
+        <h1 className="mt-4 font-heading text-4xl">Your Hastabazaar wallet</h1>
         <p className="mt-3 text-white/75">
           A little thank-you for bringing good people to good finds.
         </p>
@@ -90,7 +93,8 @@ export default async function WalletPage({ searchParams }: {
           are unavailable.
         </p>
       </section>
-      <GiftCardForm />
+      <GiftCardForm actorId={customer.userId} />
+      {query?.giftId&&!selectedGift?<output className="block">The requested original gift redemption is unavailable for this account.</output>:null}
       <section className="space-y-4 rounded-3xl border bg-card p-6" aria-label="Your gift card answers">
         <h2 className="font-heading text-2xl">Gift card answer history</h2>
         {gifts.length ? <ul className="space-y-2">{gifts.map((gift) => <li key={gift.id}>
@@ -101,7 +105,8 @@ export default async function WalletPage({ searchParams }: {
         {nextGift ? <Link className="underline" href={
           `/account/wallet?beforeAt=${nextGift.redeemedAt}&beforeId=${encodeURIComponent(nextGift.id)}`
         }>Next 50 redeemed cards</Link> : null}
-        {selectedGift ? <div className="space-y-3 border-t pt-4">
+        {selectedGift ? <div id={'gift-record-'+selectedGift.id} className="space-y-3 border-t pt-4">
+          <p className="break-all">Original gift card redemption: {selectedGift.id} · {money(selectedGift.amountPaisa)}</p>
           <h3 className="font-semibold">Redeemed card answers</h3>
           {history?.answers.length ? history.answers.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)
             : <p>No saved answers for this redemption.</p>}

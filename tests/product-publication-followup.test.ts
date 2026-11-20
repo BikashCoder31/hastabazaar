@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {productPublicationFixture} from './helpers/product-publication-fixture';
+import {getProductPublicationReview,reviewProductPublication,rebaseProductWorkspace} from '../lib/products/publication';
+import {saveProductWorkspace,submitProductIntake} from '../lib/products/intake-workspace';
+import {listReviewTasks,listSellerReviewTasks} from '../lib/workflows/review-tasks';
+import {listNotifications} from '../lib/db/repositories/operations';
+import {notificationDestination} from '../lib/operations/notification-links';
+import {getPublishedProductBySlug,getProductMediaObject} from '../lib/db/repositories/products';
+const checks={sameItem:true,accurateCover:true,eligibilityEvidence:[]};
+void test('approval-only remains actionable for a permitted publisher with one current notification and a completed first-review clock',async()=>{
+ const f=await productPublicationFixture();try{
+  f.sqlite.exec(`UPDATE staff_permission_profiles SET permissions_json='["product.publish"]' WHERE user_id='delegate'`);
+  const view=await getProductPublicationReview(f.db,'reviewer',f.sent.caseId);await reviewProductPublication(f.db,{actorId:'reviewer',requestId:'publishing-followup-approval',expectedRevision:String(view.revision),now:f.now+4},{caseId:f.sent.caseId,versionId:view.candidate.versionId,expectedCaseRevision:String(view.caseRevision),action:'approve_only',reason:'Reviewed the actual fictional product; publication remains a separate action.',checks});
+  const tasks=(await listReviewTasks(f.db,'delegate')).filter(task=>task.sourceId===f.sent.caseId);assert.equal(tasks.length,1);assert.equal(tasks[0].status,'awaiting_review');assert.equal(tasks[0].sourceStatus,'ready_for_decision');assert.equal(tasks[0].dueAt,null);assert.equal(tasks[0].triagedAt,f.now+4);
+  const owner=(await listSellerReviewTasks(f.db,'registered-owner')).find(task=>task.sourceId===f.sent.caseId);assert.equal(owner?.status,'awaiting_review');assert.equal(owner?.dueAt,null);
+  const notices=(await listNotifications(f.db,'delegate',100,'staff')).filter(item=>item.relatedId===f.sent.caseId);assert.equal(notices.length,1);assert.equal(notices[0].requiredPermission,'product.publish');assert.equal(notificationDestination('staff','staff',notices[0].relatedType,notices[0].relatedId,{requiredPermission:notices[0].requiredPermission}),'/admin/products/publications/'+f.sent.caseId);
+  const approved=await getProductPublicationReview(f.db,'delegate',f.sent.caseId);await reviewProductPublication(f.db,{actorId:'delegate',requestId:'publishing-followup-publish',expectedRevision:String(approved.revision),now:f.now+5},{caseId:f.sent.caseId,versionId:approved.candidate.versionId,expectedCaseRevision:String(approved.caseRevision),action:'publish_approved',reason:'Publish the recorded exact approved candidate after confirming current authority.',checks:null});
+  assert.equal((await listReviewTasks(f.db,'delegate')).find(task=>task.sourceId===f.sent.caseId)?.status,'completed');assert.equal((await listNotifications(f.db,'delegate',100,'staff')).filter(item=>item.relatedId===f.sent.caseId).length,0,'The obsolete publishing prompt disappears after the action.');
+ }finally{f.dispose();}
+});
+void test('public detail and media delivery use only the current approved media while retaining earlier review references',async()=>{
+ const f=await productPublicationFixture();try{
+  const view=await getProductPublicationReview(f.db,'reviewer',f.sent.caseId),published=await reviewProductPublication(f.db,{actorId:'reviewer',requestId:'media-publication-a',expectedRevision:String(view.revision),now:f.now+4},{caseId:f.sent.caseId,versionId:view.candidate.versionId,expectedCaseRevision:String(view.caseRevision),action:'approve_and_publish',reason:'The exact fictional cup and original cover have been reviewed.',checks});
+  await rebaseProductWorkspace(f.db,{...f.ctx,requestId:'media-base-a',expectedRevision:String(published.revision),now:f.now+5},{draftId:f.attached.id,publicVersionId:published.versionId,expectedDraftRevision:String(f.attached.revision),retainDraft:true});
+  f.sqlite.prepare("INSERT INTO product_intake_media(id,draft_id,owner_id,request_id,object_key,mime_type,size_bytes,original_name,content_digest,state,created_at,completed_at) VALUES('photo-two',?,'registered-owner','new-photo','private/fictional-new-cover.png','image/png',100,'new-cover.png','fixture-digest-two','ready',1,1)").run(f.attached.id);
+  const input=structuredClone(f.input);input.mediaIds=['photo-two'];input.offers.offers[0].mediaId='photo-two';const b=await saveProductWorkspace(f.db,{...f.ctx,requestId:'new-cover-draft',expectedRevision:String(f.attached.revision),now:f.now+6},input),sent=await submitProductIntake(f.db,{...f.ctx,requestId:'new-cover-send',expectedRevision:String(b.revision),now:f.now+7},{draftId:b.id,versionId:b.versionId,intent:'review',note:'An actual replacement cover for the same physical item.',expectedCaseId:f.sent.caseId,expectedCaseRevision:String(published.caseRevision),replaceVersionId:f.sent.versionId});
+  const next=await getProductPublicationReview(f.db,'reviewer',sent.caseId);await reviewProductPublication(f.db,{actorId:'reviewer',requestId:'media-publication-b',expectedRevision:String(next.revision),now:f.now+8},{caseId:sent.caseId,versionId:next.candidate.versionId,expectedCaseRevision:String(next.caseRevision),action:'approve_and_publish',reason:'Reviewed the actual replacement cover for this same physical cup.',checks});
+  const slug=String(f.sqlite.prepare('SELECT slug FROM products WHERE id=?').get(view.productId)!.slug),detail=await getPublishedProductBySlug(f.db,slug);assert.deepEqual(detail?.media.map(row=>row.id),['photo-two']);assert.equal(detail?.primaryMediaId,'photo-two');assert.equal((await getProductMediaObject(f.db,'photo'))?.productStatus,'archived');assert.equal((await getProductMediaObject(f.db,'photo-two'))?.productStatus,'published');assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM product_media WHERE product_id=?').get(view.productId)!.n,2);assert.equal((await getProductPublicationReview(f.db,'reviewer',f.sent.caseId)).candidate.snapshot.mediaIds[0],'photo');
+ }finally{f.dispose();}
+});

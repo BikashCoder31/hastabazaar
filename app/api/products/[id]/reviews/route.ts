@@ -1,3 +1,5 @@
+import {CustomerScopeError} from '@/lib/auth/customer-scope';
+import {requireCustomerIntentApi} from '@/lib/auth/customer-intent';
 import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { sanitizeReviewPhoto, InvalidReviewPhotoError } from '@/lib/reviews/sanitize-photo';
 import { BodyTooLargeError } from '@/lib/http/bounded-body';
@@ -5,7 +7,6 @@ import { env } from 'cloudflare:workers';
 
 import {
   CustomerAuthorizationError,
-  requireCustomerApi,
 } from '@/lib/auth/customer';
 import { requireDatabase, requireMediaBucket } from '@/lib/db/d1';
 import {
@@ -67,7 +68,7 @@ export async function POST(
     );
   try {
     const [customer, { id }] = await Promise.all([
-      requireCustomerApi(),
+      requireCustomerIntentApi(request),
       params,
     ]);
     const database = requireDatabase(env as unknown as { DB?: D1Database });
@@ -190,8 +191,8 @@ export async function POST(
     await cleanUnattached();
     if (error instanceof BodyTooLargeError) return Response.json({error:error.message},{status:413});
     if (error instanceof InvalidReviewPhotoError || error instanceof SyntaxError) return Response.json({error:error instanceof InvalidReviewPhotoError?error.message:'Invalid review request.'},{status:400});
-    if (error instanceof CustomerAuthorizationError)
-      return Response.json({ error: error.message }, { status: error.status });
+    if ((error instanceof CustomerAuthorizationError || error instanceof CustomerScopeError))
+      return Response.json({ error: error.message,code:error instanceof CustomerAuthorizationError?'access_denied_before_write':'outcome_unconfirmed' }, { status: error.status });
     if (error instanceof CustomerDataConflictError)
       return Response.json({ error: error.message }, { status: 409 });
     if (error instanceof FormRuntimeError) return Response.json({ error: error.code === 'stale_version' ? error.message : 'Form configuration is unavailable.', code: error.code }, { status: error.code === 'stale_version' ? 409 : 503 });

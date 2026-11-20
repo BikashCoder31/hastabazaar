@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Operations · Homepage editor</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/39ae600ed082352c03509106609818ff">
+<link rel="stylesheet" href="/_blob/d1603bdfcb29428264731bbedb89e050">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&amp;family=Instrument+Sans:wght@400..700&amp;family=JetBrains+Mono:wght@500&amp;display=swap">
+<style>
+body{margin:0;background:#F7F3EC}
+a{color:#14213D}a:hover{color:#A8232E}
+.helpbtn{all:unset;cursor:pointer;width:28px;height:28px;border-radius:50%;border:1px solid #D3C5AD;display:inline-flex;align-items:center;justify-content:center;color:#46536F;transition:background-color 160ms ease,color 160ms ease,transform 160ms ease}
+.helpbtn:hover{background:#fff;color:#14213D}.helpbtn:active{transform:scale(.95)}
+.helpbtn:focus-visible{outline:2px solid #A8232E;outline-offset:2px}
+.pop{position:absolute;z-index:20;background:#fff;color:#2C3B5C;border:1px solid #E4DACA;border-radius:14px;box-shadow:0 18px 40px -18px rgba(20,33,61,.35);animation:popin 180ms cubic-bezier(.23,1,.32,1)}
+@keyframes popin{from{opacity:0;transform:translateY(-4px) scale(.98)}}
+@media (prefers-reduced-motion:reduce){.pop{animation:none}}
+</style>
+</helmet>
+<div class="hb" style="background: #F7F3EC; min-height: 100vh; display: flex; flex-direction: column">
+  <!-- focused editor bar -->
+  <div style="height: 64px; display: flex; align-items: center; gap: 14px; padding: 0 24px; background: #14213D; color: #fff; position: relative; z-index: 10">
+    <a href="Admin-Moderation.dc.html" class="btn btn-sm" style="color: #fff"><span class="ic s18 i-left"></span>Catalog</a>
+    <span style="width: 1px; height: 24px; background: rgba(255,255,255,.2)"></span>
+    <b style="font-size: 16px">Homepage</b>
+    <button class="helpbtn" aria-label="How the homepage editor works" aria-expanded="{{helpOpen}}" onClick="{{toggleHelp}}" style="color: #C9D0DD; border-color: rgba(255,255,255,.3)"><span class="ic s16 i-help"></span></button>
+    <sc-if value="{{helpOpen}}" hint-placeholder-val="{{ false }}">
+        <div class="pop" role="dialog" aria-label="How the homepage editor works" style="top: 60px; left: 24px; width: 420px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; font-size: 14px">
+          <b style="font-size: 15px; color: #14213D">How the homepage editor works</b>
+          <p>Turn sections on or off on the left, and drag to reorder. Click a section to edit it on the right.</p><p>The preview uses live products. Nothing changes for shoppers until you press Publish changes.</p><p>A scheduled hero shows between its dates, then the default hero comes back on its own.</p>
+          <a href="#" class="tlink" style="font-size: 13.5px">Full staff procedure</a>
+        </div>
+      </sc-if>
+    <span class="badge" style="background: rgba(226,182,92,.18); color: #E2B65C">Draft · 3 changes</span>
+    <div style="margin-left: auto; display: inline-flex; padding: 3px; border-radius: 10px; background: rgba(255,255,255,.08)" role="tablist" aria-label="Preview size">
+      <button role="tab" aria-selected="true" style="all: unset; cursor: pointer; padding: 6px 10px; border-radius: 7px; background: rgba(255,255,255,.14); display: inline-flex"><span class="ic s18 i-layout"></span><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Desktop</span></button>
+      <button role="tab" aria-selected="false" style="all: unset; cursor: pointer; padding: 6px 10px; border-radius: 7px; display: inline-flex; color: #C9D0DD"><span class="ic s18 i-phone"></span><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Phone</span></button>
+    </div>
+    <button class="btn btn-sm" style="color: #fff; border-color: rgba(255,255,255,.3)">Discard</button>
+    <button class="btn btn-primary btn-sm">Publish changes</button>
+  </div>
+
+  <div style="display: flex; flex-wrap: wrap; flex: 1">
+    <!-- sections -->
+    <aside style="flex: 1 1 260px; max-width: 280px; padding: 18px 14px; border-right: 1px solid #E4DACA; background: #FFFCF7; display: flex; flex-direction: column; gap: 8px" aria-label="Sections">
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 0 4px 6px"><b style="font-size: 14.5px">Sections</b><button class="btn btn-quiet btn-xs"><span class="ic s16 i-plus"></span>Add</button></div>
+      <sc-for list="{{sections}}" as="s" hint-placeholder-count="7">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 10px; background: {{s.bg}}; box-shadow: {{s.ring}}; opacity: {{s.op}}">
+          <span aria-hidden="true" style="display: grid; grid-template-columns: repeat(2, 3px); gap: 3px; color: #A99A82"><i style="width: 3px; height: 3px; background: currentColor; border-radius: 50%"></i><i style="width: 3px; height: 3px; background: currentColor; border-radius: 50%"></i><i style="width: 3px; height: 3px; background: currentColor; border-radius: 50%"></i><i style="width: 3px; height: 3px; background: currentColor; border-radius: 50%"></i><i style="width: 3px; height: 3px; background: currentColor; border-radius: 50%"></i><i style="width: 3px; height: 3px; background: currentColor; border-radius: 50%"></i></span>
+          <button onClick="{{s.pick}}" style="all: unset; cursor: pointer; flex: 1; font-size: 14px; font-weight: {{s.w}}">{{s.name}}<span style="display: block; font-size: 12px; color: #675B4E; font-weight: 400">{{s.meta}}</span></button>
+          <button onClick="{{s.toggle}}" class="{{s.sw}}" aria-label="Show {{s.name}}" aria-pressed="{{s.pressed}}"></button>
+        </div>
+      </sc-for>
+    </aside>
+
+    <!-- preview -->
+    <main style="flex: 999 1 520px; min-width: 0; padding: 24px; display: flex; flex-direction: column; align-items: center; gap: 12px; background: #EFE9DF" aria-label="Preview">
+      <div style="width: 100%; max-width: 760px; border-radius: 12px; overflow: hidden; background: #F5EFE4; box-shadow: 0 24px 60px -30px rgba(20,33,61,.45); border: 1px solid #E4DACA">
+        <div style="height: 12px; background: #142d56"></div>
+        <div style="height: 44px; background: #fff; border-bottom: 1px solid #e4e8ef; display: flex; align-items: center; gap: 8px; padding: 0 16px"><img src="/_blob/65b39bff773bb375aa5d23ab420967a3" alt="" style="width: 24px; height: 24px; padding: 2px; border: 1px solid #e9dfce; border-radius: 6px; background: #fffdf9"><span style="font-family: Georgia, serif; font-size: 15px; letter-spacing: -0.03em"><span style="color: #0b2c4a">Hasta</span><span style="color: #a5121c">bazaar</span></span><span style="flex: 1; height: 24px; margin: 0 16px; border: 1px solid #dce2ec; border-radius: 6px; background: #f7f8fb; display: flex; justify-content: flex-end; padding: 2px"><span style="width: 36px; border-radius: 4px; background: #b5121b"></span></span><span style="width: 44px; height: 22px; border-radius: 5px; background: #142d56"></span></div>
+        <div style="height: 22px; background: #edf2f8; border-bottom: 1px solid #dfe6ef"></div>
+        <div style="padding: 28px 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: center; box-shadow: inset 0 0 0 2px #A8232E; position: relative">
+          <span class="badge" style="position: absolute; top: 8px; left: 8px; background: #A8232E; color: #fff; height: 20px; font-size: 11px">Hero · editing</span>
+          <div style="display: flex; flex-direction: column; gap: 10px">
+            <h2 class="serif" style="font-size: 30px; line-height: 1.02">{{heading}}</h2>
+            <p style="font-size: 12px; color: #46536F">{{sub}}</p>
+            <span style="display: flex; gap: 6px"><span class="btn btn-primary btn-xs" style="height: 26px; font-size: 11.5px">{{cta}}</span><span class="btn btn-ghost btn-xs" style="height: 26px; font-size: 11.5px">Find a gift</span></span>
+          </div>
+          <img src="{{img}}" alt="" style="width: 100%; aspect-ratio: 5 / 4; object-fit: cover; border-radius: 4px">
+        </div>
+        <div style="padding: 18px 24px; background: #FFFCF7; display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; opacity: .8">
+          <img src="/_blob/bd742dc34fd9a539efd543a6b3bbe157" alt="" style="width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 3px"><img src="/_blob/7f04929ce482cbc65dd5763a037517e8" alt="" style="width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 3px"><img src="/_blob/a49762ab8c78479cfba8a5f1286912e2" alt="" style="width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 3px"><img src="/_blob/8cfe23ebeb8ec1df2e95ea03b8760866" alt="" style="width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 3px"><img src="/_blob/f54d6585cf2cb42ca7881e4ab64122b0" alt="" style="width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 3px"><img src="/_blob/5fb6d234c879224efbf63905ce976c71" alt="" style="width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 3px">
+        </div>
+        <div style="padding: 18px 24px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; opacity: .8">
+          <img src="/_blob/eef4ef68f82a1e98e267463ef9651908" alt="" style="width: 100%; aspect-ratio: 1; object-fit: contain; background: #fff; border-radius: 3px"><img src="/_blob/d1a1c95c197cdb7a91959d750c4932bf" alt="" style="width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 3px"><img src="/_blob/90ba431b236d9eb432e8946a4b72fc18" alt="" style="width: 100%; aspect-ratio: 1; object-fit: contain; background: #fff; border-radius: 3px"><img src="/_blob/b143837d69463c62288a1c0ac663884d" alt="" style="width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 3px">
+        </div>
+      </div>
+      <span style="font-size: 13px; color: #46536F">Preview uses live products. Hidden sections are skipped.</span>
+    </main>
+
+    <!-- inspector -->
+    <aside style="flex: 1 1 320px; max-width: 360px; padding: 20px; border-left: 1px solid #E4DACA; background: #fff; display: flex; flex-direction: column; gap: 18px" aria-label="Hero settings">
+      <div><b style="font-size: 16px">Hero</b><p style="font-size: 13.5px; color: #46536F">The first thing every shopper sees.</p></div>
+      <div class="field"><label class="label" for="h1">Heading</label><textarea id="h1" class="input" rows="2">Tihar gifts, handmade in Nepal — lights, colour and keepsakes.</textarea><span class="hint num">63 / 80 · keep it under two lines on phones</span></div>
+      <div class="field"><label class="label" for="h2">Supporting line</label><textarea id="h2" class="input" rows="3">Gifts for Laxmi Puja and Bhai Tika from reviewed Nepali makers. Cash on delivery across Nepal.</textarea></div>
+      <div class="field">
+        <span class="label">Image</span>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px">
+          <sc-for list="{{imgs}}" as="i" hint-placeholder-count="4">
+            <button onClick="{{i.pick}}" aria-label="Use image {{i.n}}" aria-pressed="{{i.pressed}}" style="all: unset; cursor: pointer; aspect-ratio: 1; border-radius: 8px; overflow: hidden; box-shadow: {{i.ring}}"><img src="{{i.src}}" alt="" style="width: 100%; height: 100%; object-fit: cover; display: block"></button>
+          </sc-for>
+        </div>
+        <span class="hint">At least 1600 px wide. Alt text is required.</span>
+      </div>
+      <div class="g2" style="gap: 10px">
+        <div class="field"><label class="label" for="b1">Main button</label><input id="b1" class="input" value="{{cta}}" style="height: 40px"></div>
+        <div class="field"><label class="label" for="b2">Links to</label><span id="b2" class="input" style="height: 40px; display: flex; align-items: center; justify-content: space-between; font-size: 14px">All crafts<span class="ic s16 i-down"></span></span></div>
+      </div>
+      <div style="padding: 14px; border-radius: 12px; background: #F7F3EC; display: flex; flex-direction: column; gap: 10px">
+        <label style="display: flex; align-items: center; justify-content: space-between; font-size: 14.5px; font-weight: 600"><span style="display: flex; gap: 8px; align-items: center"><span class="ic s18 i-calendar"></span>Schedule</span><span class="switch on"></span></label>
+        <span class="num" style="font-size: 13.5px; color: #46536F">Show from <b style="color: #14213D">28 Oct</b> to <b style="color: #14213D">20 Nov</b>, then fall back to the default hero.</span>
+      </div>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1260}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { sel: 'Hero', hidden: { 'Makers': true }, img: 0, helpOpen: false }; }
+  renderVals() {
+    const B = '/_blob/';
+    const s = this.state;
+    const list = [['Hero', 'Tihar version · scheduled'], ['Shop by craft', '6 categories'], ['New this week', 'Automatic · 8 products'], ['Occasions', '7 occasions'], ['Makers', 'Hidden'], ['Promise', '3 points'], ['Sell on Hastabazaar', 'Seller sign-up']];
+    const sections = list.map(([name, meta]) => {
+      const on = !s.hidden[name]; const sel = s.sel === name;
+      return { name, meta: on ? meta : 'Hidden', bg: sel ? '#fff' : 'transparent', ring: sel ? '0 0 0 2px #14213D' : 'none', w: sel ? 650 : 500, op: on ? 1 : 0.55,
+        sw: on ? 'switch on' : 'switch', pressed: on ? 'true' : 'false',
+        pick: () => this.setState({ sel: name }), toggle: () => this.setState({ hidden: { ...s.hidden, [name]: on } }) };
+    });
+    const srcs = [B + '7452db703cf35cb8dafe3977528f8754', B + '7826a1d17fc16b704a3ffb8d4f50fb1c', B + '384bac2e534c8a0b0382e1bab861b420', B + '6124d87be27c1b53d83065b8be4ba5b1'];
+    const imgs = srcs.map((src, i) => ({ src, n: i + 1, pressed: i === s.img ? 'true' : 'false', ring: i === s.img ? '0 0 0 2px #14213D, 0 0 0 4px #fff inset' : '0 0 0 1px #E4DACA', pick: () => this.setState({ img: i }) }));
+    return {
+      helpOpen: s.helpOpen, toggleHelp: () => this.setState({ helpOpen: !s.helpOpen }),
+      sections, imgs, img: srcs[s.img],
+      heading: 'Tihar gifts, handmade in Nepal — lights, colour and keepsakes.',
+      sub: 'Gifts for Laxmi Puja and Bhai Tika from reviewed Nepali makers. Cash on delivery across Nepal.',
+      cta: 'Shop Tihar gifts'
+    };
+  }
+}
+</script>
+</body>
+</html>

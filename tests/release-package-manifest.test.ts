@@ -27,23 +27,24 @@ void test('actual Windows release package reports exact nonzero byte totals and 
   assert.equal(probe?.status, 0, probe?.stderr);
   const fixture = await mkdtemp(join(tmpdir(), 'release-package-manifest-'));
   try {
-    const migrationPath = 'deployment/babal/schema.sql';
-    const release = JSON.stringify({ release: releaseId, migrations: [{ path: migrationPath }] }) + '\n';
+    const migrationPath = 'deployment/babal/mariadb-schema.sql';
+    const selectedSchema = 'CREATE TABLE selected_candidate (id INTEGER);\r\n';
+    const release = JSON.stringify({ release: releaseId, migrations: [{ path: migrationPath, sha256: sha256(Buffer.from(selectedSchema)), usage: 'empty-database-only' }] }) + '\n';
     const archiveContents: Record<string, string> = {
       'app.cjs': 'module.exports = { fixture: true };\n',
       'server.js': '// Synthetic package fixture.\n',
+      'hosted-security.mjs': '// Synthetic operator fixture.\n',
       'package.json': '{"name":"release-fixture","private":true}\n',
       'dist/client/vinext-client-entry-manifest.json': '{"fixture":true}\n',
       'deployment/babal/release-manifest.json': release,
-      [migrationPath]: 'CREATE TABLE fixture (id INTEGER);\n',
+      [migrationPath]: selectedSchema,
     };
     const sourceContents: Record<string, string> = {
-      'deployment/babal/release-manifest.json': release,
-      [migrationPath]: archiveContents[migrationPath],
+      'deployment/babal/release-manifest.json': JSON.stringify({ release: 'historical-root-release', migrations: [] }) + '\n',
+      [migrationPath]: '-- Historical schema must never replace selected standalone bytes.\n',
       'lib/content/legal-policies.ts': `export const customer = 'customer-policy-set-2026-10-01';\nexport const seller = 'seller-agreement:sha256:${'a'.repeat(64)}';\n`,
     };
     for (const [path, content] of Object.entries(archiveContents)) {
-      if (path.startsWith('deployment/')) continue;
       sourceContents['dist/standalone/' + path] = content;
     }
     for (const [path, content] of Object.entries(sourceContents)) {
@@ -55,10 +56,25 @@ void test('actual Windows release package reports exact nonzero byte totals and 
     await mkdir(join(fixture, 'outputs'));
     const script = join(fixture, 'scripts/package-babal-release.ps1');
     await copyFile(join(repository, 'scripts/package-babal-release.ps1'), script);
+    await copyFile(join(repository, 'scripts/release-files.mjs'), join(fixture, 'scripts/release-files.mjs'));
+    try { await copyFile(join(repository, 'scripts/release-schema-assets.mjs'), join(fixture, 'scripts/release-schema-assets.mjs')); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
     const packageFixture = () => spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, '-ReleaseId', releaseId],
       { cwd: fixture, encoding: 'utf8', timeout: 120_000, env: powershellEnvironment });
+
+    // Neither a correct repository copy nor a matching ZIP inventory can rescue
+    // a stale/tampered built schema: the standalone manifest is the contract.
+    await writeFile(join(fixture, 'dist/standalone', migrationPath), '-- Tampered built bytes.\n');
+    const tampered = packageFixture();
+    assert.notEqual(tampered.status, 0, 'schema hash mismatch must stop before archive creation');
+    assert.match(tampered.stderr, /Migration hash mismatch/);
+    await assert.rejects(readFile(join(fixture, 'outputs', releaseId + '.zip')), { code: 'ENOENT' });
+    await writeFile(join(fixture, 'dist/standalone', migrationPath), selectedSchema);
+
     const packaged = packageFixture();
     assert.equal(packaged.status, 0, `${packaged.error?.message ?? ''}\n${packaged.stderr}\n${packaged.stdout}`);
+    assert.equal(await readFile(join(fixture, migrationPath), 'utf8'), sourceContents[migrationPath], 'historical root schema is preserved');
+    assert.equal(await readFile(join(fixture, 'deployment/babal/release-manifest.json'), 'utf8'), sourceContents['deployment/babal/release-manifest.json']);
 
     const expected = Object.entries(archiveContents).map(([path, content]) => ({ path, bytes: Buffer.byteLength(content, 'utf8'), sha256: sha256(Buffer.from(content, 'utf8')) }))
       .sort((a, b) => a.path.localeCompare(b.path, 'en'));
@@ -68,7 +84,7 @@ void test('actual Windows release package reports exact nonzero byte totals and 
     const manifest = decodeJson<ReleaseFileManifest>(await readFile(artifact('.manifest.json'), 'utf8'));
     assert.equal(manifest.release, releaseId);
     assert.equal(manifest.totalBytes, knownTotal, 'totalBytes must equal the independently known fixture bytes');
-    assert.equal(manifest.fileCount, 6);
+    assert.equal(manifest.fileCount, 7);
     assert.deepEqual(manifest.files, expected);
 
     // Inspect the actual ZIP independently, rather than trusting the packaging report.
@@ -92,11 +108,11 @@ try {
     const inspection = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', inspector, '-Archive', artifact('.zip')], { encoding: 'utf8', timeout: 30_000, env: powershellEnvironment });
     assert.equal(inspection.status, 0, `${inspection.error?.message ?? ''}\n${inspection.stderr}`);
     const actualArchiveFiles = decodeJson<FileProof[]>(inspection.stdout);
-    assert.equal(actualArchiveFiles.length, 6);
+    assert.equal(actualArchiveFiles.length, 7);
     assert.deepEqual(actualArchiveFiles, expected);
     const verification = decodeJson<{ sourceFileCount: number; archiveFileCount: number; mismatchCount: number; missingRequired: string[]; zipSha256: string }>(await readFile(artifact('.verification.json'), 'utf8'));
-    assert.equal(verification.sourceFileCount, 6);
-    assert.equal(verification.archiveFileCount, 6);
+    assert.equal(verification.sourceFileCount, 7);
+    assert.equal(verification.archiveFileCount, 7);
     assert.equal(verification.mismatchCount, 0);
     assert.deepEqual(verification.missingRequired, []);
     const zipHash = sha256(await readFile(artifact('.zip')));

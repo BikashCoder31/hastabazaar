@@ -1,8 +1,10 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Plus, RotateCcw, Save, Send, Trash2 } from 'lucide-react';
 import { FormCatalogPreview } from '@/components/admin/form-catalog-preview';
+import { FormCompatibilityControls } from '@/components/admin/form-compatibility-controls';
+import {assertQuestionPublicationPolicy,questionRetirementReason} from '@/lib/forms/editor-policy';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,7 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import type { ConfiguredField, CustomFieldType, FormConfigDraft, FormDefinition } from '@/lib/forms/types';
 import { validateFormDraftForDefinition } from '@/lib/forms/validation';
 import { baseFieldCopy, isAutomaticFormField } from '@/lib/forms/plain-language';
-import { formChangeSummary } from '@/lib/forms/catalog-changes';
+import { compatibilityAwareSellerForms, formChangeSummary } from '@/lib/forms/catalog-changes';
 
 export interface CatalogVersion {
   id: string;
@@ -30,11 +32,7 @@ export interface CatalogVersion {
 
 const choicesType = (type: CustomFieldType) => type === 'single_choice' || type === 'multiple_choice';
 const canonicalKey = (key: string) => key.replaceAll(/[^a-z0-9]/gi, '').toLowerCase();
-const readChoiceDraft = (drafts: Readonly<Record<string, string>>, id: string) => Object.hasOwn(drafts, id) && typeof drafts[id] === 'string' ? drafts[id] : undefined;
-const parseChoices = (raw: string) => raw.split('\n').filter((line) => line.trim()).map((line) => {
-  const [value, ...label] = line.split('|');
-  return { value: value.trim(), label: label.join('|').trim() };
-});
+const stableReference = (kind: 'question' | 'choice') => `${kind}_${crypto.randomUUID().replaceAll('-', '')}`;
 const ordered = (fields: readonly ConfiguredField[]) => fields.toSorted((a, b) => a.order - b.order);
 const normalized = (fields: readonly ConfiguredField[]) => fields.map((field, order) => ({ ...field, order }));
 // Stored array position is not configured order. Stable sorting also preserves ties.
@@ -47,14 +45,15 @@ const currentDraft = (versions: readonly CatalogVersion[]) => {
 };
 const displayDate = (value: number) => new Intl.DateTimeFormat('en-NP', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kathmandu' }).format(new Date(value));
 
-export function FormCatalogEditor({ form, versions: initialVersions }: { form: FormDefinition; versions: readonly CatalogVersion[] }) {
+export function FormCatalogEditor({ form, versions: initialVersions, actorId, retainedOnly = false }: { form: FormDefinition; versions: readonly CatalogVersion[]; actorId?: string; retainedOnly?: boolean }) {
   const [versions, setVersions] = useState(initialVersions);
   const first = currentDraft(initialVersions) ?? newest(initialVersions, 'published');
   const [fields, setFields] = useState<readonly ConfiguredField[]>(() => canonicalFields(first?.config.fields ?? []));
   const [savedFields, setSavedFields] = useState(() => JSON.stringify(canonicalFields(first?.config.fields ?? [])));
-  const [choiceDrafts, setChoiceDrafts] = useState<Record<string, string>>({});
   const [reason, setReason] = useState('');
-  const [newKey, setNewKey] = useState('');
+  const [retainedPurpose, setRetainedPurpose] = useState('');
+  const [maintainQuestions, setMaintainQuestions] = useState(false);
+  const [accessDenied, setAccessDenied] = useState(false);
   const [newLabel, setNewLabel] = useState('');
   const [newType, setNewType] = useState<CustomFieldType>(form.capabilities.customFieldTypes[0] ?? 'short_text');
   const [message, setMessage] = useState('');
@@ -63,6 +62,7 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
   const [refreshWarning, setRefreshWarning] = useState('');
   const [conflict, setConflict] = useState<'draft' | 'publish' | 'restore' | null>(null);
   const [busy, setBusy] = useState(false);
+  const [compatibilityPending, setCompatibilityPending] = useState(false);
   const [replacingHistory, setReplacingHistory] = useState(false);
   const [uncertainAction, setUncertainAction] = useState<'draft' | 'publish' | 'restore' | null>(null);
   const [dialog, setDialog] = useState<'publish' | 'restore' | null>(null);
@@ -73,13 +73,15 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
   const pendingRequest = useRef<{ action: 'draft' | 'publish' | 'restore'; body: string } | null>(null);
   const historyGeneration = useRef(0);
   const reasonRef = useRef<HTMLTextAreaElement>(null);
-  const keyRef = useRef<HTMLInputElement>(null);
   const labelRef = useRef<HTMLInputElement>(null);
+  const questionFocus=useRef<string|null>(null);
+  useLayoutEffect(()=>{const id=questionFocus.current;if(!id)return;questionFocus.current=null;const input=document.getElementById(`${id}-label`);const archive=input?.closest<HTMLDetailsElement>('details[data-archived-questions]');if(archive)archive.open=true;input?.focus();},[fields]);
   const pending = form.adapterId.startsWith('pending:');
-  const customTypes = form.capabilities.customFieldTypes;
+  const customTypes = retainedOnly ? [] : form.capabilities.customFieldTypes;
   const published = newest(versions, 'published');
+  const previousPublication = published ? versions.find(entry => entry.status === 'published' && entry.version === published.version - 1) : undefined;
   const draft = currentDraft(versions);
-  const editLocked = busy || replacingHistory || uncertainAction !== null;
+  const editLocked = busy || replacingHistory || uncertainAction !== null || compatibilityPending;
   const dirty = JSON.stringify(fields) !== savedFields;
   const canPublish = !!draft && !dirty && !conflict && JSON.stringify(fields) === JSON.stringify(canonicalFields(draft.config.fields));
   const baseKeys = new Set(form.baseFields.map((item) => canonicalKey(item.key)));
@@ -96,13 +98,20 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
   }
   function replaceField(id: string, change: Partial<ConfiguredField>) {
     if (editLocked) return;
+    if(change.status==='active'){
+      const config={formId:form.id,fields:canonicalFields(fields.map(field=>field.id===id?{...field,...change}:field))};
+      try{validateFormDraftForDefinition(form,config);assertQuestionPublicationPolicy(config);}catch(error){announce(error instanceof Error?error.message:'Review this question against the current form rules.');return;}
+    }
+    if(change.status)questionFocus.current=id;
     setFields((current) => current.map((item) => item.id === id ? { ...item, ...change } : item));
     setError('');
   }
   function move(id: string, direction: -1 | 1) {
     const list = ordered(fields);
-    const customIndex = customFields.findIndex((item) => item.id === id);
-    const neighbor = customFields[customIndex + direction];
+    const status=customFields.find(item=>item.id===id)?.status;
+    const siblings=customFields.filter(item=>item.status===status);
+    const customIndex = siblings.findIndex((item) => item.id === id);
+    const neighbor = siblings[customIndex + direction];
     if (customIndex < 0 || !neighbor) return;
     const index = list.findIndex((item) => item.id === id);
     const target = list.findIndex((item) => item.id === neighbor.id);
@@ -111,15 +120,15 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
     setFields(normalized(list));
   }
   function addField() {
-    const key = newKey.trim();
+    const key = stableReference('question');
     const label = newLabel.trim();
-    if (!/^[a-z][a-z0-9_]*$/.test(key) || fields.some((item) => canonicalKey(item.key) === canonicalKey(key)) || baseKeys.has(canonicalKey(key))) {
-      announce('Enter a unique field key using lowercase letters, numbers, and underscores.', keyRef.current); return;
+    if (fields.some((item) => canonicalKey(item.key) === canonicalKey(key)) || baseKeys.has(canonicalKey(key))) {
+      announce('A question reference could not be created. Try adding the question again.', labelRef.current); return;
     }
     if (!label) { announce('Enter a label for the new field.', labelRef.current); return; }
-    const item: ConfiguredField = { id: key, key, label, type: newType, required: false, order: fields.length, status: 'active', ...(choicesType(newType) ? { choices: [{ value: 'first', label: 'First option' }, { value: 'second', label: 'Second option' }] } : {}) };
+    const item: ConfiguredField = { id: key, key, label, type: newType, required: false, order: fields.length, status: 'active', ...(choicesType(newType) ? { choices: [{ value: stableReference('choice'), label: 'First option' }, { value: stableReference('choice'), label: 'Second option' }] } : {}) };
     setFields((current) => canonicalFields([...current, item]));
-    setNewKey(''); setNewLabel(''); setError('');
+    setNewLabel(''); setError('');
   }
   async function reload({ keepEdits = true, resolveConflict = false, success, warning = 'Version history could not refresh. Try again.' }: {
     keepEdits?: boolean; resolveConflict?: boolean; success?: string; warning?: string;
@@ -129,15 +138,17 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
     // Keep this separate from POST busy state and non-replacing history refreshes.
     if (!keepEdits) setReplacingHistory(true);
     try {
-      const response = await fetch(`/api/admin/forms/${encodeURIComponent(form.id)}`, { cache: 'no-store' });
+      const response = await fetch(`/api/admin/forms/${encodeURIComponent(form.id)}`, { cache: 'no-store', headers: actorId ? { 'X-Hastabazaar-Actor': actorId } : {} });
       const body = await response.json() as { versions?: CatalogVersion[]; error?: string };
       if (generation !== historyGeneration.current) return;
+      if (response.status === 401 || response.status === 403) setAccessDenied(true);
       if (!response.ok || !body.versions) throw new Error(body.error ?? 'Could not reload form history.');
+      setAccessDenied(false);
       setVersions(body.versions);
       if (!keepEdits) {
         const selected = currentDraft(body.versions) ?? newest(body.versions, 'published');
         const next = canonicalFields(selected?.config.fields ?? []);
-        setFields(next); setSavedFields(JSON.stringify(next)); setChoiceDrafts({});
+        setFields(next); setSavedFields(JSON.stringify(next));
       }
       if (resolveConflict) setConflict(null);
       setRefreshWarning('');
@@ -153,18 +164,19 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
     if (replacingHistory) return;
     if (pendingRequest.current && pendingRequest.current.action !== action) return;
     ++historyGeneration.current;
-    const request = pendingRequest.current ?? { action, body: JSON.stringify({ requestId: crypto.randomUUID(), expectedPublishedVersion: published?.version ?? 0, reason: reason.trim(), ...extra }) };
+    const request = pendingRequest.current ?? { action, body: JSON.stringify({ requestId: crypto.randomUUID(), expectedPublishedVersion: published?.version ?? 0, reason: reason.trim(), ...(retainedOnly ? { retainedReview: { purpose: retainedPurpose.trim(), ownerId: actorId } } : {}), ...extra }) };
     pendingRequest.current = request;
     setBusy(true); setError(''); setDialogError(''); setMessage(''); setRefreshWarning('');
     try {
       const response = await fetch(`/api/admin/forms/${encodeURIComponent(form.id)}/${action}`, {
-        method: 'POST', headers: { 'content-type': 'application/json' },
+        method: 'POST', headers: { 'content-type': 'application/json', ...(actorId ? { 'X-Hastabazaar-Actor': actorId } : {}), ...(retainedOnly ? { 'X-Hastabazaar-Form-Mode': 'retained-extension' } : {}) },
         body: request.body,
       });
       if (!response.ok) {
+        if (response.status === 401 || response.status === 403) setAccessDenied(true);
         // A server failure can follow a committed write. Only a definite rejection
         // releases the saved request; retryable responses must replay it verbatim.
-        if (response.status >= 400 && response.status < 500 && ![408, 425, 429].includes(response.status)) {
+        if (response.status >= 400 && response.status < 500 && ![408, 425, 429].includes(response.status) && uncertainAction === null) {
           pendingRequest.current = null; setUncertainAction(null);
         }
         const rejected = await response.json().catch(() => ({})) as { error?: string };
@@ -182,7 +194,6 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
         const next = canonicalFields(saved.config.fields);
         setFields(next);
         setSavedFields(JSON.stringify(next));
-        setChoiceDrafts({});
       }
       if (body.published) {
         const publishedResult = body.published;
@@ -191,7 +202,6 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
           const next = canonicalFields(publishedResult.config.fields);
           setFields(next);
           setSavedFields(JSON.stringify(next));
-          setChoiceDrafts({});
         }
       }
       setConflict(null);
@@ -201,7 +211,7 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
       void reload({ success, warning: `${action === 'draft' ? 'The draft was saved' : action === 'publish' ? 'The form was published' : 'The form was restored'}, but version history could not refresh.` });
     } catch (caught) {
       if (pendingRequest.current) setUncertainAction(action);
-      const detail = caught instanceof Error ? caught.message : 'Form catalog is unavailable.';
+      const detail = caught instanceof Error ? caught.message : 'Form Management is unavailable.';
       const problem = pendingRequest.current ? `${detail} Request outcome is unknown; retry the same request.` : detail;
       if (dialog) {
         setDialogError(problem);
@@ -211,6 +221,10 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
     finally { setBusy(false); }
   }
   function validReason() {
+    if (retainedOnly && (!actorId || !maintainQuestions || retainedPurpose.trim().length < 12)) {
+      announce('Record the purpose and native consumer, and accept responsibility for maintaining these retained questions.', reasonRef.current);
+      return false;
+    }
     if (reason.trim()) return true;
     if (dialog) {
       setDialogError('Enter a reason for this change.');
@@ -219,18 +233,17 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
     return false;
   }
   function save() {
+    if (compatibilityPending) return;
     if (pendingRequest.current?.action === 'draft') { void mutate('draft', {}); return; }
     if (uncertainAction) return;
     if (!validReason()) return;
-    const config = { formId: form.id, fields: canonicalFields(fields.map((field) => {
-      const raw = readChoiceDraft(choiceDrafts, field.id);
-      return raw === undefined ? field : { ...field, choices: parseChoices(raw) };
-    })) };
+    const config = { formId: form.id, fields: canonicalFields(fields) };
     try { validateFormDraftForDefinition(form, config, !pending); }
     catch (caught) { announce(caught instanceof Error ? caught.message : 'Review the field settings.'); return; }
     void mutate('draft', { config, ...(draft ? { draftId: draft.id, expectedDraftRevision: draft.revision } : {}) });
   }
   function confirm() {
+    if (compatibilityPending) return;
     if (pendingRequest.current && pendingRequest.current.action === dialog) { void mutate(pendingRequest.current.action, {}); return; }
     if (!validReason()) return;
     if (dialog === 'publish' && draft && canPublish) void mutate('publish', { draftId: draft.id, expectedDraftRevision: draft.revision });
@@ -249,6 +262,7 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
     {refreshWarning ? <p role="alert">{refreshWarning}</p> : null}
   </div> : null;
 
+  if (accessDenied) return <section className="rounded-xl border p-5"><h2 className="font-semibold">Form review access changed</h2><p className="mt-2 text-sm">Private review fields are hidden. Reopen the intended account before continuing.</p><Button type="button" className="mt-3" onClick={() => void reload({ keepEdits: true })}>Check original account</Button></section>;
   return <div className="grid min-w-0 gap-5" aria-busy={busy || replacingHistory}>
     <Card>
       <CardHeader>
@@ -274,48 +288,52 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
           const editable = !pending && base.capability !== 'protected' && customTypes.includes(base.type as CustomFieldType) && typeof base.required === 'boolean' && base.status === 'active';
           const reasonLocked = base.capability === 'protected' ? base.explanation : pending ? 'This form has no connected server adapter yet.' : 'The adapter keeps this built-in field’s required and visibility rules.';
           return <div key={base.key} className="grid min-w-0 gap-3 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
-            <div className="min-w-0"><p className="font-medium">{item?.label ?? base.label}</p><p className="break-words text-xs text-muted-foreground">Built-in · {base.key}</p><p className="mt-1 text-xs text-muted-foreground">{reasonLocked}</p></div>
+            <div className="min-w-0"><p className="font-medium">{item?.label ?? base.label}</p><p className="text-xs text-muted-foreground">Built-in question</p><details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Advanced reference</summary><p className="mt-1 break-all">{base.key}</p></details><p className="mt-1 text-xs text-muted-foreground">{reasonLocked}</p></div>
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" size="sm" aria-label={`Required for ${base.label}`} disabled title={reasonLocked}>{base.required === undefined ? 'Rules set by this task' : base.required ? 'Required' : 'Optional'}</Button>
               {editable ? <Button type="button" variant="outline" size="sm" onClick={() => setFields((current) => current.some((field) => canonicalKey(field.key) === canonicalKey(base.key)) ? current : canonicalFields([...current, { id: canonicalKey(base.key), key: canonicalKey(base.key), type: base.type as CustomFieldType, label: base.label, ...(baseFieldCopy(form.id, base.key).helpText ? { helpText: baseFieldCopy(form.id, base.key).helpText } : {}), required: base.required ?? false, status: 'active', order: current.length, ...(base.choices ? { choices: base.choices } : {}), ...(base.min !== undefined ? { min: base.min } : {}), ...(base.max !== undefined ? { max: base.max } : {}), ...(base.integerOnly !== undefined ? { integerOnly: base.integerOnly } : {}) }]))}>Edit display</Button> : null}
             </div>
             {item && editable ? <FieldGroup className="sm:col-span-2">
-              <Field><FieldLabel htmlFor={`base-${base.key}-label`}>Label</FieldLabel><Input id={`base-${base.key}-label`} value={item.label} onChange={(event) => replaceField(item.id, { label: event.target.value })} /></Field>
-              <Field><FieldLabel htmlFor={`base-${base.key}-help`}>Help text</FieldLabel><Input id={`base-${base.key}-help`} value={item.helpText ?? ''} onChange={(event) => replaceField(item.id, { helpText: event.target.value })} /></Field>
-              <Field><FieldLabel htmlFor={`base-${base.key}-placeholder`}>Placeholder</FieldLabel><Input id={`base-${base.key}-placeholder`} value={item.placeholder ?? ''} onChange={(event) => replaceField(item.id, { placeholder: event.target.value })} /></Field>
+              <Field><FieldLabel htmlFor={`base-${base.key}-label`}>Question</FieldLabel><Input id={`base-${base.key}-label`} value={item.label} onChange={(event) => replaceField(item.id, { label: event.target.value })} /></Field>
+              <Field><FieldLabel htmlFor={`base-${base.key}-help`}>Guidance</FieldLabel><Input id={`base-${base.key}-help`} value={item.helpText ?? ''} onChange={(event) => replaceField(item.id, { helpText: event.target.value })} /></Field>
+              <details><summary className="cursor-pointer text-sm font-medium">Additional options</summary><Field className="mt-3"><FieldLabel htmlFor={`base-${base.key}-placeholder`}>Placeholder</FieldLabel><Input id={`base-${base.key}-placeholder`} value={item.placeholder ?? ''} onChange={(event) => replaceField(item.id, { placeholder: event.target.value })} /></Field></details>
             </FieldGroup> : null}
           </div>;
         })}
         {fixedQuestions.length ? <details className="rounded-lg border p-3 text-sm"><summary className="cursor-pointer font-medium">Built-in questions managed by this task ({fixedQuestions.length})</summary><p className="mt-2 leading-6 text-muted-foreground">These questions follow the rules of the live form.{!pending && customTypes.length ? ' You can add extra questions below.' : ''}</p><ul className="mt-2 list-disc space-y-2 pl-5">{fixedQuestions.map(base => <li key={base.key}><span className="font-medium">{base.label}</span><details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Why this question is fixed</summary><p className="mt-1">{base.explanation}</p></details></li>)}</ul></details> : null}
         {automaticFields.length ? <details className="rounded-lg border p-3 text-sm"><summary className="cursor-pointer font-medium">Details filled in automatically ({automaticFields.length})</summary><p className="mt-2 text-muted-foreground">These details identify the request and related records. The person filling in the form does not need to enter them.</p><ul className="mt-2 list-disc space-y-1 pl-5">{automaticFields.map(base => <li key={base.key}>{base.label}</li>)}</ul></details> : null}
-        {customFields.map((field, index) => <div key={field.id} className="grid min-w-0 gap-3 rounded-lg border p-3" data-editor-field={field.id}>
-          <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex min-w-0 flex-wrap items-center gap-2"><strong className="break-words">{field.label}</strong><Badge variant={field.status === 'archived' ? 'secondary' : 'outline'}>{field.status}</Badge></div><span className="text-xs text-muted-foreground">{field.key} · {field.type.replaceAll('_', ' ')}</span></div>
+        {(['active','archived'] as const).map(status=>{const questions=customFields.filter(field=>field.status===status);const cards=questions.map((field,index)=>{const retirement=questionRetirementReason(form.id,field);return <div key={field.id} className="grid min-w-0 gap-3 rounded-lg border p-3" data-editor-field={field.id}>
+          <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex min-w-0 flex-wrap items-center gap-2"><strong className="break-words">{field.label}</strong><Badge variant={field.status === 'archived' ? 'secondary' : 'outline'}>{field.status}</Badge></div><span className="text-xs text-muted-foreground">{field.type.replaceAll('_', ' ')}</span></div>
           <FieldGroup className="grid gap-3 sm:grid-cols-2">
-            <Field><FieldLabel htmlFor={`${field.id}-label`}>Label</FieldLabel><Input id={`${field.id}-label`} value={field.label} onChange={(event) => replaceField(field.id, { label: event.target.value })} /></Field>
-            <Field><FieldLabel htmlFor={`${field.id}-placeholder`}>Placeholder</FieldLabel><Input id={`${field.id}-placeholder`} value={field.placeholder ?? ''} onChange={(event) => replaceField(field.id, { placeholder: event.target.value })} /></Field>
-            <Field className="sm:col-span-2"><FieldLabel htmlFor={`${field.id}-help`}>Help text</FieldLabel><Input id={`${field.id}-help`} value={field.helpText ?? ''} onChange={(event) => replaceField(field.id, { helpText: event.target.value })} /></Field>
-            {choicesType(field.type) ? <Field className="sm:col-span-2"><FieldLabel htmlFor={`${field.id}-choices`}>Choices (value | label, one per line)</FieldLabel><Textarea id={`${field.id}-choices`} value={readChoiceDraft(choiceDrafts, field.id) ?? field.choices?.map((choice) => `${choice.value} | ${choice.label}`).join('\n') ?? ''} onChange={(event) => setChoiceDrafts((current) => ({ ...current, [field.id]: event.target.value }))} onBlur={(event) => replaceField(field.id, { choices: parseChoices(event.target.value) })} /></Field> : null}
-            {field.type === 'number' ? <>
+            <Field><FieldLabel htmlFor={`${field.id}-label`}>Question</FieldLabel><Input id={`${field.id}-label`} value={field.label} onChange={(event) => replaceField(field.id, { label: event.target.value })} /></Field>
+            <Field className="sm:col-span-2"><FieldLabel htmlFor={`${field.id}-help`}>Guidance</FieldLabel><Input id={`${field.id}-help`} value={field.helpText ?? ''} onChange={(event) => replaceField(field.id, { helpText: event.target.value })} /></Field>
+            <details className="sm:col-span-2"><summary className="cursor-pointer text-sm font-medium">Additional options</summary><Field className="mt-3"><FieldLabel htmlFor={`${field.id}-placeholder`}>Placeholder</FieldLabel><Input id={`${field.id}-placeholder`} value={field.placeholder ?? ''} onChange={(event) => replaceField(field.id, { placeholder: event.target.value })} /></Field></details>
+            {choicesType(field.type) ? <fieldset className="grid min-w-0 gap-3 sm:col-span-2" aria-label={`Choices for ${field.label}`}><legend className="mb-2 text-sm font-semibold">Choices</legend>{field.choices?.map((choice,index)=>{
+              const publishedChoice=versions.some(version=>version.status==='published'&&version.config.fields.some(original=>original.id===field.id&&original.choices?.some(option=>option.value===choice.value)));
+              return <div key={choice.value} className="flex min-w-0 items-end gap-2"><Field className="min-w-0 flex-1"><FieldLabel htmlFor={`${field.id}-choice-${index}`}>Choice {index+1}</FieldLabel><Input id={`${field.id}-choice-${index}`} readOnly={retainedOnly} value={choice.label} onChange={event=>replaceField(field.id,{choices:field.choices?.map((option,position)=>position===index?{...option,label:event.target.value}:option)})}/></Field>{!retainedOnly?<Button type="button" variant="outline" disabled={editLocked||publishedChoice} aria-label={`Remove choice ${index+1} from ${field.label}`} onClick={()=>replaceField(field.id,{choices:field.choices?.filter((_,position)=>position!==index)})}>Remove</Button>:null}</div>;
+            })}{!retainedOnly?<><Button type="button" variant="outline" className="justify-self-start" disabled={editLocked} onClick={()=>replaceField(field.id,{choices:[...(field.choices??[]),{value:stableReference('choice'),label:`Choice ${(field.choices?.length??0)+1}`}]})}>Add choice</Button><p className="text-xs text-muted-foreground">Published choice references are retained so earlier answers keep their meaning.</p></>:null}</fieldset> : null}
+            <details className="min-w-0 text-xs text-muted-foreground sm:col-span-2"><summary className="cursor-pointer">Advanced references</summary><p className="mt-2 break-all">Question: <code>{field.key}</code></p>{field.choices?.map(choice=><p key={choice.value} className="mt-1 break-all">{choice.label}: <code>{choice.value}</code></p>)}</details>
+            {field.type === 'number' ? <details className="sm:col-span-2"><summary className="cursor-pointer text-sm font-medium">Validation options</summary><div className="mt-3 grid gap-3 sm:grid-cols-2">
               <Field><FieldLabel htmlFor={`${field.id}-min`}>Minimum</FieldLabel><Input id={`${field.id}-min`} type="number" value={field.min ?? ''} onChange={(event) => replaceField(field.id, { min: event.target.value === '' ? undefined : Number(event.target.value) })} /></Field>
               <Field><FieldLabel htmlFor={`${field.id}-max`}>Maximum</FieldLabel><Input id={`${field.id}-max`} type="number" value={field.max ?? ''} onChange={(event) => replaceField(field.id, { max: event.target.value === '' ? undefined : Number(event.target.value) })} /></Field>
               <Field orientation="horizontal" className="sm:col-span-2"><Checkbox id={`${field.id}-integer-only`} checked={field.integerOnly ?? false} disabled={editLocked} onCheckedChange={(checked) => replaceField(field.id, { integerOnly: checked })} /><FieldLabel htmlFor={`${field.id}-integer-only`}>Whole numbers only</FieldLabel></Field>
-            </> : null}
+            </div></details> : null}
           </FieldGroup>
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant={field.required ? 'secondary' : 'outline'} size="sm" aria-label={`Required for ${field.label}`} aria-pressed={field.required} disabled={field.status === 'archived'} onClick={() => field.required ? setFieldWarning({ id: field.id, label: field.label, action: 'optional' }) : replaceField(field.id, { required: true })}>{field.required ? 'Required' : 'Optional'}</Button>
             <Button type="button" variant="ghost" size="sm" aria-label={`Move ${field.label} up`} disabled={index === 0} onClick={() => move(field.id, -1)}><ArrowUp data-icon="inline-start" /> Up</Button>
-            <Button type="button" variant="ghost" size="sm" aria-label={`Move ${field.label} down`} disabled={index === customFields.length - 1} onClick={() => move(field.id, 1)}><ArrowDown data-icon="inline-start" /> Down</Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => field.status === 'active' && field.required ? setFieldWarning({ id: field.id, label: field.label, action: 'archive' }) : replaceField(field.id, { status: field.status === 'active' ? 'archived' : 'active' })}>{field.status === 'active' ? <Trash2 data-icon="inline-start" /> : <RotateCcw data-icon="inline-start" />}{field.status === 'active' ? 'Archive' : 'Reactivate'}</Button>
+            <Button type="button" variant="ghost" size="sm" aria-label={`Move ${field.label} down`} disabled={index === questions.length - 1} onClick={() => move(field.id, 1)}><ArrowDown data-icon="inline-start" /> Down</Button>
+            <Button type="button" variant="outline" size="sm" disabled={field.status==='archived'&&!!retirement} title={retirement??undefined} onClick={() => field.status === 'active' && field.required ? setFieldWarning({ id: field.id, label: field.label, action: 'archive' }) : replaceField(field.id, { status: field.status === 'active' ? 'archived' : 'active' })}>{field.status === 'active' ? <Trash2 data-icon="inline-start" /> : <RotateCcw data-icon="inline-start" />}{field.status === 'active' ? 'Archive' : 'Reactivate'}</Button>
           </div>
-        </div>)}
+          {retirement?<p className="text-sm text-muted-foreground">{retirement}</p>:null}
+        </div>});return status==='active'?<div key={status} className="grid gap-3">{cards}</div>:questions.length?<details key={status} data-archived-questions="" className="rounded-lg border p-3"><summary className="cursor-pointer font-medium">Archived questions ({questions.length})</summary><div className="mt-3 grid gap-3">{cards}</div></details>:null;})}
       </CardContent>
-      <CardFooter className="grid w-full gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-        <Field><FieldLabel htmlFor="new-field-key">New field key</FieldLabel><Input ref={keyRef} id="new-field-key" value={newKey} onChange={(event) => setNewKey(event.target.value)} disabled={pending || customTypes.length === 0} placeholder="e.g. delivery_note" /></Field>
-        <Field><FieldLabel htmlFor="new-field-label">Label</FieldLabel><Input ref={labelRef} id="new-field-label" value={newLabel} onChange={(event) => setNewLabel(event.target.value)} disabled={pending || customTypes.length === 0} /><FieldDescription>Write the question people will see. For example, “What time can we contact you?”</FieldDescription></Field>
-        <Field><FieldLabel htmlFor="new-field-type">Type</FieldLabel><select id="new-field-type" className="h-8 rounded-md border bg-background px-2" value={newType} onChange={(event) => setNewType(event.target.value as CustomFieldType)} disabled={pending || customTypes.length === 0}>{customTypes.length ? customTypes.map((type) => <option key={type} value={type}>{type.replaceAll('_', ' ')}</option>) : <option value="short_text">Unavailable</option>}</select></Field>
+      {!retainedOnly ? <CardFooter className="grid w-full gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+        <Field><FieldLabel htmlFor="new-field-label">Question</FieldLabel><Input ref={labelRef} id="new-field-label" value={newLabel} onChange={(event) => setNewLabel(event.target.value)} disabled={pending || customTypes.length === 0} /><FieldDescription>Write the question people will see. For example, “Is there anything else we should know about this request?”</FieldDescription></Field>
+        <Field><FieldLabel htmlFor="new-field-type">Answer format</FieldLabel><select id="new-field-type" className="h-8 rounded-md border bg-background px-2" value={newType} onChange={(event) => setNewType(event.target.value as CustomFieldType)} disabled={pending || customTypes.length === 0}>{customTypes.length ? customTypes.map((type) => <option key={type} value={type}>{type.replaceAll('_', ' ')}</option>) : <option value="short_text">Unavailable</option>}</select></Field>
         <Button type="button" variant="outline" className="sm:col-span-3 sm:justify-self-start" disabled={pending || customTypes.length === 0} onClick={addField}><Plus data-icon="inline-start" /> Add field</Button>
         {pending || customTypes.length === 0 ? <p className="text-xs text-muted-foreground sm:col-span-3">Extra questions are not available for this form.</p> : null}
-      </CardFooter>
+      </CardFooter> : null}
       </fieldset>
     </Card>
 
@@ -326,18 +344,19 @@ export function FormCatalogEditor({ form, versions: initialVersions }: { form: F
 
     <Card>
       <CardHeader><CardTitle>Save and publish</CardTitle><CardDescription>Save your draft, review the changes below, and publish when the form is ready.</CardDescription></CardHeader>
-      <CardContent><div className="mb-5 rounded-lg border bg-secondary/30 p-4"><h3 className="font-semibold">Changes from the published form</h3>{changes.length ? <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">{changes.map((change, index) => <li key={index}>{change}</li>)}</ul> : <p className="mt-2 text-sm text-muted-foreground">No question changes to review.</p>}</div><FieldGroup><Field><FieldLabel htmlFor="catalog-reason">Reason for change</FieldLabel><Textarea ref={reasonRef} id="catalog-reason" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={2000} aria-required="true" disabled={editLocked} /><FieldDescription>Explain why you are changing the form. This note is saved in the change history.</FieldDescription></Field>
+      <CardContent><div className="mb-5 rounded-lg border bg-secondary/30 p-4"><h3 className="font-semibold">Changes from the published form</h3>{changes.length ? <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">{changes.map((change, index) => <li key={index}>{change}</li>)}</ul> : <p className="mt-2 text-sm text-muted-foreground">No question changes to review.</p>}</div><FieldGroup><Field><FieldLabel htmlFor="catalog-reason">Reason for change</FieldLabel>{retainedOnly?<div className="mb-4 grid gap-3"><Field><FieldLabel htmlFor="retained-question-purpose">Purpose and native consumer for these retained questions</FieldLabel><Textarea id="retained-question-purpose" value={retainedPurpose} maxLength={800} onChange={event=>setRetainedPurpose(event.target.value)} /></Field><Field orientation="horizontal"><Checkbox id="retained-question-maintainer" checked={maintainQuestions} onCheckedChange={checked=>setMaintainQuestions(checked===true)} /><FieldLabel htmlFor="retained-question-maintainer">I will maintain these retained questions</FieldLabel></Field><p className="text-xs text-muted-foreground">The signed-in reviewer is recorded as question maintainer. This grants no authority over native cases or financial decisions.</p></div>:null}<Textarea ref={reasonRef} id="catalog-reason" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={retainedOnly?800:2000} aria-required="true" disabled={editLocked} /><FieldDescription>Explain why you are changing the form. This note is saved in the change history.</FieldDescription></Field>
         <div ref={errorRef} tabIndex={-1} role="alert" aria-live="assertive" className="text-sm text-destructive focus:outline-none">{error ? <FieldError>{error}</FieldError> : null}</div>
         {uncertainAction === 'draft' ? uncertaintyNotice : null}
         {refreshWarning && !uncertainAction ? <div role="alert" className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-3 text-sm"><span>{refreshWarning}</span><Button type="button" variant="outline" size="sm" disabled={editLocked} onClick={() => void reload()}>Retry history refresh</Button></div> : null}
         <output aria-live="polite" className="text-sm text-muted-foreground">{replacingHistory ? 'Loading latest version…' : busy ? 'Updating form…' : dialog ? '' : message}</output>
         {conflict ? <div className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/40 p-3"><p className="text-sm">The catalog changed. Your edits are preserved.{conflict === 'publish' ? ' Reload to replace the displayed fields with the latest server draft and review it before publishing.' : ''}</p><Button type="button" variant="outline" disabled={editLocked} onClick={() => void reload({ keepEdits: conflict !== 'publish', resolveConflict: true })}>Reload latest version</Button></div> : null}
       </FieldGroup></CardContent>
-      <CardFooter className="flex flex-wrap gap-2"><Button type="button" onClick={save} disabled={busy || replacingHistory || (uncertainAction !== null && uncertainAction !== 'draft')}><Save data-icon="inline-start" /> Save draft</Button><Button type="button" variant="secondary" disabled={!canPublish || editLocked} onClick={() => { if (validReason()) setDialog('publish'); }}><Send data-icon="inline-start" /> Publish draft</Button>{dirty || (draft && !conflict && !canPublish) ? <span className="text-xs text-muted-foreground">Save your latest edits before publishing.</span> : null}</CardFooter>
+      <CardFooter className="flex flex-wrap gap-2"><Button type="button" onClick={save} disabled={compatibilityPending || busy || replacingHistory || (uncertainAction !== null && uncertainAction !== 'draft')}><Save data-icon="inline-start" /> Save draft</Button><Button type="button" variant="secondary" disabled={!canPublish || editLocked} onClick={() => { if (validReason()) setDialog('publish'); }}><Send data-icon="inline-start" /> Publish draft</Button>{dirty || (draft && !conflict && !canPublish) ? <span className="text-xs text-muted-foreground">Save your latest edits before publishing.</span> : null}</CardFooter>
     </Card>
 
     <Card id="version-history" className="scroll-mt-28">
       <CardHeader><CardTitle>Version history</CardTitle><CardDescription>Restoring a published version creates a new publication. Existing answers stay with their original version.</CardDescription></CardHeader>
+      {published && previousPublication && compatibilityAwareSellerForms.has(form.id) ? <CardContent><FormCompatibilityControls key={published.id} actorId={actorId} retainedReview={retainedOnly && actorId && maintainQuestions ? {purpose:retainedPurpose.trim(),ownerId:actorId}:undefined} formId={form.id} versionId={published.id} version={published.version} previousFields={previousPublication.config.fields} currentFields={published.config.fields} disabled={busy || replacingHistory || uncertainAction !== null || (retainedOnly && (!maintainQuestions || retainedPurpose.trim().length<12))} onPendingChange={setCompatibilityPending} /></CardContent> : null}
       <CardContent className="grid gap-2">{versions.length ? versions.map((entry) => <div key={entry.id} className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-b py-2 last:border-b-0"><div className="min-w-0"><p className="font-medium">Version {entry.version} · revision {entry.revision} <Badge variant={entry.status === 'published' ? 'default' : 'secondary'}>{entry.status === 'draft' && entry.version <= (published?.version ?? 0) ? 'stale draft' : entry.status}</Badge></p><p className="break-words text-xs text-muted-foreground">{entry.reason} · {displayDate(entry.updatedAt)}</p></div>{entry.status === 'published' ? <Button type="button" size="sm" variant="outline" disabled={editLocked} onClick={() => { setRestoreVersion(entry.version); if (validReason()) setDialog('restore'); }}><RotateCcw data-icon="inline-start" /> Restore</Button> : null}</div>) : <p className="text-sm text-muted-foreground">No saved versions yet.</p>}</CardContent>
     </Card>
 

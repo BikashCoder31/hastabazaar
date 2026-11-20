@@ -20,7 +20,7 @@ export default async function LoyaltyPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 } = {}) {
-  const actor = await requireStaffPage('/admin/loyalty', 'admin.invite');
+  const actor = await requireStaffPage('/admin/loyalty', 'commercial_policy.manage');
   if (actor.role !== 'super_admin') redirect('/staff-access-denied');
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const filters = filtersFromParams((await searchParams) ?? {});

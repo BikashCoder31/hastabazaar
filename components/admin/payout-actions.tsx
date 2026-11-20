@@ -24,7 +24,7 @@ import type {
 } from '@/lib/db/repositories/payouts';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 
 const prepareBaseKeys = ['sellerId', 'note', 'idempotencyKey', 'formVersion', 'customAnswers'];
@@ -229,7 +229,7 @@ export function PayoutWorkflowActions({
     canApprove,
     canProcess,
     isPreparer,
-  });
+  }).filter(action => !['start_processing','mark_paid','mark_failed'].includes(action));
   const [action, setAction] = useState<PayoutOperation>(
     permitted[0] ?? 'approve',
   );
@@ -245,10 +245,11 @@ export function PayoutWorkflowActions({
   if (!permitted.length)
     return (
       <div className="space-y-2">
+      {canProcess && !['paid','rejected','reversed'].includes(status)?<Link className="block underline" href="/admin/payments/payouts">Review verified funding and actual payout outcomes</Link>:null}
       <p className="rounded-xl bg-muted/60 p-4 text-sm leading-6 text-muted-foreground">
         {status === 'paid' || status === 'rejected' || status === 'reversed'
             ? 'This payout has no further actions at this stage. Its history remains available below.'
-            : 'No payout action is available for your role at this stage. A Super Admin handles approval and payment recording.'}
+            : 'Bank instructions and actual outcomes are handled in Payout transfers by an eligible Super Admin.'}
       </p>
       <Link href={`/admin/staff-form-history?kind=${canApprove || canProcess ? 'payout-action' : 'payout-preparation'}&id=${encodeURIComponent(payoutId)}`} className="block text-sm underline">View payout form history</Link>
       </div>

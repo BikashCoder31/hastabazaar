@@ -13,6 +13,8 @@ const base = {
   DB_PASSWORD: 'fictional-database-password', DB_POOL_SIZE: '1', DB_PORT: '3306', DB_USER: 'hastabaz_stageapp',
   MEDIA_ROOT: '/home2/hastabaz/hastabazaar-staging-private-media', EMAIL_DELIVERY_CONFIGURED: 'false',
   HASTABAZAAR_RUNTIME_ENV: 'production', NODE_OPTIONS: '--max-old-space-size=192',
+  HASTABAZAAR_SECURITY_KEY: Buffer.alloc(32, 66).toString('base64url'),
+  HASTABAZAAR_SECURITY_POLICY_ROOT: '/home2/hastabaz/hastabazaar-staging-security',
 };
 const recipients = ['qa-staging', 'qa-staging+buyer', 'qa-staging+seller', 'qa-staging+maker',
   'qa-staging+rider', 'qa-staging+admin', 'qa-staging+superadmin'].map((name) => `${name}@hastabazaar.com`);
@@ -36,6 +38,16 @@ void test('staging deployment rejects changed database, origin, media and local-
     APP_ORIGIN: 'https://hastabazaar.com', MEDIA_ROOT: '/home2/hastabaz/private-media',
     HASTABAZAAR_RUNTIME_ENV: 'local_staging', DB_POOL_SIZE: '10' })) {
     assert.throws(() => validate({ ...email, [key]: value }), Error, key);
+  }
+});
+
+void test('hosted security requires a canonical key and dedicated external policy root', async () => {
+  const validate = await policy();
+  for (const changes of [{ HASTABAZAAR_SECURITY_KEY: '' }, { HASTABAZAAR_SECURITY_KEY: 'invalid' },
+    { HASTABAZAAR_SECURITY_KEY: Buffer.alloc(16).toString('base64url') },
+    { HASTABAZAAR_SECURITY_POLICY_ROOT: '' }, { HASTABAZAAR_SECURITY_POLICY_ROOT: base.MEDIA_ROOT },
+    { HASTABAZAAR_SECURITY_POLICY_ROOT: '/home2/hastabaz/release/security' }]) {
+    assert.throws(() => validate({ ...base, ...changes }));
   }
 });
 

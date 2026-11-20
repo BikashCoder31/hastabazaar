@@ -1,5 +1,11 @@
+import type {AtomicActionProof} from '../../orders/action-recovery';
+import {formAnswerSourceSql} from '../../forms/answer-proof';
+import {commandReceipt} from '../../workflows/contracts';
+import {withOrderOfferSnapshots,type OrderOfferSnapshot} from '../../products/offer-order-contract';
 import { publicTrackingReferenceSql } from '../../riders/public-tracking';
+import { currentPlatformServiceFeeSql, payableOrderTotalSql } from './platform-service-fee';
 import { assertFirstCodFulfillmentAllowed } from '../../orders/first-cod-review';
+import { usesSellerShipmentDelivery } from '../../returns/seller-shipment-delivery';
 import {
   cancellationChoices,
   cancellationPreview,
@@ -11,7 +17,6 @@ import { staffMutationGuard } from './staff-mutation-guard';
 import type { NepalAddress } from '@/lib/shipping/provider';
 import type { OrderStatus } from '@/lib/marketplace/types';
 import { buildEarningsAccrualStatements } from '@/lib/db/repositories/payouts';
-import type { OrderDocumentSnapshot } from '@/lib/db/repositories/orders';
 import {
   readDeliveryPricingSnapshot,
   type DeliveryPricingSnapshot,
@@ -35,6 +40,7 @@ export type AdminFulfillmentAction = 'dispatch' | 'deliver' | 'cancel';
 export class FulfillmentConflictError extends Error {}
 
 export interface FulfillmentItem {
+  offerSnapshot?:OrderOfferSnapshot|null;
   id: string;
   productId: string | null;
   sellerId: string;
@@ -74,6 +80,7 @@ export interface FulfillmentOrderDetail {
   address: NepalAddress;
   itemSubtotalPaisa: number;
   deliveryChargePaisa: number;
+  buyerPlatformFeePaisa: number;
   grandTotalPaisa: number;
   paymentMode: string;
   paymentStatus: string;
@@ -121,7 +128,8 @@ async function loadOrderBase(
           (SELECT COUNT(DISTINCT current_items.seller_id) FROM order_items current_items WHERE current_items.order_id=orders.id AND current_items.fulfillment_status<>'cancelled') AS currentStoreCount,
           COALESCE(orders.current_subtotal_paisa,orders.item_subtotal_paisa) AS itemSubtotalPaisa,
           COALESCE(orders.current_delivery_paisa,orders.delivery_charge_paisa) AS deliveryChargePaisa,
-          COALESCE(orders.current_total_paisa,orders.grand_total_paisa) AS grandTotalPaisa,
+          ${currentPlatformServiceFeeSql()} AS buyerPlatformFeePaisa,
+          ${payableOrderTotalSql()} AS grandTotalPaisa,
           orders.payment_mode AS paymentMode, orders.payment_status AS paymentStatus,
           orders.placed_at AS placedAt, orders.delivered_at AS deliveredAt,
           orders.cancelled_at AS cancelledAt, shipments.id AS shipmentId,
@@ -158,7 +166,7 @@ async function loadItems(
     )
     .bind(...(sellerId ? [orderId, sellerId] : [orderId]))
     .all<FulfillmentItem>();
-  return result.results;
+  return withOrderOfferSnapshots(database,result.results,item=>item.id);
 }
 
 async function loadHistory(
@@ -298,7 +306,7 @@ const sellerActions: Record<
 
 type PreparationInput = {
   orderId: string; sellerId: string; actorId: string; action: SellerFulfillmentAction;
-  note: string; requestId: string; now: number;
+  note: string; requestId: string; now: number; itemIds?:readonly string[]; originalProof?:AtomicActionProof;
 };
 
 export async function transitionSellerFulfillment(database: D1Database, options: PreparationInput): Promise<void> {
@@ -307,15 +315,15 @@ export async function transitionSellerFulfillment(database: D1Database, options:
 
 /** Historical commercial snapshots, not the maker's current route, determine company responsibility. */
 export async function listCompanyPreparationGroups(database: D1Database, orderId: string) {
-  const rows = await database.prepare(`SELECT i.seller_id AS sellerId,MIN(i.fulfillment_status) AS status,
+  const rows = await database.prepare(`SELECT i.seller_id AS sellerId,i.fulfillment_status AS status,COUNT(*) AS itemCount,
     MIN(COALESCE(m.maker_name_snapshot,i.seller_name_snapshot)) AS makerName
     FROM order_items i LEFT JOIN managed_commercial_snapshots m ON m.order_item_id=i.id AND m.seller_id=i.seller_id
-    WHERE i.order_id=? GROUP BY i.seller_id
-    HAVING COUNT(*)=COUNT(m.id) AND COUNT(DISTINCT i.fulfillment_status)=1
+    WHERE i.order_id=? GROUP BY i.seller_id,i.fulfillment_status
+    HAVING COUNT(*)=COUNT(m.id)
       AND MIN(i.fulfillment_status) IN ('confirmed','packing')
       AND MIN(m.legal_seller_reference)=? AND MAX(m.legal_seller_reference)=?
       AND MIN(m.invoice_issuer_reference)=? AND MAX(m.invoice_issuer_reference)=?`)
-    .bind(orderId,...Array(4).fill(companyDetails.entityReference)).all<{sellerId:string;status:string;makerName:string}>();
+    .bind(orderId,...Array(4).fill(companyDetails.entityReference)).all<{sellerId:string;status:string;makerName:string;itemCount:number}>();
   return rows.results;
 }
 
@@ -327,11 +335,11 @@ export async function transitionCompanyPreparation(database: D1Database, options
       !/^[a-zA-Z0-9:_-]{1,100}$/.test(options.requestId) || options.form.requestId!==options.requestId)
     throw new FulfillmentConflictError('Review the company preparation action, note and request reference.');
   const catalogDigest = await digestFormRequest({orderId:options.orderId,sellerId:options.sellerId,actorId:options.actorId,
-    action:options.action,note:options.note.trim(),versionId:options.form.versionId,answers:options.form.answers});
+    action:options.action,note:options.note.trim(),versionId:options.form.versionId,answers:options.form.answers,...(options.itemIds?{itemIds:[...options.itemIds].sort()}:{} )});
   const action=`order.company.${options.action}`;
   const prior=await database.prepare(`SELECT a.actor_id AS actorId,a.action,a.subject_type AS subjectType,a.subject_id AS subjectId,
     a.next_json AS nextJson,f.actor_id AS answerActor,f.config_version_id AS versionId,f.subject_type AS answerType,f.subject_id AS answerId
-    FROM audit_logs a LEFT JOIN form_answer_sets f ON f.form_id='staff.order-fulfillment' AND f.request_id=a.request_id
+    FROM audit_logs a LEFT JOIN ${formAnswerSourceSql(database)} f ON f.form_id='staff.order-fulfillment' AND f.request_id=a.request_id
     WHERE a.request_id=? LIMIT 1`).bind(options.requestId).first<{
       actorId:string;action:string;subjectType:string;subjectId:string;nextJson:string;answerActor:string;versionId:string;answerType:string;answerId:string}>();
   if(prior) {
@@ -377,9 +385,17 @@ async function transitionPreparation(
     note: string;
     requestId: string;
     now: number;
+    itemIds?:readonly string[];
+    originalProof?:AtomicActionProof;
   },
   company?: { guards: readonly D1PreparedStatement[]; action: string; catalogDigest: string },
 ): Promise<void> {
+  const definition=sellerActions[options.action];if(!definition||!/^[a-zA-Z0-9:_-]{1,150}$/.test(options.requestId)||options.note.length>500||options.itemIds&&(!options.itemIds.length||options.itemIds.length>100||new Set(options.itemIds).size!==options.itemIds.length||options.itemIds.some(id=>typeof id!=='string'||id.length>160)))throw new FulfillmentConflictError('Review the exact items and request reference.');
+  const authoritySql="EXISTS(SELECT 1 FROM seller_profiles s JOIN users u ON u.id=s.user_id WHERE s.id=? AND u.id=? AND u.status='active')";
+  if(!company&&!await database.prepare('SELECT 1 WHERE '+authoritySql).bind(options.sellerId,options.actorId).first())throw new FulfillmentConflictError('Only the active owner of this seller portion can prepare these items.');
+  const receipt=company?null:await commandReceipt(database,{actorId:options.actorId,requestId:options.requestId,expectedRevision:null,now:options.now},{action:'order.preparation.command',subjectType:'order',subjectId:options.orderId},{sellerId:options.sellerId,action:options.action,note:options.note.trim(),itemIds:options.itemIds?[...options.itemIds].sort():null});if(receipt?.replayed){if(options.originalProof)throw new FulfillmentConflictError('Original authenticated action proof is unavailable; keep this attempt unconfirmed.');return;}
+  const selected=options.itemIds?[...options.itemIds].sort():(await database.prepare("SELECT i.id FROM order_items i WHERE i.order_id=? AND i.seller_id=? AND i.fulfillment_status=? AND NOT EXISTS(SELECT 1 FROM order_fulfillment_holds h WHERE h.order_item_id=i.id AND h.ended_at IS NULL AND h.prevents_preparation=1) ORDER BY i.id").bind(options.orderId,options.sellerId,definition.from).all<{id:string}>()).results.map(i=>i.id);
+  if(!selected.length)throw new FulfillmentConflictError('No selected items can take this action now. Review the current progress and holds.');const marks=selected.map(()=>'?').join(','),authorityGuard=crypto.randomUUID();
   await assertFirstCodFulfillmentAllowed(
     database,
     options.orderId,
@@ -418,7 +434,7 @@ async function transitionPreparation(
     ) THEN 'ready_for_pickup'
     ELSE 'packing'
   END`;
-  const results = await database.batch([
+  let results:D1Result<unknown>[];try{results = await database.batch([
     database
       .prepare(
         `UPDATE orders SET operation_request_id = ?, updated_at = ?
@@ -426,10 +442,7 @@ async function transitionPreparation(
            AND EXISTS (
              SELECT 1 FROM order_items WHERE order_id = orders.id AND seller_id = ?
            )
-           AND NOT EXISTS (
-             SELECT 1 FROM order_items WHERE order_id = orders.id AND seller_id = ?
-               AND fulfillment_status != ?
-           )`,
+           AND (SELECT COUNT(*) FROM order_items WHERE order_id=orders.id AND seller_id=? AND fulfillment_status=? AND id IN (${marks}))=?`,
       )
       .bind(
         options.requestId,
@@ -437,7 +450,7 @@ async function transitionPreparation(
         options.orderId,
         options.sellerId,
         options.sellerId,
-        transition.from,
+        transition.from,...selected,selected.length,
       ),
     database
       .prepare(
@@ -445,7 +458,7 @@ async function transitionPreparation(
           id, order_item_id, from_status, to_status, note, actor_id, request_id, created_at
         ) SELECT lower(hex(randomblob(16))), id, fulfillment_status, ?, ?, ?, ?, ?
           FROM order_items WHERE order_id = ? AND seller_id = ?
-            AND fulfillment_status = ?
+            AND fulfillment_status = ? AND id IN (${marks})
             AND EXISTS (SELECT 1 FROM orders WHERE id = ? AND operation_request_id = ?)`,
       )
       .bind(
@@ -456,14 +469,14 @@ async function transitionPreparation(
         options.now,
         options.orderId,
         options.sellerId,
-        transition.from,
+        transition.from,...selected,
         options.orderId,
         options.requestId,
       ),
     database
       .prepare(
         `UPDATE order_items SET fulfillment_status = ?, fulfillment_request_id = ?
-         WHERE order_id = ? AND seller_id = ? AND fulfillment_status = ?
+         WHERE order_id = ? AND seller_id = ? AND fulfillment_status = ? AND id IN (${marks})
            AND EXISTS (SELECT 1 FROM orders WHERE id = ? AND operation_request_id = ?)`,
       )
       .bind(
@@ -471,7 +484,7 @@ async function transitionPreparation(
         options.requestId,
         options.orderId,
         options.sellerId,
-        transition.from,
+        transition.from,...selected,
         options.orderId,
         options.requestId,
       ),
@@ -528,8 +541,18 @@ async function transitionPreparation(
           now: options.now,
         })
       : []),
-    ...(company?.guards ?? []),
-  ]);
+    database.prepare(`INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM orders WHERE id=? AND operation_request_id=?) AND (SELECT COUNT(*) FROM order_items WHERE order_id=? AND seller_id=? AND id IN (${marks}) AND fulfillment_status=? AND fulfillment_request_id=?)=? THEN 1 ELSE 0 END`).bind(authorityGuard,options.orderId,options.requestId,options.orderId,options.sellerId,...selected,transition.to,options.requestId,selected.length),
+    database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(authorityGuard),
+    ...(!company?[database.prepare(`INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN ${authoritySql} AND NOT EXISTS(SELECT 1 FROM managed_commercial_snapshots WHERE order_item_id IN (${marks}) AND legal_seller_reference=?) THEN 1 ELSE 0 END`).bind(authorityGuard,options.sellerId,options.actorId,...selected,companyDetails.entityReference),database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(authorityGuard)]:[]),
+    ...(receipt&&!receipt.replayed?[receipt.insert({ok:true})]:[]),
+    ...(company?.guards ?? []),...(options.originalProof?.statements??[]),
+  ]);}catch(error){
+    if(!company&&await database.prepare('SELECT 1 WHERE '+authoritySql).bind(options.sellerId,options.actorId).first()){
+      const recovered=await commandReceipt(database,{actorId:options.actorId,requestId:options.requestId,expectedRevision:null,now:options.now},{action:'order.preparation.command',subjectType:'order',subjectId:options.orderId},{sellerId:options.sellerId,action:options.action,note:options.note.trim(),itemIds:options.itemIds?[...options.itemIds].sort():null});if(recovered.replayed&&!options.originalProof)return;
+    }
+    throw error;
+  }
+
   if ((results[0].meta.changes ?? 0) !== 1) {
     throw new FulfillmentConflictError(
       'This action is no longer available. Refresh the order.',
@@ -602,7 +625,7 @@ export async function transitionAdminFulfillment(
       }
       const answer = await database
         .prepare(`SELECT actor_id AS actorId,config_version_id AS versionId,
-        subject_type AS subjectType,subject_id AS subjectId FROM form_answer_sets
+        subject_type AS subjectType,subject_id AS subjectId FROM ${formAnswerSourceSql(database)} retained_answers
         WHERE form_id='staff.order-fulfillment' AND request_id=? LIMIT 1`)
         .bind(options.requestId)
         .first<{
@@ -642,15 +665,15 @@ export async function transitionAdminFulfillment(
     );
   const order = await database
     .prepare(
-      `SELECT status, order_number AS orderNumber,
+      `SELECT status, order_number AS orderNumber, delivery_rate_snapshot_json AS deliverySnapshotJson,
         COALESCE(current_wallet_paisa,wallet_credit_paisa) AS walletCreditPaisa, current_referral_discount_paisa AS referralDiscountPaisa,
         CASE WHEN current_discount_paisa IS NULL THEN promo_discount_paisa ELSE current_promo_discount_paisa END AS promoDiscountPaisa,
         promo_campaign_id AS promoCampaignId,promo_revision AS promoRevision,promo_code AS promoCode,promo_label AS promoLabel,
         COALESCE(current_subtotal_paisa,item_subtotal_paisa) AS itemSubtotalPaisa,
         COALESCE(current_delivery_paisa,delivery_charge_paisa) AS deliveryChargePaisa,
-        buyer_platform_fee_paisa AS buyerPlatformFeePaisa,
+        ${currentPlatformServiceFeeSql()} AS buyerPlatformFeePaisa,
         tax_total_paisa AS taxTotalPaisa,
-        COALESCE(current_total_paisa,grand_total_paisa) AS grandTotalPaisa
+        ${payableOrderTotalSql()} AS grandTotalPaisa
        FROM orders WHERE id = ? LIMIT 1`,
     )
     .bind(options.orderId)
@@ -664,6 +687,7 @@ export async function transitionAdminFulfillment(
       promoCode: string | null;
       promoLabel: string | null;
       orderNumber: string;
+      deliverySnapshotJson: string | null;
       itemSubtotalPaisa: number;
       deliveryChargePaisa: number;
       buyerPlatformFeePaisa: number;
@@ -706,6 +730,9 @@ export async function transitionAdminFulfillment(
     });
   }
 
+  if (usesSellerShipmentDelivery(order.deliverySnapshotJson)) {
+    throw new FulfillmentConflictError('Prepare seller parcels and use their controls for this order.');
+  }
   const from: OrderStatus =
     options.action === 'dispatch' ? 'ready_for_pickup' : 'dispatched';
   const to: OrderStatus =
@@ -726,55 +753,10 @@ export async function transitionAdminFulfillment(
     );
   }
   const note = options.note.trim();
-  let paymentReceiptSnapshot: OrderDocumentSnapshot | null = null;
-  if (options.action === 'deliver') {
-    const receiptItems = await database
-      .prepare(
-        `SELECT product_name_snapshot AS productName,
-        seller_name_snapshot AS sellerName, sku_snapshot AS sku,
-        unit_price_paisa AS unitPricePaisa, quantity,
-        line_total_paisa AS lineTotalPaisa
-       FROM order_items WHERE order_id = ? AND fulfillment_status<>'cancelled' ORDER BY created_at ASC`,
-      )
-      .bind(options.orderId)
-      .all<OrderDocumentSnapshot['items'][number]>();
-    paymentReceiptSnapshot = {
-      documentTitle: 'Cash on delivery payment receipt',
-      taxDocument: false,
-      orderNumber: order.orderNumber,
-      issuedAt: options.now,
-      currency: 'NPR',
-      paymentMethod: 'Cash on delivery',
-      paymentStatus: 'paid',
-      items: receiptItems.results,
-      itemSubtotalPaisa: order.itemSubtotalPaisa,
-      deliveryChargePaisa: order.deliveryChargePaisa,
-      buyerPlatformFeePaisa: order.buyerPlatformFeePaisa,
-      taxTotalPaisa: order.taxTotalPaisa,
-      grandTotalPaisa: order.grandTotalPaisa,
-      walletCreditPaisa: order.walletCreditPaisa,
-      referralDiscountPaisa: order.referralDiscountPaisa,
-      promoDiscountPaisa: order.promoDiscountPaisa,
-      ...(order.promoCampaignId &&
-      order.promoRevision &&
-      order.promoCode &&
-      order.promoLabel
-        ? {
-            promo: {
-              campaignId: order.promoCampaignId,
-              revision: order.promoRevision,
-              code: order.promoCode,
-              label: order.promoLabel,
-            },
-          }
-        : {}),
-    };
-  }
   const results = await database.batch([
     database
       .prepare(
         `UPDATE orders SET status = ?, operation_request_id = ?,
-          payment_status = CASE WHEN ? = 'delivered' THEN 'paid' ELSE payment_status END,
           delivered_at = CASE WHEN ? = 'delivered' THEN ? ELSE delivered_at END,
           updated_at = ?
          WHERE id = ? AND status = ?
@@ -790,7 +772,6 @@ export async function transitionAdminFulfillment(
       .bind(
         to,
         options.requestId,
-        to,
         to,
         options.now,
         options.now,
@@ -902,44 +883,6 @@ export async function transitionAdminFulfillment(
         options.orderId,
         options.requestId,
       ),
-    database
-      .prepare(
-        `UPDATE payments SET status = 'captured', updated_at = ?
-         WHERE order_id = ? AND ? = 'delivered' AND EXISTS (
-           SELECT 1 FROM orders WHERE id = ? AND operation_request_id = ?
-         )`,
-      )
-      .bind(
-        options.now,
-        options.orderId,
-        to,
-        options.orderId,
-        options.requestId,
-      ),
-    ...(paymentReceiptSnapshot
-      ? [
-          database
-            .prepare(
-              `INSERT INTO order_documents (
-                id, order_id, kind, document_number, snapshot_json, status,
-                request_id, issued_at, voided_at
-              ) SELECT ?, ?, 'payment_receipt', ?, ?, 'issued', ?, ?, NULL
-                WHERE EXISTS (
-                  SELECT 1 FROM orders WHERE id = ? AND operation_request_id = ?
-                )`,
-            )
-            .bind(
-              crypto.randomUUID(),
-              options.orderId,
-              `RCPT-${order.orderNumber}`,
-              JSON.stringify(paymentReceiptSnapshot),
-              `${options.requestId}:payment-receipt`,
-              options.now,
-              options.orderId,
-              options.requestId,
-            ),
-        ]
-      : []),
     ...(options.action === 'deliver'
       ? buildEarningsAccrualStatements(database, {
           orderId: options.orderId,

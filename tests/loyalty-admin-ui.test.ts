@@ -1156,7 +1156,9 @@ void test('overlapping settings reads preserve newest success and authorized fai
     await h.page
       .getByRole('button', { name: 'Review latest settings', exact: true })
       .click();
-    await finish(h.heldReads[2], 403, { error: 'Access removed' });
+    // A service failure preserves the authorized editor. Access revocation is
+    // covered separately: 401/403 must hide its private controls.
+    await finish(h.heldReads[2], 503, { error: 'Temporarily unavailable' });
     await h.page.getByRole('alert').waitFor();
     assert.equal(
       await h.page
@@ -1180,6 +1182,54 @@ void test('overlapping settings reads preserve newest success and authorized fai
     assert.deepEqual(h.errors, []);
   } finally {
     await h.browser.close();
+  }
+});
+
+void test('revoked loyalty access focuses its replacement alert and hides private controls while retaining the original attempt', async (t) => {
+  for (const method of ['read', 'submit'] as const) {
+    for (const status of [401, 403]) {
+      await t.test(`${method} ${status}`, async () => {
+        const h = await mounted();
+        try {
+          await h.form().getByLabel('Private context').waitFor();
+          await h.fillPrivate();
+          h.respond(503, {error: 'Uncertain fixture result'});
+          await h.send();
+          await h.page.getByRole('alert').waitFor();
+          const original = await h.page.evaluate(() => Object.fromEntries(
+            Object.keys(sessionStorage).map(key => [key, sessionStorage.getItem(key)]),
+          ));
+          assert.ok(Object.keys(original).some(key => key.includes('staff.loyalty-settings:staff-a:settings')));
+          assert.ok(!JSON.stringify(original).includes('Private evidence'));
+          assert.ok(!JSON.stringify(original).includes('Private reviewed reason'));
+          await h.fillPrivate();
+          if (method === 'read') {
+            h.holdReads();
+            await h.page.getByRole('button', {name: 'Review latest settings', exact: true}).press('Enter');
+            await finish(h.heldReads[0], status, {error: 'Access removed'});
+          } else {
+            h.respond(status, {error: 'Access removed'});
+            await h.send();
+          }
+          await h.page.getByRole('alert').getByText(/Private controls are hidden/).waitFor();
+          assert.equal(await h.form().count(), 0);
+          assert.equal(await h.page.getByRole('region', {name: 'Loyalty state', exact: true}).count(), 0);
+          assert.equal(await h.page.getByLabel('Private context').count(), 0);
+          assert.equal(await h.page.getByLabel('Reason', {exact: true}).count(), 0);
+          assert.deepEqual(await h.page.evaluate(() => Object.fromEntries(
+            Object.keys(sessionStorage).map(key => [key, sessionStorage.getItem(key)]),
+          )), original);
+          assert.equal(h.requests.length, method === 'read' ? 1 : 2);
+          if (method === 'submit') assert.deepEqual(h.requests[1], h.requests[0]);
+          await h.page.getByRole('button', {name: 'Check original saved outcome', exact: true}).waitFor();
+          await h.page.waitForFunction(() => document.activeElement === document.querySelector('[role="alert"]'));
+          assert.equal(await h.page.getByRole('alert').evaluate(el => document.activeElement === el), true);
+          assert.deepEqual(h.errors, []);
+        } finally {
+          await h.browser.close();
+        }
+      });
+    }
   }
 });
 

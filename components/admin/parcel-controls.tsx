@@ -1,12 +1,13 @@
 'use client';
 import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
+import {incomingParcelHref} from '@/lib/payments/incoming-links';
 import { useRef, useState, useSyncExternalStore, type SyntheticEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Parcel } from '@/lib/operations/parcels';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 const BASE_KEYS = ['jobId','version','action','note','method','riderEmail','courierName','trackingCode',
   'trackingUrl','reference','amount','amountPaisa','cashRecordId','requestId'];
@@ -45,6 +46,8 @@ export function ParcelControls({
   compensation,
   actorId,
   isSuperAdmin = false,
+  canReviewIncoming = false,
+  returnTo,
   canPrepare,
 }: {
   orderId: string;
@@ -53,6 +56,8 @@ export function ParcelControls({
   compensation: Compensation[];
   actorId: string;
   isSuperAdmin?: boolean;
+  canReviewIncoming?: boolean;
+  returnTo?: string;
   canPrepare: boolean;
 }) {
   const router = useRouter();
@@ -171,21 +176,7 @@ export function ParcelControls({
                   ) : null}
                   {r.status === 'pending' ? (
                     <div className="mt-2 flex flex-wrap gap-3">
-                      <button
-                        className="rounded border p-2"
-                        disabled={busy || (p.method !== 'own_rider' && !isSuperAdmin) || r.riderId === actorId || (r.maker === actorId && !isSuperAdmin)}
-                        onClick={() =>
-                          void send({
-                            jobId: p.id,
-                            version: p.version,
-                            action: 'approve_remittance',
-                            cashRecordId: r.id,
-                            note: 'Staff verified remittance evidence.',
-                          })
-                        }
-                      >
-                        Approve remittance
-                      </button>
+                      {r.kind==='remittance'&&canReviewIncoming&&r.riderId!==actorId&&(r.maker!==actorId||isSuperAdmin)?<Link className="rounded border p-2 underline" href={incomingParcelHref(orderId,p.id,r.id,returnTo??'/admin/orders/'+encodeURIComponent(orderId))}>Review exact remittance in Incoming payments</Link>:<span>Actual company receipt and allocation require an eligible Finance reviewer in Incoming payments.</span>}
                       <button
                         className="rounded border p-2"
                         disabled={busy || (p.method !== 'own_rider' && !isSuperAdmin) || r.riderId === actorId || (r.maker === actorId && !isSuperAdmin)}

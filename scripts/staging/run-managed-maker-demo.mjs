@@ -18,8 +18,8 @@ await writeFile(outputPath, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
 
 console.log('PASS: disposable Managed Maker journey completed.');
 console.log(`Eligible base: NPR ${(result.eligibleBasePaisa / 100).toFixed(2)}`);
-console.log(`Platform retained (9%): NPR ${(result.platformRetainedPaisa / 100).toFixed(2)}`);
-console.log(`Maker entitlement (91%): NPR ${(result.makerEntitlementPaisa / 100).toFixed(2)}`);
+console.log(`Platform retained (${result.platformRetentionBps / 100}%): NPR ${(result.platformRetainedPaisa / 100).toFixed(2)}`);
+console.log(`Maker entitlement (${(10000 - result.platformRetentionBps) / 100}%): NPR ${(result.makerEntitlementPaisa / 100).toFixed(2)}`);
 console.log(`Payout: ${result.payout.status}; invoice groups: ${result.invoiceCount}`);
 console.log(`Evidence: ${outputPath}`);
 console.log(result.simulationLabel);

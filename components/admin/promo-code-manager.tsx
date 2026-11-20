@@ -1,6 +1,8 @@
 'use client';
 
 import { FormGuide } from '@/components/forms/form-guide';
+import {useCommercialScope,CommercialRecovery} from '@/components/admin/commercial-recovery';
+import {FinanceAccessNotice} from '@/components/admin/finance-access-notice';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -11,7 +13,7 @@ import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import {
   configuredJsonPayload,
   readConfiguredSubmission,
-} from '@/lib/forms/submission';
+} from '@/lib/forms/client-submission';
 import {
   clearVersionedSessionAttempt,
   getOrCreateVersionedSessionAttempt,
@@ -32,6 +34,7 @@ import {
   percentageToBps,
 } from '@/lib/incentives/presentation';
 import { PromoCodeCostPreview } from '@/components/admin/promo-code-cost-preview';
+import type { FeeWaiverCampaign } from '@/lib/marketplace/fee-waivers';
 import type {
   PromoCampaignPage,
   PromoRedemptionPage,
@@ -187,26 +190,36 @@ function discountSummary(terms: PromoTerms) {
 
 /** Keep the authorized child unmounted so its configuration hook cannot fetch for ordinary admins. */
 export function PromoCodeManager(props: {
+  actorId:string;
   role: string;
   initialPage: PromoCampaignPage;
   defaultCommissionBps?: number;
+  feeWaiver?: FeeWaiverCampaign | null;
 }) {
   return props.role === 'super_admin' ? (
     <AuthorizedPromoCodeManager
+      key={JSON.stringify([props.actorId,props.initialPage.campaigns[0]?.campaignId??'new'])}
+      actorId={props.actorId}
       initialPage={props.initialPage}
-      defaultCommissionBps={props.defaultCommissionBps ?? 900}
+      defaultCommissionBps={props.defaultCommissionBps}
+      feeWaiver={props.feeWaiver}
     />
   ) : (
     <p role="alert">Super Admin access is required.</p>
   );
 }
 function AuthorizedPromoCodeManager({
+  actorId,
   initialPage,
   defaultCommissionBps,
+  feeWaiver,
 }: {
+  actorId:string;
   initialPage: PromoCampaignPage;
-  defaultCommissionBps: number;
+  defaultCommissionBps?: number;
+  feeWaiver?: FeeWaiverCampaign | null;
 }) {
+  const commercial=useCommercialScope(actorId);
   const router = useRouter();
   const published = usePublishedFormConfig('staff.promo-code');
   const [campaigns, setCampaigns] = useState(initialPage.campaigns);
@@ -238,7 +251,7 @@ function AuthorizedPromoCodeManager({
   const subject = selected?.campaignId ?? 'new';
   const attemptKey = sessionAttemptKey(
     'staff.promo-code',
-    subject + ':' + action,
+    actorId+':'+subject + ':' + action,
   );
   const retained = useSyncExternalStore(
     subscribeToAttempt,
@@ -331,10 +344,11 @@ function AuthorizedPromoCodeManager({
       try {
         const response = await fetch('/api/admin/promo-codes', {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: { 'content-type': 'application/json',...commercial.headers },
           body: intent,
         });
         const result = decodedRecord(await response.json().catch(() => null));
+        if(!commercial.current())return;commercial.observe(response);
         if (response.status === 409 && result?.code === 'stale_version')
           published.handleSubmissionResponse(response, result.code);
         if (!response.ok)
@@ -377,7 +391,7 @@ function AuthorizedPromoCodeManager({
         router.refresh();
       } finally {
         pendingRef.current = false;
-        setPending(false);
+        if(commercial.current())setPending(false);
       }
     } catch (reason) {
       setError(
@@ -396,10 +410,10 @@ function AuthorizedPromoCodeManager({
         const response = await fetch(
           '/api/admin/promo-codes?campaignId=' +
             encodeURIComponent(selected.campaignId),
-          { cache: 'no-store' },
+          { cache: 'no-store',headers:commercial.headers },
         );
-        const result = decodedRecord(await response.json());
-        if (token !== readGeneration.current) return;
+        const result = decodedRecord(await response.json().catch(() => null));
+        if (!commercial.current() || token !== readGeneration.current) return;commercial.observe(response);
         if (!response.ok || !validState(result))
           throw new Error('Latest campaign could not be loaded.');
         setCampaigns((current) =>
@@ -429,10 +443,10 @@ function AuthorizedPromoCodeManager({
       });
       if (history?.nextCursor) query.set('cursor', history.nextCursor);
       const response = await fetch('/api/admin/promo-codes?' + query, {
-        cache: 'no-store',
+        cache: 'no-store',headers:commercial.headers,
       });
-      const result = decodedRecord(await response.json());
-      if (token !== readGeneration.current) return;
+      const result = decodedRecord(await response.json().catch(() => null));
+      if (!commercial.current() || token !== readGeneration.current) return;commercial.observe(response);
       if (
         !response.ok ||
         !Array.isArray(result.redemptions) ||
@@ -465,10 +479,10 @@ function AuthorizedPromoCodeManager({
     try {
       const response = await fetch(
         '/api/admin/promo-codes?cursor=' + encodeURIComponent(nextCursor),
-        { cache: 'no-store' },
+        { cache: 'no-store',headers:commercial.headers },
       );
-      const result = decodedRecord(await response.json());
-      if (token !== readGeneration.current) return;
+      const result = decodedRecord(await response.json().catch(() => null));
+      if (!commercial.current() || token !== readGeneration.current) return;commercial.observe(response);
       if (
         !response.ok ||
         !Array.isArray(result?.campaigns) ||
@@ -504,8 +518,11 @@ function AuthorizedPromoCodeManager({
         campaignStatus(campaign),
       ].some((value) => value.toLowerCase().includes(query)),
   );
+  const recovery=<CommercialRecovery actorId={actorId} kind="promo" attemptKey={attemptKey} onDenied={commercial.deny} onReauthorized={commercial.reauthorize} onRecovered={()=>{clearVersionedSessionAttempt(attemptKey);intents.current.delete(attemptKey);setAttemptRevision(v=>v+1);setNotice('Original committed operation confirmed. Open its current source before another action.');void refreshCampaign();router.refresh();}}/>;
+  if(commercial.accessDenied)return <div className="space-y-3"><FinanceAccessNotice message={error}/>{recovery}</div>;
   return (
     <div className="grid min-w-0 gap-6">
+      {retained?recovery:null}
       <section
         aria-label="Campaign management"
         className="min-w-0 space-y-4 rounded-xl border p-4 sm:p-6"
@@ -848,6 +865,7 @@ function AuthorizedPromoCodeManager({
           financial terms until publication.
         </p>
         <PromoCodeCostPreview
+          feeWaiver={feeWaiver}
           terms={previewTerms}
           error={previewError}
           defaultCommissionBps={defaultCommissionBps}

@@ -256,7 +256,7 @@ class FixtureDatabase {
   prepare(sql: string) {
     let values: SQLInputValue[] = [];
     const statement =
-      sql.includes('form_config_versions') || sql.includes('form_answer_sets')
+      sql.includes('form_config_versions') || sql.includes('form_answer_sets') || sql.includes('audit_logs')
         ? this.sqlite.prepare(sql)
         : null;
     const result = {
@@ -291,7 +291,11 @@ class FixtureDatabase {
 }
 function fixture(item: (typeof cases)[number]) {
   const sqlite = new DatabaseSync(':memory:');
-  sqlite.exec('CREATE TABLE users(id TEXT PRIMARY KEY);');
+  sqlite.exec('PRAGMA foreign_keys=ON; CREATE TABLE users(id TEXT PRIMARY KEY);');
+  const auditSchema = readFileSync('drizzle/0000_clear_lizard.sql', 'utf8')
+    .split('--> statement-breakpoint').find((sql) => sql.includes('CREATE TABLE `audit_logs`'));
+  assert.ok(auditSchema, 'canonical audit receipt schema must exist');
+  sqlite.exec(auditSchema);
   for (const sql of readFileSync('drizzle/0056_form_catalog.sql', 'utf8').split(
     '--> statement-breakpoint',
   ))
@@ -458,7 +462,7 @@ for (const item of cases) {
           item.id +
             ': upper-budget validated context accepted (' +
             response.status +
-            ')',
+            '): ' + (await response.clone().text()),
         );
         assert.equal(globalThis.envelopeMutations.length, 1);
         assert.deepEqual(globalThis.envelopeMutations[0], h.snapshot);

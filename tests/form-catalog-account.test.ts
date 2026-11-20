@@ -6,6 +6,7 @@ import test from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { build } from 'esbuild';
+import { stubFixtureLink } from './helpers/browser-fixture-link';
 
 import { listFormAnswersForSubject } from '../lib/db/repositories/form-answers';
 import { FORM_REGISTRY, IMPLEMENTED_FORM_ADAPTERS } from '../lib/forms/registry';
@@ -56,9 +57,10 @@ class Statement {
 
 class Database {
   beforeBatch: (() => void | Promise<void>) | null = null;
+  beforePrepare: ((sql: string) => void) | null = null;
   failStatement: number | null = null;
   constructor(private readonly sqlite: DatabaseSync) {}
-  prepare(sql: string) { return new Statement(this.sqlite.prepare(sql)); }
+  prepare(sql: string) { this.beforePrepare?.(sql); return new Statement(this.sqlite.prepare(sql)); }
   async batch(statements: readonly Statement[]) {
     const before = this.beforeBatch;
     this.beforeBatch = null;
@@ -95,14 +97,14 @@ async function fixture() {
     CREATE TABLE address_locations(address_id TEXT PRIMARY KEY REFERENCES addresses(id) ON DELETE CASCADE,latitude REAL NOT NULL,longitude REAL NOT NULL);
     CREATE TABLE data_rights_requests(id TEXT PRIMARY KEY,reference_number TEXT NOT NULL,customer_id TEXT NOT NULL REFERENCES users(id),request_type TEXT NOT NULL,detail TEXT NOT NULL,status TEXT NOT NULL,assigned_to TEXT,resolution TEXT,created_request_id TEXT NOT NULL UNIQUE,operation_request_id TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,completed_at INTEGER);
     CREATE TABLE data_rights_events(id TEXT PRIMARY KEY,data_rights_request_id TEXT NOT NULL,from_status TEXT,to_status TEXT,action TEXT NOT NULL,actor_id TEXT,actor_role TEXT,note TEXT NOT NULL,operation_request_id TEXT NOT NULL UNIQUE,created_at INTEGER NOT NULL);
-    CREATE TABLE orders(id TEXT PRIMARY KEY,order_number TEXT NOT NULL,customer_id TEXT,status TEXT NOT NULL,payment_status TEXT NOT NULL,grand_total_paisa INTEGER NOT NULL,current_total_paisa INTEGER,placed_at INTEGER,delivered_at INTEGER,created_at INTEGER NOT NULL);
+    CREATE TABLE orders(id TEXT PRIMARY KEY,order_number TEXT NOT NULL,customer_id TEXT,status TEXT NOT NULL,payment_status TEXT NOT NULL,grand_total_paisa INTEGER NOT NULL,current_total_paisa INTEGER,buyer_platform_fee_paisa INTEGER NOT NULL,placed_at INTEGER,delivered_at INTEGER,created_at INTEGER NOT NULL);
     CREATE TABLE order_items(id TEXT PRIMARY KEY,order_id TEXT NOT NULL REFERENCES orders(id),product_id TEXT NOT NULL,fulfillment_status TEXT NOT NULL,quantity INTEGER NOT NULL);
     CREATE TABLE product_reviews(id TEXT PRIMARY KEY,product_id TEXT NOT NULL,customer_id TEXT NOT NULL REFERENCES users(id),order_item_id TEXT NOT NULL UNIQUE REFERENCES order_items(id),rating INTEGER NOT NULL,title TEXT,body TEXT NOT NULL,status TEXT NOT NULL,moderation_note TEXT,moderated_by TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
     CREATE TABLE products(id TEXT PRIMARY KEY,name_en TEXT NOT NULL,slug TEXT NOT NULL,seller_id TEXT);
     CREATE TABLE return_requests(id TEXT PRIMARY KEY,order_item_id TEXT);
     CREATE TABLE complaints(id TEXT PRIMARY KEY,order_id TEXT,seller_id TEXT);
     CREATE TABLE gift_cards(id TEXT PRIMARY KEY,issued_by TEXT,redeemed_by TEXT);
-    CREATE TABLE order_cancellation_events(id TEXT PRIMARY KEY,order_id TEXT,actor_id TEXT);
+    CREATE TABLE order_cancellation_events(id TEXT PRIMARY KEY,order_id TEXT,actor_id TEXT,version INTEGER,next_json TEXT);
     CREATE TABLE order_cancellation_reviews(id TEXT PRIMARY KEY,order_id TEXT,requested_by TEXT);
     CREATE TABLE seller_profiles(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,trading_name TEXT NOT NULL);
     CREATE TABLE shipping_jobs(id TEXT PRIMARY KEY,seller_id TEXT NOT NULL);
@@ -117,12 +119,18 @@ async function fixture() {
     CREATE TABLE rider_events(id TEXT PRIMARY KEY,action TEXT NOT NULL,user_id TEXT NOT NULL);
     CREATE TABLE review_replies(id TEXT PRIMARY KEY,review_id TEXT NOT NULL,body TEXT NOT NULL,version INTEGER NOT NULL,status TEXT NOT NULL,created_at INTEGER NOT NULL,seller_id TEXT NOT NULL);
     CREATE TABLE review_photos(id TEXT PRIMARY KEY,review_id TEXT NOT NULL REFERENCES product_reviews(id),object_key TEXT NOT NULL UNIQUE,mime_type TEXT NOT NULL,size_bytes INTEGER NOT NULL,sort_order INTEGER NOT NULL,created_at INTEGER NOT NULL);
-    INSERT INTO orders VALUES ('order-1','HB-1001','customer','delivered','paid',10000,NULL,1,2,1),('order-other','HB-2002','other','delivered','paid',10000,NULL,1,2,1);
+    INSERT INTO orders VALUES ('order-1','HB-1001','customer','delivered','paid',10000,NULL,0,1,2,1),('order-other','HB-2002','other','delivered','paid',10000,NULL,0,1,2,1);
     INSERT INTO order_items VALUES ('item-1','order-1','product-1','delivered',1),('item-other','order-other','product-1','delivered',1);`);
   sqlite.exec("INSERT INTO products(id,name_en,slug) VALUES ('product-1','Handmade Item','handmade-item')");
   sqlite.exec('ALTER TABLE order_items ADD COLUMN seller_id TEXT');
   const migration = await readFile(new URL('../drizzle/0056_form_catalog.sql', import.meta.url), 'utf8');
   for (const statement of migration.split('--> statement-breakpoint')) if (statement.trim()) sqlite.exec(statement);
+  // Current native account receipts include the T30 form-health source columns. This fixture is :memory: only.
+  const healthMigration=await readFile(new URL('../drizzle/0151_form_health_records.sql',import.meta.url),'utf8');
+  for(const statement of healthMigration.split('--> statement-breakpoint').slice(0,4))if(statement.trim())sqlite.exec(statement);
+  // The current review projection reads the public profile state, never private legal identity.
+  const publicProfileMigration=await readFile(new URL('../drizzle/0084_public_profile_revisions.sql',import.meta.url),'utf8');
+  sqlite.exec(publicProfileMigration.split('--> statement-breakpoint')[0]);
   const tombstoneMigration = await readFile(new URL('../drizzle/0058_address_answer_owner_tombstones.sql', import.meta.url), 'utf8');
   for (const statement of tombstoneMigration.split('--> statement-breakpoint')) if (statement.trim()) sqlite.exec(statement);
   // Order presentation needs the canonical review table, without unrelated fulfillment triggers.
@@ -598,19 +606,99 @@ void test('a delivered item cannot receive a second review under a new request I
   } finally { sqlite.close(); }
 });
 
-void test('account collection endpoints fail closed when published configuration cannot be read', async () => {
+void test('account address requires publication while privacy and review record approved native core receipts', async () => {
   const { sqlite } = await fixture();
   try {
     const { POST: addressPost } = await import('../app/api/account/addresses/route');
     const { POST: privacyPost } = await import('../app/api/account/privacy/route');
     const { POST: reviewPost } = await import('../app/api/products/[id]/reviews/route');
     assert.equal((await addressPost(jsonRequest('/api/account/addresses', 'POST', { address, idempotencyKey: 'no-config-address', formVersion: 1, customAnswers: [] }))).status, 503);
-    assert.equal((await privacyPost(jsonRequest('/api/account/privacy', 'POST', { requestType: 'access', detail: 'Please provide my account information.', requestId: 'no-config-privacy', formVersion: 1, customAnswers: [] }))).status, 503);
-    assert.equal((await reviewPost(await reviewRequest('no-config-review', []), { params: Promise.resolve({ id: 'product-1' }) })).status, 503);
+    const privacyResponse = await privacyPost(jsonRequest('/api/account/privacy', 'POST', { requestType: 'access', detail: 'Please provide my account information.', requestId: 'no-config-privacy', formVersion: 1, customAnswers: [] }));
+    const reviewResponse = await reviewPost(await reviewRequest('no-config-review', []), { params: Promise.resolve({ id: 'product-1' }) });
+    assert.equal(privacyResponse.status, 201);
+    assert.equal(reviewResponse.status, 201);
+    const privacyId = (await privacyResponse.json() as { id: string }).id;
+    const reviewId = (await reviewResponse.json() as { id: string }).id;
     assert.equal(count(sqlite, 'addresses'), 0);
-    assert.equal(count(sqlite, 'data_rights_requests'), 0);
-    assert.equal(count(sqlite, 'product_reviews'), 0);
+    assert.equal(count(sqlite, 'data_rights_requests'), 1);
+    assert.equal(count(sqlite, 'product_reviews'), 1);
+    assert.equal(count(sqlite, 'form_config_versions'), 0);
     assert.equal(count(sqlite, 'form_answer_sets'), 0);
+    for (const [formId, subjectType, subjectId, requestId] of [
+      ['account.privacy-request', 'data_rights_request', privacyId, 'no-config-privacy'],
+      ['account.review', 'product_review', reviewId, 'no-config-review'],
+    ]) {
+      const rows = await listFormAnswersForSubject(globalThis.accountCatalogDb, subjectType, subjectId);
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].formId, formId);
+      assert.equal(rows[0].actorId, 'customer');
+      assert.equal(rows[0].requestId, requestId);
+      assert.equal(rows[0].versionId, `core:${formId}:1`);
+      assert.deepEqual(rows[0].answers, { formId, version: 1, answers: [] });
+    }
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE action='form.core_answers'").get()?.count, 2);
+    assert.deepEqual(sqlite.prepare('PRAGMA foreign_key_check').all(), []);
+  } finally { sqlite.close(); }
+});
+
+for (const failure of ['read unavailable', 'malformed publication'] as const) {
+  void test(`account collection endpoints reject ${failure} without native writes or false core receipts`, async () => {
+    const { sqlite, db } = await fixture();
+    try {
+      const { POST: addressPost } = await import('../app/api/account/addresses/route');
+      const { POST: privacyPost } = await import('../app/api/account/privacy/route');
+      const { POST: reviewPost } = await import('../app/api/products/[id]/reviews/route');
+      for (const formId of ['account.address', 'account.privacy-request', 'account.review']) {
+        seed(sqlite, formId, 1, [failure === 'malformed publication' ? { ...extra, type: 'invalid' } : extra]);
+      }
+      let failedReads = 0;
+      if (failure === 'read unavailable') {
+        db.beforePrepare = (sql) => {
+          if (!sql.startsWith('SELECT version, config_json, published_at FROM form_config_versions')) return;
+          failedReads++;
+          throw new Error('Simulated authoritative publication read failure');
+        };
+      }
+      for (const response of [
+        await addressPost(jsonRequest('/api/account/addresses', 'POST', { address, idempotencyKey: 'failed-config-address', formVersion: 1, customAnswers: [] })),
+        await privacyPost(jsonRequest('/api/account/privacy', 'POST', { requestType: 'access', detail: 'Please provide my account information.', requestId: 'failed-config-privacy', formVersion: 1, customAnswers: [] })),
+        await reviewPost(await reviewRequest('failed-config-review', []), { params: Promise.resolve({ id: 'product-1' }) }),
+      ]) {
+        assert.equal(response.status, 503);
+        assert.equal((await response.json() as { code: string }).code, 'config_unavailable');
+      }
+      if (failure === 'read unavailable') assert.equal(failedReads, 3, 'each endpoint must reach the failed authoritative read');
+      for (const table of ['addresses', 'data_rights_requests', 'product_reviews', 'form_answer_sets', 'audit_logs'])
+        assert.equal(count(sqlite, table), 0, `${table} must not contain a failed submission`);
+      assert.deepEqual(globalThis.accountCatalogMedia.stored, []);
+      assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM form_health_observations WHERE outcome='saved'").get()?.count, 0);
+      assert.deepEqual(sqlite.prepare('PRAGMA foreign_key_check').all(), []);
+    } finally { sqlite.close(); }
+  });
+}
+
+void test('privacy export includes actual native privacy and review receipts only for their owner', async () => {
+  const { sqlite } = await fixture();
+  try {
+    const { POST: privacyPost } = await import('../app/api/account/privacy/route');
+    const { POST: reviewPost } = await import('../app/api/products/[id]/reviews/route');
+    assert.equal((await privacyPost(jsonRequest('/api/account/privacy', 'POST', { requestType: 'access',
+      detail: 'Please provide my account information.', requestId: 'core-export-privacy', formVersion: 1, customAnswers: [] }))).status, 201);
+    assert.equal((await reviewPost(await reviewRequest('core-export-review', []),
+      { params: Promise.resolve({ id: 'product-1' }) })).status, 201);
+    globalThis.accountCatalogActor = { userId: 'other' };
+    assert.equal((await privacyPost(jsonRequest('/api/account/privacy', 'POST', { requestType: 'access',
+      detail: 'Other customer private request.', requestId: 'core-export-other', formVersion: 1, customAnswers: [] }))).status, 201);
+    const before = sqlite.prepare("SELECT * FROM audit_logs WHERE action='form.core_answers' ORDER BY id").all();
+    assert.equal(before.length, 3);
+    const exported = await collectFormAnswersForPrivacy(globalThis.accountCatalogDb, 'customer');
+    assert.deepEqual(exported.map(row => row.formId).sort(), ['account.privacy-request', 'account.review']);
+    assert.ok(exported.every(row => row.actorId === 'customer' && row.answers.answers.length === 0));
+    const other = await collectFormAnswersForPrivacy(globalThis.accountCatalogDb, 'other');
+    assert.equal(other.length, 1);
+    assert.equal(other[0].requestId, 'core-export-other');
+    assert.ok(exported.every(row => row.id !== other[0].id));
+    assert.deepEqual(sqlite.prepare("SELECT * FROM audit_logs WHERE action='form.core_answers' ORDER BY id").all(), before);
   } finally { sqlite.close(); }
 });
 
@@ -654,9 +742,9 @@ void test('account forms identify their live adapters and block submission until
   const { PrivacyRequestForm } = await import('../components/account/privacy-request-form');
   const { ReviewForm } = await import('../components/account/review-form');
   const { AddressManager } = await import('../components/account/address-manager');
-  const privacy = renderToStaticMarkup(createElement(PrivacyRequestForm));
-  const review = renderToStaticMarkup(createElement(ReviewForm, { productId: 'product-1', orderItemId: 'item-1', orderNumber: 'ORD-1' }));
-  const addresses = renderToStaticMarkup(createElement(AddressManager, { addresses: [] }));
+  const privacy = renderToStaticMarkup(createElement(PrivacyRequestForm, {actorId:'customer'}));
+  const review = renderToStaticMarkup(createElement(ReviewForm, {actorId:'customer', productId: 'product-1', orderItemId: 'item-1', orderNumber: 'ORD-1' }));
+  const addresses = renderToStaticMarkup(createElement(AddressManager, {actorId:'customer', addresses: [] }));
   assert.match(privacy, /data-form-id="account\.privacy-request"/);
   assert.match(review, /data-form-id="account\.review"/);
   assert.match(privacy, /Form configuration is loading/i);
@@ -780,10 +868,11 @@ void test('mounted privacy form focuses a published custom field after server fi
       import React from 'react';
       import { createRoot } from 'react-dom/client';
       import { PrivacyRequestForm } from './components/account/privacy-request-form';
-      createRoot(document.getElementById('root')!).render(<><PrivacyRequestForm /><PrivacyRequestForm /></>);
+      createRoot(document.getElementById('root')!).render(<><PrivacyRequestForm actorId="customer" /><PrivacyRequestForm actorId="customer" /></>);
     `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'account-navigation', setup(builder) {
+      stubFixtureLink(builder);
       builder.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'account-fixture' }));
       builder.onLoad({ filter: /.*/, namespace: 'account-fixture' }, () => ({ contents: 'export function useRouter(){return {refresh(){}}}', loader: 'js' }));
     } }],
@@ -830,14 +919,15 @@ void test('mounted profile and address forms retain final focus in the submitted
       import { ProfileForm } from './components/account/profile-form';
       import { AddressManager } from './components/account/address-manager';
       createRoot(document.getElementById('root')!).render(<>
-        <section data-instance="first-profile"><ProfileForm displayName="First Person" phone={null} /></section>
-        <section data-instance="second-profile"><ProfileForm displayName="Second Person" phone={null} /></section>
-        <section data-instance="first-address"><AddressManager addresses={[]} /></section>
-        <section data-instance="second-address"><AddressManager addresses={[]} /></section>
+        <section data-instance="first-profile"><ProfileForm actorId="customer" displayName="First Person" phone={null} /></section>
+        <section data-instance="second-profile"><ProfileForm actorId="customer" displayName="Second Person" phone={null} /></section>
+        <section data-instance="first-address"><AddressManager actorId="customer" addresses={[]} /></section>
+        <section data-instance="second-address"><AddressManager actorId="customer" addresses={[]} /></section>
       </>);
     `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'account-focus-stubs', setup(builder) {
+      stubFixtureLink(builder);
       builder.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'account-focus' }));
       builder.onResolve({ filter: /^@\/components\/delivery\/location-picker$/ }, () => ({ path: 'location', namespace: 'account-focus' }));
       builder.onLoad({ filter: /.*/, namespace: 'account-focus' }, (args) => ({ contents: args.path === 'location'

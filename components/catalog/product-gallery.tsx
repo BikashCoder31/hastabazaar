@@ -2,6 +2,7 @@
 
 import Image from 'next/image';
 import { useState } from 'react';
+import {useProductOfferSelection} from './product-offer-selection';
 import { ImageIcon } from 'lucide-react';
 
 import {
@@ -19,10 +20,38 @@ export function ProductGallery({
 }) {
   const media = allMedia.filter((item) => item.mimeType !== 'video/mp4');
   const videos = allMedia.filter((item) => item.mimeType === 'video/mp4');
-  const [activeIndex, setActiveIndex] = useState(0);
+  const selection=useProductOfferSelection(),selectedMedia=selection?.selected?.mediaId;
+  return <div className="min-w-0"><ScopedProductPhotos key={JSON.stringify([selection?.set?.productId??productName,selectedMedia??null,media.map(row=>row.id)])} media={media} productName={productName} selectedMedia={selectedMedia}/>      {videos.map((video) => (
+        <figure key={video.id} className="mt-5">
+          <video
+            data-media-frame="contain"
+            data-media-mode="contain"
+            controls
+            muted
+            playsInline
+            preload="metadata"
+            className={mediaObjectClass(
+              'contain',
+              'aspect-video max-h-96 rounded-2xl border bg-black',
+            )}
+            aria-label={'Product demonstration of ' + productName}
+            src={'/api/product-media/' + video.id}
+          >
+            Your browser cannot play this product video.
+          </video>
+          <figcaption className="mt-2 text-sm text-muted-foreground">
+            Product demonstration. If playback is unavailable, use the product
+            photos and description.
+          </figcaption>
+        </figure>
+      ))}
+</div>;
+}
+function ScopedProductPhotos({media,productName,selectedMedia}:{media:readonly {id:string;altEn:string;mimeType?:string}[];productName:string;selectedMedia?:string|null}){
+  const [activeIndex,setActiveIndex]=useState(()=>Math.max(0,media.findIndex(row=>row.id===selectedMedia)));
   const active = media[activeIndex] ?? media[0];
   return (
-    <div className="min-w-0">
+    <>
       {active ? (
         <div
           data-media-frame="contain"
@@ -90,30 +119,6 @@ export function ProductGallery({
           ))}
         </div>
       ) : null}
-      {videos.map((video) => (
-        <figure key={video.id} className="mt-5">
-          <video
-            data-media-frame="contain"
-            data-media-mode="contain"
-            controls
-            muted
-            playsInline
-            preload="metadata"
-            className={mediaObjectClass(
-              'contain',
-              'aspect-video max-h-96 rounded-2xl border bg-black',
-            )}
-            aria-label={'Product demonstration of ' + productName}
-            src={'/api/product-media/' + video.id}
-          >
-            Your browser cannot play this product video.
-          </video>
-          <figcaption className="mt-2 text-sm text-muted-foreground">
-            Product demonstration. If playback is unavailable, use the product
-            photos and description.
-          </figcaption>
-        </figure>
-      ))}
-    </div>
+    </>
   );
 }

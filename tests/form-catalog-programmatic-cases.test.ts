@@ -9,6 +9,7 @@ import { updateComplaintAsAdmin } from '../lib/db/repositories/complaints';
 import { advanceReturnAsAdmin, decideHighValueRefund, reviewReturnAsAdmin } from '../lib/db/repositories/returns';
 import { getFormAnswerById } from '../lib/db/repositories/form-answers';
 import { authorizeFormAnswerRead } from '../lib/forms/access';
+import { getReturnHandling, recordReturnHandling, type HandlingInput } from '../lib/returns/handling';
 
 declare global {
   var caseFormDb: D1Database;
@@ -32,10 +33,12 @@ class Statement {
 }
 class Database {
   beforeBatch?: () => void;
+  injectedBatches = 0;
   constructor(readonly sqlite: DatabaseSync) {}
   prepare(sql: string) { return new Statement(this.sqlite.prepare(sql)); }
   async batch(statements: readonly Statement[]) {
-    const before = this.beforeBatch; this.beforeBatch = undefined; before?.();
+    const before = this.beforeBatch; this.beforeBatch = undefined;
+    if (before) { this.injectedBatches++; before(); }
     this.sqlite.exec('BEGIN');
     try {
       const results = [];
@@ -46,8 +49,9 @@ class Database {
   }
 }
 const field = { id: 'case_context', key: 'case_context', label: 'Case context', type: 'short_text', required: true, order: 0, status: 'active' };
-function fixture() {
+function fixture(options: { highValue?: boolean; requestedBy?: string } = {}) {
   const sqlite = new DatabaseSync(':memory:');
+  sqlite.exec('PRAGMA foreign_keys=ON');
   for (const name of readdirSync('drizzle').filter((item) => /^\d{4}_.+\.sql$/.test(item)).sort())
     for (const statement of readFileSync(`drizzle/${name}`, 'utf8').split('--> statement-breakpoint'))
       if (statement.trim()) sqlite.exec(statement);
@@ -61,11 +65,13 @@ function fixture() {
   sqlite.prepare(`INSERT INTO products(id,seller_id,category_id,slug,sku,name_en,description_en,price_paisa,inventory_quantity,producer,country_of_origin,materials,return_eligible,status,created_at,updated_at)
     VALUES ('product-one','seller-one','cat','item','item','Fictional item','Fictional description',1000,10,'Maker','NP','Clay',1,'published',1,1)`).run();
   sqlite.prepare(`INSERT INTO orders(id,order_number,customer_id,customer_email,customer_phone,status,locale,currency,policy_version,shipping_address_json,item_subtotal_paisa,seller_discount_paisa,delivery_charge_paisa,buyer_platform_fee_paisa,tax_total_paisa,grand_total_paisa,payment_mode,payment_status,placed_at,created_at,updated_at)
-    VALUES ('order-one','ORD-ONE','buyer','buyer@example.test','9811111111','delivered','en-NP','NPR','test','{}',1000,0,0,0,0,1000,'cod','paid',1,1,1)`).run();
+    VALUES ('order-one','ORD-ONE','buyer','buyer@example.test','9811111111','delivered','en-NP','NPR','test','{}',1000,0,?,0,0,?,'cod','paid',1,1,1)`).run(options.highValue ? 200 : 0, options.highValue ? 1200 : 1000);
   sqlite.prepare(`INSERT INTO order_items(id,order_id,product_id,seller_id,seller_name_snapshot,product_name_snapshot,sku_snapshot,unit_price_paisa,quantity,seller_discount_paisa,commission_bps,commission_paisa,tax_paisa,line_total_paisa,return_eligible_snapshot,fulfillment_status,created_at)
     VALUES ('item-one','order-one','product-one','seller-one','Seller','Fictional item','item',1000,1,0,1000,100,0,1000,1,'delivered',1)`).run();
   sqlite.prepare(`INSERT INTO return_requests(id,reference_number,order_item_id,requested_by,reason,detail,status,policy_snapshot_json,requested_at,updated_at)
-    VALUES ('return-one','RET-ONE','item-one','buyer','defective','Fictional defect','requested','{}',1,1)`).run();
+    VALUES ('return-one','RET-ONE','item-one',?,'defective','Fictional defect','requested',?,1,1)`).run(options.requestedBy ?? 'buyer', options.highValue ? JSON.stringify({generalRequestWindowDays:7,deliveryDamageEvidenceWindowHours:48,changeOfMindEnabled:false,highValueRefundThresholdPaisa:100,refundInitiationBusinessDays:3,codRefundEstimateBusinessDays:[3,7]}) : '{}');
+  if (options.highValue) sqlite.prepare(`INSERT INTO order_delivery_allocations(order_item_id,order_id,seller_id,amount_paisa,original_quantity,policy_version,created_at)
+    VALUES ('item-one','order-one','seller-one',200,1,'original_seller_item_largest_remainder_v1',1)`).run();
   sqlite.prepare(`INSERT INTO complaints(id,reference_number,customer_id,order_id,category,subject,detail,status,created_at,updated_at)
     VALUES ('complaint-one','CMP-ONE','buyer','order-one','product','Fictional concern','Fictional detail','open',1,1)`).run();
   for (const formId of ['staff.return-case-action', 'staff.complaint-case-action'])
@@ -79,6 +85,35 @@ function form(formId: 'staff.return-case-action' | 'staff.complaint-case-action'
   return { versionId: `${formId}-v1`, answers: { formId, version: 1, answers: [{ fieldId: 'case_context', label: 'Case context', type: 'short_text' as const, value }] } };
 }
 const count = (db: DatabaseSync, table: string, where: string) => (db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${where}`).get() as { n: number }).n;
+
+// The case operations form closes the replacement only after native physical facts exist.
+// Custody is recorded by ReturnHandlingActions, never by the retired transit shortcut.
+async function deliveredReplacement(f: ReturnType<typeof fixture>) {
+  // The original order-item insert already reserved one of the initial ten units.
+  assert.equal(f.sqlite.prepare("SELECT inventory_quantity FROM products WHERE id='product-one'").get()!.inventory_quantity,9);
+  await reviewReturnAsAdmin(f.database, { returnRequestId:'return-one',actorId:'super',actorRole:'super_admin',action:'approve',
+    outcome:'replacement',responsibility:'seller',note:'Verified the original defect and the customer replacement request.',
+    publicMessageEn:'Your agreed replacement is approved for physical handling.',publicMessageNe:'Your agreed replacement is approved for physical handling.',requestId:'replacement-review',now:Date.now() });
+  let sequence=0;
+  async function act(extra: Partial<HandlingInput> & {action:HandlingInput['action']}) {
+    const row=await getReturnHandling(f.database,'return-one');assert.ok(row);
+    return recordReturnHandling(f.database,{actorId:'super',requestId:`replacement-handling-${sequence++}`,expectedRevision:String(row.revision),now:row.now},
+      {caseId:'return-one',occurredAt:row.now,publicMessage:'The actual return handling has been recorded for your replacement.',
+        privateNote:'Verified fictional custody, quantity and condition against the original case.',evidenceReference:'FICTIONAL-ORIGINAL-PHYSICAL-PROOF',...extra});
+  }
+  await act({action:'instructions',instructions:{destination:'Fictional approved receiving desk, Kathmandu',method:'Company-funded collection',packaging:'Protect the damaged item in a rigid sealed box.',safeHandlingConfirmed:true}});
+  await act({action:'handoff'});
+  await act({action:'receive',quantity:1});
+  await act({action:'inspect',quantity:1,disposition:'quarantine'});
+  const shipment=await act({action:'prepare_replacement',customerAgreementReference:'FICTIONAL-CUSTOMER-REPLACEMENT-AGREEMENT',promisedAt:Date.now()+86400000});
+  assert.ok(shipment.shipmentId);
+  await act({action:'dispatch_replacement',shipmentId:shipment.shipmentId,carrierReference:'SIM-TRACK'});
+  await act({action:'deliver_replacement',shipmentId:shipment.shipmentId});
+  assert.equal(f.sqlite.prepare("SELECT inventory_quantity FROM products WHERE id='product-one'").get()!.inventory_quantity,8);
+  assert.equal(count(f.sqlite,'return_stock_actions',"kind='replacement_reserve'"),1);
+  assert.equal(count(f.sqlite,'refunds','1=1'),0);
+  assert.deepEqual(f.sqlite.prepare('PRAGMA foreign_key_check').all(),[]);
+}
 
 void test('all four case receivers bound streamed JSON before custom parsing and reject malformed object bodies', async () => {
   const {sqlite,database}=fixture();
@@ -104,7 +139,7 @@ void test('all four case routes classify a publication racing the real domain ba
   const receivers = [
     {route:'../app/api/admin/returns/[id]/review/route',body:{action:'request_changes',note:'Fictional investigation note',publicMessageEn:'Please add more evidence.'}},
     {route:'../app/api/admin/returns/[id]/high-value/route',body:{decision:'approve',note:'Fictional independent review',publicMessageEn:'Your refund is approved.'}},
-    {route:'../app/api/admin/returns/[id]/operations/route',body:{action:'mark_in_transit',note:'Fictional return transit',publicMessageEn:'Your return is in transit.',reference:'SIM-TRACK'}},
+    {route:'../app/api/admin/returns/[id]/operations/route',body:{action:'resolve_replacement',note:'Fictional replacement delivery verified',publicMessageEn:'Your replacement was delivered.',reference:'SIM-TRACK'}},
     {route:'../app/api/admin/complaints/[id]/route',body:{action:'assign_to_me',note:'Fictional complaint triage',publicMessageEn:'A specialist is assigned.'}},
   ];
   for(const [index,receiver] of receivers.entries()) {
@@ -119,7 +154,7 @@ void test('all four case routes classify a publication racing the real domain ba
         sqlite.prepare(`INSERT INTO refunds(id,order_id,return_request_id,status,amount_paisa,reason,approved_by,requested_at)
           VALUES ('refund-one','order-one','return-one','pending_high_value_approval',1000,'Fictional review','admin',1)`).run();
       }
-      if(index===2)sqlite.prepare("UPDATE return_requests SET status='approved',resolution_outcome='replacement' WHERE id='return-one'").run();
+      if(index===2)await deliveredReplacement({sqlite,wrapper,database});
       const table=complaint?'complaints':'return_requests',id=complaint?'complaint-one':'return-one';
       const before=sqlite.prepare(`SELECT status FROM ${table} WHERE id=?`).get(id);
       wrapper.beforeBatch=()=>sqlite.prepare(`INSERT INTO form_config_versions
@@ -134,6 +169,7 @@ void test('all four case routes classify a publication racing the real domain ba
       }),{params:Promise.resolve({id})});
       assert.equal(response.status,409,receiver.route);
       assert.equal((await response.json() as {code?:string}).code,'stale_version',receiver.route);
+      assert.equal(wrapper.injectedBatches,1,`${receiver.route}: publication reached the actual domain batch`);
       assert.deepEqual(sqlite.prepare(`SELECT status FROM ${table} WHERE id=?`).get(id),before);
       assert.equal(count(sqlite,'form_answer_sets',`request_id='${requestId}'`),0);
       assert.equal(count(sqlite,'audit_logs',`request_id='${requestId}'`),0);
@@ -174,38 +210,49 @@ void test('complaint action commits one answer, exact replay, changed-content co
 });
 
 void test('conditional return operations bind protected reference and roll back a missing answer version', async () => {
-  const { sqlite, database } = fixture();
-  sqlite.prepare("UPDATE return_requests SET status='approved',resolution_outcome='replacement' WHERE id='return-one'").run();
+  const f = fixture();
+  const { sqlite, database } = f;
+  await deliveredReplacement(f);
   const input = { returnRequestId: 'return-one', actorId: 'admin', actorRole: 'admin' as const,
-    action: 'mark_in_transit' as const, note: 'Fictional shipment was verified',
-    publicMessageEn: 'Your return is in transit.', publicMessageNe: 'Your return is in transit.',
-    reference: 'SIM-TRACK-ONE', requestId: 'return-operation-one', now: 3,
+    action: 'resolve_replacement' as const, note: 'Fictional replacement delivery was verified',
+    publicMessageEn: 'Your replacement was delivered.', publicMessageNe: 'Your replacement was delivered.',
+    reference: 'SIM-TRACK', requestId: 'return-operation-one', now: Date.now(),
     form: form('staff.return-case-action') };
   await assert.rejects(advanceReturnAsAdmin(database, { ...input, requestId: 'return-operation-failed',
     form: { ...input.form, versionId: 'missing-version' } }));
-  assert.equal((sqlite.prepare("SELECT status FROM return_requests WHERE id='return-one'").get() as { status: string }).status, 'approved');
+  assert.equal((sqlite.prepare("SELECT status FROM return_requests WHERE id='return-one'").get() as { status: string }).status, 'received');
   assert.equal(count(sqlite, 'form_answer_sets', "request_id='return-operation-failed'"), 0);
   await advanceReturnAsAdmin(database, input);
   assert.equal(count(sqlite, 'form_answer_sets', "request_id='return-operation-one' AND subject_id='return-one'"), 1);
+  assert.equal(sqlite.prepare("SELECT status FROM return_requests WHERE id='return-one'").get()!.status,'resolved');
   await advanceReturnAsAdmin(database, input);
   await assert.rejects(() => advanceReturnAsAdmin(database, { ...input, reference: 'SIM-TRACK-TWO' }), /different|used/i);
+  assert.equal(count(sqlite,'return_request_events',"request_id='return-operation-one'"),1);
+  assert.equal(count(sqlite,'return_handling_events',"case_id='return-one'"),7);
+  assert.equal(sqlite.prepare("SELECT inventory_quantity FROM products WHERE id='product-one'").get()!.inventory_quantity,8);
+  assert.equal(count(sqlite,'refunds','1=1'),0);
 });
 
-void test('conditional high-value return decision preserves a different Super Admin and exact replay', async () => {
+void test('conditional high-value return decision permits the eligible Super Admin preparer and exact replay', async () => {
+  for (const maker of ['admin','super']) {
   const { sqlite, database } = fixture();
   sqlite.prepare("UPDATE return_requests SET status='pending_high_value_approval' WHERE id='return-one'").run();
   sqlite.prepare(`INSERT INTO refunds(id,order_id,return_request_id,status,amount_paisa,reason,approved_by,requested_at)
-    VALUES ('refund-one','order-one','return-one','pending_high_value_approval',1000,'Fictional review','admin',1)`).run();
+    VALUES ('refund-one','order-one','return-one','pending_high_value_approval',1000,'Fictional review',?,1)`).run(maker);
   const input = { returnRequestId: 'return-one', actorId: 'super', approve: true,
-    note: 'Independent fictional refund approval', publicMessageEn: 'Refund is approved.',
+    note: 'Verified fictional refund approval', publicMessageEn: 'Refund is approved.',
     publicMessageNe: 'Refund is approved.', requestId: 'return-high-value-one', now: 3,
     form: form('staff.return-case-action') };
-  await assert.rejects(decideHighValueRefund(database, { ...input, actorId: 'admin', requestId: 'same-reviewer' }));
-  assert.equal(count(sqlite, 'form_answer_sets', "request_id='same-reviewer'"), 0);
+  await assert.rejects(decideHighValueRefund(database, { ...input, actorId: 'admin', requestId: 'ordinary-admin' }));
+  assert.equal(count(sqlite, 'form_answer_sets', "request_id='ordinary-admin'"), 0);
   await decideHighValueRefund(database, input);
+  assert.equal(sqlite.prepare("SELECT high_value_approved_by FROM refunds WHERE id='refund-one'").get()!.high_value_approved_by,'super');
   assert.equal(count(sqlite, 'form_answer_sets', "request_id='return-high-value-one' AND subject_id='return-one'"), 1);
   await decideHighValueRefund(database, input);
   await assert.rejects(() => decideHighValueRefund(database, { ...input, approve: false }), /different|used/i);
+  assert.deepEqual(sqlite.prepare('PRAGMA foreign_key_check').all(),[]);
+  sqlite.close();
+  }
 });
 
 void test('case and answer both roll back when current staff permission is revoked before the batch', async () => {
@@ -216,6 +263,7 @@ void test('case and answer both roll back when current staff permission is revok
     note: 'Fictional assignment after revocation', publicMessageEn: 'A specialist is assigned.',
     publicMessageNe: 'A specialist is assigned.', requestId: 'complaint-revoked', now: 4,
     form: form('staff.complaint-case-action') }));
+  assert.equal(wrapper.injectedBatches,1);
   assert.equal((sqlite.prepare("SELECT status FROM complaints WHERE id='complaint-one'").get() as { status: string }).status, 'open');
   assert.equal(count(sqlite, 'form_answer_sets', "request_id='complaint-revoked'"), 0);
   assert.equal(count(sqlite, 'complaint_events', "request_id='complaint-revoked'"), 0);
@@ -231,6 +279,7 @@ void test('high-value maker race aborts case, refund, and answer together', asyn
     actorId: 'super', approve: true, note: 'Fictional independent decision',
     publicMessageEn: 'Refund was approved.', publicMessageNe: 'Refund was approved.',
     requestId: 'return-maker-race', now: 4, form: form('staff.return-case-action') }));
+  assert.equal(wrapper.injectedBatches,1);
   assert.equal((sqlite.prepare("SELECT status FROM return_requests WHERE id='return-one'").get() as { status: string }).status, 'pending_high_value_approval');
   assert.equal((sqlite.prepare("SELECT status FROM refunds WHERE id='refund-one'").get() as { status: string }).status, 'pending_high_value_approval');
   assert.equal(count(sqlite, 'form_answer_sets', "request_id='return-maker-race'"), 0);
@@ -246,6 +295,7 @@ void test('new publication before the case batch rejects stale answers without c
     actorId: 'admin', actorRole: 'admin', action: 'assign_to_me', note: 'Fictional stale publication',
     publicMessageEn: 'A specialist is assigned.', publicMessageNe: 'A specialist is assigned.',
     requestId: 'complaint-stale-publication', now: 4, form: form('staff.complaint-case-action') }));
+  assert.equal(wrapper.injectedBatches,1);
   assert.equal((sqlite.prepare("SELECT status FROM complaints WHERE id='complaint-one'").get() as { status: string }).status, 'open');
   assert.equal(count(sqlite, 'form_answer_sets', "request_id='complaint-stale-publication'"), 0);
 });
@@ -263,6 +313,7 @@ void test('legacy high-value approval and rejection roll back both records and e
       const requestId=`legacy-highvalue-${approve}-${race}`;
       await assert.rejects(decideHighValueRefund(database,{returnRequestId:'return-one',actorId:'super',approve,
         note:'Fictional high-value decision',publicMessageEn:'Refund decision recorded.',publicMessageNe:'Refund decision recorded.',requestId,now:4}));
+      assert.equal(wrapper.injectedBatches,1,`${race}: mutation reached the actual decision batch`);
       assert.equal((sqlite.prepare("SELECT status FROM return_requests WHERE id='return-one'").get() as {status:string}).status,
         race==='maker'?'pending_high_value_approval':'under_investigation');
       assert.equal((sqlite.prepare("SELECT status FROM refunds WHERE id='legacy-refund'").get() as {status:string}).status,'pending_high_value_approval');
@@ -299,12 +350,12 @@ void test('all four staff case receivers enforce real required publication, exac
     { path: '/api/admin/returns/return-one/high-value', route: '../app/api/admin/returns/[id]/high-value/route',
       body: { decision: 'approve', note: 'Fictional independent review', publicMessageEn: 'Your refund is approved.' }, formId: 'staff.return-case-action' },
     { path: '/api/admin/returns/return-one/operations', route: '../app/api/admin/returns/[id]/operations/route',
-      body: { action: 'mark_in_transit', note: 'Fictional return transit', publicMessageEn: 'Your return is in transit.', reference: 'SIM-TRACK' }, formId: 'staff.return-case-action' },
+      body: { action: 'resolve_replacement', note: 'Fictional replacement delivery verified', publicMessageEn: 'Your replacement was delivered.', reference: 'SIM-TRACK' }, formId: 'staff.return-case-action' },
     { path: '/api/admin/complaints/complaint-one', route: '../app/api/admin/complaints/[id]/route',
       body: { action: 'assign_to_me', note: 'Fictional complaint triage', publicMessageEn: 'A specialist is assigned.' }, formId: 'staff.complaint-case-action' },
   ];
   for (const [index, receiver] of receivers.entries()) {
-    const { sqlite, database } = fixture();
+    const { sqlite, wrapper, database } = fixture();
     globalThis.caseFormDb = database;
     globalThis.caseFormActor = { id: 'super', role: 'super_admin' };
     try {
@@ -313,7 +364,7 @@ void test('all four staff case receivers enforce real required publication, exac
         sqlite.prepare(`INSERT INTO refunds(id,order_id,return_request_id,status,amount_paisa,reason,approved_by,requested_at)
           VALUES ('refund-one','order-one','return-one','pending_high_value_approval',1000,'Fictional review','admin',1)`).run();
       }
-      if (index === 2) sqlite.prepare("UPDATE return_requests SET status='approved',resolution_outcome='replacement' WHERE id='return-one'").run();
+      if (index === 2) await deliveredReplacement({sqlite,wrapper,database});
       const { POST } = await import(receiver.route);
       const id = receiver.path.includes('complaints') ? 'complaint-one' : 'return-one';
       const base = { ...receiver.body, sourceFormId: receiver.formId, formVersion: 1,
@@ -364,9 +415,9 @@ void test('all conditional staff case controls mount published fields and retain
     };
     const mode=new URLSearchParams(location.search).get('mode');
     createRoot(document.getElementById('root')).render(mode==='complaint'
-      ? <ComplaintCaseActions id="complaint-one" status="open"/>
-      : <ReturnCaseActions id="return-one" quantity={1} role={mode==='high-value'?'super_admin':'admin'}
-        canApproveStandard={mode!=='high-value'} status={mode==='review'?'requested':mode==='high-value'?'pending_high_value_approval':'approved'}
+      ? <ComplaintCaseActions actorId="admin" id="complaint-one" status="open"/>
+      : <ReturnCaseActions actorId={mode==='high-value'?'super':'admin'} id="return-one" quantity={1} role={mode==='high-value'?'super_admin':'admin'}
+        canApproveStandard={mode!=='high-value'} status={mode==='review'?'requested':mode==='high-value'?'pending_high_value_approval':'received'}
         outcome={mode==='operations'?'replacement':null} refundStatus={null}/>);
   `, resolveDir: process.cwd(), loader: 'tsx' }, bundle: true, write: false,
     platform: 'browser', format: 'iife', define: { 'process.env.NODE_ENV': '"production"' },
@@ -405,14 +456,19 @@ void test('all conditional staff case controls mount published fields and retain
         await form.locator('textarea').nth(0).fill('Fictional investigation note');
         await form.locator('textarea').nth(1).fill('Fictional customer message');
         const button = mode==='review'?'Save decision':mode==='high-value'?'Approve high-value refund':
-          mode==='operations'?'Mark return in transit':'Apply action';
-        if (mode === 'operations') await form.locator('input').nth(0).fill('SIM-TRACK-1');
+          mode==='operations'?'Complete replacement':'Apply action';
+        if (mode === 'operations') await form.getByLabel('Shipment, replacement, or payment reference').fill('SIM-TRACK');
         await form.getByRole('button', { name: button }).click();
         await form.getByText('Response unavailable').waitFor();
         assert.equal(bodies.length, 1, mode);
         assert.equal(bodies[0].sourceFormId, mode==='complaint'?'staff.complaint-case-action':'staff.return-case-action');
         assert.equal(bodies[0].formVersion, 1);
         assert.deepEqual(bodies[0].customAnswers, [{ fieldId: 'case_context', value: 'Fictional case evidence' }]);
+        if(mode==='operations') {
+          assert.equal(bodies[0].action,'resolve_replacement');
+          assert.equal(bodies[0].reference,'SIM-TRACK');
+          assert.equal(await form.getByRole('button',{name:'Mark return in transit',exact:true}).count(),0);
+        }
         const requestId = String(bodies[0].idempotencyKey);
         assert.match(requestId, /^[0-9a-f-]{36}$/i);
         assert.ok(await page.evaluate((id: string) => Object.values(sessionStorage).includes(id), requestId));
@@ -422,7 +478,7 @@ void test('all conditional staff case controls mount published fields and retain
         await form.getByLabel('Case context').fill('Changed fictional evidence');
         await form.locator('textarea').nth(0).fill('Changed fictional investigation');
         await form.locator('textarea').nth(1).fill('Fictional customer message');
-        if (mode === 'operations') await form.locator('input').nth(0).fill('SIM-TRACK-1');
+        if (mode === 'operations') await form.getByLabel('Shipment, replacement, or payment reference').fill('SIM-TRACK');
         await form.getByRole('button', { name: button }).click();
         await form.getByText('Response unavailable').waitFor();
         assert.equal(bodies[1].idempotencyKey, requestId, `${mode}: changed input reuses original ID`);
@@ -445,35 +501,38 @@ void test('all conditional staff case controls mount published fields and retain
 
 void test('direct high-value refund review approves for SuperAdmin and awaits decision for Admin', async () => {
   for (const actorRole of ['super_admin','admin'] as const) for (const configured of [false,true]) {
-    const {sqlite,database}=fixture();
+    const {sqlite,database}=fixture({highValue:true});
     try {
-      sqlite.prepare("UPDATE return_requests SET policy_snapshot_json=? WHERE id='return-one'").run(JSON.stringify({generalRequestWindowDays:7,deliveryDamageEvidenceWindowHours:48,changeOfMindEnabled:false,highValueRefundThresholdPaisa:100,refundInitiationBusinessDays:3,codRefundEstimateBusinessDays:[3,7]}));
       const actorId=actorRole==='super_admin'?'super':'admin',requestId=`initial-${actorRole}-${configured}`;
       const input={returnRequestId:'return-one',actorId,actorRole,action:'approve' as const,
         note:'Verified fictional return liability',publicMessageEn:'Refund review recorded.',publicMessageNe:'Refund review recorded.',
-        outcome:'refund' as const,responsibility:'seller' as const,itemRefundPaisa:1000,deliveryRefundPaisa:0,requestId,now:2,
+        outcome:'refund' as const,responsibility:'seller' as const,itemRefundPaisa:1000,deliveryRefundPaisa:200,requestId,now:2,
         ...(configured?{form:form('staff.return-case-action')}:{})};
       await reviewReturnAsAdmin(database,input);
       const status=actorRole==='super_admin'?'approved':'pending_high_value_approval';
       assert.deepEqual({...sqlite.prepare("SELECT r.status,f.status AS refundStatus,f.is_high_value AS highValue,f.approved_by AS maker,f.high_value_approved_by AS approver,f.approved_at AS approvedAt,f.processed_at AS processedAt FROM return_requests r JOIN refunds f ON f.return_request_id=r.id WHERE r.id='return-one'").get() as object},
         {status,refundStatus:status,highValue:1,maker:actorId,approver:actorRole==='super_admin'?actorId:null,approvedAt:actorRole==='super_admin'?2:null,processedAt:null});
+      assert.deepEqual({...sqlite.prepare("SELECT amount_paisa AS amount,item_amount_paisa AS item,delivery_amount_paisa AS delivery FROM refunds WHERE return_request_id='return-one'").get()!}, {amount:1200,item:1000,delivery:200});
+      assert.equal(sqlite.prepare("SELECT amount_paisa FROM order_delivery_allocations WHERE order_item_id='item-one'").get()!.amount_paisa,200);
+      assert.equal(count(sqlite,'form_answer_sets',`request_id='${requestId}'`),configured?1:0);
       await reviewReturnAsAdmin(database,input);
       assert.equal(count(sqlite,'refunds',"return_request_id='return-one'"),1);
       sqlite.prepare('DELETE FROM user_roles WHERE user_id=?').run(actorId);
       await assert.rejects(reviewReturnAsAdmin(database,input),/permission/i);
+      assert.deepEqual(sqlite.prepare('PRAGMA foreign_key_check').all(),[]);
     } finally {sqlite.close();}
   }
 });
 
 void test('initial SuperAdmin high-value review rolls back every effect on actor or parent races',async()=>{
   for(const configured of [false,true])for(const race of ['role','parent','own-request'] as const){
-    const {sqlite,wrapper,database}=fixture();try{
-      sqlite.prepare("UPDATE return_requests SET policy_snapshot_json=? WHERE id='return-one'").run(JSON.stringify({generalRequestWindowDays:7,deliveryDamageEvidenceWindowHours:48,changeOfMindEnabled:false,highValueRefundThresholdPaisa:100,refundInitiationBusinessDays:3,codRefundEstimateBusinessDays:[3,7]}));
+    const {sqlite,wrapper,database}=fixture({highValue:true,requestedBy:race==='own-request'?'super':'buyer'});try{
       const prior=Object.fromEntries(['refunds','refund_liability_entries','return_request_events','audit_logs','form_answer_sets','notification_messages'].map(table=>[table,count(sqlite,table,'1=1')]));
-      if(race==='own-request')sqlite.exec("UPDATE return_requests SET requested_by='super' WHERE id='return-one'");
-      else wrapper.beforeBatch=()=>sqlite.exec(race==='role'?"DELETE FROM user_roles WHERE user_id='super'":"UPDATE return_requests SET status='rejected' WHERE id='return-one'");
-      await assert.rejects(reviewReturnAsAdmin(database,{returnRequestId:'return-one',actorId:'super',actorRole:'super_admin',action:'approve',note:'Verified fictional return liability',publicMessageEn:'Refund review recorded.',publicMessageNe:'Refund review recorded.',outcome:'refund',responsibility:'seller',itemRefundPaisa:1000,deliveryRefundPaisa:0,requestId:`initial-race-${configured}-${race}`,now:2,...(configured?{form:form('staff.return-case-action')}:{})}));
+      if(race!=='own-request')wrapper.beforeBatch=()=>sqlite.exec(race==='role'?"DELETE FROM user_roles WHERE user_id='super'":"UPDATE return_requests SET status='rejected' WHERE id='return-one'");
+      await assert.rejects(reviewReturnAsAdmin(database,{returnRequestId:'return-one',actorId:'super',actorRole:'super_admin',action:'approve',note:'Verified fictional return liability',publicMessageEn:'Refund review recorded.',publicMessageNe:'Refund review recorded.',outcome:'refund',responsibility:'seller',itemRefundPaisa:1000,deliveryRefundPaisa:200,requestId:`initial-race-${configured}-${race}`,now:2,...(configured?{form:form('staff.return-case-action')}:{})}));
+      assert.equal(wrapper.injectedBatches,race==='own-request'?0:1,`${race}: current authority checked at the expected boundary`);
       for(const [table,n] of Object.entries(prior))assert.equal(count(sqlite,table,'1=1'),n,`${race}:${table}`);
+      assert.deepEqual(sqlite.prepare('PRAGMA foreign_key_check').all(),[]);
     }finally{sqlite.close();}
   }
 });

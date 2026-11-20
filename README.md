@@ -4,21 +4,27 @@ A clean, non-WordPress foundation for the Hastabazaar handmade marketplace.
 
 ## Development
 
-The active local project is `C:/Users/abinash/Desktop/Hatskala`.
-Open a terminal in that folder, or double-click `START-HASTABAZAAR.cmd`.
-The Desktop project already has its local data. For normal startup, use:
+The active Mac checkout is `/Users/bikash/Desktop/HastaBazaar Project`.
+If its checked preview is already running, reuse it at `http://localhost:3018`.
 
-```powershell
-npm run local:check
+When the preview is stopped, start it from Terminal with Node.js 22.13.0 or newer.
+
+```sh
+cd '/Users/bikash/Desktop/HastaBazaar Project'
 npm run dev
 ```
 
+Run `npm run local:check` from the same folder for the read-only preflight.
+
 Use a clean shell without production database, SMTP, Cloudflare, or object-storage
 credentials. The launcher checks the project folder, approved Git baseline,
-local settings, and existing `.staging` data before starting at
-`http://localhost:3018`. It stops if the port is occupied or data is missing.
+and local settings. It requires the existing `.staging` marker and exactly one
+local D1 database. It stops if port 3018 is occupied or data is missing.
 It never creates an empty database, restores a backup, seeds records, or applies
 migrations. See [LOCAL-START.md](LOCAL-START.md) for help with a stopped launch.
+
+The preview uses `local_staging` with `NODE_ENV=development`, captures mail for
+`local.hastabazaar.test`, and simulates payments.
 
 Open `http://localhost:3018/local-testing` to choose a fictional role. The switcher
 is unavailable in production builds. Live providers remain unconfigured;
@@ -26,9 +32,11 @@ the contact form therefore shows a retryable delivery failure in this D1 preview
 The readiness check verifies form settings and the sign-in database structure;
 it does not verify live email, payment, or MariaDB production services.
 
-ZIP files in `C:/Users/abinash/Desktop/Hatskala-backups` are recovery archives,
-not working projects. Do not extract them over this project or launch an old
-worktree to get around a failed check. Git keeps the normal project history.
+The former Windows checkout at `C:/Users/abinash/Desktop/HastaBazaar` and its
+`START-HASTABAZAAR.cmd` launcher are historical references. ZIP files in
+`C:/Users/abinash/Desktop/Hatskala-backups` are recovery archives. Do not extract
+them over this project or launch an old worktree to get around a failed check.
+Git keeps the normal project history.
 
 Creating a new test environment, restoring data, applying migrations, or testing
 the local media decoder is a separate reviewed setup task. The existing guarded

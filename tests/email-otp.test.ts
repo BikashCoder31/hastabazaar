@@ -222,11 +222,11 @@ void test('email OTP message is branded and escapes recipient-controlled content
   });
 
   assert.equal(message.to, 'buyer+test@example.com');
-  assert.equal(message.subject, 'Your HastaBazaar sign-in code');
+  assert.equal(message.subject, 'Your Hastabazaar sign-in code');
   assert.match(message.text, /042731/);
   assert.match(message.text, /10 minutes/);
   assert.match(message.html, /042731/);
-  assert.match(message.html, /HastaBazaar/);
+  assert.match(message.html, /Hastabazaar/);
   assert.doesNotMatch(message.subject, /042731/);
 });
 

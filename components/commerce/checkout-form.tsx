@@ -1,4 +1,8 @@
 'use client';
+import {ACTOR_INTENT_HEADER} from '@/lib/http/actor-intent';
+import {canonicalKey} from '@/lib/forms/field-keys';
+import { SellerDisclosure } from './seller-disclosure';
+import { CustomerServiceFeeBreakdown } from './customer-service-fee-breakdown';
 
 import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
@@ -16,10 +20,10 @@ import {
 } from '@/lib/checkout/nepal-address';
 import { LocationPicker } from '@/components/delivery/location-picker';
 import { Banknote, LockKeyhole, MapPin, Truck } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { canonicalKey, configuredJsonPayload, readConfiguredSubmission, digestFormRequest } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission, digestFormRequest } from '@/lib/forms/client-submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 
 import { Button } from '@/components/ui/button';
@@ -40,31 +44,18 @@ import {
   NEPAL_PROVINCES,
 } from '@/lib/checkout/validation';
 import { DELIVERY_ESTIMATE_NOTICE } from '@/lib/checkout/delivery-presentation';
+import { normalizeNepalMobile } from '@/lib/auth/nepal-phone';
 import type { CustomerAddressRow } from '@/lib/db/repositories/customers';
 import type { CheckoutPromoQuote } from '@/lib/incentives/types';
 import { normalizePromoCode } from '@/lib/incentives/promo-policy';
+import {calculateBenefitTotals} from '@/lib/incentives/benefit-combinations';
 import type { ReferralCampaign } from '@/lib/db/repositories/wallet';
+import { parseReviewedCheckoutQuote, type NcmDemoDeliveryQuote, type ReviewedCheckoutQuote } from '@/lib/checkout/reviewed-quote';
 
-interface CartData {
-  items: {
-    id: string;
-    sellerId: string;
-    nameEn: string;
-    tradingName: string;
-    participationRoute?: string;
-    storeName?: string | null;
-    legalSellerName?: string | null;
-    pricePaisa: number;
-    quantity: number;
-    preparationDays: number;
-  }[];
-  itemSubtotalPaisa: number;
-  itemCount: number;
-  hasUnavailableItems: boolean;
-}
+type CartData = import('@/lib/db/repositories/cart').CartView;
 
 const checkoutBaseKeys = [
-  'customerEmail', 'customerPhone', 'recipientEmail', 'recipientName',
+  'paymentMethod','customerEmail', 'customerPhone', 'recipientEmail', 'recipientName',
   'recipientPhone', 'province', 'district', 'municipality', 'ward',
   'locality', 'landmark', 'postalCode', 'latitude', 'longitude',
   'saveAddressLabel', 'deliveryFor', 'termsAccepted', 'referralCode', 'promoCode', 'promoRevision', 'promoQuoteIntent',
@@ -79,8 +70,24 @@ function money(paisa: number): string {
   }).format(paisa / 100);
 }
 
-export function CheckoutForm({
+import type {CheckoutPaymentCapabilities} from '@/lib/checkout/payment-capabilities';
+import { serviceFeeSnapshot, INITIAL_PLATFORM_SERVICE_FEE, type PlatformServiceFeeSnapshot } from '@/lib/checkout/platform-service-fee';
+
+export function CheckoutForm(props:Omit<Parameters<typeof ScopedCheckoutForm>[0],'attemptScope'|'isCurrentScope'>){
+  const scope=JSON.stringify([props.customerId??null,props.cartScope??null]);
+  const lease=useMemo(()=>({scope}),[scope]);
+  const currentScope=useRef<typeof lease|null>(null);
+  useLayoutEffect(()=>{currentScope.current=lease;return()=>{if(currentScope.current===lease)currentScope.current=null;};},[lease]);
+  return <ScopedCheckoutForm key={scope} {...props} attemptScope={scope} isCurrentScope={()=>currentScope.current===lease}/>;
+}
+
+function ScopedCheckoutForm({
+  attemptScope,isCurrentScope,
+  paymentCapabilities={cod:false,manual_bank:false,state:'unknown'},
+  pricingRuleVersion,
+  serviceFee = serviceFeeSnapshot(INITIAL_PLATFORM_SERVICE_FEE, null),
   deliveryRates = DEFAULT_DELIVERY_RATES,
+  ncmDemoQuotesEnabled = false,
   customerEmail,
   customerPhone,
   contactStatus,
@@ -91,8 +98,16 @@ export function CheckoutForm({
   walletBalancePaisa = 0,
   referralCampaign,
   initialReferralCode = '',
+  policyContext,
 }: {
+  attemptScope:string;
+  isCurrentScope:()=>boolean;
+  cartScope?:string;
+  paymentCapabilities?:CheckoutPaymentCapabilities;
+  pricingRuleVersion?: ReviewedCheckoutQuote['lines'][number]['pricingRuleVersion'];
+  serviceFee?: PlatformServiceFeeSnapshot;
   deliveryRates?: DeliveryRates;
+  ncmDemoQuotesEnabled?: boolean;
   customerEmail?: string;
   customerPhone?: string;
   contactStatus?: ContactVerificationStatus|null;
@@ -103,11 +118,17 @@ export function CheckoutForm({
   walletBalancePaisa?: number;
   referralCampaign?: ReferralCampaign;
   initialReferralCode?: string;
+  policyContext?: string;
 }) {
+  const stillCurrent=useRef(true);
+  useEffect(()=>{stillCurrent.current=true;return()=>{stillCurrent.current=false;};},[]);
+  const [legacyAcknowledged,setLegacyAcknowledged]=useState(false);
+  const legacyAttempt=useSyncExternalStore(subscribeToCheckoutAttempt,()=>hasSessionAttempt(sessionAttemptKey('commerce.checkout','cart')),()=>false);
   const published = usePublishedFormConfig('commerce.checkout', { enabled: Boolean(customerId) });
   const initialAddress =
     savedAddresses.find((item) => item.isDefault) ?? savedAddresses[0];
   const [cart, setCart] = useState<CartData | null>(null);
+  const [paymentMethod,setPaymentMethod]=useState<'cod'|'manual_bank'>(paymentCapabilities.manual_bank&&!paymentCapabilities.cod?'manual_bank':'cod');
   const [useWallet, setUseWallet] = useState(false);
   const [promoQuote, setPromoQuote] = useState<CheckoutPromoQuote | null>(null);
   const [promoPendingFor, setPromoPendingFor] = useState<{subtotalPaisa:number;pending:boolean}|null>(null);
@@ -121,31 +142,49 @@ export function CheckoutForm({
   const [referralCode, setReferralCode] = useState(
     customerEmail ? initialReferralCode : '',
   );
-  const [province, setProvince] = useState(
-    normalizeProvince(initialAddress?.province ?? '') ?? 'Madhesh',
+  const [province, setProvince] = useState<string>(
+    normalizeProvince(initialAddress?.province ?? '') ?? '',
   );
   const [district, setDistrict] = useState(
     normalizeDistrict(initialAddress?.district ?? '') ??
       initialAddress?.district ??
       '',
   );
-  const [accepted, setAccepted] = useState(false);
+  const [acceptedPolicyContext, setAcceptedPolicyContext] = useState<string | null>(null);
+  const accepted = Boolean(policyContext) && acceptedPolicyContext === policyContext;
   const [submitting, setSubmitting] = useState(false);
   const [currentContacts,setCurrentContacts]=useState<ContactVerificationStatus|null>(contactStatus??null);
-  const contactsVerified=currentContacts?.emailVerified===true&&
+  const accountPhone = normalizeNepalMobile(customerPhone ?? '');
+  const contactsVerified=Boolean(accountPhone)&&
+    normalizeNepalMobile(currentContacts?.phone ?? '') === accountPhone &&
+    currentContacts?.emailVerified===true&&
     (contactPolicy==='email_only'||currentContacts?.phoneVerified===true);
   const [error, setError] = useState('');
+  const [accessDenied,setAccessDenied]=useState(false);
+  useEffect(()=>{
+    if(!customerId)return;
+    const denied=(event:Event)=>{
+      if((event as CustomEvent<{actorId?:unknown}>).detail?.actorId!==customerId||!stillCurrent.current||!isCurrentScope())return;
+      checkoutFormRef.current?.reset();setCurrentContacts(null);setAccessDenied(true);
+    };
+    window.addEventListener('hb:account-access-denied',denied);
+    return()=>window.removeEventListener('hb:account-access-denied',denied);
+  },[customerId,isCurrentScope]);
+  const [contactReload,setContactReload]=useState(0);
+  const [quoteChanged, setQuoteChanged] = useState(false);
   const errorSummary = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
     if (error && cart) errorSummary.current?.focus();
   }, [error, cart]);
   const [loadAttempt, setLoadAttempt] = useState(0);
-  const checkoutAttemptKey = sessionAttemptKey('commerce.checkout', 'cart');
+  const checkoutAttemptKey = sessionAttemptKey('commerce.checkout', attemptScope);
   const retainedAttempt = useSyncExternalStore(subscribeToCheckoutAttempt,()=>hasSessionAttempt(checkoutAttemptKey),()=>false);
   const [selectedAddress, setSelectedAddress] = useState<
     CustomerAddressRow | undefined
   >(initialAddress);
   const [deliveryFor, setDeliveryFor] = useState<'self' | 'other'>('self');
+  const [recipientEmail, setRecipientEmail] = useState('');
+  // Keep these legacy controls available only when reconstructing a retained request.
   const [saveAddressForFuture, setSaveAddressForFuture] = useState(false);
 
   useEffect(() => {
@@ -170,7 +209,7 @@ export function CheckoutForm({
     };
   }, [loadAttempt]);
 
-  const delivery = useMemo(
+  const estimatedDelivery = useMemo(
     () =>
       cart && districtBelongsToProvince(district, province)
         ? getDeliveryEstimate(
@@ -182,17 +221,65 @@ export function CheckoutForm({
         : null,
     [district, province, cart, deliveryRates],
   );
+  const [ncmQuoteAttempt, setNcmQuoteAttempt] = useState(0);
+  const ncmQuoteRequest = useMemo(() => {
+    if (!ncmDemoQuotesEnabled || quoteChanged || !cart?.items.length || cart.hasUnavailableItems || !districtBelongsToProvince(district, province)) return null;
+    return { district, attempt: ncmQuoteAttempt };
+  }, [ncmDemoQuotesEnabled, quoteChanged, cart, district, province, ncmQuoteAttempt]);
+  const [ncmQuoteResult, setNcmQuoteResult] = useState<{
+    request: NonNullable<typeof ncmQuoteRequest>;
+    quote?: { quotes: NcmDemoDeliveryQuote[]; deliveryPaisa: number };
+    error?: string;
+  }>();
+  useEffect(() => {
+    if (!ncmQuoteRequest) return;
+    const controller = new AbortController();
+    fetch('/api/checkout/ncm-demo-quote', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal, body: JSON.stringify({ district: ncmQuoteRequest.district }),
+    }).then(async response => {
+      const result = await response.json().catch(() => null) as { quotes?: NcmDemoDeliveryQuote[]; deliveryPaisa?: number; error?: unknown } | null;
+      if (!response.ok || !Array.isArray(result?.quotes) || typeof result.deliveryPaisa !== 'number' ||
+        !Number.isSafeInteger(result.deliveryPaisa) || result.deliveryPaisa < 0)
+        throw new Error(typeof result?.error === 'string' ? result.error : 'NCM demo delivery quotes are unavailable.');
+      if (!controller.signal.aborted) setNcmQuoteResult({
+        request: ncmQuoteRequest, quote: { quotes: result.quotes, deliveryPaisa: result.deliveryPaisa },
+      });
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) setNcmQuoteResult({
+        request: ncmQuoteRequest,
+        error: error instanceof Error ? error.message : 'NCM demo delivery quotes are unavailable.',
+      });
+    });
+    return () => controller.abort();
+  }, [ncmQuoteRequest]);
+  const currentNcmQuote = ncmQuoteResult?.request === ncmQuoteRequest ? ncmQuoteResult : undefined;
+  const delivery = !ncmDemoQuotesEnabled ? estimatedDelivery : estimatedDelivery && currentNcmQuote?.quote
+    ? { ...estimatedDelivery, chargePaisa: currentNcmQuote.quote.deliveryPaisa } : null;
 
+  const itemSubtotal = cart?.itemSubtotalPaisa ?? 0;
+  const referralDiscount = !currentPromoQuote && referralCode.trim() && referralCampaign?.enabled &&
+    itemSubtotal >= referralCampaign.minimumSubtotalPaisa ? referralCampaign.friendDiscountPaisa : 0;
+  const walletUsed = useWallet
+    ? Math.min(walletBalancePaisa, itemSubtotal - referralDiscount - (currentPromoQuote?.discountPaisa ?? 0)) : 0;
+  let total:number|null=null;
+  try{total=calculateBenefitTotals({merchandisePaisa:itemSubtotal,promoPaisa:currentPromoQuote?.discountPaisa??0,referralPaisa:referralDiscount,creditPaisa:walletUsed,deliveryPaisa:delivery?.chargePaisa??0,customerFeePaisa:serviceFee.chargedPaisa}).payablePaisa;}catch{/* Preserve the cart and require a new review of invalid benefit amounts. */}
+
+  // The submit event supplies the clock; read it only when checking a new order.
   async function submit(event: {
     preventDefault(): void;
     currentTarget: HTMLFormElement;
     nativeEvent?: Event;
-  }) {
+  },now:()=>number) {
     event.preventDefault();
+    if(!isCurrentScope())return;
     const retryPrior = (event.nativeEvent as SubmitEvent | undefined)?.submitter?.hasAttribute('data-checkout-retry') === true;
+    if(!retryPrior&&legacyAttempt&&!legacyAcknowledged){setError('Check your orders before explicitly starting a new attempt.');return;}
+    if(!retryPrior&&!paymentCapabilities[paymentMethod]){setError('This payment method is currently unavailable. Choose an available method; your cart remains saved.');return;}
+    if(total===null&&!retryPrior){setError('Review the updated merchandise and benefits before placing this order.');return;}
     if (
       !cart ||
-      (!retryPrior && cart.items.length === 0) ||
+      (!retryPrior && (!cart.items.length || !delivery)) ||
       submittingRef.current || (!retryPrior && promoPending) ||
       (!retryPrior && cart.hasUnavailableItems) ||
       !published.canSubmit || !published.config
@@ -217,6 +304,7 @@ export function CheckoutForm({
     }
     const requestPromo = retryPrior ? retainedRetry?.promo : currentPromoQuote ? {code:currentPromoQuote.code,revision:currentPromoQuote.revision,quoteIntent:currentPromoQuote.quoteIntent} : undefined;
     const request = {
+      paymentMethod:retryPrior?retainedRetry?.paymentMethod??'cod':paymentMethod,
       customerEmail: data.get('customerEmail'),
       customerPhone: data.get('customerPhone'),
       deliveryFor,
@@ -232,6 +320,24 @@ export function CheckoutForm({
       deliveryRateVersion: retryPrior ? retainedRetry?.deliveryRateVersion : deliveryRates.version,
       useWallet: retryPrior ? retainedRetry?.useWallet : useWallet,
       referralCode: requestPromo ? undefined : referralCode.trim().toUpperCase(),
+      reviewedQuote: retryPrior ? retainedRetry?.reviewedQuote : {
+        lines: cart.items.map(item => {
+          const { id, sellerId, pricePaisa, quantity, offerId, offerVersionId, publicVersionId, revision } = item;
+          const pricedOffer = pricingRuleVersion
+            && item.selectedOffer?.pricingRuleVersion === pricingRuleVersion
+            && offerId && offerVersionId && publicVersionId && Number.isSafeInteger(revision);
+          return {
+            id, sellerId, pricePaisa, quantity,
+            ...(offerId ? { offerId, offerVersionId, publicVersionId, revision } : {}),
+            ...(pricedOffer ? { pricingRuleVersion } : {}),
+          };
+        }),
+        deliveryPaisa: delivery?.chargePaisa ?? 0, walletPaisa: walletUsed,
+        ...(currentNcmQuote?.quote ? { ncmDemoQuotes: currentNcmQuote.quote.quotes } : {}),
+        referralPaisa: referralDiscount, promoPaisa: currentPromoQuote?.discountPaisa ?? 0,
+        payablePaisa: total, policyContext, serviceFee,
+        referralCampaign: !requestPromo && referralCode.trim() ? referralCampaign ?? null : null,
+      },
       ...(requestPromo ? {promoCode:requestPromo.code,promoRevision:requestPromo.revision,promoQuoteIntent:requestPromo.quoteIntent} : {}),
       address: {
         recipientName: data.get('recipientName'),
@@ -259,7 +365,7 @@ export function CheckoutForm({
       setError(parsed.errors.join(' '));
       return;
     }
-    if (!retainedRetry && !checkoutIntent.current && currentPromoQuote && (currentPromoQuote.subtotalPaisa !== cart.itemSubtotalPaisa || currentPromoQuote.expiresAt <= Date.now())) {
+    if (!retainedRetry && !checkoutIntent.current && currentPromoQuote && (currentPromoQuote.subtotalPaisa !== cart.itemSubtotalPaisa || currentPromoQuote.expiresAt <= now())) {
       setError('Promo terms need a fresh quote. Apply again and review the discount.'); return;
     }
     const intent = JSON.stringify(parsed.value);
@@ -271,27 +377,39 @@ export function CheckoutForm({
     setSubmitting(true);
     try {
       const intentHash = await digestFormRequest(parsed.value);
+      if(!stillCurrent.current||!isCurrentScope())return;
       if (retainedRetry && retainedRetry.intentHash !== intentHash)
         throw new Error('This order differs from the prior attempt. Re-enter the original fields and use Retry prior order attempt. If the form cannot reproduce those fields, check your orders before explicitly starting a new attempt.');
       if (!retainedRetry) {
         if (typeof parsed.value.formVersion !== 'number' || !Number.isSafeInteger(parsed.value.formVersion) || typeof parsed.value.deliveryRateVersion !== 'string')
           throw new Error('Order version information is unavailable. Refresh before submitting.');
-        const metadata:CheckoutRetryMetadata = {version:1,requestId,intentHash,formVersion:parsed.value.formVersion,
-          deliveryRateVersion:parsed.value.deliveryRateVersion,useWallet:parsed.value.useWallet===true,...(requestPromo?{promo:requestPromo}:{})};
+        const metadata:CheckoutRetryMetadata = {version:1,requestId,intentHash,...(parsed.value.paymentMethod?{paymentMethod:parsed.value.paymentMethod}:{}),formVersion:parsed.value.formVersion,
+          deliveryRateVersion:parsed.value.deliveryRateVersion,useWallet:parsed.value.useWallet===true,reviewedQuote:parsed.value.reviewedQuote,...(requestPromo?{promo:requestPromo}:{})};
         saveCheckoutRetry(checkoutAttemptKey,metadata);
       }
       checkoutIntent.current = intent;
       setAttemptRevision(value=>value+1);
       const response = await fetch('/api/checkout', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', [ACTOR_INTENT_HEADER]:customerId??'' },
         body: JSON.stringify(parsed.value),
       });
       const decoded: unknown = await response.json().catch(() => null);
       const result = decoded !== null && typeof decoded === 'object' && !Array.isArray(decoded)
         ? decoded as Record<string, unknown> : null;
+      if(!stillCurrent.current||!isCurrentScope())return;
+      if(response.status===401||response.status===403&&result?.code!=='contact_verification_required'){
+        checkoutFormRef.current?.reset();setAccessDenied(true);
+        throw new Error('The signed-in account or access changed. Reload checkout for the current account. The original attempt reference remains with its original account and cart.');
+      }
+      if(response.status===403&&result?.code==='contact_verification_required'){setCurrentContacts(null);setContactReload(value=>value+1);}
       if (response.status === 409 && result?.code === 'stale_version')
-        published.handleSubmissionResponse(response);
+        published.handleSubmissionResponse(response, 'stale_version');
+      if ((response.status === 409 && result?.code === 'quote_changed') ||
+        (ncmDemoQuotesEnabled && response.status === 503 && result?.code === 'ncm_quote_unavailable')) {
+        setQuoteChanged(true);
+        if (ncmDemoQuotesEnabled) setNcmQuoteResult(undefined);
+      }
       if (!response.ok)
         throw new Error(typeof result?.error === 'string' ? result.error : 'Order could not be placed.');
       if (typeof result?.orderNumber !== 'string' || result.orderNumber.trim().length === 0 || result.orderNumber.length > 100)
@@ -301,14 +419,16 @@ export function CheckoutForm({
         `/orders/${encodeURIComponent(result.orderNumber)}`,
       );
     } catch (reason) {
+      if(!stillCurrent.current||!isCurrentScope())return;
       setError(
         reason instanceof Error ? reason.message : 'Order could not be placed.',
       );
       submittingRef.current = false;
-      setSubmitting(false);
+      if(stillCurrent.current)setSubmitting(false);
     }
   }
 
+  if(accessDenied)return <section className="space-y-4 rounded-xl border p-5"><p role="alert">The signed-in account or access changed. Previous private checkout fields are hidden. Reload checkout for the current account.{retainedAttempt?' The original attempt reference has been kept; check the original account’s orders before starting another attempt.':''}</p><Button type="button" onClick={()=>window.location.reload()}>Reload current checkout</Button></section>;
   if (!cart && !error)
     return (
       <div className="grid gap-6 lg:grid-cols-[1fr_23rem]">
@@ -340,32 +460,19 @@ export function CheckoutForm({
       </div>
     );
 
-  const referralDiscount =
-    !currentPromoQuote && referralCode.trim() &&
-    referralCampaign?.enabled &&
-    cart.itemSubtotalPaisa >= referralCampaign.minimumSubtotalPaisa
-      ? referralCampaign.friendDiscountPaisa
-      : 0;
-  const walletUsed = useWallet
-    ? Math.min(walletBalancePaisa, cart.itemSubtotalPaisa - referralDiscount - (currentPromoQuote?.discountPaisa ?? 0))
-    : 0;
-  const total =
-    cart.itemSubtotalPaisa +
-    (delivery?.chargePaisa ?? 0) -
-    referralDiscount -
-    (currentPromoQuote?.discountPaisa ?? 0) -
-    walletUsed;
+  const recoveryOnly=cart.items.length===0&&retainedAttempt;
   return (
     <form
       ref={checkoutFormRef}
       data-form-id="commerce.checkout"
-      onSubmit={submit}
+      onSubmit={event=>void submit(event,Date.now)}
       className="customer-form grid gap-8 lg:grid-cols-[minmax(0,1fr)_23rem]"
     >
       <FormGuide formId="commerce.checkout" />
+      {legacyAttempt&&!legacyAcknowledged?<p role="alert" className="rounded-xl border p-4 lg:col-span-2">A prior order attempt could not be matched safely to this account and cart. Check your orders before explicitly starting a new attempt.</p>:null}
 
       <div className="space-y-6">
-        <ContactVerificationPanel key={`${customerId??'guest'}:${customerEmail??''}:${customerPhone??''}`}
+        <ContactVerificationPanel key={`${customerId??'guest'}:${customerEmail??''}:${customerPhone??''}:${contactReload}`}
           ownerKey={customerId} initialStatus={contactStatus} onStatusChange={setCurrentContacts}
           contactPolicy={contactPolicy}/>
         <section className="rounded-2xl border bg-card p-5 sm:p-7">
@@ -375,6 +482,7 @@ export function CheckoutForm({
             </span>
             <h2 className="font-heading text-2xl">Where should it go?</h2>
           </div>
+          <p className="mt-3 text-sm text-muted-foreground">Fields marked required must be completed. Optional fields can be left blank.</p>
           <fieldset className="mt-5 grid gap-3 sm:grid-cols-2">
             <legend className="mb-2 text-sm font-medium">Who will receive this order?</legend>
             {(['self', 'other'] as const).map((value) => (
@@ -403,7 +511,7 @@ export function CheckoutForm({
                   );
                   setSelectedAddress(address);
                   setProvince(
-                    normalizeProvince(address?.province ?? '') ?? 'Madhesh',
+                    normalizeProvince(address?.province ?? '') ?? '',
                   );
                   setDistrict(
                     normalizeDistrict(address?.district ?? '') ??
@@ -422,7 +530,7 @@ export function CheckoutForm({
             </div>
           ) : null}
           <div
-            key={`${selectedAddress?.id ?? 'new'}:${deliveryFor}`}
+            key={selectedAddress?.id ?? 'new'}
             className="mt-6 grid gap-5 sm:grid-cols-2"
           >
             <Field
@@ -440,6 +548,8 @@ export function CheckoutForm({
                   type="email"
                   autoComplete="email"
                   aria-describedby="recipient-email-help"
+                  value={recipientEmail}
+                  onChange={event => setRecipientEmail(event.target.value)}
                 />
                 <p id="recipient-email-help" className="text-xs leading-5 text-muted-foreground">
                   Used only for delivery authorization messages. It does not give access to your account, invoice, or order history. A recipient does not need an email account; you can authorize delivery instead.
@@ -464,24 +574,33 @@ export function CheckoutForm({
               readOnly={Boolean(customerEmail)}
               required
             />
-            <Field
-              id="customerPhone"
-              label="Contact phone"
-              type="tel"
-              autoComplete="tel"
-              placeholder="98XXXXXXXX"
-              defaultValue={customerPhone ?? selectedAddress?.phone}
-              readOnly={Boolean(customerEmail)}
-              required
-            />
             <div className="space-y-2">
-              <Label htmlFor="province">Province</Label>
+              <Field
+                id="customerPhone"
+                label="Contact phone"
+                type="tel"
+                autoComplete="tel"
+                placeholder="98XXXXXXXX"
+                defaultValue={customerPhone ?? ''}
+                readOnly={Boolean(customerEmail)}
+                aria-describedby="checkout-contact-phone-help"
+                required
+              />
+              <p id="checkout-contact-phone-help" className="text-xs leading-5 text-muted-foreground">
+                {accountPhone ? 'Uses the Nepal mobile saved in your account.' : 'Add a valid Nepal mobile to your account before ordering.'}{' '}
+                <Link href="/account/profile" className="underline">Update contact phone</Link>.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <FieldLabel htmlFor="province" required>Province</FieldLabel>
               <Select
-                value={province}
-                onValueChange={(value) => setProvince(value ?? 'Madhesh')}
+                name="province"
+                required
+                value={province || null}
+                onValueChange={(value) => setProvince(value ?? '')}
               >
-                <SelectTrigger id="province" className="h-11 w-full">
-                  <SelectValue />
+                <SelectTrigger id="province" aria-required="true" className="h-11 w-full">
+                  <SelectValue placeholder="Select a province" />
                 </SelectTrigger>
                 <SelectContent>
                   {NEPAL_PROVINCES.map((name) => (
@@ -503,13 +622,12 @@ export function CheckoutForm({
                   district && !districtBelongsToProvince(district, province),
                 )}
                 value={district}
+                disabled={!normalizeProvince(province)}
                 onChange={(event) => setDistrict(event.target.value)}
                 required
               />
               <datalist id="checkout-districts">
-                {DISTRICTS_BY_PROVINCE[
-                  normalizeProvince(province) ?? 'Madhesh'
-                ].map((name) => (
+                {(normalizeProvince(province) ? DISTRICTS_BY_PROVINCE[normalizeProvince(province)!] : []).map((name) => (
                   <option key={name} value={name}>
                     {name}
                   </option>
@@ -519,9 +637,10 @@ export function CheckoutForm({
                 id="district-help"
                 className="text-xs leading-5 text-muted-foreground"
               >
-                {district && !districtBelongsToProvince(district, province)
+                {!province ? 'Select a province first, then choose your district.' : district && !districtBelongsToProvince(district, province)
                   ? 'Choose a district in this province. Nawalparasi and Rukum need East or West.'
-                  : `Choose or type your district. ${DELIVERY_ESTIMATE_NOTICE}`}
+                  : ncmDemoQuotesEnabled ? 'Choose Kathmandu to request an NCM demo delivery quote for each seller.'
+                    : `Choose or type your district. ${DELIVERY_ESTIMATE_NOTICE}`}
               </p>
             </div>
             <Field
@@ -574,8 +693,12 @@ export function CheckoutForm({
               placeholder="Optional"
               defaultValue={selectedAddress?.postalCode ?? ''}
             />
-            {customerEmail && !selectedAddress ? (
+            <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">
+              Your delivery address is saved automatically after your order is placed. An unchanged saved address is reused. Edited details are saved as a new address; existing saved addresses stay unchanged.
+            </p>
+            {retainedAttempt && customerEmail && !selectedAddress ? (
               <div className="space-y-3 sm:col-span-2 rounded-xl border bg-muted/25 p-4">
+                <p className="text-xs leading-5 text-muted-foreground">For an older order retry, restore its original save choice and label. New delivery addresses are now saved automatically.</p>
                 <label htmlFor="save-address-for-future" className="flex items-start gap-3 text-sm">
                   <Checkbox
                     id="save-address-for-future"
@@ -593,10 +716,6 @@ export function CheckoutForm({
                   <Field id="saveAddressLabel" label="Address label" maxLength={80} placeholder="Home, workshop, gift recipient…" required />
                 ) : null}
               </div>
-            ) : selectedAddress ? (
-              <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">
-                Changes made here apply to this order only. Update the saved entry from My account if you want to reuse those changes.
-              </p>
             ) : null}
           </div>
         </section>
@@ -605,13 +724,10 @@ export function CheckoutForm({
             <Banknote className="size-5 text-primary" />
             <h2 className="font-heading text-2xl">Payment</h2>
           </div>
-          <div className="mt-5 rounded-xl border-2 border-primary bg-primary/5 p-4">
-            <p className="font-semibold">Cash on delivery</p>
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Pay the remaining cash total to the delivery representative when
-              each parcel arrives. Any shopping credit used is shown in your
-              order summary.
-            </p>
+          <div className="mt-5 space-y-3">
+            {paymentCapabilities.cod?<label className="block rounded-xl border p-4"><input type="radio" name="paymentMethod" value="cod" checked={paymentMethod==='cod'} onChange={()=>setPaymentMethod('cod')} disabled={submitting}/> <span className="font-semibold">Cash on delivery</span><p className="mt-1 text-sm leading-6 text-muted-foreground">Pay the remaining cash total to the delivery representative for each parcel.</p></label>:null}
+            {paymentCapabilities.manual_bank?<label className="block rounded-xl border p-4"><input type="radio" name="paymentMethod" value="manual_bank" checked={paymentMethod==='manual_bank'} onChange={()=>setPaymentMethod('manual_bank')} disabled={submitting}/> <span className="font-semibold">Manual bank transfer</span><p className="mt-1 text-sm leading-6 text-muted-foreground">Your order will provide original company bank instructions and a 24-hour payment deadline. Submit the amount and payment date after transferring; a reference or image is optional. Preparation starts after verified funds and release checks.</p></label>:null}
+            {!paymentCapabilities.cod&&!paymentCapabilities.manual_bank?<p>New payment methods are currently unavailable for this cart. A retained prior attempt can still be checked below.</p>:null}
           </div>
         </section>
         {published.config && published.config.fields.some((field) =>
@@ -642,11 +758,12 @@ export function CheckoutForm({
           </section>
         ) : null}
       </div>
-      <aside className="h-fit rounded-2xl border bg-card p-6 lg:sticky lg:top-40">
-        <h2 className="font-heading text-2xl">Your order</h2>
+      <aside className="h-fit self-start rounded-2xl border bg-card p-6">
+        <h2 className="font-heading text-2xl">{recoveryOnly?'Check prior order attempt':'Your order'}</h2>
         <Link href="/cart" className="section-link mt-1">
           Edit your cart →
         </Link>
+        {!recoveryOnly?<>
         <ul className="mt-5 space-y-4">
           {cart.items.map((item) => (
             <li key={item.id} className="flex justify-between gap-4 text-sm">
@@ -654,13 +771,14 @@ export function CheckoutForm({
                 <strong className="block">
                   {item.nameEn} × {item.quantity}
                 </strong>
+                {item.selectedOffer ? <span className="block text-xs text-muted-foreground">{item.selectedOffer.selection.map(option=>`${option.name}: ${option.value}`).join(' / ')} · {item.selectedOffer.unitsPerOffer} {item.selectedOffer.baseUnit} per offer · {item.selectedOffer.sku}</span> : null}
                 <span className="text-muted-foreground">
                   {item.tradingName}
-                  {item.participationRoute === 'managed_maker' ? <span className="block text-xs">Made by this maker · Sold by {item.storeName ?? 'company store — terms review pending'}</span> : null}
+                  <SellerDisclosure managed={item.participationRoute === 'managed_maker'} supplierName={item.makerName ?? item.tradingName} legalSellerName={item.legalSellerName} />
                 </span>
               </span>
               <span className="shrink-0 whitespace-nowrap font-semibold">
-                {money(item.pricePaisa * item.quantity)}
+                {item.pricePaisa === null ? 'Review price' : money(item.pricePaisa * item.quantity)}
               </span>
             </li>
           ))}
@@ -699,7 +817,7 @@ export function CheckoutForm({
               <span>
                 Use shopping credit · {money(walletBalancePaisa)} available
                 <span className="mt-1 block text-xs text-muted-foreground">
-                  Applies to products. Delivery remains payable in cash.
+                  Applies to products. Delivery and any Platform service fee remain payable {paymentMethod==='manual_bank'?'by bank transfer':'in cash'}.
                 </span>
               </span>
             </label>
@@ -735,22 +853,37 @@ export function CheckoutForm({
           </div>
           <div className="flex justify-between">
             <dt className="text-muted-foreground">Delivery</dt>
-            <dd>{delivery ? money(delivery.chargePaisa) : 'Enter district'}</dd>
+            <dd>{delivery ? money(delivery.chargePaisa) : ncmDemoQuotesEnabled && quoteChanged ? 'Review delivery quotes' : currentNcmQuote?.error ? 'Quote unavailable' : ncmQuoteRequest ? 'Quote pending' : 'Enter district'}</dd>
           </div>
+          {currentNcmQuote?.quote?.quotes.map(quote => (
+            <div key={quote.sellerId} className="flex justify-between gap-4 text-sm">
+              <dt className="min-w-0 break-words">{cart.items.find(item => item.sellerId === quote.sellerId)?.tradingName ?? quote.originBranch} · {quote.originBranch} to {quote.destinationBranch}</dt>
+              <dd className="shrink-0 whitespace-nowrap">{money(quote.amountPaisa)}</dd>
+            </div>
+          ))}
           <div className="flex justify-between border-t pt-4 text-base font-semibold">
             <dt>
-              {delivery ? 'Total on delivery' : 'Subtotal before delivery'}
+              {delivery ? paymentMethod==='manual_bank'?'Total by bank transfer':'Total on delivery' : 'Subtotal before delivery'}
             </dt>
-            <dd>{money(total)}</dd>
+            <dd>{total===null?'Review updated benefits':money(total)}</dd>
           </div>
         </dl>
+        {ncmQuoteRequest && !currentNcmQuote ? <output className="mt-3 block text-sm">Checking NCM demo delivery quotes…</output> : null}
+        {currentNcmQuote?.error ? (
+          <div className="mt-3 space-y-2 text-sm">
+            <p role="alert">{currentNcmQuote.error}</p>
+            <Button type="button" variant="outline" onClick={() => setNcmQuoteAttempt(attempt => attempt + 1)}>Retry delivery quotes</Button>
+          </div>
+        ) : null}
+        <div className="mt-3 border-t pt-3"><CustomerServiceFeeBreakdown standardPaisa={'standardPaisa' in serviceFee ? serviceFee.standardPaisa : serviceFee.chargedPaisa} waivedPaisa={'waivedPaisa' in serviceFee ? serviceFee.waivedPaisa : 0} netPaisa={serviceFee.chargedPaisa} campaignName={'campaign' in serviceFee ? serviceFee.campaign?.name ?? null : null} source="estimate" /></div>
         {delivery ? (
           <p className="mt-4 flex gap-2 text-sm leading-6 text-muted-foreground">
             <Truck className="mt-1 size-4 shrink-0 text-primary" />
-            Estimated arrival: {delivery.estimatedMinDays}–
-            {delivery.estimatedMaxDays} days after ordering.
+            {ncmDemoQuotesEnabled ? 'Marketplace arrival estimate' : 'Estimated arrival:'} {delivery.estimatedMinDays}–
+            {delivery.estimatedMaxDays} days {paymentMethod==='manual_bank'?'after verified payment and fulfillment release':'after ordering'}.
           </p>
         ) : null}
+        </>:<p className="mt-5 text-sm leading-6">Your cart is currently empty. A prior attempt may have completed. Re-enter its original details and retry the same request to check its result. No new price or arrival estimate is available here.</p>}
         <label
           htmlFor="checkout-terms"
           className="mt-6 flex cursor-pointer items-start gap-3 text-sm leading-6"
@@ -758,7 +891,7 @@ export function CheckoutForm({
           <Checkbox
             id="checkout-terms"
             checked={accepted}
-            onCheckedChange={setAccepted}
+            onCheckedChange={(value) => setAcceptedPolicyContext(value === true ? policyContext ?? null : null)}
             className="mt-1"
           />
           <span>
@@ -770,7 +903,7 @@ export function CheckoutForm({
             >
               Terms & Conditions
             </Link>
-            .
+            . <span className="text-xs text-muted-foreground">(required)</span>
           </span>
         </label>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
@@ -811,20 +944,25 @@ export function CheckoutForm({
             before placing the order.
           </p>
         ) : null}
-        <Button
+        {quoteChanged ? <Button type="button" variant="outline" className="mt-3 w-full" disabled={submitting} onClick={() => {
+          if (submittingRef.current) return;
+          clearCheckoutRetry(checkoutAttemptKey);
+          window.location.reload();
+        }}>Review updated checkout</Button> : null}
+        {!recoveryOnly?<Button
           type="submit"
-          disabled={submitting || promoPending || cart.items.length === 0 || cart.hasUnavailableItems || !published.canSubmit || !contactsVerified}
+          disabled={(legacyAttempt&&!legacyAcknowledged) || !paymentCapabilities[paymentMethod] || submitting || promoPending || cart.items.length === 0 || cart.hasUnavailableItems || !published.canSubmit || !contactsVerified || !accepted || !delivery}
           className="mt-6 h-12 w-full rounded-full text-base"
         >
-          <LockKeyhole /> {submitting ? 'Placing order…' : 'Place COD order'}
-        </Button>
+          <LockKeyhole /> {submitting ? 'Placing order…' : paymentMethod==='manual_bank'?'Place bank-transfer order':'Place COD order'}
+        </Button>:null}
         {retainedAttempt ? <div className="mt-3 space-y-2 rounded-xl border p-3">
           <p className="text-sm">A prior order attempt may already have completed. Re-enter its original details to check the same request. Retained promo terms are used only for replay and are not a current offer. Retry uses the original shopping-credit choice, even if your current balance changed.</p>
           <Button type="submit" data-checkout-retry className="w-full" variant="outline" disabled={submitting || !published.canSubmit}>Retry prior order attempt</Button>
         </div> : null}
         <Button type="button" variant="outline" className="mt-3 w-full" disabled={submitting} onClick={() => {
           if (!window.confirm("The prior order may already have completed. Check your orders before starting a new attempt to avoid duplicates.")) return;
-          clearCheckoutRetry(checkoutAttemptKey); freshAttempts.current.clear(); checkoutIntent.current = null; setAttemptRevision(value=>value+1); setError(""); published.refresh();
+          setLegacyAcknowledged(true); clearCheckoutRetry(checkoutAttemptKey); freshAttempts.current.clear(); checkoutIntent.current = null; setAttemptRevision(value=>value+1); setError(""); setQuoteChanged(false); published.refresh();
         }}>Start a new order attempt</Button>
         <p className="mt-3 text-center text-xs leading-5 text-muted-foreground">
           Availability and price are verified again before confirmation.
@@ -837,14 +975,24 @@ export function CheckoutForm({
 function Field({
   id,
   label,
+  required,
   ...props
 }: { id: string; label: string } & React.ComponentProps<typeof Input>) {
   return (
     <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
-      <Input id={id} name={id} className="h-11 text-base" {...props} />
+      <FieldLabel htmlFor={id} required={required}>{label}</FieldLabel>
+      <Input id={id} name={id} className="h-11 text-base" required={required} {...props} />
     </div>
   );
+}
+
+function FieldLabel({ htmlFor, required, children }: { htmlFor: string; required?: boolean; children: React.ReactNode }) {
+  const alreadyOptional = typeof children === 'string' && /\(optional\)/i.test(children);
+  return <Label htmlFor={htmlFor}>
+    {children}
+    {required ? <><span aria-hidden="true"> *</span><span className="text-xs text-muted-foreground">(required)</span></>
+      : !alreadyOptional ? <span className="text-xs text-muted-foreground">(optional)</span> : null}
+  </Label>;
 }
 
 /** Mounted only for authenticated checkout. Guests do not load quote configuration. */
@@ -910,6 +1058,7 @@ function validCheckoutPromoQuote(value:unknown):value is CheckoutPromoQuote {
 
 const subscribeToCheckoutAttempt = () => () => undefined;
 interface CheckoutRetryMetadata {
+  paymentMethod?:'cod'|'manual_bank';
   version: 1;
   requestId: string;
   intentHash: string;
@@ -917,16 +1066,21 @@ interface CheckoutRetryMetadata {
   deliveryRateVersion: string;
   useWallet: boolean;
   promo?: { code: string; revision: number; quoteIntent: string };
+  reviewedQuote?: ReviewedCheckoutQuote;
 }
 function validCheckoutRetry(value: unknown, requestId: string): value is CheckoutRetryMetadata {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const metadata = value as Record<string,unknown>;
-  if (Object.keys(metadata).some(key=>!['version','requestId','intentHash','formVersion','deliveryRateVersion','useWallet','promo'].includes(key)) ||
+  if (Object.keys(metadata).some(key=>!['version','requestId','intentHash','formVersion','deliveryRateVersion','useWallet','promo','reviewedQuote','paymentMethod'].includes(key)) ||
     metadata.version !== 1 || typeof metadata.useWallet !== 'boolean' || metadata.requestId !== requestId || !/^[0-9a-f-]{36}$/i.test(requestId) ||
     typeof metadata.intentHash !== 'string' || !/^[0-9a-f]{64}$/.test(metadata.intentHash) ||
     typeof metadata.formVersion !== 'number' || !Number.isSafeInteger(metadata.formVersion) || metadata.formVersion < 1 ||
     typeof metadata.deliveryRateVersion !== 'string' || !metadata.deliveryRateVersion.trim() || metadata.deliveryRateVersion.length > 120)
     return false;
+  if(metadata.paymentMethod!==undefined&&metadata.paymentMethod!=='cod'&&metadata.paymentMethod!=='manual_bank')return false;
+  if (metadata.reviewedQuote !== undefined) {
+    try { parseReviewedCheckoutQuote(metadata.reviewedQuote); } catch { return false; }
+  }
   if (metadata.promo === undefined) return true;
   if (!metadata.promo || typeof metadata.promo !== 'object' || Array.isArray(metadata.promo)) return false;
   const promo = metadata.promo as Record<string,unknown>;
@@ -939,7 +1093,7 @@ function readCheckoutRetry(key: string, requestId: string): CheckoutRetryMetadat
   try {
     const raw = sessionStorage.getItem(key+':retry-metadata');
     if (raw === null) return null;
-    if (raw.length > 1024) throw new Error();
+    if (raw.length > 16384) throw new Error();
     const decoded:unknown = JSON.parse(raw);
     if (!validCheckoutRetry(decoded,requestId)) throw new Error();
     return decoded;
@@ -951,7 +1105,7 @@ function saveCheckoutRetry(key: string, metadata: CheckoutRetryMetadata): void {
   try {
     if (!validCheckoutRetry(metadata,metadata.requestId)) throw new Error();
     const raw = JSON.stringify(metadata);
-    if (raw.length > 1024) throw new Error();
+    if (raw.length > 16384) throw new Error();
     sessionStorage.setItem(key+':retry-metadata',raw);
   } catch {
     throw new Error('Browser session storage could not retain this order attempt. No order was sent. Enable storage before retrying.');

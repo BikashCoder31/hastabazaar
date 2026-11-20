@@ -19,7 +19,7 @@ import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import {
   configuredJsonPayload,
   readConfiguredSubmission,
-} from '@/lib/forms/submission';
+} from '@/lib/forms/client-submission';
 
 const catalogBaseKeys = [
   'kind',
@@ -32,14 +32,17 @@ const catalogBaseKeys = [
   'idempotencyKey',
   'imageId',
   'expectedImageId',
+  'parentId','expectedParentId',
 ];
 
 export function CatalogManager({
   categories,
   occasions,
+  canManageParents=false,
 }: {
   categories: readonly ManagedTaxonomyRow[];
   occasions: readonly ManagedTaxonomyRow[];
+  canManageParents?:boolean;
 }) {
   return (
     <Tabs defaultValue="categories" className="mt-7 gap-5">
@@ -61,7 +64,7 @@ export function CatalogManager({
         </TabsTrigger>
       </TabsList>
       <TabsContent value="categories">
-        <TaxonomySection kind="category" title="Categories" rows={categories} />
+        <TaxonomySection kind="category" title="Categories" rows={categories} canManageParents={canManageParents} />
       </TabsContent>
       <TabsContent value="occasions">
         <TaxonomySection
@@ -77,10 +80,12 @@ function TaxonomySection({
   kind,
   title,
   rows,
+  canManageParents=false,
 }: {
   kind: 'category' | 'occasion';
   title: string;
   rows: readonly ManagedTaxonomyRow[];
+  canManageParents?:boolean;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false),
@@ -165,6 +170,7 @@ function TaxonomySection({
           isActive: 1,
           sortOrder: (rows.at(-1)?.sortOrder ?? 0) + 10,
           usageCount: 0,
+          parentId:null,
         }
       : null);
   return (
@@ -242,6 +248,7 @@ function TaxonomySection({
               nameNe: editing?.nameNe || data.get('nameEn'),
               sortOrder: Number(data.get('sortOrder')),
               isActive: data.get('isActive') === 'on',
+              ...(kind==='category'&&canManageParents?{parentId:data.get('parentId')||null,expectedParentId:editing?.parentId??null}:{}),
               ...(kind === 'category' && imageDraft !== undefined
                 ? {
                     imageId: imageDraft,
@@ -288,6 +295,7 @@ function TaxonomySection({
                 id={fieldId + '-slug'}
                 name="slug"
                 defaultValue={active.slug}
+                readOnly={Boolean(active.id)}
                 required
                 maxLength={80}
                 pattern="[a-z0-9]+(-[a-z0-9]+)*"
@@ -310,6 +318,9 @@ function TaxonomySection({
                 defaultValue={active.sortOrder}
                 required
               />
+            </label>
+            <label className="flex min-h-11 items-center gap-3 text-sm">
+              {kind==='category'&&canManageParents?<span className="grid gap-2">Parent category<select name="parentId" defaultValue={active.parentId??''} className="min-h-11 rounded border p-2"><option value="">Top-level category</option>{rows.filter(row=>row.id!==active.id).map(row=><option key={row.id} value={row.id}>{row.nameEn}</option>)}</select></span>:null}
             </label>
             <label className="flex min-h-11 items-center gap-3 text-sm">
               <input

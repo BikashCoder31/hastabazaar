@@ -1,0 +1,1352 @@
+{
+  "prepared": "2026-11-01",
+  "status": "Planning packet only; execution and release held",
+  "tasks": [
+    {
+      "id": "T00",
+      "title": "Reconcile the paused checkout and establish the baseline",
+      "part": "2026-11-01-implementation-1-foundation.md",
+      "streams": [
+        "V19"
+      ],
+      "dependencies": [],
+      "specs": [
+        "plans/2026-10-31-complete-version-scope.md",
+        "plans/2026-10-31-complete-plan-review.md",
+        "plans/2026-10-30-planning-readiness-review.md"
+      ],
+      "inspectOrModify": [
+        "AGENTS.md",
+        "LOCAL-START.md",
+        "scripts/start-local.mjs",
+        "package.json",
+        "lib/managed-commerce/activation.ts",
+        "lib/sellers/document-review.ts"
+      ],
+      "proposedFiles": [],
+      "testFiles": [
+        "tests/seller-document-review.test.ts",
+        "tests/managed-commerce-activation.test.ts"
+      ]
+    },
+    {
+      "id": "T01",
+      "title": "Establish shared contracts, preservation fixtures and additive schema",
+      "part": "2026-11-01-implementation-1-foundation.md",
+      "streams": [
+        "V19",
+        "V04",
+        "V20",
+        "V15"
+      ],
+      "dependencies": [
+        "T00"
+      ],
+      "specs": [
+        "plans/2026-10-31-complete-version-scope.md",
+        "specs/2026-10-31-system-health-records.md"
+      ],
+      "inspectOrModify": [
+        "db/schema.ts",
+        "lib/runtime/node-bindings.ts",
+        "tests/helpers/company-store-maker-fixture.ts",
+        "deployment/babal/mariadb-schema.sql"
+      ],
+      "proposedFiles": [
+        "lib/workflows/contracts.ts",
+        "tests/helpers/complete-version-fixture.ts",
+        "tests/complete-version-contracts.test.ts",
+        "drizzle/0079_complete_version_foundation.sql",
+        "deployment/babal/mariadb-complete-version-foundation.sql"
+      ],
+      "testFiles": [
+        "tests/complete-version-contracts.test.ts",
+        "tests/company-store-native-schema.test.ts"
+      ]
+    },
+    {
+      "id": "T02",
+      "title": "Implement authority, task ownership and continuous service clocks",
+      "part": "2026-11-01-implementation-1-foundation.md",
+      "streams": [
+        "V17",
+        "V03"
+      ],
+      "dependencies": [
+        "T01"
+      ],
+      "specs": [
+        "specs/2026-10-31-team-business-policies.md",
+        "specs/2026-10-31-single-super-admin-finance-approval.md",
+        "specs/2026-10-30-super-admin-overview-review.md"
+      ],
+      "inspectOrModify": [
+        "lib/marketplace/permissions.ts",
+        "lib/auth/staff.ts",
+        "lib/db/repositories/staff-permissions.ts"
+      ],
+      "proposedFiles": [
+        "lib/workflows/service-clock.ts",
+        "lib/workflows/review-tasks.ts",
+        "tests/workflow-authority-clock.test.ts"
+      ],
+      "testFiles": [
+        "tests/workflow-authority-clock.test.ts",
+        "tests/business-settings-permissions.test.ts"
+      ]
+    },
+    {
+      "id": "T03",
+      "title": "Replace fragile form dependency with stable core forms",
+      "part": "2026-11-01-implementation-1-foundation.md",
+      "streams": [
+        "V16"
+      ],
+      "dependencies": [
+        "T01",
+        "T02"
+      ],
+      "specs": [
+        "specs/2026-10-30-form-management-reliability.md",
+        "specs/2026-10-30-form-management-field-inventory.md"
+      ],
+      "inspectOrModify": [
+        "lib/forms/runtime.ts",
+        "lib/forms/submission.ts",
+        "lib/forms/registry.ts",
+        "lib/forms/validation.ts",
+        "lib/forms/catalog-changes.ts",
+        "lib/db/repositories/form-catalog.ts",
+        "components/forms/form-config-client.tsx",
+        "components/forms/configured-fields.tsx",
+        "app/api/forms/[formId]/route.ts",
+        "app/admin/forms/page.tsx",
+        "app/admin/forms/[formId]/page.tsx"
+      ],
+      "proposedFiles": [
+        "tests/form-management-core-recovery.test.ts"
+      ],
+      "testFiles": [
+        "tests/form-management-core-recovery.test.ts",
+        "tests/form-catalog-deferred-retry.test.ts",
+        "tests/form-catalog-feature-bootstrap.test.ts",
+        "tests/form-catalog-schema.test.ts"
+      ]
+    },
+    {
+      "id": "T04",
+      "title": "Create durable operational events and recipient mapping",
+      "part": "2026-11-01-implementation-1-foundation.md",
+      "streams": [
+        "V15",
+        "V03"
+      ],
+      "dependencies": [
+        "T01",
+        "T02"
+      ],
+      "specs": [
+        "specs/2026-10-30-email-delivery-automation.md",
+        "specs/2026-10-31-optional-product-intake-support.md"
+      ],
+      "inspectOrModify": [
+        "lib/operations/business-notifications.ts",
+        "lib/operations/notification-links.ts",
+        "lib/operations/email-queue.ts",
+        "lib/email/outbox-runner.ts"
+      ],
+      "proposedFiles": [
+        "lib/operations/event-catalog.ts",
+        "tests/operational-event-dedup.test.ts"
+      ],
+      "testFiles": [
+        "tests/operational-event-dedup.test.ts",
+        "tests/business-notifications.test.ts"
+      ]
+    },
+    {
+      "id": "T05",
+      "title": "Build the shared Seller Center and Super Admin workspace shells",
+      "part": "2026-11-01-implementation-1-foundation.md",
+      "streams": [
+        "V02",
+        "V03"
+      ],
+      "dependencies": [
+        "T02",
+        "T03",
+        "T04"
+      ],
+      "specs": [
+        "specs/2026-10-30-seller-center-workspace.md",
+        "specs/2026-10-30-super-admin-overview-review.md",
+        "specs/2026-10-31-seller-customer-screen-walkthrough.md"
+      ],
+      "inspectOrModify": [
+        "app/seller/layout.tsx",
+        "app/seller/page.tsx",
+        "components/seller/seller-navigation.tsx",
+        "app/admin/layout.tsx",
+        "lib/admin/navigation.ts"
+      ],
+      "proposedFiles": [
+        "components/seller/seller-task-summary.tsx",
+        "components/admin/review-workspace.tsx",
+        "tests/workspace-navigation.test.ts"
+      ],
+      "testFiles": [
+        "tests/workspace-navigation.test.ts",
+        "tests/seller-dashboard-experience.test.ts"
+      ]
+    },
+    {
+      "id": "T06",
+      "title": "Complete simple registration, honest autosave and applicant access",
+      "part": "2026-11-01-implementation-2-sellers.md",
+      "streams": [
+        "V01",
+        "V02"
+      ],
+      "dependencies": [
+        "T03",
+        "T05"
+      ],
+      "specs": [
+        "plans/2026-10-30-seller-order-response.md",
+        "specs/2026-10-30-seller-center-workspace.md"
+      ],
+      "inspectOrModify": [
+        "components/seller/seller-application-form.tsx",
+        "lib/sellers/registration-intake.ts",
+        "lib/sellers/draft-store.ts",
+        "lib/sellers/contact-phone.ts",
+        "lib/db/repositories/seller-commercial-access.ts",
+        "lib/auth/seller.ts",
+        "app/sell/apply/page.tsx",
+        "app/api/seller-applications/draft/route.ts",
+        "app/api/seller-applications/route.ts"
+      ],
+      "proposedFiles": [
+        "tests/registration-resume-journey.test.ts"
+      ],
+      "testFiles": [
+        "tests/registration-resume-journey.test.ts",
+        "tests/seller-optional-registration.test.ts",
+        "tests/seller-draft.test.ts",
+        "tests/seller-registration-phone.test.ts",
+        "tests/seller-access-denied-recovery.test.ts"
+      ]
+    },
+    {
+      "id": "T07",
+      "title": "Finish PAN/identity verification and protected document change requests",
+      "part": "2026-11-01-implementation-2-sellers.md",
+      "streams": [
+        "V04"
+      ],
+      "dependencies": [
+        "T03",
+        "T04",
+        "T06"
+      ],
+      "specs": [
+        "specs/2026-10-30-seller-management-workspace.md",
+        "specs/2026-10-31-bank-identity-changes-payout-approval.md"
+      ],
+      "inspectOrModify": [
+        "lib/sellers/document-review.ts",
+        "app/api/admin/seller-documents/[id]/route.ts",
+        "app/api/seller-applications/document-change/route.ts",
+        "app/api/admin/seller-document-change-requests/[id]/route.ts",
+        "app/admin/sellers/[id]/page.tsx",
+        "components/admin/seller-document-review.tsx"
+      ],
+      "proposedFiles": [
+        "components/seller/document-change-request-form.tsx",
+        "tests/document-change-interface.test.ts"
+      ],
+      "testFiles": [
+        "tests/document-change-interface.test.ts",
+        "tests/seller-document-review.test.ts",
+        "tests/managed-documents-email.test.ts"
+      ]
+    },
+    {
+      "id": "T08",
+      "title": "Implement bank and material-identity changes with independent holds",
+      "part": "2026-11-01-implementation-2-sellers.md",
+      "streams": [
+        "V04",
+        "V12"
+      ],
+      "dependencies": [
+        "T07"
+      ],
+      "specs": [
+        "specs/2026-10-31-bank-identity-changes-payout-approval.md",
+        "specs/2026-10-31-single-super-admin-finance-approval.md"
+      ],
+      "inspectOrModify": [
+        "lib/sellers/bank-details.ts",
+        "lib/db/repositories/managed-maker-details.ts",
+        "lib/db/repositories/seller-workspace.ts",
+        "components/admin/seller-bank-review.tsx",
+        "components/seller/bank-details-form.tsx",
+        "app/api/seller/bank-details/route.ts",
+        "app/api/admin/seller-applications/[id]/bank-details/route.ts"
+      ],
+      "proposedFiles": [
+        "lib/sellers/protected-change-policy.ts",
+        "tests/protected-change-holds.test.ts"
+      ],
+      "testFiles": [
+        "tests/protected-change-holds.test.ts",
+        "tests/seller-bank-details.test.ts",
+        "tests/seller-deferred-bank.test.ts"
+      ]
+    },
+    {
+      "id": "T09",
+      "title": "Implement public profile revision and the seven-day publication cooldown",
+      "part": "2026-11-01-implementation-2-sellers.md",
+      "streams": [
+        "V05",
+        "V02"
+      ],
+      "dependencies": [
+        "T05",
+        "T07"
+      ],
+      "specs": [
+        "specs/2026-10-31-public-profile-changes-cooldown.md"
+      ],
+      "inspectOrModify": [
+        "lib/sellers/public-profile.ts",
+        "lib/db/repositories/seller-profile.ts",
+        "components/seller/seller-profile-form.tsx",
+        "app/api/seller/public-profile/route.ts",
+        "app/seller/profile/page.tsx",
+        "db/schema.ts",
+        "deployment/babal/mariadb-schema.sql"
+      ],
+      "proposedFiles": [
+        "components/admin/public-profile-review.tsx",
+        "tests/profile-publication-cooldown.test.ts",
+        "drizzle/0080_profile_revision_review.sql",
+        "deployment/babal/mariadb-profile-revision-review.sql"
+      ],
+      "testFiles": [
+        "tests/profile-publication-cooldown.test.ts",
+        "tests/seller-public-profile-cooldown.test.ts",
+        "tests/seller-dashboard-records.test.ts"
+      ]
+    },
+    {
+      "id": "T10",
+      "title": "Complete the unified seller review and readiness screen",
+      "part": "2026-11-01-implementation-2-sellers.md",
+      "streams": [
+        "V03",
+        "V04"
+      ],
+      "dependencies": [
+        "T05",
+        "T07",
+        "T08",
+        "T09"
+      ],
+      "specs": [
+        "specs/2026-10-30-seller-management-workspace.md",
+        "specs/2026-10-30-super-admin-overview-review.md"
+      ],
+      "inspectOrModify": [
+        "app/admin/sellers/[id]/page.tsx",
+        "components/admin/seller-review-actions.tsx",
+        "lib/db/repositories/seller-workspace.ts",
+        "lib/auth/seller-commercial-access.ts"
+      ],
+      "proposedFiles": [
+        "lib/sellers/readiness.ts",
+        "tests/seller-readiness-matrix.test.ts"
+      ],
+      "testFiles": [
+        "tests/seller-readiness-matrix.test.ts",
+        "tests/company-store-maker-admin.test.ts",
+        "tests/company-store-maker-workspace.test.ts"
+      ]
+    },
+    {
+      "id": "T11",
+      "title": "Manage company receiving accounts and payment instruction versions",
+      "part": "2026-11-01-implementation-2-sellers.md",
+      "streams": [
+        "V11",
+        "V03"
+      ],
+      "dependencies": [
+        "T02",
+        "T03",
+        "T04"
+      ],
+      "specs": [
+        "specs/2026-10-31-manual-payment-rules.md",
+        "specs/2026-10-30-finance-payments-workspace.md"
+      ],
+      "inspectOrModify": [
+        "app/admin/business-settings/page.tsx",
+        "components/admin/business-settings-manager.tsx",
+        "lib/db/repositories/business-settings.ts",
+        "db/schema.ts",
+        "deployment/babal/mariadb-schema.sql"
+      ],
+      "proposedFiles": [
+        "lib/payments/company-accounts.ts",
+        "components/admin/company-bank-accounts.tsx",
+        "tests/company-bank-instructions.test.ts",
+        "drizzle/0081_company_payment_accounts.sql",
+        "deployment/babal/mariadb-company-payment-accounts.sql"
+      ],
+      "testFiles": [
+        "tests/company-bank-instructions.test.ts",
+        "tests/business-settings-permissions.test.ts"
+      ]
+    },
+    {
+      "id": "T12",
+      "title": "Create expandable category templates and new-product rules",
+      "part": "2026-11-01-implementation-3-products.md",
+      "streams": [
+        "V20",
+        "V16"
+      ],
+      "dependencies": [
+        "T03",
+        "T05"
+      ],
+      "specs": [
+        "specs/2026-10-31-retail-categories-product-variants.md",
+        "specs/2026-10-31-optional-product-intake-support.md"
+      ],
+      "inspectOrModify": [
+        "db/schema.ts",
+        "lib/products/submission.ts",
+        "components/seller/product-submission-form.tsx"
+      ],
+      "proposedFiles": [
+        "lib/products/category-contracts.ts",
+        "components/seller/category-detail-groups.tsx",
+        "tests/category-template-intake.test.ts"
+      ],
+      "testFiles": [
+        "tests/category-template-intake.test.ts",
+        "tests/product-submission-validation.test.ts"
+      ]
+    },
+    {
+      "id": "T13",
+      "title": "Implement real variants, independent stock and legacy offer mapping",
+      "part": "2026-11-01-implementation-3-products.md",
+      "streams": [
+        "V20"
+      ],
+      "dependencies": [
+        "T01",
+        "T12"
+      ],
+      "specs": [
+        "specs/2026-10-31-retail-categories-product-variants.md"
+      ],
+      "inspectOrModify": [
+        "db/schema.ts",
+        "lib/db/repositories/products.ts",
+        "lib/products/submission.ts",
+        "lib/runtime/node-bindings.ts",
+        "deployment/babal/mariadb-schema.sql"
+      ],
+      "proposedFiles": [
+        "lib/products/offers.ts",
+        "lib/products/offer-inventory.ts",
+        "components/seller/variant-editor.tsx",
+        "tests/product-offer-inventory.test.ts",
+        "drizzle/0082_product_sellable_offers.sql",
+        "deployment/babal/mariadb-product-sellable-offers.sql"
+      ],
+      "testFiles": [
+        "tests/product-offer-inventory.test.ts",
+        "tests/product-revision-concurrency.test.ts",
+        "tests/billing-seller-sku.test.ts"
+      ]
+    },
+    {
+      "id": "T14",
+      "title": "Implement effective commission, terms acceptance and schedule replacement",
+      "part": "2026-11-01-implementation-3-products.md",
+      "streams": [
+        "V14"
+      ],
+      "dependencies": [
+        "T02",
+        "T04",
+        "T10"
+      ],
+      "specs": [
+        "specs/2026-10-31-fees-programs-promotions-workspace.md",
+        "specs/2026-10-31-fee-publication-schedules-combinations.md",
+        "plans/2026-10-30-seller-order-response.md"
+      ],
+      "inspectOrModify": [
+        "lib/commission/rates.ts",
+        "lib/db/repositories/commission-rates.ts",
+        "lib/db/repositories/commission-continuity.ts",
+        "components/seller/commission-fee-notice.tsx",
+        "components/admin/commission-settings.tsx",
+        "app/admin/commission/page.tsx"
+      ],
+      "proposedFiles": [
+        "tests/commission-common-start.test.ts"
+      ],
+      "testFiles": [
+        "tests/commission-common-start.test.ts",
+        "tests/commission-routes.test.ts",
+        "tests/marketplace-commission.test.ts",
+        "tests/commission-continuity.test.ts"
+      ]
+    },
+    {
+      "id": "T15",
+      "title": "Unify promotion combinations, permissions and aftercare allocations",
+      "part": "2026-11-01-implementation-3-products.md",
+      "streams": [
+        "V14",
+        "V13"
+      ],
+      "dependencies": [
+        "T13",
+        "T14"
+      ],
+      "specs": [
+        "specs/2026-10-31-fee-publication-schedules-combinations.md",
+        "specs/2026-10-31-fees-programs-promotions-workspace.md"
+      ],
+      "inspectOrModify": [
+        "lib/incentives/promo-policy.ts",
+        "lib/db/repositories/promo-codes.ts",
+        "lib/db/repositories/fee-waivers.ts",
+        "lib/db/repositories/customer-fee-waivers.ts",
+        "lib/checkout/reviewed-quote.ts"
+      ],
+      "proposedFiles": [
+        "tests/promotion-allocation-contract.test.ts"
+      ],
+      "testFiles": [
+        "tests/promotion-allocation-contract.test.ts",
+        "tests/promo-checkout.test.ts",
+        "tests/promo-aftercare.test.ts",
+        "tests/platform-service-fee.test.ts"
+      ]
+    },
+    {
+      "id": "T16",
+      "title": "Add private profit helper, truthful pricing and customer preview",
+      "part": "2026-11-01-implementation-3-products.md",
+      "streams": [
+        "V07"
+      ],
+      "dependencies": [
+        "T13",
+        "T14",
+        "T15"
+      ],
+      "specs": [
+        "specs/2026-10-31-seller-price-public-preview.md",
+        "specs/2026-10-31-product-discount-price-guidance.md"
+      ],
+      "inspectOrModify": [
+        "lib/products/discount.ts",
+        "lib/products/truthful-presentation.ts",
+        "components/seller/product-submission-form.tsx",
+        "db/schema.ts",
+        "deployment/babal/mariadb-schema.sql"
+      ],
+      "proposedFiles": [
+        "lib/products/price-guidance.ts",
+        "components/seller/price-profit-preview.tsx",
+        "tests/product-price-guidance.test.ts",
+        "drizzle/0083_private_price_guidance.sql",
+        "deployment/babal/mariadb-private-price-guidance.sql"
+      ],
+      "testFiles": [
+        "tests/product-price-guidance.test.ts",
+        "tests/product-discount.test.ts",
+        "tests/product-truthfulness.test.ts"
+      ]
+    },
+    {
+      "id": "T17",
+      "title": "Complete optional product entry, support and correction workflow",
+      "part": "2026-11-01-implementation-3-products.md",
+      "streams": [
+        "V06",
+        "V02",
+        "V20"
+      ],
+      "dependencies": [
+        "T03",
+        "T05",
+        "T12",
+        "T13",
+        "T16"
+      ],
+      "specs": [
+        "specs/2026-10-31-optional-product-intake-support.md",
+        "specs/2026-10-30-products-storefront-workspace.md"
+      ],
+      "inspectOrModify": [
+        "components/seller/product-submission-form.tsx",
+        "lib/products/submission.ts",
+        "lib/db/repositories/products.ts",
+        "app/seller/products/new/page.tsx",
+        "app/sell/application/products/new/page.tsx"
+      ],
+      "proposedFiles": [
+        "components/seller/product-help-request.tsx",
+        "tests/product-assistance-intake.test.ts"
+      ],
+      "testFiles": [
+        "tests/product-assistance-intake.test.ts",
+        "tests/product-form-render.test.ts",
+        "tests/product-form-consolidated.test.ts",
+        "tests/product-submission-validation.test.ts"
+      ]
+    },
+    {
+      "id": "T18",
+      "title": "Implement complete product review, publication and published edits",
+      "part": "2026-11-01-implementation-4-orders.md",
+      "streams": [
+        "V06",
+        "V03"
+      ],
+      "dependencies": [
+        "T10",
+        "T13",
+        "T17"
+      ],
+      "specs": [
+        "specs/2026-10-30-products-storefront-workspace.md",
+        "specs/2026-10-31-published-product-edit-rules.md"
+      ],
+      "inspectOrModify": [
+        "app/admin/products/[id]/page.tsx",
+        "components/admin/product-review-actions.tsx",
+        "lib/db/repositories/products.ts",
+        "lib/products/eligibility.ts"
+      ],
+      "proposedFiles": [
+        "tests/product-publication-revision.test.ts"
+      ],
+      "testFiles": [
+        "tests/product-publication-revision.test.ts",
+        "tests/product-revision-concurrency.test.ts",
+        "tests/managed-maker-public-listings.test.ts"
+      ]
+    },
+    {
+      "id": "T19",
+      "title": "Align public discovery, product, shop and cart presentation",
+      "part": "2026-11-01-implementation-4-orders.md",
+      "streams": [
+        "V08",
+        "V20"
+      ],
+      "dependencies": [
+        "T09",
+        "T13",
+        "T16",
+        "T18"
+      ],
+      "specs": [
+        "specs/2026-10-31-seller-customer-screen-walkthrough.md",
+        "specs/2026-10-31-retail-categories-product-variants.md"
+      ],
+      "inspectOrModify": [
+        "app/shop/page.tsx",
+        "app/products/[slug]/page.tsx",
+        "app/makers/[id]/page.tsx",
+        "app/cart/page.tsx",
+        "components/catalog/product-card.tsx",
+        "components/commerce/cart-view.tsx",
+        "lib/products/truthful-presentation.ts"
+      ],
+      "proposedFiles": [
+        "tests/public-offer-consistency.test.ts"
+      ],
+      "testFiles": [
+        "tests/public-offer-consistency.test.ts",
+        "tests/managed-maker-product-presentation.test.ts",
+        "tests/product-buy-now.test.ts"
+      ]
+    },
+    {
+      "id": "T20",
+      "title": "Carry immutable offers and policy snapshots through checkout",
+      "part": "2026-11-01-implementation-4-orders.md",
+      "streams": [
+        "V08",
+        "V20",
+        "V14"
+      ],
+      "dependencies": [
+        "T13",
+        "T14",
+        "T15",
+        "T19"
+      ],
+      "specs": [
+        "specs/2026-10-31-seller-customer-screen-walkthrough.md",
+        "specs/2026-10-31-retail-categories-product-variants.md",
+        "specs/2026-10-31-manual-payment-rules.md"
+      ],
+      "inspectOrModify": [
+        "app/api/checkout/route.ts",
+        "lib/checkout/reviewed-quote.ts",
+        "lib/checkout/validation.ts",
+        "lib/db/repositories/orders.ts",
+        "components/commerce/checkout-form.tsx",
+        "db/schema.ts"
+      ],
+      "proposedFiles": [
+        "tests/checkout-offer-policy-snapshot.test.ts"
+      ],
+      "testFiles": [
+        "tests/checkout-offer-policy-snapshot.test.ts",
+        "tests/checkout-reviewed-quote.test.ts",
+        "tests/checkout-config-recovery.test.ts"
+      ]
+    },
+    {
+      "id": "T21",
+      "title": "Implement manual receipts, payment deadlines and COD reconciliation",
+      "part": "2026-11-01-implementation-4-orders.md",
+      "streams": [
+        "V11",
+        "V08"
+      ],
+      "dependencies": [
+        "T11",
+        "T20"
+      ],
+      "specs": [
+        "specs/2026-10-31-manual-payment-rules.md",
+        "specs/2026-10-30-finance-payments-workspace.md"
+      ],
+      "inspectOrModify": [
+        "db/schema.ts",
+        "lib/db/repositories/orders.ts",
+        "lib/orders/first-cod-review.ts",
+        "lib/checkout/reviewed-quote.ts",
+        "deployment/babal/mariadb-schema.sql"
+      ],
+      "proposedFiles": [
+        "lib/payments/manual-receipts.ts",
+        "lib/payments/payment-window.ts",
+        "components/admin/manual-payment-review.tsx",
+        "tests/manual-payment-window.test.ts",
+        "drizzle/0084_manual_payment_allocations.sql",
+        "deployment/babal/mariadb-manual-payment-allocations.sql"
+      ],
+      "testFiles": [
+        "tests/manual-payment-window.test.ts",
+        "tests/commerce-financial-native.test.ts"
+      ]
+    },
+    {
+      "id": "T22",
+      "title": "Implement seller order response, delivery actions and delay follow-up",
+      "part": "2026-11-01-implementation-4-orders.md",
+      "streams": [
+        "V09",
+        "V02",
+        "V03"
+      ],
+      "dependencies": [
+        "T04",
+        "T20",
+        "T21"
+      ],
+      "specs": [
+        "specs/2026-10-30-orders-customer-care-workspace.md",
+        "plans/2026-10-30-seller-order-response.md"
+      ],
+      "inspectOrModify": [
+        "lib/orders/progress.ts",
+        "lib/db/repositories/orders.ts",
+        "lib/db/repositories/order-tracking.ts",
+        "components/seller/order-fulfillment-actions.tsx",
+        "app/seller/orders/[id]/page.tsx",
+        "app/admin/orders/[id]/page.tsx"
+      ],
+      "proposedFiles": [
+        "lib/orders/response-clock.ts",
+        "tests/order-response-followup.test.ts"
+      ],
+      "testFiles": [
+        "tests/order-response-followup.test.ts",
+        "tests/order-email-history.test.ts"
+      ]
+    },
+    {
+      "id": "T23",
+      "title": "Implement cancellation cutoffs and scoped dispatch holds",
+      "part": "2026-11-01-implementation-4-orders.md",
+      "streams": [
+        "V10",
+        "V09"
+      ],
+      "dependencies": [
+        "T20",
+        "T21",
+        "T22"
+      ],
+      "specs": [
+        "specs/2026-10-31-cancellation-return-rules.md"
+      ],
+      "inspectOrModify": [
+        "lib/cancellation/repository.ts",
+        "lib/cancellation/accounting.ts",
+        "lib/cancellation/notifications.ts",
+        "components/commerce/customer-aftercare.tsx"
+      ],
+      "proposedFiles": [
+        "tests/cancellation-custody-races.test.ts"
+      ],
+      "testFiles": [
+        "tests/cancellation-custody-races.test.ts",
+        "tests/commerce-financial-native.test.ts"
+      ]
+    },
+    {
+      "id": "T24",
+      "title": "Complete returns, complaints, shipping responsibility and inspections",
+      "part": "2026-11-01-implementation-5-finance-activation.md",
+      "streams": [
+        "V10"
+      ],
+      "dependencies": [
+        "T20",
+        "T21",
+        "T23"
+      ],
+      "specs": [
+        "specs/2026-10-31-cancellation-return-rules.md",
+        "specs/2026-10-30-orders-customer-care-workspace.md"
+      ],
+      "inspectOrModify": [
+        "lib/returns/validation.ts",
+        "lib/returns/presentation.ts",
+        "lib/db/repositories/returns.ts",
+        "components/admin/return-case-actions.tsx",
+        "app/seller/cases/returns/[id]/page.tsx"
+      ],
+      "proposedFiles": [
+        "tests/return-policy-clock.test.ts"
+      ],
+      "testFiles": [
+        "tests/return-policy-clock.test.ts",
+        "tests/returns-complaints.test.ts",
+        "tests/return-case-presentation.test.ts",
+        "tests/return-evidence-download.test.ts"
+      ]
+    },
+    {
+      "id": "T25",
+      "title": "Implement refund obligations, funding and uncertain execution",
+      "part": "2026-11-01-implementation-5-finance-activation.md",
+      "streams": [
+        "V13",
+        "V11"
+      ],
+      "dependencies": [
+        "T15",
+        "T21",
+        "T23",
+        "T24"
+      ],
+      "specs": [
+        "specs/2026-10-31-refunds-after-payout-recovery.md",
+        "specs/2026-10-31-manual-payment-rules.md",
+        "specs/2026-10-31-single-super-admin-finance-approval.md"
+      ],
+      "inspectOrModify": [
+        "lib/managed-commerce/refund-readiness.ts",
+        "lib/db/repositories/returns.ts",
+        "lib/db/repositories/platform-service-fee-refunds.ts",
+        "lib/cancellation/accounting.ts"
+      ],
+      "proposedFiles": [
+        "lib/payments/refund-obligations.ts",
+        "components/admin/refund-funding-review.tsx",
+        "tests/refund-funding-idempotency.test.ts"
+      ],
+      "testFiles": [
+        "tests/refund-funding-idempotency.test.ts",
+        "tests/promo-aftercare.test.ts",
+        "tests/commerce-financial-native.test.ts"
+      ]
+    },
+    {
+      "id": "T26",
+      "title": "Complete earnings, payout approval and manual transfer tracking",
+      "part": "2026-11-01-implementation-5-finance-activation.md",
+      "streams": [
+        "V12"
+      ],
+      "dependencies": [
+        "T08",
+        "T15",
+        "T21",
+        "T25"
+      ],
+      "specs": [
+        "specs/2026-10-30-finance-payments-workspace.md",
+        "specs/2026-10-31-bank-identity-changes-payout-approval.md",
+        "specs/2026-10-31-single-super-admin-finance-approval.md"
+      ],
+      "inspectOrModify": [
+        "lib/db/repositories/payouts.ts",
+        "lib/managed-commerce/payout-operations.ts",
+        "lib/managed-commerce/settlement-readiness.ts",
+        "lib/managed-makers/settlement.ts",
+        "components/seller/payout-request-form.tsx",
+        "components/admin/payout-actions.tsx",
+        "app/seller/finance/page.tsx"
+      ],
+      "proposedFiles": [
+        "tests/payout-source-version.test.ts"
+      ],
+      "testFiles": [
+        "tests/payout-source-version.test.ts",
+        "tests/managed-settlements.test.ts",
+        "tests/registered-settlement-accrual.test.ts"
+      ]
+    },
+    {
+      "id": "T27",
+      "title": "Implement post-payout recovery, repayment and dispute follow-up",
+      "part": "2026-11-01-implementation-5-finance-activation.md",
+      "streams": [
+        "V13"
+      ],
+      "dependencies": [
+        "T25",
+        "T26"
+      ],
+      "specs": [
+        "specs/2026-10-31-refunds-after-payout-recovery.md",
+        "specs/2026-10-31-single-super-admin-finance-approval.md"
+      ],
+      "inspectOrModify": [
+        "lib/managed-makers/settlement.ts",
+        "lib/db/repositories/managed-settlements.ts",
+        "lib/db/repositories/payouts.ts"
+      ],
+      "proposedFiles": [
+        "lib/payments/seller-recovery.ts",
+        "components/admin/seller-recovery-review.tsx",
+        "tests/recovery-allocation-cap.test.ts"
+      ],
+      "testFiles": [
+        "tests/recovery-allocation-cap.test.ts",
+        "tests/company-store-maker-settlements.test.ts"
+      ]
+    },
+    {
+      "id": "T28",
+      "title": "Implement evidence-based live activation across the real commerce paths",
+      "part": "2026-11-01-implementation-5-finance-activation.md",
+      "streams": [
+        "V04"
+      ],
+      "dependencies": [
+        "T10",
+        "T18",
+        "T21",
+        "T22",
+        "T24",
+        "T25",
+        "T26",
+        "T27"
+      ],
+      "specs": [
+        "specs/2026-10-30-seller-management-workspace.md",
+        "specs/2026-10-31-bank-identity-changes-payout-approval.md",
+        "plans/2026-10-31-complete-version-scope.md"
+      ],
+      "inspectOrModify": [
+        "lib/managed-commerce/activation.ts",
+        "lib/managed-commerce/maker-authority.ts",
+        "lib/managed-commerce/settlement-readiness.ts",
+        "lib/products/eligibility.ts",
+        "lib/auth/managed-maker.ts",
+        "components/admin/managed-maker-activation-form.tsx",
+        "db/schema.ts",
+        "deployment/babal/mariadb-schema.sql"
+      ],
+      "proposedFiles": [
+        "lib/managed-commerce/live-readiness.ts",
+        "tests/live-activation-evidence.test.ts",
+        "drizzle/0085_live_activation_evidence.sql",
+        "deployment/babal/mariadb-live-activation-evidence.sql"
+      ],
+      "testFiles": [
+        "tests/live-activation-evidence.test.ts",
+        "tests/managed-commerce-activation.test.ts",
+        "tests/company-store-maker-lifecycle.test.ts"
+      ]
+    },
+    {
+      "id": "T29",
+      "title": "Finish automatic delivery, retry recovery and shared notification bell",
+      "part": "2026-11-01-implementation-5-finance-activation.md",
+      "streams": [
+        "V15"
+      ],
+      "dependencies": [
+        "T04",
+        "T14",
+        "T16",
+        "T17",
+        "T22",
+        "T24",
+        "T25",
+        "T26",
+        "T27",
+        "T28"
+      ],
+      "specs": [
+        "specs/2026-10-30-email-delivery-automation.md",
+        "specs/2026-10-31-system-health-records.md"
+      ],
+      "inspectOrModify": [
+        "lib/email/outbox-runner.ts",
+        "lib/email/retry-policy.ts",
+        "lib/operations/business-notifications.ts",
+        "lib/operations/email-queue.ts",
+        "app/api/jobs/order-emails/route.ts",
+        "app/api/notifications/[id]/read/route.ts",
+        "app/admin/notifications/page.tsx",
+        "app/seller/notifications/page.tsx"
+      ],
+      "proposedFiles": [
+        "components/notifications/notification-bell.tsx",
+        "lib/operations/reminder-dispatch.ts",
+        "tests/automatic-delivery-recovery.test.ts"
+      ],
+      "testFiles": [
+        "tests/automatic-delivery-recovery.test.ts",
+        "tests/business-notifications.test.ts",
+        "tests/order-email-history.test.ts"
+      ]
+    },
+    {
+      "id": "T30",
+      "title": "Finish Team, System health, incidents and audit records",
+      "part": "2026-11-01-implementation-6-verification.md",
+      "streams": [
+        "V17",
+        "V03",
+        "V16"
+      ],
+      "dependencies": [
+        "T02",
+        "T03",
+        "T29"
+      ],
+      "specs": [
+        "specs/2026-10-31-team-business-policies.md",
+        "specs/2026-10-31-system-health-records.md"
+      ],
+      "inspectOrModify": [
+        "app/admin/team/page.tsx",
+        "lib/db/repositories/staff-permissions.ts",
+        "app/admin/forms/page.tsx"
+      ],
+      "proposedFiles": [
+        "components/admin/system-health-workspace.tsx",
+        "lib/operations/incident-review.ts",
+        "tests/system-health-ownership.test.ts"
+      ],
+      "testFiles": [
+        "tests/system-health-ownership.test.ts",
+        "tests/business-settings-permissions.test.ts"
+      ]
+    },
+    {
+      "id": "T31",
+      "title": "Finish every admin area and paired seller/customer screen",
+      "part": "2026-11-01-implementation-6-verification.md",
+      "streams": [
+        "V02",
+        "V03",
+        "V08"
+      ],
+      "dependencies": [
+        "T05",
+        "T09",
+        "T10",
+        "T18",
+        "T19",
+        "T22",
+        "T24",
+        "T26",
+        "T27",
+        "T29",
+        "T30"
+      ],
+      "specs": [
+        "specs/2026-10-31-seller-customer-screen-walkthrough.md",
+        "specs/2026-10-30-super-admin-overview-review.md",
+        "specs/2026-10-30-finance-payments-workspace.md",
+        "specs/2026-10-31-fees-programs-promotions-workspace.md"
+      ],
+      "inspectOrModify": [
+        "app/seller/page.tsx",
+        "app/seller/profile/page.tsx",
+        "app/seller/products/page.tsx",
+        "app/seller/orders/page.tsx",
+        "app/seller/finance/page.tsx",
+        "app/admin/layout.tsx",
+        "lib/admin/navigation.ts",
+        "app/account/orders/page.tsx",
+        "app/orders/[orderNumber]/page.tsx"
+      ],
+      "proposedFiles": [
+        "tests/workspace-paired-states.test.ts"
+      ],
+      "testFiles": [
+        "tests/workspace-paired-states.test.ts",
+        "tests/seller-dashboard-experience.test.ts",
+        "tests/return-case-presentation.test.ts"
+      ]
+    },
+    {
+      "id": "T32",
+      "title": "Refresh the Nepali registration guide and in-context help",
+      "part": "2026-11-01-implementation-6-verification.md",
+      "streams": [
+        "V18"
+      ],
+      "dependencies": [
+        "T06",
+        "T17",
+        "T31"
+      ],
+      "specs": [
+        "plans/2026-10-30-seller-order-response.md",
+        "specs/2026-10-31-seller-customer-screen-walkthrough.md"
+      ],
+      "inspectOrModify": [
+        "output/seller-registration-guide-nepali/README.md",
+        "output/seller-registration-guide-nepali/narration-ne.md",
+        "output/seller-registration-guide-nepali/subtitles-ne.srt",
+        "app/sell/apply/page.tsx"
+      ],
+      "proposedFiles": [
+        "components/seller/registration-guide.tsx",
+        "tests/seller-guidance-links.test.ts"
+      ],
+      "testFiles": [
+        "tests/seller-guidance-links.test.ts"
+      ]
+    },
+    {
+      "id": "T33",
+      "title": "Rehearse all schema/data transitions and prepare the cutover map",
+      "part": "2026-11-01-implementation-6-verification.md",
+      "streams": [
+        "V19",
+        "V20",
+        "V04",
+        "V14"
+      ],
+      "dependencies": [
+        "T28",
+        "T29",
+        "T30",
+        "T31"
+      ],
+      "specs": [
+        "plans/2026-10-31-complete-version-scope.md",
+        "specs/2026-10-31-bank-identity-changes-payout-approval.md",
+        "specs/2026-10-31-retail-categories-product-variants.md"
+      ],
+      "inspectOrModify": [
+        "db/schema.ts",
+        "lib/runtime/node-bindings.ts",
+        "deployment/babal/mariadb-schema.sql",
+        "scripts/generate-mariadb-schema.mjs",
+        "tests/helpers/staging-native-fixture.ts"
+      ],
+      "proposedFiles": [
+        "tests/complete-version-migration.test.ts"
+      ],
+      "testFiles": [
+        "tests/complete-version-migration.test.ts",
+        "tests/company-store-native-schema.test.ts",
+        "tests/commerce-financial-native.test.ts",
+        "tests/commission-continuity-native-adapter.test.ts"
+      ]
+    },
+    {
+      "id": "T34",
+      "title": "Run integrated verification for all twenty workstreams",
+      "part": "2026-11-01-implementation-6-verification.md",
+      "streams": [
+        "V01",
+        "V02",
+        "V03",
+        "V04",
+        "V05",
+        "V06",
+        "V07",
+        "V08",
+        "V09",
+        "V10",
+        "V11",
+        "V12",
+        "V13",
+        "V14",
+        "V15",
+        "V16",
+        "V17",
+        "V18",
+        "V19",
+        "V20"
+      ],
+      "dependencies": [
+        "T00",
+        "T01",
+        "T02",
+        "T03",
+        "T04",
+        "T05",
+        "T06",
+        "T07",
+        "T08",
+        "T09",
+        "T10",
+        "T11",
+        "T12",
+        "T13",
+        "T14",
+        "T15",
+        "T16",
+        "T17",
+        "T18",
+        "T19",
+        "T20",
+        "T21",
+        "T22",
+        "T23",
+        "T24",
+        "T25",
+        "T26",
+        "T27",
+        "T28",
+        "T29",
+        "T30",
+        "T31",
+        "T32",
+        "T33"
+      ],
+      "specs": [
+        "plans/2026-10-31-complete-version-scope.md",
+        "plans/2026-10-31-complete-plan-review.md",
+        "specs/2026-10-31-seller-customer-screen-walkthrough.md"
+      ],
+      "inspectOrModify": [],
+      "proposedFiles": [
+        "tests/complete-version-journeys.test.ts"
+      ],
+      "testFiles": [
+        "tests/complete-version-journeys.test.ts"
+      ]
+    },
+    {
+      "id": "T35",
+      "title": "Prepare the release and continuation handoff without deploying",
+      "part": "2026-11-01-implementation-6-verification.md",
+      "streams": [
+        "V19"
+      ],
+      "dependencies": [
+        "T34"
+      ],
+      "specs": [
+        "plans/2026-10-31-complete-version-scope.md",
+        "plans/2026-10-31-complete-plan-review.md"
+      ],
+      "inspectOrModify": [
+        "docs/superpowers/plans/2026-11-01-implementation-progress.md",
+        "docs/superpowers/plans/2026-11-01-new-chat-handoff.md"
+      ],
+      "proposedFiles": [],
+      "testFiles": [
+        "tests/complete-version-journeys.test.ts"
+      ]
+    }
+  ],
+  "workstreams": {
+    "V01": "Registration and saved progress",
+    "V02": "Unified Seller Center",
+    "V03": "Super Admin workspace",
+    "V04": "Verification, change requests and live activation",
+    "V05": "Public profile and operational details",
+    "V06": "Product intake, review and publication",
+    "V07": "Pricing, private profit helper and preview",
+    "V08": "Customer shopping and order screens",
+    "V09": "Order response and delivery",
+    "V10": "Cancellations, returns and complaints",
+    "V11": "Company bank, manual payments and COD",
+    "V12": "Seller earnings, bank details and payouts",
+    "V13": "Refunds and post-payout recovery",
+    "V14": "Fees, terms, programs and promotions",
+    "V15": "Bell, inbox and automatic email",
+    "V16": "Form Management and field cleanup",
+    "V17": "Team, service coverage, health and records",
+    "V18": "Nepali video and seller help",
+    "V19": "Preservation, integration and delivery",
+    "V20": "New retail/resale, categories and variants"
+  },
+  "sources": [
+    "docs/superpowers/plans/2026-10-30-seller-order-response.md",
+    "docs/superpowers/plans/2026-10-30-planning-readiness-review.md",
+    "docs/superpowers/specs/2026-10-31-single-super-admin-finance-approval.md",
+    "docs/superpowers/specs/2026-10-31-published-product-edit-rules.md",
+    "docs/superpowers/specs/2026-10-31-manual-payment-rules.md",
+    "docs/superpowers/specs/2026-10-31-bank-identity-changes-payout-approval.md",
+    "docs/superpowers/specs/2026-10-31-refunds-after-payout-recovery.md",
+    "docs/superpowers/specs/2026-10-30-finance-payments-workspace.md",
+    "docs/superpowers/specs/2026-10-30-orders-customer-care-workspace.md",
+    "docs/superpowers/specs/2026-10-31-fee-publication-schedules-combinations.md",
+    "docs/superpowers/specs/2026-10-30-products-storefront-workspace.md",
+    "docs/superpowers/specs/2026-10-30-seller-center-workspace.md",
+    "docs/superpowers/specs/2026-10-30-seller-management-workspace.md",
+    "docs/superpowers/specs/2026-10-30-email-delivery-automation.md",
+    "docs/superpowers/specs/2026-10-31-fees-programs-promotions-workspace.md",
+    "docs/superpowers/specs/2026-10-31-public-profile-changes-cooldown.md",
+    "docs/superpowers/specs/2026-10-30-super-admin-overview-review.md",
+    "docs/superpowers/specs/2026-10-30-form-management-field-inventory.md",
+    "docs/superpowers/specs/2026-10-31-cancellation-return-rules.md",
+    "docs/superpowers/specs/2026-10-31-team-business-policies.md",
+    "docs/superpowers/specs/2026-10-30-form-management-reliability.md",
+    "docs/superpowers/specs/2026-10-31-system-health-records.md",
+    "docs/superpowers/specs/2026-10-31-seller-customer-screen-walkthrough.md",
+    "docs/superpowers/specs/2026-10-31-seller-price-public-preview.md",
+    "docs/superpowers/plans/2026-10-31-complete-version-scope.md",
+    "docs/superpowers/specs/2026-10-31-product-discount-price-guidance.md",
+    "docs/superpowers/plans/2026-10-31-complete-plan-review.md",
+    "docs/superpowers/specs/2026-10-31-retail-categories-product-variants.md",
+    "docs/superpowers/specs/2026-10-31-optional-product-intake-support.md"
+  ]
+}

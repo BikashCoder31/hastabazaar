@@ -20,7 +20,7 @@ import { Textarea } from '@/components/ui/textarea';
 import type { SellerReviewAction } from '@/lib/db/repositories/seller-applications';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 
 const FORM_ID = 'staff.seller-review-action';
@@ -85,16 +85,27 @@ const definitions: Record<SellerReviewAction, ActionDefinition> = {
   },
 };
 
+const registrationApproval = {
+  ...definitions.approve,
+  description: 'The seller will be able to submit products for review. Listings require separate approval before publication. Verify documents and payout requirements through their own review processes.',
+};
+const registrationActivationApproval = {
+  ...definitions.approve_for_activation,
+  description: 'This records maker readiness and allows product submissions for review. Activation, document verification, and publication each require their own review.',
+};
+
 export function SellerReviewActions({
   sellerId,
   status,
   participationRoute,
   applicationStage,
+  registrationIntake = false,
 }: {
   sellerId: string;
   status: string;
   participationRoute?: 'registered_seller' | 'managed_maker' | null;
   applicationStage?: string | null;
+  registrationIntake?: boolean;
 }) {
   const router = useRouter();
   const catalog = usePublishedFormConfig(FORM_ID);
@@ -119,11 +130,11 @@ export function SellerReviewActions({
       : status === 'under_review'
         ? participationRoute === 'managed_maker' ? [
             definitions.request_changes,
-            definitions.approve_for_activation,
+            registrationIntake ? registrationActivationApproval : definitions.approve_for_activation,
             definitions.reject,
           ] : [
             definitions.request_changes,
-            definitions.approve,
+            registrationIntake ? registrationApproval : definitions.approve,
             definitions.reject,
           ]
         : [];
@@ -216,7 +227,9 @@ export function SellerReviewActions({
           <p className="text-xs text-muted-foreground">
             This note becomes part of the permanent moderation history.
           </p>
-          {participationRoute !== 'managed_maker' ? <><label htmlFor="payout-account-reference" className="block text-sm font-semibold">
+          {registrationIntake ? <p className="text-xs text-muted-foreground">
+            You can approve this application with outstanding registration or payout details. The seller can check their registration checklist and Finance workspace after the decision.
+          </p> : participationRoute !== 'managed_maker' ? <><label htmlFor="payout-account-reference" className="block text-sm font-semibold">
             Verified receiving-account reference
           </label>
           <input
@@ -239,7 +252,7 @@ export function SellerReviewActions({
             placeholder="Signed agreement or approved record reference"
           />
           <p className="text-xs text-muted-foreground">
-            Both references and bank evidence are required only when approving a seller. Do not enter full bank credentials here.
+            The settlement-terms reference is required for approval. New applications may add bank details later in their dashboard; leave the receiving-account reference empty until verified. Payouts remain blocked. Older applications retain their recorded evidence requirements. Do not enter full bank credentials here.
           </p>
           </> : <p className="text-xs text-muted-foreground">Managed Maker approval records maker readiness only. Commercial model, legal seller, invoice issuer, supplier/payment requirements, and the reviewed agreement remain separate activation conditions.</p>}
         </div>

@@ -4,8 +4,57 @@ import test from 'node:test';
 import { convertV4MiniflareOptions, Miniflare } from 'miniflare';
 import { buildFormAnswerInsert, listFormAnswersForSubject } from '../lib/db/repositories/form-answers';
 import type { ConfiguredField, FormAnswerSnapshot } from '../lib/forms/types';
+import { compatibilityRevocationId } from '../lib/forms/compatibility';
 
 const formId = 'account.profile';
+
+void test('native D1 rolls back a compatible submission when its preceding version is revoked before commit', async () => {
+  const { mf, db } = await fixture('compatible-form-answer-test');
+  try {
+    const selectedForm = 'seller.profile';
+    const fields = [{ id: 'packing_note', key: 'packing_note', type: 'short_text', label: 'Packing note', required: false, order: 1, status: 'active' }];
+    for (const version of [1, 2]) {
+      await db.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
+        VALUES(?,?,?,1,'published',?,'Native fixture','customer',1,'customer',1,'customer',1,?)`)
+        .bind(`native-compat-${version}`, selectedForm, version, JSON.stringify({ formId: selectedForm, fields }), `native-compat-publish-${version}`).run();
+    }
+    const statement = (requestId: string) => buildFormAnswerInsert(db, { formId: selectedForm, requestId, versionId: 'native-compat-2',
+      subjectType: 'seller_profile', subjectId: 'fictional-seller', actorId: 'customer', now: 2,
+      answers: { formId: selectedForm, version: 2, presentedVersion: 1, answers: [{ fieldId: 'packing_note', type: 'short_text', label: 'Packing note', value: 'Keep upright' }] } });
+    await db.batch([db.prepare("UPDATE users SET display_name='Saved compatible' WHERE id='customer'"), statement('native-compatible-committed')]);
+    const pending = statement('native-compatible-pending');
+    await db.prepare("INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,next_json,created_at) VALUES(?,'customer','form.compatibility.revoked','form_configuration','native-compat-2','{}',2)")
+      .bind(compatibilityRevocationId(selectedForm, 2)).run();
+    await assert.rejects(db.batch([db.prepare("UPDATE users SET display_name='Must roll back' WHERE id='customer'"), pending]));
+    assert.equal((await db.prepare("SELECT display_name name FROM users WHERE id='customer'").first<{name:string}>())?.name, 'Saved compatible');
+    const history = await listFormAnswersForSubject(db, 'seller_profile', 'fictional-seller');
+    assert.equal(history.length, 1);
+    assert.equal(history[0].answers.presentedVersion, 1);
+  } finally { await mf.dispose(); }
+});
+
+void test('native D1 preserves core-only history without configuration writes and rejects a publication race atomically', async () => {
+  const { mf, db } = await fixture('core-form-answer-test');
+  try {
+    const coreInsert = (requestId: string) => buildFormAnswerInsert(db, {
+      formId: 'seller.profile', versionId: 'core:seller.profile:1', requestId,
+      subjectType: 'seller_profile', subjectId: 'fictional-seller', actorId: 'customer', now: 1,
+      answers: { formId: 'seller.profile', version: 1, answers: [] },
+    });
+    await db.batch([db.prepare("UPDATE users SET display_name='Saved core' WHERE id='customer'"), coreInsert('core-native')]);
+    assert.equal((await listFormAnswersForSubject(db, 'seller_profile', 'fictional-seller'))[0].versionId, 'core:seller.profile:1');
+    assert.equal((await db.prepare('SELECT COUNT(*) n FROM form_config_versions').first<{n:number}>())?.n, 0);
+    await assert.rejects(db.prepare("UPDATE audit_logs SET next_json='{}' WHERE action='form.core_answers'").run(), /core_form_receipt_immutable/);
+    await assert.rejects(db.prepare("DELETE FROM audit_logs WHERE action='form.core_answers'").run(), /core_form_receipt_retained/);
+    await db.prepare("UPDATE audit_logs SET actor_id=NULL WHERE action='form.core_answers'").run();
+    assert.equal((await listFormAnswersForSubject(db, 'seller_profile', 'fictional-seller'))[0].actorId, null);
+    const raced = coreInsert('core-native-race');
+    await db.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
+      VALUES('seller-config','seller.profile',1,1,'published','{"formId":"seller.profile","fields":[]}','Fixture','customer',1,'customer',1,'customer',1,'native-publish')`).run();
+    await assert.rejects(db.batch([db.prepare("UPDATE users SET display_name='Must roll back' WHERE id='customer'"), raced]));
+    assert.equal((await db.prepare("SELECT display_name name FROM users WHERE id='customer'").first<{name:string}>())?.name, 'Saved core');
+  } finally { await mf.dispose(); }
+});
 type Snapshot = Omit<FormAnswerSnapshot, 'answers'> & {
   answers: readonly (FormAnswerSnapshot['answers'][number] & { choiceLabels?: readonly string[] })[];
 };
@@ -16,7 +65,14 @@ async function fixture(id: string) {
   try {
     const db = await mf.getD1Database('DB');
     await db.exec('CREATE TABLE users(id TEXT PRIMARY KEY,status TEXT,display_name TEXT);');
+    await db.exec('CREATE TABLE audit_logs(id TEXT PRIMARY KEY,actor_id TEXT,action TEXT NOT NULL,subject_type TEXT,subject_id TEXT,request_id TEXT,previous_json TEXT,next_json TEXT,created_at INTEGER);');
+    for (const sql of readFileSync('drizzle/0081_core_form_receipt_retention.sql', 'utf8').split('--> statement-breakpoint'))
+      if (sql.trim()) await db.prepare(sql).run();
     for (const sql of readFileSync('drizzle/0056_form_catalog.sql', 'utf8').split('--> statement-breakpoint'))
+      if (sql.trim()) await db.prepare(sql).run();
+    // Current answer writes name the canonical health columns. Apply only the
+    // answer/load-observation DDL to this allocated disposable D1 database.
+    for (const sql of readFileSync('drizzle/0151_form_health_records.sql', 'utf8').split('--> statement-breakpoint').slice(0, 4))
       if (sql.trim()) await db.prepare(sql).run();
     await db.prepare("INSERT INTO users VALUES ('customer','active','Old Name')").run();
     const publish = async (version: number, fields: readonly unknown[]) => db.prepare(`INSERT INTO form_config_versions

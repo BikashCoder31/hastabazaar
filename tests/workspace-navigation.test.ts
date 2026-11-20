@@ -1,0 +1,79 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { adminNavigation, adminNavigationGroups } from '../lib/admin/navigation';
+import { sellerWorkspaceSection, sellerWorkspaceSections } from '../lib/sellers/workspace-navigation';
+import { completeVersionFixture } from './helpers/complete-version-fixture';
+import { getSellerCenterAccess } from '../lib/db/repositories/seller-center-access';
+import { startSellerRegistration } from '../lib/db/repositories/seller-commercial-access';
+
+void test('Seller Center requires an owned registration or explicit start; access never grants selling authority', async () => {
+  const f = await completeVersionFixture();
+  try {
+    for (const subject of ['applicant', 'customer', 'foreign', 'delegate', 'reviewer', 'missing'])
+      assert.equal(await getSellerCenterAccess(f.db, subject), null, subject);
+    await startSellerRegistration(f.db, { userId: 'applicant', requestId: 'start-center', now: f.now });
+    const applicant = await getSellerCenterAccess(f.db, 'applicant');
+    assert.equal(applicant?.userId, 'applicant');
+    assert.equal(applicant?.sellerId, null);
+    assert.equal(applicant?.approvedSeller, false);
+    const restricted = await getSellerCenterAccess(f.db, 'registered-owner');
+    assert.equal(restricted?.sellerId, 'registered');
+    assert.equal(restricted?.approvedSeller, true, 'An order hold must not conceal existing responsibilities.');
+    assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM user_roles WHERE user_id='applicant' AND role='seller'").get()?.n, 0);
+    f.sqlite.exec("UPDATE users SET status='disabled' WHERE id='applicant'");
+    assert.equal(await getSellerCenterAccess(f.db, 'applicant'), null);
+  } finally { f.dispose(); }
+});
+
+void test('seven seller sections keep old record links in the correct workspace without confusing applicant products with registration', () => {
+  assert.deepEqual(sellerWorkspaceSections.map(section => section.label), ['Home', 'Shop & profile', 'Registration & documents',
+    'Products & stock', 'Orders & delivery', 'Earnings & bank', 'Requests & help']);
+  for (const [path, section] of [
+    ['/seller/shipping/parcel-1', 'orders'], ['/seller/cases/returns/case-1', 'orders'],
+    ['/seller/products/product-1/edit', 'products'], ['/sell/application/products/draft-1/edit', 'products'],
+    ['/sell/application', 'documents'], ['/seller/registration?document=pan', 'documents'],
+    ['/seller/notifications', 'requests'], ['/seller/reviews', 'shop'], ['/seller/finance', 'earnings'],
+  ]) assert.equal(sellerWorkspaceSection(path)?.id, section, path);
+  assert.equal(sellerWorkspaceSection('/seller'), sellerWorkspaceSections[0]);
+  assert.equal(sellerWorkspaceSection('/admin/sellers'), undefined);
+});
+
+void test('all eight approved admin areas retain existing destinations and current permission boundaries', () => {
+  assert.deepEqual(adminNavigationGroups, [
+    'Overview & work queue', 'Sellers', 'Products & storefront', 'Orders & customer care',
+    'Finance & payments', 'Fees, programs & promotions', 'Team & business policies', 'System health & records',
+  ]);
+  const superAdmin = adminNavigation('super_admin');
+  assert.equal(new Set(superAdmin.map(link => link.href)).size, 43);
+  assert.deepEqual(new Set(superAdmin.map(link => link.group)), new Set(adminNavigationGroups));
+  assert.equal(superAdmin.find(link => link.href === '/admin/commission')?.group, 'Fees, programs & promotions');
+  assert.equal(superAdmin.find(link => link.href === '/admin/payouts')?.group, 'Finance & payments');
+  assert.equal(superAdmin.find(link => link.href === '/admin/forms')?.group, 'System health & records');
+  const delegated = adminNavigation('admin', ['product.review']);
+  assert.ok(delegated.some(link => link.href === '/admin/products'));
+  assert.ok(!delegated.some(link => ['/admin/forms', '/admin/payouts', '/admin/products/publications'].includes(link.href)));
+  assert.equal(delegated.find(link => link.href === '/admin/team')?.label, 'My responsibilities');
+  assert.equal(adminNavigation('customer').length, 0);
+});
+
+void test('notification panel counts authorized unread records before its ten-item limit and never marks opening as read', async () => {
+  const path = '../lib/operations/notification-panel';
+  const panel = await import(path);
+  const f = await completeVersionFixture();
+  try {
+    f.sqlite.exec('DELETE FROM notification_messages');
+    const insert = f.sqlite.prepare(`INSERT INTO notification_messages(id,recipient_user_id,audience_role,channel,template_key,
+      subject_en,subject_ne,body_en,body_ne,status,request_id,created_at,related_type,required_permission)
+      VALUES(?,?,?,'in_app','fixture.notice','Fictional notice','Fictional notice','Open your record','Open your record','sent',?,?,'product',?)`);
+    for (let i = 0; i < 105; i++) insert.run(`notice-${i}`, 'registered-owner', 'seller', `notice-${i}`, i, null);
+    insert.run('foreign', 'foreign', 'seller', 'foreign', 1000, null);
+    const result = await panel.getNotificationPanel(f.db, { userId: 'registered-owner', audience: 'seller' });
+    assert.equal(result.unreadCount, 105); assert.equal(result.items.length, 10);
+    assert.equal(result.items[0].id, 'notice-104');
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM notification_messages WHERE read_at IS NOT NULL').get()?.n, 0);
+    insert.run('product-work', 'delegate', 'staff', 'product-work', 100, 'product.review');
+    insert.run('finance-work', 'delegate', 'staff', 'finance-work', 200, 'payout.prepare');
+    const staff = await panel.getNotificationPanel(f.db, { userId: 'delegate', audience: 'staff', staff: { role: 'admin', permissions: ['product.review'] } });
+    assert.equal(staff.unreadCount, 1); assert.deepEqual(staff.items.map((item: { id: string }) => item.id), ['product-work']);
+  } finally { f.dispose(); }
+});

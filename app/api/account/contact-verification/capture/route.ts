@@ -1,3 +1,4 @@
+import {assertCustomerIntent} from '@/lib/auth/customer-intent';
 import { env } from 'cloudflare:workers';
 import {
   requireExistingCustomerApi,
@@ -15,6 +16,7 @@ export async function GET(request: Request): Promise<Response> {
   const headers = { 'Cache-Control': 'no-store' };
   try {
     const actor = await requireExistingCustomerApi();
+    assertCustomerIntent(request,actor.userId);
     const environment = env as unknown as ContactDeliveryEnvironment & {
       DB?: D1Database;
     };

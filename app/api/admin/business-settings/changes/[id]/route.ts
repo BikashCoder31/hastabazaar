@@ -1,3 +1,4 @@
+import {hasActorIntentMismatch} from '@/lib/http/actor-intent';
 import { env } from 'cloudflare:workers';
 
 import { requireStaffApi, StaffAuthorizationError } from '@/lib/auth/staff';
@@ -72,10 +73,16 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<Response> {
+  // A status/error alone cannot prove rollback once a domain mutation was invoked.
+  let mutationInvoked = false;
+  const errorJson = (body: Record<string, unknown>, status: number) =>
+    json({ ...body, phase: mutationInvoked ? 'outcome_unconfirmed' : 'rejected_before_write' }, status);
   if (!isTrustedMutationRequest(request)) {
-    return json({ error: 'Cross-site requests are not allowed.' }, 403);
+    return errorJson({ error: 'Cross-site requests are not allowed.' }, 403);
   }
   try {
+    const intentActor=await requireStaffApi('business_settings.manage').catch(error=>{if(error instanceof StaffAuthorizationError&&error.status===403)return requireStaffApi('business_settings.approve');throw error;});
+    if(hasActorIntentMismatch(request,intentActor.id))throw new StaffAuthorizationError('The signed-in account changed. Refresh this settings view.',403);
     const body = await requestBody(request);
     const action = body.action;
     const { id } = await context.params;
@@ -92,19 +99,24 @@ export async function POST(
     const actor = action === 'approve' || action === 'reject'
       ? await requireStaffApi('business_settings.approve')
       : await requireStaffApi('business_settings.manage');
+    if(hasActorIntentMismatch(request,actor.id))throw new StaffAuthorizationError('The signed-in account changed. Refresh this settings view.',403);
     const version = await getBusinessSettingVersionById(database, id);
     if (!version) throw new BusinessSettingConflictError('Business setting version was not found.');
+    if (version.key === 'independent_seller_commission_bps' || version.key === 'managed_sale_linked_platform_retention_bps')
+      return errorJson({ error: 'This fee source requires the paired Commission workflow. Preserve the recorded version for source review.', href: '/admin/commission#rate-management' }, 409);
 
     if (action === 'approve' || action === 'reject') {
       const form = await validateBusinessSettingForm(database, version.key, body, requestId);
       const expectedRevision = requiredRevision(body.expectedRevision);
       if (action === 'approve') {
         await assertHomepageHeroVersionReady(database, id);
+        const effectiveFrom = requiredEffectiveFrom(body.effectiveFrom);
+        mutationInvoked = true;
         await approveBusinessSettingChange(database, {
           id,
           actorId: actor.id,
           expectedRevision,
-          effectiveFrom: requiredEffectiveFrom(body.effectiveFrom),
+          effectiveFrom,
           reason,
           requestId,
           now,
@@ -112,6 +124,7 @@ export async function POST(
           form,
         });
       } else {
+        mutationInvoked = true;
         await rejectBusinessSettingChange(database, {
           id,
           actorId: actor.id,
@@ -127,10 +140,12 @@ export async function POST(
 
     const form = await validateBusinessSettingForm(database, version.key, body, requestId);
     if (action === 'submit') {
+      const expectedRevision = requiredRevision(body.expectedRevision);
+      mutationInvoked = true;
       await submitBusinessSettingDraft(database, {
         id,
         actorId: actor.id,
-        expectedRevision: requiredRevision(body.expectedRevision),
+        expectedRevision,
         reason,
         requestId,
         now,
@@ -140,11 +155,14 @@ export async function POST(
     }
     if (action === 'publish') {
       await assertHomepageHeroVersionReady(database, id);
+      const expectedRevision = requiredRevision(body.expectedRevision);
+      const effectiveFrom = requiredEffectiveFrom(body.effectiveFrom);
+      mutationInvoked = true;
       await publishBusinessSettingDraft(database, {
         id,
         actorId: actor.id,
-        expectedRevision: requiredRevision(body.expectedRevision),
-        effectiveFrom: requiredEffectiveFrom(body.effectiveFrom),
+        expectedRevision,
+        effectiveFrom,
         reason,
         requestId,
         now,
@@ -154,6 +172,7 @@ export async function POST(
       return json({ ok: true, action }, 200);
     }
     if (action === 'reverse') {
+      mutationInvoked = true;
       const draft = await createBusinessSettingReversalDraft(database, {
         sourceVersionId: id,
         actorId: actor.id,
@@ -164,26 +183,26 @@ export async function POST(
       });
       return json({ draft, action }, 201);
     }
-    return json({ error: 'Select a valid business-setting action.' }, 400);
+    return errorJson({ error: 'Select a valid business-setting action.' }, 400);
   } catch (error) {
     if (error instanceof StaffAuthorizationError) {
-      return json({ error: error.message }, error.status);
+      return errorJson({ error: error.message,code:mutationInvoked?'outcome_unconfirmed':'access_denied_before_write' }, error.status);
     }
     if (error instanceof BodyTooLargeError) {
-      return json({ error: error.message }, 413);
+      return errorJson({ error: error.message }, 413);
     }
     if (error instanceof BusinessSettingConflictError) {
-      return json({ error: error.message }, 409);
+      return errorJson({ error: error.message }, 409);
     }
     if (error instanceof FormRuntimeError) {
-      return json({ error: error.message, code: error.code }, error.retryable ? 503 : 409);
+      return errorJson({ error: error.message, code: error.code }, error.retryable ? 503 : 409);
     }
     if (error instanceof FormValidationError) {
-      return json({ error: error.message, fieldId: error.fieldId }, 400);
+      return errorJson({ error: error.message, fieldId: error.fieldId }, 400);
     }
     if (error instanceof RangeError || error instanceof TypeError) {
-      return json({ error: error.message }, 400);
+      return errorJson({ error: error.message }, 400);
     }
-    return json({ error: 'Business setting action could not be completed.' }, 400);
+    return errorJson({ error: 'Business setting action could not be completed.' }, 400);
   }
 }

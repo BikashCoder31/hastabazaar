@@ -8,10 +8,11 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 import type { ManagedProgramWorkspace } from '@/lib/managed-commerce/program-workspace';
 import { parseNepalDateTime } from '@/lib/incentives/presentation';
+import { withAdminReturnTo } from '@/lib/admin/return-context';
 
 const money = (paisa: number | null) => paisa === null ? '—' : `NPR ${(paisa / 100).toFixed(2)}`;
 const baseKeys = {
@@ -25,11 +26,14 @@ type ProgramFormId = keyof typeof baseKeys;
 const managedAttemptKey = (sellerId: string, formId: ProgramFormId, parentId: string, action: string) =>
   sessionAttemptKey(formId, `${sellerId}:${parentId}:${action}`);
 
-export function ManagedProgramReview({ sellerId, workspace }: { sellerId: string; workspace: ManagedProgramWorkspace }) {
+export function ManagedProgramReview({ sellerId, workspace, canReviewPaymentTransfers = false, canReviewPaymentHistory = false }: {
+  sellerId: string; workspace: ManagedProgramWorkspace; canReviewPaymentTransfers?: boolean; canReviewPaymentHistory?: boolean;
+}) {
   const router = useRouter();
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [retryKeys, setRetryKeys] = useState<Record<string, boolean>>({});
+  const [retiredPaymentReferences, setRetiredPaymentReferences] = useState<Record<string, string>>({});
   const supplyCatalog = usePublishedFormConfig('staff.managed-supply-decision');
   const adjustmentCatalog = usePublishedFormConfig('staff.managed-adjustment');
   const preparationCatalog = usePublishedFormConfig('staff.managed-payment-preparation');
@@ -45,23 +49,32 @@ export function ManagedProgramReview({ sellerId, workspace }: { sellerId: string
 
   useEffect(() => {
     const keys: string[] = [];
+    const retiredReferences: Record<string, string> = {};
     for (const supply of workspace.supplies) {
+      if (supply.paymentId) {
+        const retiredKey = managedAttemptKey(sellerId, 'staff.managed-payment-action', supply.paymentId, 'mark_payment_paid');
+        // Keep the old opaque reference for history review; never retry or silently clear it.
+        try {
+          if (hasSessionAttempt(retiredKey)) retiredReferences[supply.paymentId] = sessionStorage.getItem(retiredKey)!;
+        } catch { /* Payment history remains the authoritative record. */ }
+      }
       if (supply.status === 'proposed')
         keys.push(managedAttemptKey(sellerId, 'staff.managed-supply-decision', supply.id, 'decide_supply'));
       if (supply.status !== 'accepted') continue;
       keys.push(managedAttemptKey(sellerId, 'staff.managed-adjustment', supply.id, 'add_adjustment'));
       if (!supply.paymentId)
         keys.push(managedAttemptKey(sellerId, 'staff.managed-payment-preparation', supply.id, 'prepare_payment'));
-      else if (supply.paymentStatus === 'prepared' || supply.paymentStatus === 'approved')
-        keys.push(managedAttemptKey(sellerId, 'staff.managed-payment-action', supply.paymentId,
-          supply.paymentStatus === 'prepared' ? 'approve_payment' : 'mark_payment_paid'));
+      else if (supply.paymentStatus === 'prepared')
+        keys.push(managedAttemptKey(sellerId, 'staff.managed-payment-action', supply.paymentId, 'approve_payment'));
     }
     for (const item of workspace.transitions)
       if (item.status === 'submitted')
         keys.push(managedAttemptKey(sellerId, 'staff.managed-transition-decision', item.id, 'review_transition'));
       else if(item.status==='scheduled')keys.push(managedAttemptKey(sellerId,'staff.managed-transition-decision',item.id,'apply_due_transition'));
-    const timer = window.setTimeout(() =>
-      setRetryKeys(Object.fromEntries(keys.map((key) => [key, hasSessionAttempt(key)]))), 0);
+    const timer = window.setTimeout(() => {
+      setRetryKeys(Object.fromEntries(keys.map((key) => [key, hasSessionAttempt(key)])));
+      setRetiredPaymentReferences(retiredReferences);
+    }, 0);
     return () => window.clearTimeout(timer);
   }, [sellerId, workspace]);
 
@@ -136,7 +149,7 @@ export function ManagedProgramReview({ sellerId, workspace }: { sellerId: string
       <Link className="underline" href="/admin/staff-form-history?kind=managed-transition-decision">Route transitions</Link>
     </nav>
     {workspace.supplies.map(supply => <div key={supply.id} className="space-y-3 rounded-xl border bg-background p-4">
-      <p className="font-semibold">{supply.productName} · {supply.status.replaceAll('_', ' ')}</p><p>{supply.quantityProposed} proposed × {money(supply.agreedUnitPaisa)} · accepted obligation {money(supply.originalOwedPaisa)} · adjustments {money(supply.adjustedPaisa)} · paid {money(supply.paidPaisa)}</p>
+      <p className="font-semibold">{supply.productName} · {supply.status.replaceAll('_', ' ')}</p><p>{supply.quantityProposed} proposed × {money(supply.agreedUnitPaisa)} · accepted obligation {money(supply.originalOwedPaisa)} · adjustments {money(supply.adjustedPaisa)} · paid {money(supply.paidPaisa)} · recovery settlements {money(supply.recoveryCreditsPaisa)}</p>
       {supply.status === 'proposed' ? <form data-form-id="staff.managed-supply-decision" className="grid gap-2 sm:grid-cols-2" onSubmit={send}>
       <FormGuide formId="staff.managed-supply-decision" />
 
@@ -167,13 +180,30 @@ export function ManagedProgramReview({ sellerId, workspace }: { sellerId: string
           <input type="hidden" name="action" value="prepare_payment" /><input type="hidden" name="recordId" value={supply.id} /><p className="font-semibold">Create approved supplier payment</p>
           <input name="destinationReference" required defaultValue="SIM-MAKER-ACCOUNT" className="h-9 w-full rounded border px-2" />
           {fields('staff.managed-payment-preparation')}{formMessage('staff.managed-payment-preparation', supply.id, 'prepare_payment')}<Button type="submit" disabled={disabled('staff.managed-payment-preparation')}>Create approved simulated payment</Button>
-        </form> : <form data-form-id="staff.managed-payment-action" className="space-y-2 rounded border p-3" onSubmit={send}>
+        </form> : supply.paymentStatus === 'prepared' ? <form data-form-id="staff.managed-payment-action" className="space-y-2 rounded border p-3" onSubmit={send}>
       <FormGuide formId="staff.managed-payment-action" />
 
           <input type="hidden" name="paymentId" value={supply.paymentId} /><p className="font-semibold">Payment {supply.paymentStatus} · {supply.paymentId}</p>
-          <select name="action" className="h-9 w-full rounded border px-2">{supply.paymentStatus === 'prepared' ? <option value="approve_payment">Approve payment</option> : null}{supply.paymentStatus === 'approved' ? <option value="mark_payment_paid">Mark simulated paid</option> : null}</select>
-          {fields('staff.managed-payment-action')}{formMessage('staff.managed-payment-action', supply.paymentId, supply.paymentStatus === 'prepared' ? 'approve_payment' : 'mark_payment_paid')}<Button type="submit" disabled={disabled('staff.managed-payment-action') || supply.paymentStatus === 'paid'}>Record payment action</Button>
-        </form>}
+          <input type="hidden" name="action" value="approve_payment" /><p>Approve payment</p>
+          {fields('staff.managed-payment-action')}{formMessage('staff.managed-payment-action', supply.paymentId, 'approve_payment')}<Button type="submit" disabled={disabled('staff.managed-payment-action')}>Record payment action</Button>
+        </form> : <div className="space-y-2 rounded border p-3">
+          <p className="break-all font-semibold">Payment {supply.paymentStatus} · {supply.paymentId}</p>
+          {supply.paymentStatus === 'paid' ? <p>This historical paid record is retained. Review its original payment history.</p> : <>
+            <p>Approval does not confirm payment. Review the original verified execution packet and its bank outcome in Payout transfers. Fixed supplier payments remain simulation-only; current authority, beneficiary, funding and source checks still apply.</p>
+            {canReviewPaymentTransfers ? <Link className="inline-block underline" href={withAdminReturnTo(
+              `/admin/payments/payouts?model=fixed&payout=${encodeURIComponent(supply.paymentId)}`,
+              `/admin/sellers/${encodeURIComponent(sellerId)}#managed-program-records`,
+            )}>Review original supplier payment transfer</Link> : <p>An authorized Finance reviewer or eligible Super Admin operator must review the original payment transfer.</p>}
+          </>}
+          {canReviewPaymentHistory ? <Link className="inline-block underline" href={withAdminReturnTo(
+            `/admin/staff-form-history?kind=managed-payment-action&id=${encodeURIComponent(supply.paymentId)}`,
+            `/admin/sellers/${encodeURIComponent(sellerId)}#managed-program-records`,
+          )}>Review original payment action history</Link> : <p>An eligible Super Admin must review the original payment action history.</p>}
+        </div>}
+        {supply.paymentId && retiredPaymentReferences[supply.paymentId] ? <div className="space-y-2 rounded border border-amber-500 p-3 lg:col-span-2">
+          <p className="break-all">Retained completion request: {retiredPaymentReferences[supply.paymentId]}</p>
+          <p>This old reference does not prove payment was made. It is retained for original history review; completion cannot be retried here.</p>
+        </div> : null}
       </div> : null}
     </div>)}
     {workspace.transitions.map(item => <div key={item.id} className="space-y-3 rounded-xl border bg-background p-4"><p className="font-semibold">Registered Seller transition · {item.legalName}</p><p>{item.taxMode} · {item.status.replaceAll('_', ' ')}{item.effectiveAt ? ` · effective ${new Date(item.effectiveAt).toLocaleString('en-NP', { timeZone: 'Asia/Kathmandu' })}` : ''}</p>

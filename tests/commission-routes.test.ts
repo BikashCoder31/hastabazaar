@@ -3,6 +3,7 @@ import test from 'node:test';
 import { registerHooks } from 'node:module';
 import { commissionDatabase } from './helpers/commission-database';
 import { nepalDateTimeInput } from '../lib/commission/rates';
+import {scheduleCommissionRate,cancelCommissionRate} from '../lib/db/repositories/commission-rates';
 
 declare global {
   var commissionHttpDb: D1Database;
@@ -38,9 +39,10 @@ void test('Commission HTTP routes reject blocked requests and derive actors and 
     for(const invalid of [null,[],{}, {...body,percent:'9.001'}]) assert.equal((await admin.POST(request('/api/admin/commission',invalid))).status,400);
     assert.equal((await admin.POST(request('/api/admin/commission','{','http://localhost:3018',true))).status,400);
     const saved=await admin.POST(request('/api/admin/commission',{...body,actorId:'staff'}));
-    assert.equal(saved.status,200);
+    assert.equal(saved.status,409);
     assert.equal(saved.headers.get('cache-control'),'no-store');
-    assert.equal((await admin.POST(request('/api/admin/commission',body))).status,200);
+    assert.equal((await admin.POST(request('/api/admin/commission',body))).status,409);
+    await scheduleCommissionRate(f.database,{actorId:'owner',requestId:'http-rate',expectedRevision:0,basisPoints:1225,effectiveAt:Date.now()+16*86400000,reason:body.reason,now:Date.now()});
     assert.equal((await f.database.prepare('SELECT COUNT(*) n FROM commission_rate_changes').first<{n:number}>())?.n,1);
     assert.equal((await f.database.prepare('SELECT created_by FROM commission_rate_changes').first<{created_by:string}>())?.created_by,'owner');
     globalThis.commissionHttpSeller={sellerId:'seller-a',userId:'user-a'};
@@ -48,7 +50,8 @@ void test('Commission HTTP routes reject blocked requests and derive actors and 
     assert.equal((await seller.POST(request('/api/seller/commission','{','http://localhost:3018',true))).status,400);
     assert.equal((await seller.POST(request('/api/seller/commission',{accepted:true,rateId:'http-rate',sellerId:'seller-b',userId:'user-b'}))).status,200);
     assert.deepEqual((await f.database.prepare('SELECT seller_id,actor_id FROM commission_rate_acceptances').all()).results.map(row=>({...row})),[{seller_id:'seller-a',actor_id:'user-a'}]);
-    assert.equal((await admin.POST(request('/api/admin/commission',{action:'cancel',rateId:'http-rate',requestId:'http-cancel',expectedRevision:1,reason:'Cancel the fictional future schedule.'}))).status,200);
+    assert.equal((await admin.POST(request('/api/admin/commission',{action:'cancel',rateId:'http-rate',requestId:'http-cancel',expectedRevision:1,reason:'Cancel the fictional future schedule.'}))).status,409);
+    await cancelCommissionRate(f.database,{actorId:'owner',rateId:'http-rate',requestId:'http-cancel',expectedRevision:1,reason:'Cancel the isolated historical fixture schedule.',now:Date.now()});
     assert.equal((await seller.POST(request('/api/seller/commission',{accepted:true,rateId:'http-rate'}))).status,409);
   }finally{await f.dispose();}
 });

@@ -1,7 +1,9 @@
 export const metadata = {
   alternates: { canonical: 'https://hastabazaar.com/' },
   openGraph: {
-    title: 'HastaBazaar — Thoughtful finds for everyday life',
+    title: 'Hastabazaar — Products, Gifts & Crafts in Nepal',
+    description: 'Discover new products, gifts, jewellery, textiles and homeware from makers and independent sellers in Nepal.',
+    siteName: 'Hastabazaar',
     url: 'https://hastabazaar.com/',
     type: 'website',
   },
@@ -51,6 +53,8 @@ import {
 } from '@/lib/db/repositories/products';
 import { CURRENT_HERO_RECOVERY_SLIDES } from '@/lib/homepage/hero-slides';
 import { CURRENT_OCCASION_RECOVERY_SLIDES } from '@/lib/homepage/occasion-slides';
+import { brandStructuredData } from '@/lib/seo/brand';
+import { safeJsonLd } from '@/lib/seo/discovery';
 
 const customerShortcuts = [
   {
@@ -184,9 +188,10 @@ export default async function Home() {
   const homepageCategories = categories;
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(brandStructuredData) }} />
       <SiteHeader />
       <main tabIndex={-1} id="main-content">
-        <h1 className="sr-only">Gifts and everyday finds from marketplace sellers</h1>
+        <h1 className="sr-only">Hastabazaar — Products, gifts and crafts from makers and sellers in Nepal</h1>
         <HomepageHeroCarousel slides={heroSlides} />
 
         <div id="categories" className="homepage-category-wrap shell">
@@ -411,7 +416,7 @@ export default async function Home() {
                 <h2 className="section-heading mt-3">
                   {topProducts.length > 0
                     ? 'Top products right now.'
-                    : 'Featured by HastaBazaar.'}
+                    : 'Featured by Hastabazaar.'}
                 </h2>
               </div>
               <Link href="/shop" className="section-link">
@@ -456,7 +461,7 @@ export default async function Home() {
 
         <section id="our-standard" className="shell py-10 sm:py-14">
           <div className="max-w-2xl">
-            <p className="eyebrow">The HastaBazaar promise</p>
+            <p className="eyebrow">The Hastabazaar promise</p>
             <h2 className="section-heading mt-3">
               Good craft. Thoughtful care.
             </h2>
@@ -495,7 +500,7 @@ export default async function Home() {
           <div className="shell py-12 sm:py-16">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
-                <p className="eyebrow">Your HastaBazaar</p>
+                <p className="eyebrow">Your Hastabazaar</p>
                 <h2 className="section-heading mt-3">
                   Everything, a little closer.
                 </h2>

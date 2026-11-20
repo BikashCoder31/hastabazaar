@@ -18,7 +18,7 @@ void test('SuperAdmin payout preparation presents direct approval while Admin pr
 });
 void test('SuperAdmin payout request preparation offers direct approval and Admin retains preparation',async()=>{
   const {PayoutRequestActions}=await import('../components/admin/payout-request-actions');
-  const direct=renderToStaticMarkup(createElement(PayoutRequestActions,{id:'request',role:'super_admin'}));
-  const pending=renderToStaticMarkup(createElement(PayoutRequestActions,{id:'request',role:'admin'}));
+  const direct=renderToStaticMarkup(createElement(PayoutRequestActions,{id:'request',actorId:'admin',role:'super_admin'}));
+  const pending=renderToStaticMarkup(createElement(PayoutRequestActions,{id:'request',actorId:'admin',role:'admin'}));
   assert.match(direct,/Create approved payout/);assert.match(pending,/Prepare for Super Admin approval/);
 });

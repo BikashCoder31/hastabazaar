@@ -1,4 +1,5 @@
 import { seedVerifiedCheckoutContact } from './helpers/checkout-contact';
+import { seedPromoCommissionAcceptance, withReviewedPromoQuote } from './helpers/promo-checkout-fixture';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
@@ -14,13 +15,15 @@ import {
 } from './helpers/loyalty-fixture';
 import { seedIncentiveInventory } from './helpers/incentive-db';
 import { createCodOrder } from '../lib/db/repositories/orders';
-import { SELLER_AGREEMENT_VERSION } from '../lib/content/legal-policies';
+import { verifySellerDocument } from '../lib/sellers/document-review';
 import {
   createCustomerReturnRequest,
   reviewReturnAsAdmin,
-  advanceReturnAsAdmin,
 } from '../lib/db/repositories/returns';
 import type { RedeemInput } from '../lib/incentives/types';
+import { confirmFirstCodReview, getFirstCodReview } from '../lib/orders/first-cod-review';
+import { listParcels, operateParcel, prepareSellerParcels } from '../lib/operations/parcels';
+import { executeFixtureRefund } from './helpers/execute-fixture-refund';
 function input(
   requestId = 'redeem',
   points = 200,
@@ -439,12 +442,29 @@ void test('wallet headroom overflow rejects without debit', async () => {
 async function checkoutSetup(db: D1Database) {
   await seedVerifiedCheckoutContact(db, 'customer');
   await seedIncentiveInventory(db);
+  await seedPromoCommissionAcceptance(db, 900);
   await db
-    .prepare(
-      "UPDATE seller_profiles SET seller_agreement_version=? WHERE id='seller'",
-    )
-    .bind(SELLER_AGREEMENT_VERSION)
+    .prepare("UPDATE seller_profiles SET applicant_type='individual' WHERE id='seller'")
     .run();
+  for (const kind of ['representative_identity', 'pan_certificate']) {
+    const documentId = 'loyalty-redemption-' + kind;
+    await db
+      .prepare(
+        `INSERT INTO seller_documents(id,seller_id,kind,object_key,original_name,mime_type,size_bytes,status,uploaded_at)
+         VALUES (?,'seller',?,?,'fictional.png','image/png',20,'pending',1)`,
+      )
+      .bind(documentId, kind, 'private/fixture/' + documentId)
+      .run();
+    await verifySellerDocument(db, {
+      sellerId: 'seller',
+      documentId,
+      actorId: 'super',
+      commandId: 'verify-' + documentId,
+      reason: 'Independently review fictional seller evidence for this redemption checkout fixture.',
+      now: NOW,
+      expectedReviewId: null,
+    });
+  }
   await publishForm(db, 'commerce.checkout');
   await db
     .prepare(
@@ -472,36 +492,38 @@ async function checkoutSetup(db: D1Database) {
       "INSERT INTO cart_items(id,cart_id,product_id,quantity,created_at,updated_at) VALUES ('loyalty-item','loyalty-cart','product',1,1,1)",
     )
     .run();
-  return () =>
-    createCodOrder(
-      db,
-      'loyalty-cart',
-      'receipt',
-      {
-        customerEmail: 'customer@example.test',
-        customerPhone: '9811111111',
-        locale: 'en-NP',
-        termsAccepted: true,
-        idempotencyKey: 'loyalty-checkout',
-        address: {
-          recipientName: 'Fixture Buyer',
-          phone: '9811111111',
-          province: 'Bagmati',
-          district: 'Kathmandu',
-          municipality: 'Kathmandu',
-          locality: 'Fixture locality',
-        },
-        useWallet: true,
-        deliveryRateVersion: 'loyalty-rates',
-        customerAuthSubject: 'customer',
-      },
-      NOW,
-      'customer',
-      {
+  const input = {
+    customerEmail: 'customer@example.test',
+    customerPhone: '9811111111',
+    locale: 'en-NP' as const,
+    termsAccepted: true,
+    idempotencyKey: 'loyalty-checkout',
+    address: {
+      recipientName: 'Fixture Buyer',
+      phone: '9811111111',
+      province: 'Bagmati',
+      district: 'Kathmandu',
+      municipality: 'Kathmandu',
+      locality: 'Fixture locality',
+    },
+    useWallet: true,
+    deliveryRateVersion: 'loyalty-rates',
+    customerAuthSubject: 'customer',
+  };
+  let reviewedInput = await withReviewedPromoQuote(db, 'loyalty-cart', input, NOW);
+  return {
+    // A retry after a balance conflict represents a new customer review, not a
+    // silent change to the originally displayed payable amount.
+    async reviewAgain() {
+      reviewedInput = await withReviewedPromoQuote(db, 'loyalty-cart', input, NOW);
+    },
+    place() {
+      return createCodOrder(db, 'loyalty-cart', 'receipt', reviewedInput, NOW, 'customer', {
         versionId: 'commerce.checkout-v1',
         answers: { formId: 'commerce.checkout', version: 1, answers: [] },
-      },
-    );
+      });
+    },
+  };
 }
 void test('real redemption checkout concurrency reconciles wallet and refund restores wallet only with no points reaward', async () => {
   const redeem = await redemption(),
@@ -512,14 +534,17 @@ void test('real redemption checkout concurrency reconciles wallet and refund res
     const checkout = await checkoutSetup(f.db);
     const outcomes = await Promise.allSettled([
       redeem(f.db, input('parallel', 200)),
-      checkout(),
+      checkout.place(),
       redeem(f.db, input('parallel', 200)),
     ]);
     for (const i of [0, 2])
       if (outcomes[i].status === 'rejected')
         await redeem(f.db, input('parallel', 200));
-    const placed =
-      outcomes[1].status === 'fulfilled' ? outcomes[1].value : await checkout();
+    if (outcomes[1].status === 'rejected') {
+      assert.match(String(outcomes[1].reason), /quote|credit|wallet|changed|conflict/i);
+      await checkout.reviewAgain();
+    }
+    const placed = outcomes[1].status === 'fulfilled' ? outcomes[1].value : await checkout.place();
     const order = await f.db
       .prepare(
         'SELECT id,wallet_credit_paisa wallet FROM orders WHERE order_number=?',
@@ -541,27 +566,62 @@ void test('real redemption checkout concurrency reconciles wallet and refund res
       (await (await repo()).getRewards(f.db, 'customer', NOW)).balancePoints,
       0,
     );
+    if ((await getFirstCodReview(f.db, order.id))?.status === 'pending')
+      await confirmFirstCodReview(f.db, {
+        orderId: order.id,
+        actorId: 'super',
+        requestId: 'loyalty-cod-review',
+        reason: 'Independently confirm the original fictional customer COD order.',
+        now: NOW + 1,
+      });
+    await prepareSellerParcels(f.db, {
+      orderId: order.id,
+      actorId: 'super',
+      requestId: 'loyalty-parcel-setup',
+      now: NOW + 2,
+    });
     await f.db
-      .prepare(
-        "UPDATE orders SET status='delivered',payment_status='paid',delivered_at=? WHERE id=?",
-      )
-      .bind(NOW + 1, order.id)
-      .run();
-    await f.db
-      .prepare(
-        "UPDATE order_items SET fulfillment_status='delivered' WHERE order_id=?",
-      )
+      .prepare("UPDATE order_items SET fulfillment_status='ready_for_pickup' WHERE order_id=?")
       .bind(order.id)
       .run();
+    for (const [offset, action] of ['assign', 'dispatch', 'deliver', 'collect'].entries()) {
+      const parcels = await listParcels(f.db, order.id);
+      assert.equal(parcels.length, 1);
+      const [parcel] = parcels;
+      await operateParcel(f.db, {
+        jobId: parcel.id,
+        actorId: 'super',
+        action,
+        version: parcel.version,
+        note: 'Record fictional delivery and original customer COD collection.',
+        requestId: 'loyalty-parcel-' + action,
+        now: NOW + 3 + offset,
+        ...(action === 'assign' ? {
+          method: 'courier',
+          courierName: 'Fictional Courier',
+          trackingCode: 'FICTIONAL-LOYALTY-DELIVERY',
+        } : {}),
+        ...(action === 'collect' ? {
+          amountPaisa: parcel.codDuePaisa,
+          reference: 'FICTIONAL-LOYALTY-CUSTOMER-CASH',
+        } : {}),
+      });
+    }
     const item = await f.db
-      .prepare('SELECT id FROM order_items WHERE order_id=?')
+      .prepare(`SELECT i.id, a.amount_paisa AS originalDelivery, a.original_quantity AS originalQuantity
+        FROM order_items i JOIN order_delivery_allocations a ON a.order_item_id=i.id AND a.order_id=i.order_id
+        WHERE i.order_id=?`)
       .bind(order.id)
-      .first<{ id: string }>();
+      .first<{ id: string; originalDelivery: number; originalQuantity: number }>();
+    assert.ok(item);
+    // One store and one unit receive the entire 500-paisa Kathmandu delivery rate.
+    assert.equal(item.originalQuantity, 1);
+    assert.equal(item.originalDelivery, 500);
     const returned = await createCustomerReturnRequest(f.db, {
       orderNumber: placed.orderNumber,
       receiptTokenHash: null,
       customerId: 'customer',
-      orderItemId: item!.id,
+      orderItemId: item.id,
       quantity: 1,
       reason: 'defective',
       requestedResolution: 'refund',
@@ -569,7 +629,7 @@ void test('real redemption checkout concurrency reconciles wallet and refund res
       locale: 'en-NP',
       idempotencyKey: 'return',
       evidence: [],
-      now: NOW + 2,
+      now: NOW + 7,
     });
     await reviewReturnAsAdmin(f.db, {
       returnRequestId: returned.id,
@@ -582,29 +642,36 @@ void test('real redemption checkout concurrency reconciles wallet and refund res
       responsibility: 'seller',
       outcome: 'refund',
       itemRefundPaisa: 10000,
-      deliveryRefundPaisa: 0,
+      deliveryRefundPaisa: item.originalDelivery,
       requestId: 'review',
-      now: NOW + 3,
+      now: NOW + 8,
     });
-    const base = {
-      returnRequestId: returned.id,
+    const refund = await f.db
+      .prepare('SELECT id FROM refunds WHERE return_request_id=?')
+      .bind(returned.id)
+      .first<{ id: string }>();
+    assert.ok(refund);
+    const { packetId } = await executeFixtureRefund(f.db, {
       actorId: 'super',
-      actorRole: 'super_admin' as const,
-      note: 'Verified fictional refund accounting.',
-      publicMessageEn: 'Refund paid.',
-      publicMessageNe: 'Refund paid.',
-      now: NOW + 4,
-    };
-    await advanceReturnAsAdmin(f.db, {
-      ...base,
-      action: 'start_refund',
-      requestId: 'start',
+      kind: 'return_refund',
+      sourceId: refund.id,
+      customerId: 'customer',
     });
-    await advanceReturnAsAdmin(f.db, {
-      ...base,
-      action: 'complete_refund',
-      requestId: 'complete',
-      reference: 'FICTIONAL-TRANSFER',
+    const paid = await f.db
+      .prepare(`SELECT r.status, r.item_amount_paisa AS merchandise, r.delivery_amount_paisa AS delivery,
+        r.amount_paisa AS gross, r.wallet_credit_paisa AS wallet, p.state, p.amount_paisa AS cash
+        FROM refunds r JOIN refund_obligations o ON o.source_kind='return_refund' AND o.source_id=r.id
+        JOIN outgoing_payment_packets p ON p.obligation_id=o.id WHERE r.id=? AND p.id=?`)
+      .bind(refund.id, packetId)
+      .first();
+    assert.deepEqual(paid, {
+      status: 'paid',
+      merchandise: 10000,
+      delivery: 500,
+      gross: 10500,
+      wallet: order.wallet,
+      state: 'paid',
+      cash: 10500 - order.wallet,
     });
     const after = await snapshot(f.db);
     assert.deepEqual(after.points, before.points);
@@ -612,7 +679,7 @@ void test('real redemption checkout concurrency reconciles wallet and refund res
     assert.equal(after.redemptions, 2);
     assert.deepEqual(after.config, before.config);
     assert.equal(
-      (await (await repo()).getRewards(f.db, 'customer', NOW + 5))
+      (await (await repo()).getRewards(f.db, 'customer', Date.now()))
         .walletBalancePaisa,
       4000,
     );

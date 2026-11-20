@@ -1,4 +1,6 @@
 import {getDeliveryRates} from '@/lib/db/repositories/delivery-rates';
+import {readCheckoutPaymentCapabilities} from '@/lib/checkout/payment-capabilities';
+import {CART_COOKIE,hashOpaqueToken} from '@/lib/cart/session';
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import { getWallet } from '@/lib/db/repositories/wallet';
@@ -12,35 +14,37 @@ import { env } from 'cloudflare:workers';
 import { requireDatabase } from '@/lib/db/d1';
 import { listCustomerAddresses } from '@/lib/db/repositories/customers';
 import {getContactVerificationStatus, resolveCheckoutContactPolicy} from '@/lib/auth/contact-verification';
+import { getCheckoutPolicyContext } from '@/lib/checkout/policy-context';
+import { getPlatformServiceFee } from '@/lib/db/repositories/platform-service-fee';
+import { VARIANT_PRICING_RULE_VERSION, variantPricingEnabled } from '@/lib/products/variant-pricing';
+import { ncmDemoCheckout } from '@/lib/shipping/ncm-demo-checkout';
 
 export const metadata: Metadata = { title: 'Secure checkout' };
 export const dynamic = 'force-dynamic';
 
 export default async function CheckoutPage() {
-  const deliveryRates=await getDeliveryRates(requireDatabase(env as unknown as {DB?:D1Database}));
+  const cookieStore=await cookies(),cartToken=cookieStore.get(CART_COOKIE)?.value;
+  const cartHash=cartToken?await hashOpaqueToken(cartToken):null;
+  const database=requireDatabase(env as unknown as {DB?:D1Database});
+  const paymentCapabilities=await readCheckoutPaymentCapabilities(database,{cartHash});
+  const deliveryRates=await getDeliveryRates(database);
   const customer = await getCustomerUser();
-  const contactStatus=customer?await getContactVerificationStatus(requireDatabase(env as unknown as {DB?:D1Database}),customer):null;
+  const contactStatus=customer?await getContactVerificationStatus(database,customer):null;
   const contactPolicy=resolveCheckoutContactPolicy((env as unknown as {CHECKOUT_CONTACT_POLICY?:string}).CHECKOUT_CONTACT_POLICY);
   const wallet = customer
-    ? await getWallet(
-        requireDatabase(env as unknown as { DB?: D1Database }),
-        customer.userId,
-      )
+    ? await getWallet(database, customer.userId)
     : null;
   const referralCode =
     (await cookies()).get('hastabazaar_referral')?.value || '';
   const addresses = customer
-    ? await listCustomerAddresses(
-        requireDatabase(env as unknown as { DB?: D1Database }),
-        customer.userId,
-      )
+    ? await listCustomerAddresses(database, customer.userId)
     : [];
   return (
     <div className="min-h-screen bg-muted/25">
       <SiteHeader />
       <main tabIndex={-1} id="main-content" className="shell py-8 sm:py-12">
         <CheckoutSteps current={1} />
-        <p className="eyebrow">Delivery within Nepal · Cash on delivery</p>
+        <p className="eyebrow">Delivery within Nepal · Review your payment method</p>
         <h1 className="mt-3 font-heading text-4xl tracking-tight sm:text-5xl">
           Let’s bring them home.
         </h1>
@@ -50,7 +54,13 @@ export default async function CheckoutPage() {
         </p>
         <div className="mt-8">
           <CheckoutForm
+            cartScope={cartHash??'no-cart'}
+            paymentCapabilities={paymentCapabilities}
+            pricingRuleVersion={variantPricingEnabled(database) ? VARIANT_PRICING_RULE_VERSION : undefined}
+            serviceFee={await getPlatformServiceFee(database)}
+            policyContext={await getCheckoutPolicyContext()}
             deliveryRates={deliveryRates}
+            ncmDemoQuotesEnabled={Boolean(ncmDemoCheckout(env))}
             walletBalancePaisa={wallet?.balancePaisa ?? 0}
             referralCampaign={wallet?.campaign}
             initialReferralCode={referralCode}

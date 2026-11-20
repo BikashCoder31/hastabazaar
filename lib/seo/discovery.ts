@@ -1,10 +1,13 @@
-import { publicProductEligibility } from '@/lib/products/eligibility';
+import type {PublicOfferSet} from '@/lib/products/public-offers';
+import { publicProductVisibility } from '@/lib/products/eligibility';
 export const PUBLIC_ORIGIN = 'https://hastabazaar.com';
 export const PUBLIC_PAGES = [
   '/',
   '/shop',
   '/about',
-  '/contact',
+  '/contact-us',
+  '/categories',
+  '/occasions',
   '/legal',
   '/shipping',
   '/returns',
@@ -16,8 +19,27 @@ export const PUBLIC_PAGES = [
 ];
 export function isDiscoverablePath(path: string): boolean {
   return (
-    PUBLIC_PAGES.includes(path) || /^\/(?:products|makers)\/[^/]+$/.test(path)
+    PUBLIC_PAGES.includes(path) || path === '/robots.txt' || path === '/sitemap.xml' || path === '/icon.png' ||
+    /^\/brand\/hastabazaar-(?:mark-(?:96|192|512)|icon-32|apple-touch-icon|logo(?:-lockup(?:-640)?)?)\.(?:png|webp)$/.test(path) ||
+    /^\/sitemaps\/(?:0|[1-9][0-9]{0,5})\.xml$/.test(path) ||
+    /^\/(?:products|makers)\/[^/]+$/.test(path) || /^\/api\/product-media\/[^/]+$/.test(path)
   );
+}
+export function permitsPublicIndexing(requestUrl: string, configuredOrigin?: string): boolean {
+  try {
+    const request = new URL(requestUrl);
+    if (request.username || request.password) return false;
+    if (configuredOrigin) {
+      const configured = new URL(configuredOrigin);
+      if (configured.origin !== PUBLIC_ORIGIN || configured.username || configured.password ||
+        configured.pathname !== '/' || configured.search || configured.hash) return false;
+    }
+    if (request.origin === PUBLIC_ORIGIN) return true;
+    // Passenger terminates TLS before Node. Permit its HTTP representation only
+    // for the exact canonical host with explicit production configuration.
+    // Never infer production from client-controlled forwarded headers.
+    return Boolean(configuredOrigin) && request.origin === 'http://hastabazaar.com';
+  } catch { return false; }
 }
 export function publicUrl(path: string): string {
   return PUBLIC_ORIGIN + path;
@@ -46,8 +68,10 @@ export function productStructuredData(
     slug: string;
     nameEn: string;
     descriptionEn: string;
-    pricePaisa: number;
+    pricePaisa: number | null;
+    offerSet?:PublicOfferSet|null;
     inventoryQuantity: number;
+    purchasable?: boolean;
     media: readonly { id: string; mimeType?: string }[];
   },
   rating: { count: number; average: number | null },
@@ -67,15 +91,7 @@ export function productStructuredData(
           ),
         }
       : {}),
-    offers: {
-      '@type': 'Offer',
-      url,
-      priceCurrency: 'NPR',
-      price: (product.pricePaisa / 100).toFixed(2),
-      availability:
-        'https://schema.org/' +
-        (product.inventoryQuantity > 0 ? 'InStock' : 'OutOfStock'),
-    },
+    offers: structuredOffers(product,url),
     ...(rating.count > 0 && rating.average != null
       ? {
           aggregateRating: {
@@ -107,7 +123,7 @@ export async function sitemapProductCount(
 ): Promise<number> {
   const row = await database
     .prepare(
-      `SELECT COUNT(*) AS count FROM products WHERE ${publicProductEligibility()}`,
+      `SELECT COUNT(*) AS count FROM products WHERE ${publicProductVisibility()}`,
     )
     .first<{ count: number }>();
   return Number(row?.count ?? 0);
@@ -116,7 +132,7 @@ export async function sitemapProducts(database: D1Database, page: number) {
   return (
     await database
       .prepare(
-        `SELECT slug,updated_at AS updatedAt FROM products WHERE ${publicProductEligibility()} ORDER BY id LIMIT 1000 OFFSET ?`,
+        `SELECT slug,updated_at AS updatedAt FROM products WHERE ${publicProductVisibility()} ORDER BY id LIMIT 1000 OFFSET ?`,
       )
       .bind((page - 1) * 1000)
       .all<{ slug: string; updatedAt: number }>()
@@ -129,4 +145,12 @@ export function xmlResponse(body: string): Response {
       'cache-control': 'no-store',
     },
   });
+}
+
+interface StructuredOffers {'@type':'Offer'|'AggregateOffer';url:string;priceCurrency:'NPR';price?:string;lowPrice?:string;highPrice?:string;offerCount?:number;availability:string;}
+function structuredOffers(product:{pricePaisa:number|null;inventoryQuantity:number;purchasable?:boolean;offerSet?:PublicOfferSet|null},url:string):StructuredOffers|undefined{
+ const set=product.offerSet,price=set?set.display.pricePaisa:product.pricePaisa;if(price===null||price<=0)return undefined;
+ const base={url,priceCurrency:'NPR' as const,availability:'https://schema.org/'+((set?set.orderable:product.purchasable!==false&&product.inventoryQuantity>0)?'InStock':'OutOfStock')};
+ if(set&&set.offers.length>1){const eligible=set.offers.filter(offer=>offer.orderable);return {...base,'@type':'AggregateOffer',lowPrice:(price/100).toFixed(2),highPrice:((set.display.maximumPricePaisa??price)/100).toFixed(2),offerCount:(eligible.length?eligible:set.offers).length};}
+ return {...base,'@type':'Offer',price:(price/100).toFixed(2)};
 }

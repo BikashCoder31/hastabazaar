@@ -137,11 +137,7 @@ export function AdminNavigation({
               return (
                 <div key={group} className="mb-3">
                   <p className="px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                    {group === 'Operations'
-                      ? 'Daily work'
-                      : group === 'Controls'
-                        ? 'Business & access'
-                        : group}
+                    {group}
                   </p>
                   <SidebarMenu>
                     {groupLinks.map((link) => {

@@ -1,4 +1,4 @@
-import { auditManualEmailProcessing } from '@/lib/operations/manual-email-audit';
+import { auditManualEmailProcessing, EmailDeliveryAuthorizationError } from '@/lib/operations/manual-email-audit';
 import { readBoundedBody, BodyTooLargeError } from '@/lib/http/bounded-body';
 import { env } from 'cloudflare:workers';
 import { requireStaffApi, StaffAuthorizationError } from '@/lib/auth/staff';
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
       { status: 403, headers },
     );
   try {
-    const actor = await requireStaffApi('admin.invite');
+    const actor = await requireStaffApi('email.delivery.manage');
     await readBoundedBody(request, 1024);
     const config = env as unknown as {
       DB?: D1Database;
@@ -42,13 +42,13 @@ export async function POST(request: Request) {
     return Response.json(
       {
         error:
-          error instanceof StaffAuthorizationError
+          error instanceof StaffAuthorizationError || error instanceof EmailDeliveryAuthorizationError
             ? error.message
             : 'Business email processing is unavailable.',
       },
       {
         status:
-          error instanceof StaffAuthorizationError
+          error instanceof StaffAuthorizationError || error instanceof EmailDeliveryAuthorizationError
             ? error.status
             : error instanceof BodyTooLargeError
               ? 413

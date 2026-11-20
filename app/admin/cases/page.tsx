@@ -20,6 +20,7 @@ export default async function AdminCasesPage() {
       <h1 className="mt-2 font-heading text-4xl tracking-tight">
         Returns and complaints
       </h1>
+      <Link href="/admin/cases/intake" className="mt-3 inline-block underline">Record an earlier email or support request</Link>
       <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
         Investigate item-level cases, preserve seller boundaries, and record
         every customer-facing decision in the current English interface.

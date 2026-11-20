@@ -11,6 +11,27 @@ import * as nodeBindings from '../lib/runtime/node-bindings';
 
 const { env, translateSqliteSql } = nodeBindings;
 
+void test('MariaDB publication translates the null-safe origin reference comparison', () => {
+  const sql = "SELECT origin_evidence_reference IS ?, 'origin_evidence_reference IS ?' FROM products /* origin_evidence_reference IS ? */";
+  const expected = "SELECT origin_evidence_reference <=> ?, 'origin_evidence_reference IS ?' FROM products /* origin_evidence_reference IS ? */";
+  assert.equal(translateSqliteSql(sql), expected);
+});
+
+let hostedBindings: Promise<typeof nodeBindings> | undefined;
+function isolatedHostedBindings() {
+  hostedBindings ??= (async () => {
+    const inheritedRuntime = process.env.HASTABAZAAR_RUNTIME_ENV;
+    try {
+      process.env.HASTABAZAAR_RUNTIME_ENV = 'test';
+      return await import(new URL('../lib/runtime/node-bindings.ts?node-hosting-smtp-fixture', import.meta.url).href) as typeof nodeBindings;
+    } finally {
+      if (inheritedRuntime === undefined) delete process.env.HASTABAZAAR_RUNTIME_ENV;
+      else process.env.HASTABAZAAR_RUNTIME_ENV = inheritedRuntime;
+    }
+  })();
+  return hostedBindings;
+}
+
 void test('Node staff bindings read cPanel configuration at runtime and reflect its removal', () => {
   const keys = [
     'HASTABAZAAR_SUPER_ADMIN_EMAIL', 'HASTABAZAAR_ADMIN_EMAIL',
@@ -36,7 +57,8 @@ void test('Node staff bindings read cPanel configuration at runtime and reflect 
   }
 });
 
-void test('Node email and Google bindings read cPanel configuration at runtime', () => {
+void test('Node email and Google bindings read cPanel configuration at runtime', async () => {
+  const { env: hostedEnv } = await isolatedHostedBindings();
   const keys = [
     'APP_ORIGIN', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET',
     'SMTP_HOST', 'SMTP_USER', 'SMTP_PASSWORD', 'EMAIL_FROM',
@@ -49,13 +71,13 @@ void test('Node email and Google bindings read cPanel configuration at runtime',
     process.env.SMTP_HOST = 'mail.hastabazaar.com';
     process.env.SMTP_USER = 'no-reply@hastabazaar.com';
     process.env.SMTP_PASSWORD = 'test-only-password';
-    process.env.EMAIL_FROM = 'HastaBazaar <no-reply@hastabazaar.com>';
-    assert.equal(env.APP_ORIGIN, 'https://hastabazaar.com');
-    assert.equal(env.GOOGLE_CLIENT_ID, 'client-id');
-    assert.equal(env.GOOGLE_CLIENT_SECRET, 'client-secret');
-    assert.equal(env.EMAIL_DELIVERY_CONFIGURED, 'true');
+    process.env.EMAIL_FROM = 'Hastabazaar <no-reply@hastabazaar.com>';
+    assert.equal(hostedEnv.APP_ORIGIN, 'https://hastabazaar.com');
+    assert.equal(hostedEnv.GOOGLE_CLIENT_ID, 'client-id');
+    assert.equal(hostedEnv.GOOGLE_CLIENT_SECRET, 'client-secret');
+    assert.equal(hostedEnv.EMAIL_DELIVERY_CONFIGURED, 'true');
     delete process.env.SMTP_PASSWORD;
-    assert.equal(env.EMAIL_DELIVERY_CONFIGURED, 'false');
+    assert.equal(hostedEnv.EMAIL_DELIVERY_CONFIGURED, 'false');
   } finally {
     keys.forEach((key, index) => {
       if (previous[index] === undefined) delete process.env[key];
@@ -98,6 +120,7 @@ void test('SMTP connection buffers a greeting sent immediately after TLS connect
 });
 
 void test('hosted staging SMTP rejects recipients outside its exact QA allowlist before connecting', async () => {
+  const { env: hostedEnv } = await isolatedHostedBindings();
   const values: Record<string, string> = {
     APP_ORIGIN: 'https://staging.hastabazaar.com', SMTP_HOST: 'localhost', SMTP_PORT: '0',
     SMTP_USER: 'qa-staging@example.test', SMTP_PASSWORD: 'test-only-password',
@@ -108,23 +131,23 @@ void test('hosted staging SMTP rejects recipients outside its exact QA allowlist
   const message = { subject: 'QA', text: 'QA', html: '<p>QA</p>' };
   try {
     Object.assign(process.env, values);
-    await assert.rejects(env.EMAIL.send({ ...message, to: 'customer@example.test' }), /recipient is not permitted/i);
+    await assert.rejects(hostedEnv.EMAIL.send({ ...message, to: 'customer@example.test' }), /recipient is not permitted/i);
     for (const recipient of ['Buyer <qa-staging+buyer@example.test>',
       'qa-staging+buyer@example.test,customer@example.test', 'qa-staging+buyer@example.test\r\nBcc: customer@example.test']) {
-      await assert.rejects(env.EMAIL.send({ ...message, to: recipient }), /recipient is not permitted/i);
+      await assert.rejects(hostedEnv.EMAIL.send({ ...message, to: recipient }), /recipient is not permitted/i);
     }
-    await assert.rejects(env.EMAIL.send({ ...message, to: 'QA-STAGING+BUYER@example.test' }), /SMTP_PORT must be a valid TCP port/);
+    await assert.rejects(hostedEnv.EMAIL.send({ ...message, to: 'QA-STAGING+BUYER@example.test' }), /SMTP_PORT must be a valid TCP port/);
     delete process.env.SMTP_RECIPIENT_ALLOWLIST;
-    await assert.rejects(env.EMAIL.send({ ...message, to: 'qa-staging+buyer@example.test' }), /recipient allowlist is invalid/i);
+    await assert.rejects(hostedEnv.EMAIL.send({ ...message, to: 'qa-staging+buyer@example.test' }), /recipient allowlist is invalid/i);
     for (const invalid of ['*', '[]', '["*@example.test"]', '["qa-staging+buyer@example.test",null]']) {
       process.env.SMTP_RECIPIENT_ALLOWLIST = invalid;
-      await assert.rejects(env.EMAIL.send({ ...message, to: 'qa-staging+buyer@example.test' }), /recipient allowlist is invalid/i);
+      await assert.rejects(hostedEnv.EMAIL.send({ ...message, to: 'qa-staging+buyer@example.test' }), /recipient allowlist is invalid/i);
     }
     process.env.APP_ORIGIN = 'https://hastabazaar.com';
     process.env.SMTP_RECIPIENT_ALLOWLIST = values.SMTP_RECIPIENT_ALLOWLIST;
-    await assert.rejects(env.EMAIL.send({ ...message, to: 'customer@example.test' }), /recipient is not permitted/i);
+    await assert.rejects(hostedEnv.EMAIL.send({ ...message, to: 'customer@example.test' }), /recipient is not permitted/i);
     delete process.env.SMTP_RECIPIENT_ALLOWLIST;
-    await assert.rejects(env.EMAIL.send({ ...message, to: 'customer@example.test' }), /SMTP_PORT must be a valid TCP port/);
+    await assert.rejects(hostedEnv.EMAIL.send({ ...message, to: 'customer@example.test' }), /SMTP_PORT must be a valid TCP port/);
   } finally {
     for (const [key, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[key];
@@ -236,6 +259,12 @@ for (const operation of ['count', 'list'] as const) {
     let emittedBindings: unknown[] = [];
     const database = {
       prepare(sql: string) {
+        // This query-shape test has no database. Supply the now-required explicit
+        // fictional published fee fact instead of returning a catalogue count as settings JSON.
+        if(/^\s*SELECT\s+id,\s*setting_key AS settingKey/.test(sql))return {bind(settingKey:string){
+          assert.ok(['independent_seller_commission_bps','managed_sale_linked_platform_retention_bps'].includes(settingKey));
+          return {first:async()=>({id:'qa-catalogue-fee-'+settingKey,settingKey,valueJson:'900',status:'published',version:1,revision:0,effectiveFrom:1,effectiveUntil:null,approvedBy:null})};
+        }};
         emittedSql = translateSqliteSql(sql);
         return {
           bind(...bindings: unknown[]) {

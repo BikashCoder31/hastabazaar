@@ -40,6 +40,8 @@ export async function POST(request: Request): Promise<Response> {
       );
     const database = requireDatabase(env as unknown as { DB?: D1Database });
     const hasImage = Object.prototype.hasOwnProperty.call(body, 'imageId');
+    const hasParent=Object.hasOwn(body,'parentId');
+    if(hasParent&&(body.kind!=='category'||!(body.parentId===null||typeof body.parentId==='string')||!(body.expectedParentId===null||typeof body.expectedParentId==='string')))return Response.json({error:'Select a category parent and its exact previous parent.'},{status:400});
     if (hasImage && (body.kind !== 'category' || !(body.imageId === null || typeof body.imageId === 'string') ||
       !(body.expectedImageId === null || typeof body.expectedImageId === 'string')))
       return Response.json({ error: 'Category image and current image baseline must be valid references or null.' }, { status: 400 });
@@ -63,6 +65,7 @@ export async function POST(request: Request): Promise<Response> {
                 : '',
           isActive: Boolean(body.isActive),
           sortOrder: Number(body.sortOrder),
+          ...(hasParent?{parentId:body.parentId as string|null,expectedParentId:body.expectedParentId as string|null}:{}),
           ...(hasImage ? { imageId: body.imageId as string | null, expectedImageId: body.expectedImageId as string | null } : {}),
         },
         requestId: body.idempotencyKey,

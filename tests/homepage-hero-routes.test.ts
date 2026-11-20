@@ -1,3 +1,5 @@
+// Keep the actual isolated staff/route boundary cases when this retained suite runs alone.
+import './homepage-content-actor-intent.test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
@@ -19,20 +21,18 @@ void test('homepage hero media management remains Super-Admin-only', () => {
   }
 });
 
-void test('admin upload and archive routes enforce trust, bounds, authority, and rollback', async () => {
+void test('admin media adapters retain bounded decoding and native upload/archive operations', async () => {
   const [collection, item] = await Promise.all([
     route('../app/api/admin/homepage/hero-media/route.ts'),
     route('../app/api/admin/homepage/hero-media/[id]/route.ts'),
   ]);
-  assert.match(collection, /requireStaffApi\('business_settings\.view'\)/);
-  assert.match(collection, /requireStaffApi\('business_settings\.manage'\)/);
-  assert.match(item, /requireStaffApi\('business_settings\.view'\)/);
-  assert.match(item, /requireStaffApi\('business_settings\.manage'\)/);
   assert.match(`${collection}\n${item}`, /isTrustedMutationRequest\(request\)/);
-  assert.match(collection, /readBoundedForm\(request,\s*22 \* 1024 \* 1024\)/);
+  assert.match(collection, /readBoundedForm\(request,\s*22\s*\*\s*1024\s*\*\s*1024\)/);
   assert.match(collection, /BodyTooLargeError/);
   assert.match(collection, /prepareHomepageHeroUpload/);
-  assert.match(collection, /await bucket\.delete\(objectKey\)/);
+  // Runtime SQL/blob tests cover lost ACK; a repository throw must not delete committed bytes.
+  assert.match(collection, /homepageHeroUploadIdentity/);
+  assert.match(collection, /createHomepageHeroMedia/);
   assert.match(item, /archiveHomepageHeroMedia/);
   assert.match(item, /requestId/);
   assert.match(item, /reason/);

@@ -1,3 +1,4 @@
+import {OrderOfferDetails} from '@/components/commerce/order-offer-details';
 import { getFirstCodReview } from '@/lib/orders/first-cod-review';
 import { listParcels, customerParcel } from '@/lib/operations/parcels';
 import { ParcelList } from '@/components/delivery/parcel-list';
@@ -8,9 +9,11 @@ import { ArrowLeft, MapPin, PackageCheck, Truck } from 'lucide-react';
 
 import { OrderStatusBadge } from '@/components/commerce/order-status-badge';
 import { SellerOrderFulfillmentActions } from '@/components/seller/order-fulfillment-actions';
-import { requireSellerPage } from '@/lib/auth/seller';
+import { requireSellerCenterPage } from '@/lib/auth/seller-center';
 import { requireDatabase } from '@/lib/db/d1';
 import { getSellerOrderDetail } from '@/lib/db/repositories/fulfillment';
+import { readOrderMarketplaceFeeViews } from '@/lib/db/repositories/fee-waivers';
+import { OrderMarketplaceFees } from '@/components/seller/order-marketplace-fees';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,19 +30,22 @@ export default async function SellerOrderPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const seller = await requireSellerPage(`/seller/orders/${id}`);
+  const seller = await requireSellerCenterPage(`/seller/orders/${id}`);
+  if (!seller.sellerId) notFound();
   const order = await getSellerOrderDetail(
     requireDatabase(env as unknown as { DB?: D1Database }),
     id,
     seller.sellerId,
   );
   if (!order) notFound();
+  const marketplaceFees = await readOrderMarketplaceFeeViews(requireDatabase(env as unknown as { DB?: D1Database }),order.items.map(item=>item.id));
   const codReview = await getFirstCodReview(
     requireDatabase(env as unknown as { DB?: D1Database }),
     id,
   );
   const codPending =
     codReview?.status === 'pending' && order.status !== 'cancelled';
+  const paymentPending=order.paymentMode==='manual_bank'&&!await requireDatabase(env as unknown as {DB?:D1Database}).prepare('SELECT 1 FROM manual_payment_windows WHERE order_id=? AND paid_at IS NOT NULL AND released_at IS NOT NULL AND closed_at IS NULL').bind(id).first();
   const parcels = await listParcels(
     requireDatabase(env as unknown as { DB?: D1Database }),
     id,
@@ -55,6 +61,8 @@ export default async function SellerOrderPage({
   );
   return (
     <div>
+      <Link href={`/seller/order-responses/${id}`} className="text-sm underline">Preparation issues and next updates</Link>
+      <OrderMarketplaceFees fees={marketplaceFees}/>
       <ParcelList
         parcels={parcels.map((p) =>
           customerParcel({
@@ -107,6 +115,7 @@ export default async function SellerOrderPage({
                     <strong>
                       {item.productName} × {item.quantity}
                     </strong>
+                      <OrderOfferDetails offer={item.offerSnapshot} />
                     <p className="mt-1 text-sm text-muted-foreground">
                       SKU {item.sku}
                     </p>
@@ -133,7 +142,7 @@ export default async function SellerOrderPage({
               <h2 className="font-heading text-2xl">Pickup and delivery</h2>
             </div>
             <p className="mt-4 text-sm leading-7 text-muted-foreground">
-              Pack securely and keep the order number on the parcel. HastaBazaar
+              Pack securely and keep the order number on the parcel. Hastabazaar
               operations coordinates carrier collection during the controlled
               launch.
             </p>
@@ -152,7 +161,7 @@ export default async function SellerOrderPage({
           <section className="rounded-2xl border bg-card p-6">
             <h2 className="font-heading text-2xl">Next action</h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Update only after every item shown here reaches the stated stage.
+              Update only the selected items after they reach the stated stage.
             </p>
             <div className="mt-5">
               {codPending ? (
@@ -160,12 +169,13 @@ export default async function SellerOrderPage({
                   Awaiting staff confirmation of this first-time COD order.
                   Begin packing after confirmation.
                 </p>
+              ) : paymentPending ? (<p className="text-sm leading-6">Payment has not yet released these items for preparation. Check the current payment review before starting work.</p>) : !seller.approvedSeller ? (
+                <p className="text-sm leading-6">This order remains in your history. Contact Hastabazaar through Requests &amp; help for its next permitted action.</p>
               ) : (
                 <SellerOrderFulfillmentActions
                   orderId={order.id}
-                  itemStatuses={order.items.map(
-                    (item) => item.fulfillmentStatus,
-                  )}
+                  actorId={seller.userId}
+                  items={order.items}
                 />
               )}
             </div>

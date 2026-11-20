@@ -1,9 +1,20 @@
+import {staffMutationGuard} from './staff-mutation-guard';
 import { getEffectiveBusinessSetting } from './business-settings';
 import {
   isNativeSellerRegistrationSlide,
   validateHomepageHeroDraft,
   type HomepageHeroSlides,
 } from '../../homepage/hero-slides';
+import { homepageHeroStaticAssetPath } from '../../homepage/hero-static-assets';
+
+export {
+  homepageHeroStaticAssetPath,
+  homepageHeroStaticAssets,
+} from '../../homepage/hero-static-assets';
+
+export class HomepageHeroMediaAuthorizationError extends Error{readonly status=403;}
+export class HomepageHeroMediaConflictError extends Error{readonly status=409;}
+export class HomepageHeroMediaWriteUncertainError extends Error{readonly status=503;}
 
 export type HomepageHeroMediaRecord = Readonly<{
   id: string;
@@ -39,30 +50,6 @@ const columns = `
   duration_seconds AS durationSeconds, created_by AS createdBy,
   created_at AS createdAt, archived_at AS archivedAt`;
 
-const staticAssets = new Map<string, { objectKey: string; path: string }>([
-  [
-    'system-nepal-craft-hero',
-    {
-      objectKey: 'public/homepage/nepal-craft-hero.webp',
-      path: '/homepage/nepal-craft-hero.webp',
-    },
-  ],
-  [
-    'system-maker-hands-hero',
-    {
-      objectKey: 'public/homepage/maker-hands-hero.webp',
-      path: '/homepage/maker-hands-hero.webp',
-    },
-  ],
-  [
-    'system-meaningful-gifts-hero',
-    {
-      objectKey: 'public/homepage/meaningful-gifts-hero.webp',
-      path: '/homepage/meaningful-gifts-hero.webp',
-    },
-  ],
-]);
-
 function safeIdentifier(label: string, value: string): string {
   const normalized = value.trim();
   if (!/^[A-Za-z0-9][A-Za-z0-9_-]{3,79}$/.test(normalized)) {
@@ -71,7 +58,11 @@ function safeIdentifier(label: string, value: string): string {
   return normalized;
 }
 
-function positiveInteger(label: string, value: number, maximum: number): number {
+function positiveInteger(
+  label: string,
+  value: number,
+  maximum: number,
+): number {
   if (!Number.isSafeInteger(value) || value < 1 || value > maximum) {
     throw new RangeError(`${label} must be a positive bounded integer.`);
   }
@@ -96,18 +87,13 @@ function normalizeInput(
 ): Omit<HomepageHeroMediaRecord, 'archivedAt'> {
   const id = safeIdentifier('Hero media ID', input.id);
   if (!input.objectKey.startsWith('private/homepage-hero/')) {
-    throw new RangeError('Uploaded media must use a private homepage hero object key.');
+    throw new RangeError(
+      'Uploaded media must use a private homepage hero object key.',
+    );
   }
-  if (
-    !/^private\/homepage-hero\/[A-Za-z0-9][A-Za-z0-9_-]{3,79}$/.test(
-      input.objectKey,
-    )
-  ) {
-    throw new RangeError('Uploaded media must use a private homepage hero object key.');
-  }
-  if (input.objectKey !== `private/homepage-hero/${id}`) {
-    throw new RangeError('Hero media identity and object key must match.');
-  }
+  // Legacy retained keys remain readable; new uploads bind a sanitized-byte identity.
+  const prefix=`private/homepage-hero/${id}`;
+  if(input.objectKey!==prefix&&!(input.objectKey.startsWith(prefix+'/')&&/^[a-f0-9]{64}$/.test(input.objectKey.slice(prefix.length+1))))throw new RangeError('Hero media identity and private object key must match.');
   const originalName = input.originalName.trim();
   if (
     !originalName ||
@@ -119,14 +105,19 @@ function normalizeInput(
   if (input.mimeType !== 'image/webp' && input.mimeType !== 'video/mp4') {
     throw new RangeError('Hero media type must be WebP or MP4.');
   }
-  if (!input.createdBy) {
-    throw new RangeError('Uploaded hero media requires its authenticated creator.');
+  if (!input.createdBy||input.createdBy.length>191||input.createdBy!==input.createdBy.trim()) {
+    throw new RangeError(
+      'Uploaded hero media requires its authenticated creator.',
+    );
   }
   const duration = input.durationSeconds;
   if (
     (input.mimeType === 'image/webp' && duration !== null) ||
     (input.mimeType === 'video/mp4' &&
-      (duration === null || !Number.isFinite(duration) || duration <= 0 || duration > 15))
+      (duration === null ||
+        !Number.isFinite(duration) ||
+        duration <= 0 ||
+        duration > 15))
   ) {
     throw new RangeError('Hero media duration does not match its media type.');
   }
@@ -135,7 +126,11 @@ function normalizeInput(
     objectKey: input.objectKey,
     originalName,
     mimeType: input.mimeType,
-    sizeBytes: positiveInteger('Hero media size', input.sizeBytes, 20 * 1024 * 1024),
+    sizeBytes: positiveInteger(
+      'Hero media size',
+      input.sizeBytes,
+      20 * 1024 * 1024,
+    ),
     width: positiveInteger('Hero media width', input.width, 10_000),
     height: positiveInteger('Hero media height', input.height, 10_000),
     durationSeconds: duration,
@@ -160,52 +155,28 @@ async function mediaById(
     )
     .bind(id)
     .first<MediaRow>();
-  return row ? parseRow(row) : null;
+  return row&&row.id===id ? parseRow(row) : null;
 }
 
-export function homepageHeroStaticAssetPath(
-  media: HomepageHeroMediaRecord,
-): string | null {
-  const expected = staticAssets.get(media.id);
-  return expected &&
-    expected.objectKey === media.objectKey &&
-    media.mimeType === 'image/webp'
-    ? expected.path
-    : null;
+export function sameHomepageHeroUpload(media:HomepageHeroMediaRecord,input:Omit<HomepageHeroMediaRecord,'archivedAt'|'createdAt'>):boolean{
+ return media.id===input.id&&media.objectKey===input.objectKey&&media.originalName===input.originalName&&media.mimeType===input.mimeType&&media.sizeBytes===input.sizeBytes&&media.width===input.width&&media.height===input.height&&media.durationSeconds===input.durationSeconds&&media.createdBy===input.createdBy;
 }
-
-export async function createHomepageHeroMedia(
-  database: D1Database,
-  input: Omit<HomepageHeroMediaRecord, 'archivedAt'>,
-): Promise<HomepageHeroMediaRecord> {
-  const value = normalizeInput(input);
-  try {
-    await database
-      .prepare(
-        `INSERT INTO homepage_hero_media (
-          id, object_key, original_name, mime_type, size_bytes,
-          width, height, duration_seconds, created_by, created_at, archived_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
-      )
-      .bind(
-        value.id,
-        value.objectKey,
-        value.originalName,
-        value.mimeType,
-        value.sizeBytes,
-        value.width,
-        value.height,
-        value.durationSeconds,
-        value.createdBy,
-        value.createdAt,
-      )
-      .run();
-  } catch {
-    throw new Error('Homepage hero media conflicts with an existing upload.');
-  }
-  const created = await mediaById(database, value.id, true);
-  if (!created) throw new Error('Homepage hero media creation could not be verified.');
-  return created;
+export async function createHomepageHeroMedia(database:D1Database,input:Omit<HomepageHeroMediaRecord,'archivedAt'>):Promise<HomepageHeroMediaRecord>{
+ const value=normalizeInput(input),authority=await staffMutationGuard(database,value.createdBy!,'business_settings.manage',HomepageHeroMediaAuthorizationError);
+ const existing=await mediaById(database,value.id,true);
+ if(existing){if(!sameHomepageHeroUpload(existing,value))throw new HomepageHeroMediaConflictError('This upload reference is already bound to another exact actor or file.');await staffMutationGuard(database,value.createdBy!,'business_settings.manage',HomepageHeroMediaAuthorizationError);return existing;}
+ try{await database.batch([...authority.statements,
+  database.prepare(`INSERT INTO homepage_hero_media(id,object_key,original_name,mime_type,size_bytes,width,height,duration_seconds,created_by,created_at,archived_at)VALUES(?,?,?,?,?,?,?,?,?,?,NULL)`).bind(value.id,value.objectKey,value.originalName,value.mimeType,value.sizeBytes,value.width,value.height,value.durationSeconds,value.createdBy,value.createdAt),
+  database.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,ip_hash,created_at)VALUES(?,?,'homepage_hero_media.created','homepage_hero_media',?,'Private homepage media upload recorded.',NULL,?,?,NULL,?)`).bind(crypto.randomUUID(),value.createdBy,value.id,JSON.stringify(value),value.id,value.createdAt),
+ ]);}catch{
+  let stored:HomepageHeroMediaRecord|null;try{stored=await mediaById(database,value.id,true);}catch{throw new HomepageHeroMediaWriteUncertainError('The original upload outcome could not be confirmed.');}
+  if(stored){if(!sameHomepageHeroUpload(stored,value))throw new HomepageHeroMediaConflictError('This upload reference is already bound to another exact actor or file.');await staffMutationGuard(database,value.createdBy!,'business_settings.manage',HomepageHeroMediaAuthorizationError);return stored;}
+  await staffMutationGuard(database,value.createdBy!,'business_settings.manage',HomepageHeroMediaAuthorizationError);
+  throw new HomepageHeroMediaWriteUncertainError('The original upload outcome could not be confirmed.');
+ }
+ let created:HomepageHeroMediaRecord|null;try{created=await mediaById(database,value.id,true);}catch{throw new HomepageHeroMediaWriteUncertainError('The original upload outcome could not be confirmed.');}
+ await staffMutationGuard(database,value.createdBy!,'business_settings.manage',HomepageHeroMediaAuthorizationError);
+ if(!created||!sameHomepageHeroUpload(created,value))throw new HomepageHeroMediaWriteUncertainError('The original upload outcome could not be confirmed.');return created;
 }
 
 export async function listHomepageHeroMediaForAdmin(
@@ -281,24 +252,23 @@ export async function archiveHomepageHeroMedia(
   },
 ): Promise<void> {
   const id = safeIdentifier('Hero media ID', input.id);
-  const actorId = safeIdentifier('Archive actor', input.actorId);
+  const actorId=input.actorId;if(typeof actorId!=='string'||!actorId||actorId.length>191||actorId!==actorId.trim())throw new RangeError('Archive actor is invalid.');
+  const authority=await staffMutationGuard(database,actorId,'business_settings.manage',HomepageHeroMediaAuthorizationError);
   const archiveReason = reason(input.reason);
   const operationId = requestId(input.requestId);
-  const now = positiveInteger('Archive time', input.now, Number.MAX_SAFE_INTEGER);
-  const replay = await database
-    .prepare(
-      `SELECT id FROM audit_logs
-       WHERE action='homepage_hero_media.archived' AND subject_id=? AND request_id=?`,
-    )
-    .bind(id, operationId)
-    .first<{ id: string }>();
-  if (replay) return;
+  const now = positiveInteger(
+    'Archive time',
+    input.now,
+    Number.MAX_SAFE_INTEGER,
+  );
+  const replay=async()=>{const receipt=await database.prepare(`SELECT id,actor_id AS actorId,reason FROM audit_logs WHERE action='homepage_hero_media.archived' AND subject_id=? AND request_id=?`).bind(id,operationId).first<{id:string;actorId:string|null;reason:string|null}>();if(receipt&&(receipt.actorId!==actorId||receipt.reason!==archiveReason))throw new HomepageHeroMediaConflictError('This archive reference already records a different original command.');return receipt;};
+  if(await replay()){await staffMutationGuard(database,actorId,'business_settings.manage',HomepageHeroMediaAuthorizationError);return;}
   const media = await mediaById(database, id, true);
   if (!media) throw new Error('Homepage hero media was not found.');
   if (homepageHeroStaticAssetPath(media)) {
     throw new Error('Built-in homepage hero media cannot be archived.');
   }
-  if (media.archivedAt !== null) return;
+  if(media.archivedAt!==null){await staffMutationGuard(database,actorId,'business_settings.manage',HomepageHeroMediaAuthorizationError);return;}
 
   const versions = await database
     .prepare(
@@ -312,18 +282,22 @@ export async function archiveHomepageHeroMedia(
       slides = validateHomepageHeroDraft(JSON.parse(version.valueJson));
     } catch {
       if (version.valueJson.includes(`"${id}"`)) {
-        throw new Error('Media referenced by a retained version cannot be archived.');
+        throw new Error(
+          'Media referenced by a retained version cannot be archived.',
+        );
       }
       continue;
     }
     if (referencedMediaIds(slides).has(id)) {
-      throw new Error('Media referenced by a retained version cannot be archived.');
+      throw new Error(
+        'Media referenced by a retained version cannot be archived.',
+      );
     }
   }
 
   const guardId = crypto.randomUUID();
   try {
-    await database.batch([
+    await database.batch([...authority.statements,
       database
         .prepare(
           `INSERT INTO business_setting_guards (id, valid)
@@ -357,11 +331,18 @@ export async function archiveHomepageHeroMedia(
           operationId,
           now,
         ),
-      database.prepare('DELETE FROM business_setting_guards WHERE id=?').bind(guardId),
+      database
+        .prepare('DELETE FROM business_setting_guards WHERE id=?')
+        .bind(guardId),
     ]);
-  } catch {
-    throw new Error('Media referenced by a retained version cannot be archived.');
+  }catch{
+    try{if(await replay()){await staffMutationGuard(database,actorId,'business_settings.manage',HomepageHeroMediaAuthorizationError);return;}}catch(proof){if(proof instanceof HomepageHeroMediaAuthorizationError||proof instanceof HomepageHeroMediaConflictError)throw proof;throw new HomepageHeroMediaWriteUncertainError('The original archive outcome could not be confirmed.');}
+    await staffMutationGuard(database,actorId,'business_settings.manage',HomepageHeroMediaAuthorizationError);
+    const referenced=await database.prepare("SELECT 1 FROM business_setting_versions WHERE setting_key='homepage_hero_slides' AND value_json LIKE ? LIMIT 1").bind(`%"${id}"%`).first();
+    if(referenced)throw new HomepageHeroMediaConflictError('Media referenced by a retained version cannot be archived.');
+    throw new HomepageHeroMediaWriteUncertainError('The original archive outcome could not be confirmed.');
   }
+  await staffMutationGuard(database,actorId,'business_settings.manage',HomepageHeroMediaAuthorizationError);
 }
 
 export async function assertHomepageHeroMediaReady(
@@ -373,7 +354,8 @@ export async function assertHomepageHeroMediaReady(
     // slide identity bypasses image lookup; all other media stays validated.
     if (!slide.enabled || isNativeSellerRegistrationSlide(slide)) continue;
     const media = await mediaById(database, slide.mediaId, false);
-    const requiredMime = slide.mediaType === 'video' ? 'video/mp4' : 'image/webp';
+    const requiredMime =
+      slide.mediaType === 'video' ? 'video/mp4' : 'image/webp';
     if (!media || media.mimeType !== requiredMime) {
       throw new RangeError(
         `Homepage hero media ${slide.mediaId} is missing, archived, or has the wrong type.`,

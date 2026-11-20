@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {registerHooks} from 'node:module';
+import {completeVersionFixture} from './helpers/complete-version-fixture';
+declare global{var intakeHttpDb:D1Database;var intakeHttpActor:string|null;}
+registerHooks({resolve(specifier,context,next){const source=specifier==='cloudflare:workers'?'export const env={get DB(){return globalThis.intakeHttpDb}}':specifier==='@/lib/auth/seller-center'?"export class SellerCenterAuthorizationError extends Error{constructor(message,status){super(message);this.status=status}};export async function requireSellerCenterApi(){if(!globalThis.intakeHttpActor)throw new SellerCenterAuthorizationError('Sign in',401);return {userId:globalThis.intakeHttpActor,sellerId:'registered'}}":null;return source?{url:'data:text/javascript,'+encodeURIComponent(source),shortCircuit:true}:next(specifier,context);}});
+void test('optional workspace HTTP saves and sends an empty candidate with closed fields, trusted origin and exact ownership',async()=>{
+ const f=await completeVersionFixture();globalThis.intakeHttpDb=f.db;try{
+  const path='../app/api/seller/product-intakes/workspace/route',route=await import(path).catch(()=>null);assert.equal(typeof route?.POST,'function','The actual optional editor needs a native owner API.');
+  const url='http://localhost:3018/api/seller/product-intakes/workspace',input={action:'save',draftId:null,categoryId:null,answers:{},offers:{axes:[],offers:[]},mediaIds:[],privateReview:{},requestId:'http-empty-workspace',expectedRevision:null},post=(body:unknown,origin='http://localhost:3018')=>new Request(url,{method:'POST',headers:{origin,'Content-Type':'application/json'},body:JSON.stringify(body)});
+  globalThis.intakeHttpActor=null;assert.equal((await route.POST(post(input))).status,401);globalThis.intakeHttpActor='registered-owner';assert.equal((await route.POST(post(input,'https://untrusted.example'))).status,403);assert.equal((await route.POST(post({...input,actorId:'reviewer'}))).status,400);
+  const savedResponse=await route.POST(post(input));assert.equal(savedResponse.status,200);const saved=await savedResponse.json();assert.deepEqual(await(await route.POST(post(input))).json(),saved);assert.equal(savedResponse.headers.get('cache-control'),'no-store');
+  const get=()=>new Request(url+'?draftId='+saved.id);assert.equal((await route.GET(new Request(get().url+'&draftId=another'))).status,400);globalThis.intakeHttpActor='foreign';assert.equal((await route.GET(get())).status,403);globalThis.intakeHttpActor='registered-owner';
+  const history=await import('../app/api/seller/product-intakes/history/route');assert.equal((await history.GET(new Request('http://localhost:3018/api/seller/product-intakes/history?draftId='+saved.id))).status,200);assert.equal((await history.GET(new Request('http://localhost:3018/api/seller/product-intakes/history?draftId='+saved.id+'&versionId='+saved.versionId))).status,200);globalThis.intakeHttpActor='foreign';assert.equal((await history.GET(new Request('http://localhost:3018/api/seller/product-intakes/history?draftId='+saved.id))).status,403);globalThis.intakeHttpActor='registered-owner';
+  const send=await route.POST(post({action:'send',draftId:saved.id,versionId:saved.versionId,intent:'help',note:'',requestId:'http-empty-send',expectedRevision:String(saved.revision)}));assert.equal(send.status,200);assert.equal((await send.json()).state,'details_needed');assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM products').get()?.n,0);
+ }finally{f.dispose();}
+});

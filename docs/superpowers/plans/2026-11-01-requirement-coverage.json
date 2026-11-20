@@ -1,0 +1,4542 @@
+{
+  "prepared": "2026-11-01",
+  "sources": [
+    {
+      "path": "docs/superpowers/plans/2026-10-30-seller-order-response.md",
+      "sha256": "59ff5efaf5cd0a97ddfaf6420baa71258845829ffd828da75762f3381935e897",
+      "owners": [
+        "T06",
+        "T14",
+        "T22",
+        "T32"
+      ],
+      "sections": [
+        {
+          "id": "R001",
+          "line": 9,
+          "heading": "Final paired walkthrough — approved, 1 November 2026",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R002",
+          "line": 22,
+          "heading": "Category and variant detail — approved, 1 November 2026",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R003",
+          "line": 28,
+          "heading": "Optional product entry, support and Super Admin oversight — approved, 31 October 2026",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R004",
+          "line": 39,
+          "heading": "Retail/resale, real variants and pricing guidance — 31 October 2026",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R005",
+          "line": 53,
+          "heading": "Latest finance approval amendment — 31 October 2026",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R006",
+          "line": 57,
+          "heading": "Version scope and new seller price guidance — 31 October 2026",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R007",
+          "line": 69,
+          "heading": "Complete-plan review — 30 October 2026",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R008",
+          "line": 73,
+          "heading": "Overview and shared review workflow — approved",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R009",
+          "line": 83,
+          "heading": "Sellers section — approved",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R010",
+          "line": 92,
+          "heading": "Products & storefront — approved",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R011",
+          "line": 102,
+          "heading": "Published-product changes and review target — approved",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R012",
+          "line": 110,
+          "heading": "Public profile changes, seven-day cooldown and review target — approved",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R013",
+          "line": 118,
+          "heading": "Orders & customer care — approved",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R014",
+          "line": 130,
+          "heading": "Cancellation and return rules and review timings — approved",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R015",
+          "line": 139,
+          "heading": "Finance & payments — approved",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R016",
+          "line": 153,
+          "heading": "Fees, programs & promotions — approved",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R017",
+          "line": 164,
+          "heading": "Fee publication, scheduled replacements and combinations — approved",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R018",
+          "line": 174,
+          "heading": "Bank/identity changes and payout approval — approved",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R019",
+          "line": 185,
+          "heading": "Refunds after seller payouts and recovery — approved",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R020",
+          "line": 195,
+          "heading": "Manual payment rules and targets — approved",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R021",
+          "line": 206,
+          "heading": "Team & business policies — approved, 31 October 2026",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R022",
+          "line": 217,
+          "heading": "System health & records — approved; backup program deferred, 31 October 2026",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R023",
+          "line": 228,
+          "heading": "Standard payout request and paired screens — approved, updated 1 November 2026",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R024",
+          "line": 238,
+          "heading": "Current planning scope — consolidated seller workspaces",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R025",
+          "line": 242,
+          "heading": "Agreed two-workspace approach",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R026",
+          "line": 259,
+          "heading": "Form Management reliability and simplification — approved foundation",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R027",
+          "line": 278,
+          "heading": "Existing-form field review — cleanup and product review intake approved",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R028",
+          "line": 299,
+          "heading": "Seller dashboard — detailed planning scope",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R029",
+          "line": 317,
+          "heading": "Header notification bell — approved quick-access view",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R030",
+          "line": 321,
+          "heading": "Current local evidence",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R031",
+          "line": 325,
+          "heading": "Approved behavior",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R032",
+          "line": 339,
+          "heading": "Direct destination examples",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R033",
+          "line": 352,
+          "heading": "Work to retain for later implementation",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R034",
+          "line": 362,
+          "heading": "Email delivery — approved rename and requested automatic operation",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R035",
+          "line": 385,
+          "heading": "Commission transition and wording — agreed policy",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R036",
+          "line": 391,
+          "heading": "Agreed timing and acceptance behavior",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R037",
+          "line": 402,
+          "heading": "Acceptance hold, notifications and assisted resolution — agreed scope",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R038",
+          "line": 420,
+          "heading": "Approved reminder schedule and follow-up deadlines",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R039",
+          "line": 461,
+          "heading": "Findings from local source inspection",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R040",
+          "line": 469,
+          "heading": "Agreed labels and display hierarchy",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R041",
+          "line": 485,
+          "heading": "Replace percentage pairs with understandable amounts",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R042",
+          "line": 497,
+          "heading": "Super Admin oversight and cross-screen consistency",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R043",
+          "line": 507,
+          "heading": "Later verification and remaining transition detail",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R044",
+          "line": 523,
+          "heading": "Company bank account management and manual payments — agreed planning scope",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R045",
+          "line": 539,
+          "heading": "Agreed requirements",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R046",
+          "line": 548,
+          "heading": "Existing system and read-only inventory (30 October 2026)",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R047",
+          "line": 556,
+          "heading": "Implementation and verification work, when authorized",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R048",
+          "line": 567,
+          "heading": "Decisions still to make",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R049",
+          "line": 575,
+          "heading": "Seller shop-profile changes and staff notifications — added for planning",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R050",
+          "line": 577,
+          "heading": "Current behavior checked in code",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R051",
+          "line": 583,
+          "heading": "Proposed work, subject to further decisions",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R052",
+          "line": 594,
+          "heading": "Screenshot reconciliation and correction",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R053",
+          "line": 602,
+          "heading": "User-approved requirements: reviewed registration and bank changes",
+          "owners": [
+            "T06",
+            "T14",
+            "T22",
+            "T32"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-30-planning-readiness-review.md",
+      "sha256": "ba750b31533e8d86bb7b24df2198ea9bc5a4b1a41cfefaf24f34790d23b70368",
+      "owners": [
+        "T00"
+      ],
+      "sections": [
+        {
+          "id": "R054",
+          "line": 15,
+          "heading": "1. Scope, evidence and overall finding",
+          "owners": [
+            "T00"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R055",
+          "line": 25,
+          "heading": "2. Decisions already settled — do not reopen unnecessarily",
+          "owners": [
+            "T00"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R056",
+          "line": 51,
+          "heading": "3. Super Admin structure — approval coverage and remaining design",
+          "owners": [
+            "T00"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R057",
+          "line": 72,
+          "heading": "4. Public customer clarity — approved presentation",
+          "owners": [
+            "T00"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R058",
+          "line": 95,
+          "heading": "5. Decision register — settled and remaining",
+          "owners": [
+            "T00"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R059",
+          "line": 129,
+          "heading": "5.1 Remaining decisions and mapping",
+          "owners": [
+            "T00"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R060",
+          "line": 139,
+          "heading": "6. Technical preparation and operational evidence — not repeated policy approvals",
+          "owners": [
+            "T00"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R061",
+          "line": 156,
+          "heading": "7. Contradictions and stale instructions to reconcile before execution",
+          "owners": [
+            "T00"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R062",
+          "line": 174,
+          "heading": "8. Recommended planning sequence and completion check",
+          "owners": [
+            "T00"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-31-single-super-admin-finance-approval.md",
+      "sha256": "24609fc17d1d8f1408e80809ac414576312f84355c364fd438a0d6a189cb4e0e",
+      "owners": [
+        "T02",
+        "T08",
+        "T25",
+        "T26",
+        "T27"
+      ],
+      "sections": [
+        {
+          "id": "R063",
+          "line": 5,
+          "heading": "1. Approved rule",
+          "owners": [
+            "T02",
+            "T08",
+            "T25",
+            "T26",
+            "T27"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R064",
+          "line": 11,
+          "heading": "2. Covered actions and unchanged authority",
+          "owners": [
+            "T02",
+            "T08",
+            "T25",
+            "T26",
+            "T27"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R065",
+          "line": 27,
+          "heading": "3. Checks still required",
+          "owners": [
+            "T02",
+            "T08",
+            "T25",
+            "T26",
+            "T27"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R066",
+          "line": 38,
+          "heading": "4. Existing packets and implementation mapping",
+          "owners": [
+            "T02",
+            "T08",
+            "T25",
+            "T26",
+            "T27"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-31-published-product-edit-rules.md",
+      "sha256": "9a0a5f5be705cf2d3ff6a6cf885e1e61a36fff8ee65f1533f9d8a5ac7999e072",
+      "owners": [
+        "T18"
+      ],
+      "sections": [
+        {
+          "id": "R067",
+          "line": 9,
+          "heading": "1. Approved approach",
+          "owners": [
+            "T18"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R068",
+          "line": 17,
+          "heading": "2. Local source evidence",
+          "owners": [
+            "T18"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R069",
+          "line": 31,
+          "heading": "3. Field-by-field handling",
+          "owners": [
+            "T18"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R070",
+          "line": 55,
+          "heading": "4. Seller workflow and version rules",
+          "owners": [
+            "T18"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R071",
+          "line": 69,
+          "heading": "5. Admin review and publication",
+          "owners": [
+            "T18"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R072",
+          "line": 83,
+          "heading": "6. Quality and urgent corrections",
+          "owners": [
+            "T18"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R073",
+          "line": 95,
+          "heading": "7. Ownership, target and notifications",
+          "owners": [
+            "T18"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R074",
+          "line": 105,
+          "heading": "8. Later implementation and acceptance boundaries",
+          "owners": [
+            "T18"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R075",
+          "line": 113,
+          "heading": "9. Decision status",
+          "owners": [
+            "T18"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-31-manual-payment-rules.md",
+      "sha256": "77ad92757d61a16f6cd14b4bd7de5f7ffc5f21723874e463801c86eb89d3bead",
+      "owners": [
+        "T11",
+        "T20",
+        "T21",
+        "T25"
+      ],
+      "sections": [
+        {
+          "id": "R076",
+          "line": 9,
+          "heading": "1. Intent, approach and boundary",
+          "owners": [
+            "T11",
+            "T20",
+            "T21",
+            "T25"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R077",
+          "line": 17,
+          "heading": "2. Source findings and required later reconciliation",
+          "owners": [
+            "T11",
+            "T20",
+            "T21",
+            "T25"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R078",
+          "line": 33,
+          "heading": "3. Records and staff authority",
+          "owners": [
+            "T11",
+            "T20",
+            "T21",
+            "T25"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R079",
+          "line": 51,
+          "heading": "4. Issuing instructions and verifying receipts",
+          "owners": [
+            "T11",
+            "T20",
+            "T21",
+            "T25"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R080",
+          "line": 64,
+          "heading": "5. Approved payment deadline and stock reservation",
+          "owners": [
+            "T11",
+            "T20",
+            "T21",
+            "T25"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R081",
+          "line": 88,
+          "heading": "6. Partial, excess, duplicate and late money",
+          "owners": [
+            "T11",
+            "T20",
+            "T21",
+            "T25"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R082",
+          "line": 106,
+          "heading": "7. Refund destination, approval and actual completion",
+          "owners": [
+            "T11",
+            "T20",
+            "T21",
+            "T25"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R083",
+          "line": 120,
+          "heading": "8. COD collection and company remittance",
+          "owners": [
+            "T11",
+            "T20",
+            "T21",
+            "T25"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R084",
+          "line": 142,
+          "heading": "9. Reversals, reconciliation and follow-up",
+          "owners": [
+            "T11",
+            "T20",
+            "T21",
+            "T25"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R085",
+          "line": 156,
+          "heading": "10. Interface, rollout and later verification",
+          "owners": [
+            "T11",
+            "T20",
+            "T21",
+            "T25"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R086",
+          "line": 170,
+          "heading": "11. Decision status",
+          "owners": [
+            "T11",
+            "T20",
+            "T21",
+            "T25"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-31-bank-identity-changes-payout-approval.md",
+      "sha256": "63916ac3ba35cd5fbb2bcb390b4ed700bab4afd5070acc6cc995bcd18052c866",
+      "owners": [
+        "T07",
+        "T08",
+        "T26",
+        "T28",
+        "T33"
+      ],
+      "sections": [
+        {
+          "id": "R087",
+          "line": 7,
+          "heading": "1. Approved approach and scope",
+          "owners": [
+            "T07",
+            "T08",
+            "T26",
+            "T28",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R088",
+          "line": 17,
+          "heading": "2. Local evidence and implementation gaps",
+          "owners": [
+            "T07",
+            "T08",
+            "T26",
+            "T28",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R089",
+          "line": 30,
+          "heading": "3. Change request and hold boundaries",
+          "owners": [
+            "T07",
+            "T08",
+            "T26",
+            "T28",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R090",
+          "line": 49,
+          "heading": "4. Seller and Super Admin workflow",
+          "owners": [
+            "T07",
+            "T08",
+            "T26",
+            "T28",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R091",
+          "line": 62,
+          "heading": "5. Pending payouts: status-by-status policy",
+          "owners": [
+            "T07",
+            "T08",
+            "T26",
+            "T28",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R092",
+          "line": 80,
+          "heading": "6. New orders and existing orders during review",
+          "owners": [
+            "T07",
+            "T08",
+            "T26",
+            "T28",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R093",
+          "line": 90,
+          "heading": "7. Payout approval and manual execution",
+          "owners": [
+            "T07",
+            "T08",
+            "T26",
+            "T28",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R094",
+          "line": 106,
+          "heading": "8. Screen states, ownership and notifications",
+          "owners": [
+            "T07",
+            "T08",
+            "T26",
+            "T28",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R095",
+          "line": 118,
+          "heading": "9. Existing records at a later authorized rollout",
+          "owners": [
+            "T07",
+            "T08",
+            "T26",
+            "T28",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R096",
+          "line": 130,
+          "heading": "10. Later acceptance cases and approval boundary",
+          "owners": [
+            "T07",
+            "T08",
+            "T26",
+            "T28",
+            "T33"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-31-refunds-after-payout-recovery.md",
+      "sha256": "d4f8b82993c085ff6d341e5c882377040e064fcf83d43d9296401ec76733c11b",
+      "owners": [
+        "T25",
+        "T27"
+      ],
+      "sections": [
+        {
+          "id": "R097",
+          "line": 7,
+          "heading": "1. Approved approach",
+          "owners": [
+            "T25",
+            "T27"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R098",
+          "line": 17,
+          "heading": "2. Relationship to approved work and source findings",
+          "owners": [
+            "T25",
+            "T27"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R099",
+          "line": 34,
+          "heading": "3. Keep three linked records and clear states",
+          "owners": [
+            "T25",
+            "T27"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R100",
+          "line": 46,
+          "heading": "4. Amount and responsibility",
+          "owners": [
+            "T25",
+            "T27"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R101",
+          "line": 59,
+          "heading": "5. What happens to pending and already-paid payouts",
+          "owners": [
+            "T25",
+            "T27"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R102",
+          "line": 71,
+          "heading": "6. Customer funding and refund execution",
+          "owners": [
+            "T25",
+            "T27"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R103",
+          "line": 81,
+          "heading": "7. Recovering an approved balance",
+          "owners": [
+            "T25",
+            "T27"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R104",
+          "line": 83,
+          "heading": "A. Apply eligible future earnings",
+          "owners": [
+            "T25",
+            "T27"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R105",
+          "line": 95,
+          "heading": "B. Seller repayment to the company",
+          "owners": [
+            "T25",
+            "T27"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R106",
+          "line": 101,
+          "heading": "C. No earnings, installments or a dispute",
+          "owners": [
+            "T25",
+            "T27"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R107",
+          "line": 109,
+          "heading": "8. Approval and closure",
+          "owners": [
+            "T25",
+            "T27"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R108",
+          "line": 117,
+          "heading": "9. Visibility, follow-up and notifications",
+          "owners": [
+            "T25",
+            "T27"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R109",
+          "line": 134,
+          "heading": "10. Accounting and concurrency invariants",
+          "owners": [
+            "T25",
+            "T27"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R110",
+          "line": 144,
+          "heading": "11. Later rollout and verification",
+          "owners": [
+            "T25",
+            "T27"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R111",
+          "line": 154,
+          "heading": "12. Decision status",
+          "owners": [
+            "T25",
+            "T27"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-30-finance-payments-workspace.md",
+      "sha256": "8d01e139226c6a8b39d7ccc53f940d15297ca0fea0089ae1acb4de41b4635e1f",
+      "owners": [
+        "T11",
+        "T21",
+        "T26",
+        "T31"
+      ],
+      "sections": [
+        {
+          "id": "R112",
+          "line": 11,
+          "heading": "1. Purpose and approved boundaries",
+          "owners": [
+            "T11",
+            "T21",
+            "T26",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R113",
+          "line": 27,
+          "heading": "2. Local evidence and unresolved implementation differences",
+          "owners": [
+            "T11",
+            "T21",
+            "T26",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R114",
+          "line": 42,
+          "heading": "3. Finance workspace layout",
+          "owners": [
+            "T11",
+            "T21",
+            "T26",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R115",
+          "line": 59,
+          "heading": "4. Company bank account management",
+          "owners": [
+            "T11",
+            "T21",
+            "T26",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R116",
+          "line": 71,
+          "heading": "5. Manual customer payment verification",
+          "owners": [
+            "T11",
+            "T21",
+            "T26",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R117",
+          "line": 88,
+          "heading": "6. Payment states and exceptions",
+          "owners": [
+            "T11",
+            "T21",
+            "T26",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R118",
+          "line": 106,
+          "heading": "7. Refund workspace and manual payment",
+          "owners": [
+            "T11",
+            "T21",
+            "T26",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R119",
+          "line": 124,
+          "heading": "Refund after the seller was already paid — explicit recovery decision",
+          "owners": [
+            "T11",
+            "T21",
+            "T26",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R120",
+          "line": 136,
+          "heading": "8. Seller earnings and payout preparation",
+          "owners": [
+            "T11",
+            "T21",
+            "T26",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R121",
+          "line": 148,
+          "heading": "Standard payout request — D9 approved",
+          "owners": [
+            "T11",
+            "T21",
+            "T26",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R122",
+          "line": 152,
+          "heading": "9. Payout review, execution and beneficiary changes",
+          "owners": [
+            "T11",
+            "T21",
+            "T26",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R123",
+          "line": 171,
+          "heading": "10. Reconciliation, corrections and records",
+          "owners": [
+            "T11",
+            "T21",
+            "T26",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R124",
+          "line": 181,
+          "heading": "11. Authority, service targets, notifications and reliability",
+          "owners": [
+            "T11",
+            "T21",
+            "T26",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R125",
+          "line": 202,
+          "heading": "12. Later walkthroughs and acceptance criteria",
+          "owners": [
+            "T11",
+            "T21",
+            "T26",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R126",
+          "line": 228,
+          "heading": "13. Settled decisions and remaining implementation mapping",
+          "owners": [
+            "T11",
+            "T21",
+            "T26",
+            "T31"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-30-orders-customer-care-workspace.md",
+      "sha256": "b446233e15857d2df4c40be817398b0cb43d00d2d225bd2bb50c1e039cd29667",
+      "owners": [
+        "T22",
+        "T24"
+      ],
+      "sections": [
+        {
+          "id": "R127",
+          "line": 11,
+          "heading": "1. Purpose and boundaries",
+          "owners": [
+            "T22",
+            "T24"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R128",
+          "line": 27,
+          "heading": "2. Existing foundations and evidence limits",
+          "owners": [
+            "T22",
+            "T24"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R129",
+          "line": 42,
+          "heading": "3. One Orders & customer care workspace",
+          "owners": [
+            "T22",
+            "T24"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R130",
+          "line": 59,
+          "heading": "4. Order workspace and clear customer view",
+          "owners": [
+            "T22",
+            "T24"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R131",
+          "line": 74,
+          "heading": "5. Seller response and preparation",
+          "owners": [
+            "T22",
+            "T24"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R132",
+          "line": 88,
+          "heading": "6. Response clock, escalation and delays",
+          "owners": [
+            "T22",
+            "T24"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R133",
+          "line": 116,
+          "heading": "7. Cancellation: request, preview, decision and actual effect",
+          "owners": [
+            "T22",
+            "T24"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R134",
+          "line": 137,
+          "heading": "8. Returns, replacements and complaints",
+          "owners": [
+            "T22",
+            "T24"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R135",
+          "line": 164,
+          "heading": "9. Refunds and Finance handoff",
+          "owners": [
+            "T22",
+            "T24"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R136",
+          "line": 174,
+          "heading": "10. Permissions, notifications and reliable actions",
+          "owners": [
+            "T22",
+            "T24"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R137",
+          "line": 193,
+          "heading": "11. Later walkthroughs and completion criteria",
+          "owners": [
+            "T22",
+            "T24"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R138",
+          "line": 219,
+          "heading": "12. Remaining decisions and plan status",
+          "owners": [
+            "T22",
+            "T24"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-31-fee-publication-schedules-combinations.md",
+      "sha256": "c48509c0d7b8ea15301af09e59119abea3b7ee0f88739f403d10ed0eb99de101",
+      "owners": [
+        "T14",
+        "T15"
+      ],
+      "sections": [
+        {
+          "id": "R139",
+          "line": 7,
+          "heading": "1. Approach and evidence",
+          "owners": [
+            "T14",
+            "T15"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R140",
+          "line": 27,
+          "heading": "2. Publishing permissions",
+          "owners": [
+            "T14",
+            "T15"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R141",
+          "line": 46,
+          "heading": "3. Replacing an announced commission change",
+          "owners": [
+            "T14",
+            "T15"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R142",
+          "line": 48,
+          "heading": "A. Types of edit",
+          "owners": [
+            "T14",
+            "T15"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R143",
+          "line": 60,
+          "heading": "B. One safe replacement flow",
+          "owners": [
+            "T14",
+            "T15"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R144",
+          "line": 70,
+          "heading": "C. Acceptance and ordering",
+          "owners": [
+            "T14",
+            "T15"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R145",
+          "line": 80,
+          "heading": "D. Notices and recovery",
+          "owners": [
+            "T14",
+            "T15"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R146",
+          "line": 88,
+          "heading": "4. Which benefits can combine",
+          "owners": [
+            "T14",
+            "T15"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R147",
+          "line": 115,
+          "heading": "5. Aftercare and visibility",
+          "owners": [
+            "T14",
+            "T15"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R148",
+          "line": 121,
+          "heading": "6. Later verification and decision boundary",
+          "owners": [
+            "T14",
+            "T15"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-30-products-storefront-workspace.md",
+      "sha256": "cc5be2b6554b498653846d0b4e7f6bc3b40dcf01f56b39ed5e406e7140fa0726",
+      "owners": [
+        "T17",
+        "T18"
+      ],
+      "sections": [
+        {
+          "id": "R149",
+          "line": 11,
+          "heading": "1. Purpose, approved boundaries and current evidence",
+          "owners": [
+            "T17",
+            "T18"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R150",
+          "line": 32,
+          "heading": "2. Admin Products & storefront workspace",
+          "owners": [
+            "T17",
+            "T18"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R151",
+          "line": 50,
+          "heading": "3. Seller submission — three focused steps",
+          "owners": [
+            "T17",
+            "T18"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R152",
+          "line": 72,
+          "heading": "4. Status model: review, visibility and ordering",
+          "owners": [
+            "T17",
+            "T18"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R153",
+          "line": 89,
+          "heading": "5. Admin review workspace",
+          "owners": [
+            "T17",
+            "T18"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R154",
+          "line": 108,
+          "heading": "6. Approval and publication — approved decision",
+          "owners": [
+            "T17",
+            "T18"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R155",
+          "line": 130,
+          "heading": "7. Publication versus permission to order",
+          "owners": [
+            "T17",
+            "T18"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R156",
+          "line": 145,
+          "heading": "8. Corrections and changes after publication — approved D2 rules",
+          "owners": [
+            "T17",
+            "T18"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R157",
+          "line": 161,
+          "heading": "9. Storefront management",
+          "owners": [
+            "T17",
+            "T18"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R158",
+          "line": 171,
+          "heading": "10. Notifications, history and errors",
+          "owners": [
+            "T17",
+            "T18"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R159",
+          "line": 185,
+          "heading": "11. Later acceptance walkthroughs",
+          "owners": [
+            "T17",
+            "T18"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R160",
+          "line": 206,
+          "heading": "12. Decisions to settle before affected implementation",
+          "owners": [
+            "T17",
+            "T18"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R161",
+          "line": 215,
+          "heading": "Original-price and discount detail — approved with correction, 1 November 2026",
+          "owners": [
+            "T17",
+            "T18"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-30-seller-center-workspace.md",
+      "sha256": "f9c4617a393f066ed879a56d00722eba1694a1c069a3e7b93d5a3f5c0aa466f1",
+      "owners": [
+        "T05",
+        "T06"
+      ],
+      "sections": [
+        {
+          "id": "R162",
+          "line": 11,
+          "heading": "1. Purpose, scope and decisions carried forward",
+          "owners": [
+            "T05",
+            "T06"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R163",
+          "line": 27,
+          "heading": "2. Shared layout and navigation",
+          "owners": [
+            "T05",
+            "T06"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R164",
+          "line": 47,
+          "heading": "3. Home: what needs attention now",
+          "owners": [
+            "T05",
+            "T06"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R165",
+          "line": 67,
+          "heading": "4. Shop & profile",
+          "owners": [
+            "T05",
+            "T06"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R166",
+          "line": 79,
+          "heading": "5. Registration & documents",
+          "owners": [
+            "T05",
+            "T06"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R167",
+          "line": 99,
+          "heading": "6. Products & stock",
+          "owners": [
+            "T05",
+            "T06"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R168",
+          "line": 123,
+          "heading": "7. Orders & delivery",
+          "owners": [
+            "T05",
+            "T06"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R169",
+          "line": 137,
+          "heading": "8. Earnings & bank",
+          "owners": [
+            "T05",
+            "T06"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R170",
+          "line": 151,
+          "heading": "Selling-fee card and scheduled changes",
+          "owners": [
+            "T05",
+            "T06"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R171",
+          "line": 159,
+          "heading": "Updated terms: notification, order hold and recovery",
+          "owners": [
+            "T05",
+            "T06"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R172",
+          "line": 167,
+          "heading": "9. Requests, help and notifications",
+          "owners": [
+            "T05",
+            "T06"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R173",
+          "line": 179,
+          "heading": "10. Saving, errors and accessibility",
+          "owners": [
+            "T05",
+            "T06"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R174",
+          "line": 193,
+          "heading": "11. Access, existing routes and implementation mapping",
+          "owners": [
+            "T05",
+            "T06"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R175",
+          "line": 212,
+          "heading": "12. Acceptance walkthroughs for later verification",
+          "owners": [
+            "T05",
+            "T06"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R176",
+          "line": 236,
+          "heading": "13. Decisions still to finish before implementation",
+          "owners": [
+            "T05",
+            "T06"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-30-seller-management-workspace.md",
+      "sha256": "3966888192dda353de3677999978f3d0406f8e0c3859a4ddb35216aafbb48914",
+      "owners": [
+        "T07",
+        "T10",
+        "T28"
+      ],
+      "sections": [
+        {
+          "id": "R177",
+          "line": 13,
+          "heading": "Purpose and organizing principle",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R178",
+          "line": 21,
+          "heading": "1. Seller Management landing screen",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R179",
+          "line": 35,
+          "heading": "1.1 Directory and review queues",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R180",
+          "line": 43,
+          "heading": "1.2 Identity and continuity",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R181",
+          "line": 49,
+          "heading": "2. Selected seller: persistent summary",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R182",
+          "line": 66,
+          "heading": "2.1 Persistent action checklist",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R183",
+          "line": 74,
+          "heading": "3. Sections within the seller workspace",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R184",
+          "line": 91,
+          "heading": "4. Document review workspace",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R185",
+          "line": 99,
+          "heading": "4.1 Evidence cards and exact statuses",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R186",
+          "line": 115,
+          "heading": "4.2 Verification sequence",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R187",
+          "line": 126,
+          "heading": "5. Locked evidence and change requests",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R188",
+          "line": 138,
+          "heading": "5.1 Reasoned change-request lifecycle",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R189",
+          "line": 157,
+          "heading": "5.2 Bank and beneficiary comparison",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R190",
+          "line": 163,
+          "heading": "6. Selling readiness and activation",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R191",
+          "line": 169,
+          "heading": "6.1 Activation checklist and responsibility",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R192",
+          "line": 188,
+          "heading": "6.2 Explicit activation and result",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R193",
+          "line": 198,
+          "heading": "6.3 Later changes and ongoing checks",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R194",
+          "line": 206,
+          "heading": "7. Tasks, messages and history",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R195",
+          "line": 216,
+          "heading": "7.1 Seller events and resolution",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R196",
+          "line": 229,
+          "heading": "8. Clarity, saving and accessibility",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R197",
+          "line": 239,
+          "heading": "9. Company bank accounts and manual payment verification",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R198",
+          "line": 243,
+          "heading": "Agreed scope — 30 October 2026",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R199",
+          "line": 261,
+          "heading": "Proposed Super Admin and finance interface",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R200",
+          "line": 268,
+          "heading": "Proposed manual customer-payment flow",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R201",
+          "line": 278,
+          "heading": "Manual outgoing payments and reconciliation",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R202",
+          "line": 284,
+          "heading": "Verification scenarios for later implementation",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R203",
+          "line": 294,
+          "heading": "Payment policies still to settle",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R204",
+          "line": 298,
+          "heading": "10. Fee policy and seller-specific terms",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R205",
+          "line": 304,
+          "heading": "Terms acceptance follow-up queue",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R206",
+          "line": 314,
+          "heading": "11. Sellers walkthroughs and acceptance scenarios",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R207",
+          "line": 333,
+          "heading": "Next planning decisions",
+          "owners": [
+            "T07",
+            "T10",
+            "T28"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-30-email-delivery-automation.md",
+      "sha256": "c6a0a6bd058ac1d08a81f6cfaf98a41fbf23f34dfdb7edddf48fc469e2a5faa6",
+      "owners": [
+        "T04",
+        "T29"
+      ],
+      "sections": [
+        {
+          "id": "R208",
+          "line": 15,
+          "heading": "1. Existing implementation and evidence limits",
+          "owners": [
+            "T04",
+            "T29"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R209",
+          "line": 27,
+          "heading": "2. Recommended architecture",
+          "owners": [
+            "T04",
+            "T29"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R210",
+          "line": 41,
+          "heading": "Stop reminders when addressed — required on 30 October 2026",
+          "owners": [
+            "T04",
+            "T29"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R211",
+          "line": 55,
+          "heading": "3. Timing and capacity",
+          "owners": [
+            "T04",
+            "T29"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R212",
+          "line": 68,
+          "heading": "Automatic retry and recovery — approved on 30 October 2026",
+          "owners": [
+            "T04",
+            "T29"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R213",
+          "line": 84,
+          "heading": "Mandatory Super Admin oversight — latest user direction",
+          "owners": [
+            "T04",
+            "T29"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R214",
+          "line": 88,
+          "heading": "4. Event, recipient and timing map",
+          "owners": [
+            "T04",
+            "T29"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R215",
+          "line": 113,
+          "heading": "5. Clear Email delivery statuses",
+          "owners": [
+            "T04",
+            "T29"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R216",
+          "line": 130,
+          "heading": "6. Screen and automatic-operation health",
+          "owners": [
+            "T04",
+            "T29"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R217",
+          "line": 142,
+          "heading": "7. Setup checklist for later implementation",
+          "owners": [
+            "T04",
+            "T29"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R218",
+          "line": 156,
+          "heading": "8. Decisions remaining",
+          "owners": [
+            "T04",
+            "T29"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-31-fees-programs-promotions-workspace.md",
+      "sha256": "74129377c24d157cf16d89de91802484ecda8aea8546533cb8cf5c92f62e0e79",
+      "owners": [
+        "T14",
+        "T15",
+        "T31"
+      ],
+      "sections": [
+        {
+          "id": "R219",
+          "line": 7,
+          "heading": "1. Purpose and settled rules",
+          "owners": [
+            "T14",
+            "T15",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R220",
+          "line": 22,
+          "heading": "2. Current local foundations and important conflicts",
+          "owners": [
+            "T14",
+            "T15",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R221",
+          "line": 35,
+          "heading": "3. Workspace layout",
+          "owners": [
+            "T14",
+            "T15",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R222",
+          "line": 54,
+          "heading": "4. Plain fee language and calculations",
+          "owners": [
+            "T14",
+            "T15",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R223",
+          "line": 72,
+          "heading": "5. Commission publication, consent and the common start time",
+          "owners": [
+            "T14",
+            "T15",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R224",
+          "line": 86,
+          "heading": "6. Accepted-terms follow-up — preserve the approved schedule",
+          "owners": [
+            "T14",
+            "T15",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R225",
+          "line": 103,
+          "heading": "7. Product discounts and promo codes",
+          "owners": [
+            "T14",
+            "T15",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R226",
+          "line": 115,
+          "heading": "8. Customer marketplace-fee waivers",
+          "owners": [
+            "T14",
+            "T15",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R227",
+          "line": 127,
+          "heading": "9. Programs and combined-benefit preview",
+          "owners": [
+            "T14",
+            "T15",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R228",
+          "line": 146,
+          "heading": "10. Publication, pause, errors and authority",
+          "owners": [
+            "T14",
+            "T15",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R229",
+          "line": 158,
+          "heading": "11. Orders, cancellations, refunds and Finance reporting",
+          "owners": [
+            "T14",
+            "T15",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R230",
+          "line": 168,
+          "heading": "12. Notices and follow-up",
+          "owners": [
+            "T14",
+            "T15",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R231",
+          "line": 176,
+          "heading": "13. Later acceptance walkthroughs",
+          "owners": [
+            "T14",
+            "T15",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R232",
+          "line": 196,
+          "heading": "14. Remaining decisions and scope",
+          "owners": [
+            "T14",
+            "T15",
+            "T31"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-31-public-profile-changes-cooldown.md",
+      "sha256": "7cf6e4043303024e9de77f55db523fdd59916d65b2fa9a8870f570171ab11325",
+      "owners": [
+        "T09"
+      ],
+      "sections": [
+        {
+          "id": "R233",
+          "line": 7,
+          "heading": "1. Intent and approved approach",
+          "owners": [
+            "T09"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R234",
+          "line": 15,
+          "heading": "2. Read-only source findings",
+          "owners": [
+            "T09"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R235",
+          "line": 28,
+          "heading": "3. Field coverage and separate workflows",
+          "owners": [
+            "T09"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R236",
+          "line": 49,
+          "heading": "4. Exact seven-day behavior",
+          "owners": [
+            "T09"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R237",
+          "line": 71,
+          "heading": "5. Seller and reviewer workflow",
+          "owners": [
+            "T09"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R238",
+          "line": 85,
+          "heading": "6. Urgent corrections and admin-requested fixes",
+          "owners": [
+            "T09"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R239",
+          "line": 97,
+          "heading": "7. Review target and notifications",
+          "owners": [
+            "T09"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R240",
+          "line": 107,
+          "heading": "8. Later implementation, migration and acceptance boundaries",
+          "owners": [
+            "T09"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R241",
+          "line": 115,
+          "heading": "9. Decision status",
+          "owners": [
+            "T09"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-30-super-admin-overview-review.md",
+      "sha256": "9520dafc19124f4453c905e8b72c3f657215e13df8f1036527ac8a8c8d348660",
+      "owners": [
+        "T02",
+        "T05",
+        "T10",
+        "T31"
+      ],
+      "sections": [
+        {
+          "id": "R242",
+          "line": 13,
+          "heading": "1. Purpose and existing foundation",
+          "owners": [
+            "T02",
+            "T05",
+            "T10",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R243",
+          "line": 21,
+          "heading": "2. Overview layout, from top to bottom",
+          "owners": [
+            "T02",
+            "T05",
+            "T10",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R244",
+          "line": 36,
+          "heading": "3. Work queue and priority",
+          "owners": [
+            "T02",
+            "T05",
+            "T10",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R245",
+          "line": 57,
+          "heading": "4. Shared task statuses",
+          "owners": [
+            "T02",
+            "T05",
+            "T10",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R246",
+          "line": 72,
+          "heading": "5. Open review: one place for evidence and decisions",
+          "owners": [
+            "T02",
+            "T05",
+            "T10",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R247",
+          "line": 89,
+          "heading": "6. Decision controls by task",
+          "owners": [
+            "T02",
+            "T05",
+            "T10",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R248",
+          "line": 106,
+          "heading": "7. Save a decision and continue work",
+          "owners": [
+            "T02",
+            "T05",
+            "T10",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R249",
+          "line": 124,
+          "heading": "8. Example walkthroughs for the planned interface",
+          "owners": [
+            "T02",
+            "T05",
+            "T10",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R250",
+          "line": 137,
+          "heading": "9. Design and verification acceptance criteria",
+          "owners": [
+            "T02",
+            "T05",
+            "T10",
+            "T31"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R251",
+          "line": 150,
+          "heading": "10. Remaining planning decisions",
+          "owners": [
+            "T02",
+            "T05",
+            "T10",
+            "T31"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-30-form-management-field-inventory.md",
+      "sha256": "3a38a9f5d9bc041ac12030526e1672528376555149c45b6a42c91e5a0c0aa95a",
+      "owners": [
+        "T03"
+      ],
+      "sections": [
+        {
+          "id": "R252",
+          "line": 9,
+          "heading": "1. What was reviewed and what the numbers mean",
+          "owners": [
+            "T03"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R253",
+          "line": 29,
+          "heading": "2. Meaning of each recommendation",
+          "owners": [
+            "T03"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R254",
+          "line": 38,
+          "heading": "3. Registration, identity and addresses",
+          "owners": [
+            "T03"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R255",
+          "line": 62,
+          "heading": "4. Shop profile and product-business description",
+          "owners": [
+            "T03"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R256",
+          "line": 78,
+          "heading": "5. Product submission and stock",
+          "owners": [
+            "T03"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R257",
+          "line": 108,
+          "heading": "6. Bank details, approvals and other native tasks",
+          "owners": [
+            "T03"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R258",
+          "line": 126,
+          "heading": "7. Form Management editor fields and controls",
+          "owners": [
+            "T03"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R259",
+          "line": 145,
+          "heading": "8. Catalogue placement inventory — all 65 current exposed entries",
+          "owners": [
+            "T03"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R260",
+          "line": 149,
+          "heading": "Retain limited wording/extra-question management (seven entries)",
+          "owners": [
+            "T03"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R261",
+          "line": 155,
+          "heading": "Preserve the rider application; hide inactive configuration from the everyday view (one entry)",
+          "owners": [
+            "T03"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R262",
+          "line": 159,
+          "heading": "Move generic customization to the native owning task (57 entries)",
+          "owners": [
+            "T03"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R263",
+          "line": 175,
+          "heading": "9. Approved decisions and remaining planning work",
+          "owners": [
+            "T03"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R264",
+          "line": 189,
+          "heading": "10. Source trail",
+          "owners": [
+            "T03"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-31-cancellation-return-rules.md",
+      "sha256": "0bf751d785646906d159f08fbb906cfef7f1ee02ca04f92a52962a9f199bc1f2",
+      "owners": [
+        "T23",
+        "T24"
+      ],
+      "sections": [
+        {
+          "id": "R265",
+          "line": 7,
+          "heading": "1. Purpose and approach",
+          "owners": [
+            "T23",
+            "T24"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R266",
+          "line": 13,
+          "heading": "2. Source evidence and policy precedence",
+          "owners": [
+            "T23",
+            "T24"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R267",
+          "line": 26,
+          "heading": "3. Cancellation scope and cutoff matrix",
+          "owners": [
+            "T23",
+            "T24"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R268",
+          "line": 43,
+          "heading": "4. Holds, delays and customer updates",
+          "owners": [
+            "T23",
+            "T24"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R269",
+          "line": 55,
+          "heading": "5. Custom, made-to-order and prepaid cases",
+          "owners": [
+            "T23",
+            "T24"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R270",
+          "line": 63,
+          "heading": "6. Return eligibility and request intake",
+          "owners": [
+            "T23",
+            "T24"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R271",
+          "line": 73,
+          "heading": "7. Return shipping costs and original charges",
+          "owners": [
+            "T23",
+            "T24"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R272",
+          "line": 89,
+          "heading": "8. Physical return, inspection and resolution",
+          "owners": [
+            "T23",
+            "T24"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R273",
+          "line": 101,
+          "heading": "9. Review clocks and follow-up targets",
+          "owners": [
+            "T23",
+            "T24"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R274",
+          "line": 121,
+          "heading": "10. Money, responsibility and permissions",
+          "owners": [
+            "T23",
+            "T24"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R275",
+          "line": 129,
+          "heading": "11. Screens, handoffs and later verification",
+          "owners": [
+            "T23",
+            "T24"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R276",
+          "line": 139,
+          "heading": "12. Approved decisions and remaining mapping",
+          "owners": [
+            "T23",
+            "T24"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-31-team-business-policies.md",
+      "sha256": "1a3c4b751486894f4484b4c2140a427d3deadbb95b9a4659c5dd29a0fcec7571",
+      "owners": [
+        "T02",
+        "T30"
+      ],
+      "sections": [
+        {
+          "id": "R277",
+          "line": 7,
+          "heading": "1. Purpose, approach and source evidence",
+          "owners": [
+            "T02",
+            "T30"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R278",
+          "line": 24,
+          "heading": "2. Screen layout and navigation",
+          "owners": [
+            "T02",
+            "T30"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R279",
+          "line": 44,
+          "heading": "3. Permission and responsibility matrix",
+          "owners": [
+            "T02",
+            "T30"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R280",
+          "line": 64,
+          "heading": "4. Invitations, access changes and offboarding",
+          "owners": [
+            "T02",
+            "T30"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R281",
+          "line": 80,
+          "heading": "5. Ownership, backups and handoff",
+          "owners": [
+            "T02",
+            "T30"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R282",
+          "line": 100,
+          "heading": "6. Full-time coverage now and working hours later",
+          "owners": [
+            "T02",
+            "T30"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R283",
+          "line": 120,
+          "heading": "7. Service targets and daily Finance coverage",
+          "owners": [
+            "T02",
+            "T30"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R284",
+          "line": 136,
+          "heading": "8. Business identity and policy ownership",
+          "owners": [
+            "T02",
+            "T30"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R285",
+          "line": 161,
+          "heading": "9. Notifications, security and resilient forms",
+          "owners": [
+            "T02",
+            "T30"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R286",
+          "line": 171,
+          "heading": "10. Mapping and later verification",
+          "owners": [
+            "T02",
+            "T30"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R287",
+          "line": 181,
+          "heading": "11. Approval status and decisions still open",
+          "owners": [
+            "T02",
+            "T30"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-30-form-management-reliability.md",
+      "sha256": "51345100782bd7f9693d5c60a2766c1d768c081b91dc7edb73cf3aeee37d0c9f",
+      "owners": [
+        "T03"
+      ],
+      "sections": [
+        {
+          "id": "R288",
+          "line": 11,
+          "heading": "1. Evidence and limits of this investigation",
+          "owners": [
+            "T03"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R289",
+          "line": 28,
+          "heading": "2. Approved direction and considered alternatives",
+          "owners": [
+            "T03"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R290",
+          "line": 40,
+          "heading": "3. Separate core behavior from customization",
+          "owners": [
+            "T03"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R291",
+          "line": 55,
+          "heading": "4. Draft, validate, preview and publish safely",
+          "owners": [
+            "T03"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R292",
+          "line": 69,
+          "heading": "5. Avoid breaking forms people are filling out",
+          "owners": [
+            "T03"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R293",
+          "line": 85,
+          "heading": "6. Helpful errors and staff diagnosis",
+          "owners": [
+            "T03"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R294",
+          "line": 102,
+          "heading": "7. Smaller, clearer Form Management UI",
+          "owners": [
+            "T03"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R295",
+          "line": 119,
+          "heading": "8. Phases for later implementation and verification",
+          "owners": [
+            "T03"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R296",
+          "line": 140,
+          "heading": "Required release evidence",
+          "owners": [
+            "T03"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R297",
+          "line": 156,
+          "heading": "9. Planning decisions still open",
+          "owners": [
+            "T03"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-31-system-health-records.md",
+      "sha256": "f091b563450213f798574bae3a5e6eb0b4cfb5665820384a8787b2e7e1fc3ea3",
+      "owners": [
+        "T01",
+        "T29",
+        "T30"
+      ],
+      "sections": [
+        {
+          "id": "R298",
+          "line": 5,
+          "heading": "1. Purpose, approach and observed source",
+          "owners": [
+            "T01",
+            "T29",
+            "T30"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R299",
+          "line": 21,
+          "heading": "2. Screen layout",
+          "owners": [
+            "T01",
+            "T29",
+            "T30"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R300",
+          "line": 36,
+          "heading": "3. Health meanings, checks and targets",
+          "owners": [
+            "T01",
+            "T29",
+            "T30"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R301",
+          "line": 58,
+          "heading": "4. Form Management — carry forward approved rules",
+          "owners": [
+            "T01",
+            "T29",
+            "T30"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R302",
+          "line": 71,
+          "heading": "5. Email delivery — automatic work with understandable status",
+          "owners": [
+            "T01",
+            "T29",
+            "T30"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R303",
+          "line": 94,
+          "heading": "6. Incidents, ownership and follow-up",
+          "owners": [
+            "T01",
+            "T29",
+            "T30"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R304",
+          "line": 114,
+          "heading": "7. Recovery rules and evidence",
+          "owners": [
+            "T01",
+            "T29",
+            "T30"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R305",
+          "line": 126,
+          "heading": "8. Backups and controlled restore — deferred",
+          "owners": [
+            "T01",
+            "T29",
+            "T30"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R306",
+          "line": 150,
+          "heading": "9. Records, privacy and permissions",
+          "owners": [
+            "T01",
+            "T29",
+            "T30"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R307",
+          "line": 171,
+          "heading": "10. Mapping, verification and approval status",
+          "owners": [
+            "T01",
+            "T29",
+            "T30"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-31-seller-customer-screen-walkthrough.md",
+      "sha256": "aa9d0f5ee90af47614ce5ba3e2f7d598b0dae724f261ca3d9a19038905dd3139",
+      "owners": [
+        "T05",
+        "T19",
+        "T20",
+        "T31",
+        "T32",
+        "T34"
+      ],
+      "sections": [
+        {
+          "id": "R308",
+          "line": 7,
+          "heading": "1. Approach and scope",
+          "owners": [
+            "T05",
+            "T19",
+            "T20",
+            "T31",
+            "T32",
+            "T34"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R309",
+          "line": 17,
+          "heading": "2. Approved Seller Center layout",
+          "owners": [
+            "T05",
+            "T19",
+            "T20",
+            "T31",
+            "T32",
+            "T34"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R310",
+          "line": 35,
+          "heading": "2.1 Final screen arrangement — approved, 1 November",
+          "owners": [
+            "T05",
+            "T19",
+            "T20",
+            "T31",
+            "T32",
+            "T34"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R311",
+          "line": 53,
+          "heading": "2.2 What a seller does in each section",
+          "owners": [
+            "T05",
+            "T19",
+            "T20",
+            "T31",
+            "T32",
+            "T34"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R312",
+          "line": 67,
+          "heading": "3. Registration, documents and the first product",
+          "owners": [
+            "T05",
+            "T19",
+            "T20",
+            "T31",
+            "T32",
+            "T34"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R313",
+          "line": 82,
+          "heading": "One product from draft to customer view — final walkthrough example",
+          "owners": [
+            "T05",
+            "T19",
+            "T20",
+            "T31",
+            "T32",
+            "T34"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R314",
+          "line": 96,
+          "heading": "Price and public-information guidance — approved D19 addition",
+          "owners": [
+            "T05",
+            "T19",
+            "T20",
+            "T31",
+            "T32",
+            "T34"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R315",
+          "line": 100,
+          "heading": "4. Discovery, product details and current availability",
+          "owners": [
+            "T05",
+            "T19",
+            "T20",
+            "T31",
+            "T32",
+            "T34"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R316",
+          "line": 120,
+          "heading": "Retail and variant extension — detailed rules approved",
+          "owners": [
+            "T05",
+            "T19",
+            "T20",
+            "T31",
+            "T32",
+            "T34"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R317",
+          "line": 124,
+          "heading": "Final public screen arrangement",
+          "owners": [
+            "T05",
+            "T19",
+            "T20",
+            "T31",
+            "T32",
+            "T34"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R318",
+          "line": 136,
+          "heading": "5. Cart, checkout and manual customer payment",
+          "owners": [
+            "T05",
+            "T19",
+            "T20",
+            "T31",
+            "T32",
+            "T34"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R319",
+          "line": 152,
+          "heading": "6. Order preparation, delivery and delay",
+          "owners": [
+            "T05",
+            "T19",
+            "T20",
+            "T31",
+            "T32",
+            "T34"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R320",
+          "line": 167,
+          "heading": "7. Changes while selling: profile, identity, bank and fees",
+          "owners": [
+            "T05",
+            "T19",
+            "T20",
+            "T31",
+            "T32",
+            "T34"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R321",
+          "line": 181,
+          "heading": "8. Cancellation, return and refund: both views of one case",
+          "owners": [
+            "T05",
+            "T19",
+            "T20",
+            "T31",
+            "T32",
+            "T34"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R322",
+          "line": 195,
+          "heading": "9. Seller earnings and the approved simple payout request",
+          "owners": [
+            "T05",
+            "T19",
+            "T20",
+            "T31",
+            "T32",
+            "T34"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R323",
+          "line": 209,
+          "heading": "10. Notifications, forms and failure states across both roles",
+          "owners": [
+            "T05",
+            "T19",
+            "T20",
+            "T31",
+            "T32",
+            "T34"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R324",
+          "line": 221,
+          "heading": "11. Later acceptance walkthrough and approval record",
+          "owners": [
+            "T05",
+            "T19",
+            "T20",
+            "T31",
+            "T32",
+            "T34"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R325",
+          "line": 251,
+          "heading": "Original prices and discount preview — approved rules, 1 November 2026",
+          "owners": [
+            "T05",
+            "T19",
+            "T20",
+            "T31",
+            "T32",
+            "T34"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-31-seller-price-public-preview.md",
+      "sha256": "b2ba0b9058376074312f15aa99606461e4b680e342feff7658c59aa1be1ddbae",
+      "owners": [
+        "T16"
+      ],
+      "sections": [
+        {
+          "id": "R326",
+          "line": 5,
+          "heading": "1. Approved approach and existing boundaries",
+          "owners": [
+            "T16"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R327",
+          "line": 15,
+          "heading": "2. Price entry and understandable amounts",
+          "owners": [
+            "T16"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R328",
+          "line": 42,
+          "heading": "3. Optional target-profit helper",
+          "owners": [
+            "T16"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R329",
+          "line": 58,
+          "heading": "4. Current rates, future rates and calculation scope",
+          "owners": [
+            "T16"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R330",
+          "line": 68,
+          "heading": "5. Private calculator data and public field labels",
+          "owners": [
+            "T16"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R331",
+          "line": 84,
+          "heading": "6. Preview before submission and better completion quality",
+          "owners": [
+            "T16"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R332",
+          "line": 102,
+          "heading": "7. Later verification and decisions",
+          "owners": [
+            "T16"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R333",
+          "line": 114,
+          "heading": "D20 price-control integration — approved with correction, 1 November 2026",
+          "owners": [
+            "T16"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-31-complete-version-scope.md",
+      "sha256": "dd78249af6b466bf4170b1b880e3cdf3cb47cf1e45c16c6b3e0264e5eabf07e4",
+      "owners": [
+        "T00",
+        "T01",
+        "T28",
+        "T33",
+        "T34",
+        "T35"
+      ],
+      "sections": [
+        {
+          "id": "R334",
+          "line": 9,
+          "heading": "1. Scope rule",
+          "owners": [
+            "T00",
+            "T01",
+            "T28",
+            "T33",
+            "T34",
+            "T35"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R335",
+          "line": 15,
+          "heading": "2. Version completion checklist",
+          "owners": [
+            "T00",
+            "T01",
+            "T28",
+            "T33",
+            "T34",
+            "T35"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R336",
+          "line": 40,
+          "heading": "3. Explicit deferrals and limits retained",
+          "owners": [
+            "T00",
+            "T01",
+            "T28",
+            "T33",
+            "T34",
+            "T35"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R337",
+          "line": 50,
+          "heading": "4. Finish criteria and remaining planning",
+          "owners": [
+            "T00",
+            "T01",
+            "T28",
+            "T33",
+            "T34",
+            "T35"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-31-product-discount-price-guidance.md",
+      "sha256": "21b6f5bac76257288b95b1dd300dc5b75885597ffd448ebc50a125f52dd86fec",
+      "owners": [
+        "T16"
+      ],
+      "sections": [
+        {
+          "id": "R338",
+          "line": 5,
+          "heading": "1. Intent and approach",
+          "owners": [
+            "T16"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R339",
+          "line": 19,
+          "heading": "2. Seller fields and customer display",
+          "owners": [
+            "T16"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R340",
+          "line": 46,
+          "heading": "2.1 Keep the price meanings separate",
+          "owners": [
+            "T16"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R341",
+          "line": 58,
+          "heading": "3. One calculation authority and clear editing rules",
+          "owners": [
+            "T16"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R342",
+          "line": 68,
+          "heading": "3.1 Common editing cases",
+          "owners": [
+            "T16"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R343",
+          "line": 85,
+          "heading": "3.2 Currency, rounding and discount magnitude",
+          "owners": [
+            "T16"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R344",
+          "line": 95,
+          "heading": "4. Truthful comparison prices and admin review",
+          "owners": [
+            "T16"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R345",
+          "line": 107,
+          "heading": "4.1 What supports Original price",
+          "owners": [
+            "T16"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R346",
+          "line": 139,
+          "heading": "4.2 Admin workflow and existing claims",
+          "owners": [
+            "T16"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R347",
+          "line": 153,
+          "heading": "4.3 Variants, checkout and notifications",
+          "owners": [
+            "T16"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R348",
+          "line": 165,
+          "heading": "5. Help with low or high prices — approved approach",
+          "owners": [
+            "T16"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R349",
+          "line": 175,
+          "heading": "6. Later acceptance cases and remaining decision",
+          "owners": [
+            "T16"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-31-complete-plan-review.md",
+      "sha256": "ef51d767b8e3913f404524d2a3753ea26cb67cbde9f2fa87bb0d07f239080895",
+      "owners": [
+        "T00",
+        "T34",
+        "T35"
+      ],
+      "sections": [
+        {
+          "id": "R350",
+          "line": 9,
+          "heading": "1. Result and approval boundary",
+          "owners": [
+            "T00",
+            "T34",
+            "T35"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R351",
+          "line": 19,
+          "heading": "2. Coverage review and the remaining evidence",
+          "owners": [
+            "T00",
+            "T34",
+            "T35"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R352",
+          "line": 40,
+          "heading": "3. Approval status and remaining preparation",
+          "owners": [
+            "T00",
+            "T34",
+            "T35"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R353",
+          "line": 48,
+          "heading": "4. Conflicts and stale wording reconciled",
+          "owners": [
+            "T00",
+            "T34",
+            "T35"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R354",
+          "line": 68,
+          "heading": "5. Preparation needed — not repeated policy decisions",
+          "owners": [
+            "T00",
+            "T34",
+            "T35"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R355",
+          "line": 82,
+          "heading": "6. Deferrals and completion boundary",
+          "owners": [
+            "T00",
+            "T34",
+            "T35"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-31-retail-categories-product-variants.md",
+      "sha256": "06b92cb0652b0f9ebd6cf8e4db2fa499efc2aa9de5f34b6d04f6049a5ecab331",
+      "owners": [
+        "T12",
+        "T13",
+        "T19",
+        "T20",
+        "T33"
+      ],
+      "sections": [
+        {
+          "id": "R356",
+          "line": 9,
+          "heading": "1. One marketplace and separate classifications",
+          "owners": [
+            "T12",
+            "T13",
+            "T19",
+            "T20",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R357",
+          "line": 19,
+          "heading": "Expandable categories and subcategories — approved clarification",
+          "owners": [
+            "T12",
+            "T13",
+            "T19",
+            "T20",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R358",
+          "line": 25,
+          "heading": "2. Source evidence and boundaries",
+          "owners": [
+            "T12",
+            "T13",
+            "T19",
+            "T20",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R359",
+          "line": 35,
+          "heading": "3. Seller category access and the common form",
+          "owners": [
+            "T12",
+            "T13",
+            "T19",
+            "T20",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R360",
+          "line": 47,
+          "heading": "Category selection and access outcomes",
+          "owners": [
+            "T12",
+            "T13",
+            "T19",
+            "T20",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R361",
+          "line": 59,
+          "heading": "4. Category-specific fields",
+          "owners": [
+            "T12",
+            "T13",
+            "T19",
+            "T20",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R362",
+          "line": 75,
+          "heading": "4.1 Which missing facts affect which action",
+          "owners": [
+            "T12",
+            "T13",
+            "T19",
+            "T20",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R363",
+          "line": 91,
+          "heading": "5. Real variant editor",
+          "owners": [
+            "T12",
+            "T13",
+            "T19",
+            "T20",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R364",
+          "line": 115,
+          "heading": "5.1 What the limits count",
+          "owners": [
+            "T12",
+            "T13",
+            "T19",
+            "T20",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R365",
+          "line": 131,
+          "heading": "5.2 Adding combinations and handling the limit",
+          "owners": [
+            "T12",
+            "T13",
+            "T19",
+            "T20",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R366",
+          "line": 139,
+          "heading": "5.3 Price, photo and stock per offer",
+          "owners": [
+            "T12",
+            "T13",
+            "T19",
+            "T20",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R367",
+          "line": 151,
+          "heading": "5.4 Confirming initial stock and moving existing stock",
+          "owners": [
+            "T12",
+            "T13",
+            "T19",
+            "T20",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R368",
+          "line": 163,
+          "heading": "6. Stock and order lifecycle",
+          "owners": [
+            "T12",
+            "T13",
+            "T19",
+            "T20",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R369",
+          "line": 175,
+          "heading": "7. Pricing and customer selection",
+          "owners": [
+            "T12",
+            "T13",
+            "T19",
+            "T20",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R370",
+          "line": 189,
+          "heading": "8. Admin review and category rules",
+          "owners": [
+            "T12",
+            "T13",
+            "T19",
+            "T20",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R371",
+          "line": 206,
+          "heading": "8.1 One review workspace",
+          "owners": [
+            "T12",
+            "T13",
+            "T19",
+            "T20",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R372",
+          "line": 214,
+          "heading": "8.2 Which actions need review",
+          "owners": [
+            "T12",
+            "T13",
+            "T19",
+            "T20",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R373",
+          "line": 226,
+          "heading": "8.3 Decisions, corrections and notifications",
+          "owners": [
+            "T12",
+            "T13",
+            "T19",
+            "T20",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R374",
+          "line": 238,
+          "heading": "8.4 Retiring and deliberately reintroducing an identical offer",
+          "owners": [
+            "T12",
+            "T13",
+            "T19",
+            "T20",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R375",
+          "line": 248,
+          "heading": "9. Returns, warranty and shipping by category",
+          "owners": [
+            "T12",
+            "T13",
+            "T19",
+            "T20",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R376",
+          "line": 260,
+          "heading": "10. Stable forms, migration and events",
+          "owners": [
+            "T12",
+            "T13",
+            "T19",
+            "T20",
+            "T33"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R377",
+          "line": 274,
+          "heading": "11. Acceptance cases and remaining review",
+          "owners": [
+            "T12",
+            "T13",
+            "T19",
+            "T20",
+            "T33"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-31-optional-product-intake-support.md",
+      "sha256": "35d194e01d0ad6c07caff264f7ddbeb1c00e23fb00213a4561cd0c584304bdd9",
+      "owners": [
+        "T04",
+        "T12",
+        "T17"
+      ],
+      "sections": [
+        {
+          "id": "R378",
+          "line": 5,
+          "heading": "1. The intended experience",
+          "owners": [
+            "T04",
+            "T12",
+            "T17"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R379",
+          "line": 13,
+          "heading": "2. All supported details available without clutter",
+          "owners": [
+            "T04",
+            "T12",
+            "T17"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R380",
+          "line": 28,
+          "heading": "3. Preview and non-blocking guidance",
+          "owners": [
+            "T04",
+            "T12",
+            "T17"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R381",
+          "line": 42,
+          "heading": "4. Save, send and support states",
+          "owners": [
+            "T04",
+            "T12",
+            "T17"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R382",
+          "line": 56,
+          "heading": "5. Support can help without guessing or exposing private data",
+          "owners": [
+            "T04",
+            "T12",
+            "T17"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R383",
+          "line": 66,
+          "heading": "Super Admin oversight notifications — explicitly required",
+          "owners": [
+            "T04",
+            "T12",
+            "T17"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R384",
+          "line": 87,
+          "heading": "6. Publication and commerce remain factual",
+          "owners": [
+            "T04",
+            "T12",
+            "T17"
+          ],
+          "status": "unchecked"
+        },
+        {
+          "id": "R385",
+          "line": 95,
+          "heading": "7. Relationship to previous approvals and later verification",
+          "owners": [
+            "T04",
+            "T12",
+            "T17"
+          ],
+          "status": "unchecked"
+        }
+      ]
+    }
+  ],
+  "sectionCount": 385
+}

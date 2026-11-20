@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Operations · Product review</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/39ae600ed082352c03509106609818ff">
+<link rel="stylesheet" href="/_blob/d1603bdfcb29428264731bbedb89e050">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&amp;family=Instrument+Sans:wght@400..700&amp;family=JetBrains+Mono:wght@500&amp;display=swap">
+<style>
+body{margin:0;background:#F7F3EC}
+a{color:#14213D}a:hover{color:#A8232E}
+.helpbtn{all:unset;cursor:pointer;width:28px;height:28px;border-radius:50%;border:1px solid #D3C5AD;display:inline-flex;align-items:center;justify-content:center;color:#46536F;transition:background-color 160ms ease,color 160ms ease,transform 160ms ease}
+.helpbtn:hover{background:#fff;color:#14213D}.helpbtn:active{transform:scale(.95)}
+.helpbtn:focus-visible{outline:2px solid #A8232E;outline-offset:2px}
+.pop{position:absolute;z-index:20;background:#fff;color:#2C3B5C;border:1px solid #E4DACA;border-radius:14px;box-shadow:0 18px 40px -18px rgba(20,33,61,.35);animation:popin 180ms cubic-bezier(.23,1,.32,1)}
+@keyframes popin{from{opacity:0;transform:translateY(-4px) scale(.98)}}
+@media (prefers-reduced-motion:reduce){.pop{animation:none}}
+</style>
+</helmet>
+<div class="hb shell" style="background: #F7F3EC; min-height: 100vh">
+  <aside class="side" style="background: #14213D; color: #C9D0DD; padding: 18px 12px; display: flex; flex-direction: column; gap: 18px; max-width: 236px; flex-basis: 220px">
+    <a href="#" style="display: flex; align-items: center; gap: 10px; padding: 0 6px; color: #fff"><img src="/_blob/65b39bff773bb375aa5d23ab420967a3" alt="" style="width: 34px; height: 34px; background: #FFFCF7; border-radius: 8px; padding: 2px"><span style="display: flex; flex-direction: column; line-height: 1.1"><span class="serif" style="font-size: 19px; font-weight: 600; color: #fff">Hastabazaar</span><span style="font-size: 12px; font-weight: 600; color: #E2B65C">Operations</span></span></a>
+    <nav class="navd" aria-label="Operations">
+      <a href="Admin-Overview.dc.html"><span class="ic s18 i-home"></span>Today<span class="cnt">7</span></a>
+      <a href="Admin-Orders.dc.html"><span class="ic s18 i-receipt"></span>Orders<span class="cnt q">3</span></a>
+      <a href="Admin-Care.dc.html"><span class="ic s18 i-message"></span>Care<span class="cnt q">2</span></a>
+      <a href="Admin-Sellers.dc.html"><span class="ic s18 i-store"></span>Sellers<span class="cnt q">9</span></a>
+      <a href="Admin-Moderation.dc.html" class="on"><span class="ic s18 i-package"></span>Catalog</a>
+      <a href="Admin-Payouts.dc.html"><span class="ic s18 i-wallet"></span>Money<span class="cnt q">2</span></a>
+      <a href="#"><span class="ic s18 i-percent"></span>Growth</a>
+      <a href="#"><span class="ic s18 i-chart"></span>Reports</a>
+      <a href="#"><span class="ic s18 i-sliders"></span>Settings</a>
+    </nav>
+    <div style="margin-top: auto; display: flex; flex-direction: column; gap: 10px">
+      <a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; font-size: 14px; color: #C9D0DD"><span class="ic s18 i-arrow-ur"></span>Open marketplace</a>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; background: rgba(255,252,247,.07)">
+        <span class="avatar" style="width: 34px; height: 34px; background: #E2B65C; color: #14213D; font-size: 13px">NS</span>
+        <span style="flex: 1; line-height: 1.25"><b style="color: #fff; font-size: 14px; display: block">Nisha S.</b><span style="font-size: 12.5px">Super Admin</span></span>
+        <button class="btn btn-sm btn-icon" aria-label="Sign out" style="color: #C9D0DD; width: 32px; height: 32px"><span class="ic s18 i-logout"></span></button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main" style="display: flex; flex-direction: column">
+    <div style="height: 68px; display: flex; align-items: center; gap: 12px; padding: 0 32px; position: relative">
+      <h1 class="serif" style="font-size: 28px">Catalog</h1>
+      <button class="helpbtn" aria-label="How product review works" aria-expanded="{{helpOpen}}" onClick="{{toggleHelp}}"><span class="ic s16 i-help"></span></button>
+      <sc-if value="{{helpOpen}}" hint-placeholder-val="{{ false }}">
+        <div class="pop" role="dialog" aria-label="How product review works" style="top: 58px; left: 32px; width: 420px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; font-size: 14px">
+          <b style="font-size: 15px; color: #14213D">How product review works</b>
+          <p>Check the photos, price and details against the list on the right. Use J and K to move between products.</p><p>Approve &amp; publish puts it live straight away. Ask for changes sends your note to the seller; the product stays hidden until they resubmit.</p><p>Reject is for products we can’t sell at all. It always asks you to confirm.</p>
+          <a href="#" class="tlink" style="font-size: 13.5px">Full staff procedure</a>
+        </div>
+      </sc-if>
+      <div class="cmdk hide-m" style="margin-left: auto; width: 380px"><span class="ic s18 i-search"></span><span style="flex: 1">Jump to anything…</span><span class="kbd">⌘K</span></div>
+    </div>
+    <nav class="subtabs" aria-label="Catalog sections">
+      <a href="#" class="on">Product review <span class="n">11</span></a><a href="#">Publishing <span class="n">3</span></a><a href="#">Categories &amp; occasions</a><a href="Admin-Homepage.dc.html">Homepage</a>
+    </nav>
+
+    <main style="padding: 20px 32px 40px; display: flex; flex-direction: column; gap: 18px">
+      <!-- queue strip -->
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span class="num" style="font-size: 14px; color: #46536F; white-space: nowrap"><b style="color: #14213D">3</b> of 11</span>
+        <div style="display: flex; gap: 8px; overflow: hidden; flex: 1">
+          <span style="width: 52px; height: 52px; border-radius: 10px; overflow: hidden; border: 1px solid #E4DACA; opacity: .45; flex: none; position: relative; background: #fff"><img src="/_blob/8d379ae75119015bb8c365c85629ef73" alt="" style="width: 100%; height: 100%; object-fit: cover"><span style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #2C6A4A"><span class="ic s22 i-check"></span></span></span>
+          <span style="width: 52px; height: 52px; border-radius: 10px; overflow: hidden; border: 1px solid #E4DACA; opacity: .45; flex: none; background: #fff"><img src="/_blob/a9f6923fffa84dc81e931d255c6bbd11" alt="" style="width: 100%; height: 100%; object-fit: cover"></span>
+          <span style="width: 52px; height: 52px; border-radius: 10px; overflow: hidden; box-shadow: 0 0 0 2px #14213D; flex: none; background: #fff"><img src="/_blob/a30bfa40266743c426c4533415ff9a1b" alt="" style="width: 100%; height: 100%; object-fit: contain"></span>
+          <span style="width: 52px; height: 52px; border-radius: 10px; overflow: hidden; border: 1px solid #E4DACA; flex: none; background: #fff"><img src="/_blob/dcb1ea04796929f7673abe8a37ed1fe4" alt="" style="width: 100%; height: 100%; object-fit: contain"></span>
+          <span style="width: 52px; height: 52px; border-radius: 10px; overflow: hidden; border: 1px solid #E4DACA; flex: none; background: #fff"><img src="/_blob/b143837d69463c62288a1c0ac663884d" alt="" style="width: 100%; height: 100%; object-fit: cover"></span>
+          <span style="width: 52px; height: 52px; border-radius: 10px; overflow: hidden; border: 1px solid #E4DACA; flex: none; background: #fff"><img src="/_blob/f54d6585cf2cb42ca7881e4ab64122b0" alt="" style="width: 100%; height: 100%; object-fit: cover"></span>
+          <span style="width: 52px; height: 52px; border-radius: 10px; overflow: hidden; border: 1px solid #E4DACA; flex: none; background: #fff"><img src="/_blob/bd742dc34fd9a539efd543a6b3bbe157" alt="" style="width: 100%; height: 100%; object-fit: cover"></span>
+          <span style="width: 52px; height: 52px; border-radius: 10px; overflow: hidden; border: 1px solid #E4DACA; flex: none; background: #fff"><img src="/_blob/7f04929ce482cbc65dd5763a037517e8" alt="" style="width: 100%; height: 100%; object-fit: cover"></span>
+          <span style="width: 52px; height: 52px; border-radius: 10px; border: 1px dashed #D3C5AD; flex: none; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; color: #46536F" class="num">+3</span>
+        </div>
+        <span style="display: flex; gap: 6px; align-items: center; font-size: 13px; color: #46536F" class="hide-t"><span class="kbd">J</span><span class="kbd">K</span>to move</span>
+      </div>
+
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 24px; align-items: start">
+        <!-- photos -->
+        <section class="panel" style="padding: 16px; display: flex; flex-direction: column; gap: 12px" aria-label="Photos">
+          <div style="aspect-ratio: 1; border-radius: 10px; background: #fff; border: 1px solid #EDE4D3; overflow: hidden"><img src="/_blob/a30bfa40266743c426c4533415ff9a1b" alt="Beaded butterfly danglers, cover photo" style="width: 100%; height: 100%; object-fit: contain"></div>
+          <div style="display: flex; gap: 8px; align-items: center; font-size: 13.5px; color: #46536F"><span class="ic s16 i-image"></span>1 photo · 1200 × 1200 · not used by any other listing</div>
+        </section>
+
+        <!-- listing -->
+        <section style="display: flex; flex-direction: column; gap: 16px" aria-label="Listing">
+          <div class="panel" style="padding: 22px; display: flex; flex-direction: column; gap: 14px">
+            <div style="display: flex; gap: 10px; align-items: center; font-size: 13.5px; color: #46536F"><span class="ic s16 i-store"></span>Hand Creation · submitted 19 Nov, 9:14 am · first time reviewed</div>
+            <h2 class="serif" style="font-size: 32px; line-height: 1.08">Beaded butterfly danglers</h2>
+            <div class="num" style="display: flex; gap: 20px; flex-wrap: wrap; font-size: 14.5px"><span><span style="color: #46536F">Price</span> <b>NPR 450</b></span><span><span style="color: #46536F">Stock</span> <b>12</b></span><span><span style="color: #46536F">Category</span> <b>Jewellery › Earrings</b></span><span><span style="color: #46536F">Origin</span> <b>India</b></span></div>
+            <p style="font-size: 15px; color: #2C3B5C; line-height: 1.6">Blue glass-bead butterfly danglers on a gold-tone hook. Lightweight, about 6 cm long.</p>
+          </div>
+
+          <div class="panel" style="padding: 22px; display: flex; flex-direction: column; gap: 4px">
+            <h3 style="font-size: 16px; font-weight: 650; margin-bottom: 8px">Checks</h3>
+            <label style="display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid #E4DACA; font-size: 14.5px"><span class="check on"><span class="ic s16 i-check"></span></span><span style="flex: 1">Photos show the actual product</span><span class="badge ok">Pass</span></label>
+            <label style="display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid #E4DACA; font-size: 14.5px"><span class="check on"><span class="ic s16 i-check"></span></span><span style="flex: 1">Allowed to sell on Hastabazaar</span><span class="badge ok">Pass</span></label>
+            <label style="display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid #E4DACA; font-size: 14.5px"><span class="check on"><span class="ic s16 i-check"></span></span><span style="flex: 1">Price in line with similar listings</span><span class="badge ok">NPR 390–720</span></label>
+            <label style="display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid #E4DACA; font-size: 14.5px"><span class="check"></span><span style="flex: 1">Proof that it’s handmade</span><span class="badge warn">Check</span></label>
+            <label style="display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid #E4DACA; font-size: 14.5px"><span class="check on"><span class="ic s16 i-check"></span></span><span style="flex: 1">Origin, materials and size filled in</span><span class="badge ok">Pass</span></label>
+          </div>
+
+          <div class="field">
+            <label class="label" for="msg">Message to seller <span style="font-weight: 400; color: #675B4E">(sent only if you ask for changes)</span></label>
+            <textarea id="msg" class="input" rows="2" placeholder="e.g. Add a photo being worn and confirm how the beads are strung."></textarea>
+          </div>
+
+          <div style="display: flex; gap: 10px; flex-wrap: wrap">
+            <button class="btn btn-primary" style="flex: 1"><span class="ic s18 i-check"></span>Approve &amp; publish<span class="kbd" style="margin-left: 6px; background: rgba(255,255,255,.15); border-color: rgba(255,255,255,.3); color: #fff">A</span></button>
+            <button class="btn btn-ghost" style="flex: 1">Ask for changes<span class="kbd" style="margin-left: 6px">C</span></button>
+            <button class="btn btn-quiet" style="color: #A8232E">Reject…</button>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1200}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { helpOpen: false }; }
+  renderVals() { return { helpOpen: this.state.helpOpen, toggleHelp: () => this.setState({ helpOpen: !this.state.helpOpen }) }; }
+}
+</script>
+</body>
+</html>

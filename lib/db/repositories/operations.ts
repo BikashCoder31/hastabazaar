@@ -1,11 +1,17 @@
+import { validateSellerFormSubmission } from '../../forms/submission';
+import { currentFormVersionCondition } from '../../forms/native-version';
+import { formAnswerSourceSql } from '../../forms/answer-proof';
 import { assertFirstCodFulfillmentAllowed } from '../../orders/first-cod-review';
+import { prepareOutboundDeliveryUnitMappings } from '../../operations/parcels';
+import {CURRENT_CUSTOMER_ROLE_SQL,assertCurrentCustomerScope} from '@/lib/auth/customer-scope';
 import { retainedIncentiveProofForRequestSql } from '../../incentives/privacy';
 import { riderNotificationSourceSql } from '../../operations/rider-notification-access';
+import { isCurrentCatalogNotice, isCurrentOperationalNotice, isCurrentCaseNotice } from '../../operations/event-catalog';
 import { operationalBusinessNotificationStatements } from '../../operations/business-notifications';
 import type { StaffRole } from '@/lib/auth/staff';
 import { buildFormAnswerInsert } from './form-answers';
 import { FORM_REGISTRY } from '@/lib/forms/registry';
-import { FormRuntimeError, resolvePublishedForm } from '@/lib/forms/runtime';
+import { FormRuntimeError } from '@/lib/forms/runtime';
 import type {
   FormAnswerSnapshot,
   PublishedFormConfig,
@@ -104,13 +110,27 @@ export async function listNotifications(
   limit = 100,
   audience?: 'customer' | 'seller' | 'staff',
 ): Promise<readonly NotificationRow[]> {
-  const result = await database
-    .prepare(
-      `SELECT n.id, n.audience_role AS audienceRole, n.required_permission AS requiredPermission, n.channel, n.subject_en AS subjectEn, n.subject_ne AS subjectNe, n.body_en AS bodyEn, n.body_ne AS bodyNe, n.status, n.related_type AS relatedType, n.related_id AS relatedId, n.created_at AS createdAt, n.read_at AS readAt, (SELECT o.order_number FROM orders o WHERE o.customer_id=n.recipient_user_id AND ((n.related_type='order' AND o.id=n.related_id) OR (n.related_type='return_request' AND o.id=(SELECT i.order_id FROM return_requests r JOIN order_items i ON i.id=r.order_item_id WHERE r.id=n.related_id)) OR (n.related_type='complaint' AND o.id=(SELECT c.order_id FROM complaints c WHERE c.id=n.related_id)))) AS orderNumber, (SELECT p.status FROM products p JOIN seller_profiles s ON s.id=p.seller_id WHERE n.related_type='product' AND p.id=n.related_id AND s.user_id=n.recipient_user_id) AS productStatus FROM notification_messages n WHERE n.recipient_user_id = ? AND (? IS NULL OR (n.audience_role = ? AND n.channel = 'in_app')) AND (n.related_type <> 'exception_work' OR n.related_type IS NULL OR EXISTS(SELECT 1 FROM exception_work_items w WHERE w.id=n.related_id AND w.owner_id=n.recipient_user_id AND w.status='open')) AND (n.audience_role<>'staff' OR n.related_type IS NULL OR n.related_type<>'return_request' OR EXISTS(SELECT 1 FROM return_requests r WHERE r.id=n.related_id AND r.status NOT IN ('resolved','closed','rejected') AND (r.reviewed_by IS NULL OR r.reviewed_by=n.recipient_user_id OR (n.required_permission='refund.approve.high_value' AND r.status='pending_high_value_approval')))) AND (n.audience_role<>'staff' OR n.related_type IS NULL OR n.related_type<>'complaint' OR EXISTS(SELECT 1 FROM complaints c WHERE c.id=n.related_id AND c.status NOT IN ('resolved','closed','rejected') AND (COALESCE(c.escalated_to,c.assigned_to) IS NULL OR COALESCE(c.escalated_to,c.assigned_to)=n.recipient_user_id))) AND ${riderNotificationSourceSql()} ORDER BY n.created_at DESC LIMIT ?`,
-    )
-    .bind(userId, audience ?? null, audience ?? null, limit)
-    .all<NotificationRow>();
-  return result.results;
+  if (!Number.isSafeInteger(limit) || limit < 1) return [];
+  const current: NotificationRow[] = [];
+  let cursor: { createdAt: number; id: string } | null = null;
+  while (current.length < limit) {
+    const result: D1Result<NotificationRow & { template: string; requestId: string }> = await database
+      .prepare(
+        `SELECT n.template_key AS template,n.request_id AS requestId,n.id, n.audience_role AS audienceRole, n.required_permission AS requiredPermission, n.channel, n.subject_en AS subjectEn, n.subject_ne AS subjectNe, n.body_en AS bodyEn, n.body_ne AS bodyNe, n.status, n.related_type AS relatedType, n.related_id AS relatedId, n.created_at AS createdAt, n.read_at AS readAt, (SELECT o.order_number FROM orders o WHERE o.customer_id=n.recipient_user_id AND ((n.related_type='order' AND o.id=n.related_id) OR (n.related_type='return_request' AND o.id=(SELECT i.order_id FROM return_requests r JOIN order_items i ON i.id=r.order_item_id WHERE r.id=n.related_id)) OR (n.related_type='complaint' AND o.id=(SELECT c.order_id FROM complaints c WHERE c.id=n.related_id)))) AS orderNumber, (SELECT p.status FROM products p JOIN seller_profiles s ON s.id=p.seller_id WHERE n.related_type='product' AND p.id=n.related_id AND s.user_id=n.recipient_user_id) AS productStatus FROM notification_messages n WHERE n.recipient_user_id = ? AND (? IS NULL OR (n.audience_role = ? AND n.channel = 'in_app')) AND (n.related_type <> 'exception_work' OR n.related_type IS NULL OR EXISTS(SELECT 1 FROM exception_work_items w WHERE w.id=n.related_id AND (w.owner_id=n.recipient_user_id OR (n.required_permission='admin.invite' AND EXISTS(SELECT 1 FROM users oversight_user JOIN user_roles oversight_role ON oversight_role.user_id=oversight_user.id WHERE oversight_user.id=n.recipient_user_id AND oversight_user.status='active' AND oversight_role.role='super_admin'))) AND w.status='open')) AND (n.audience_role<>'staff' OR n.related_type IS NULL OR n.related_type<>'return_request' OR n.required_permission='admin.invite' OR EXISTS(SELECT 1 FROM return_requests r WHERE r.id=n.related_id AND r.status NOT IN ('resolved','closed','rejected') AND (r.reviewed_by IS NULL OR r.reviewed_by=n.recipient_user_id OR (n.required_permission='refund.approve.high_value' AND r.status='pending_high_value_approval')))) AND (n.audience_role<>'staff' OR n.related_type IS NULL OR n.related_type<>'complaint' OR n.required_permission='admin.invite' OR EXISTS(SELECT 1 FROM complaints c WHERE c.id=n.related_id AND c.status NOT IN ('resolved','closed','rejected') AND (COALESCE(c.escalated_to,c.assigned_to) IS NULL OR COALESCE(c.escalated_to,c.assigned_to)=n.recipient_user_id))) AND ${riderNotificationSourceSql()} AND (? IS NULL OR n.created_at < ? OR (n.created_at = ? AND n.id < ?)) ORDER BY n.created_at DESC, n.id DESC LIMIT ?`,
+      )
+      .bind(userId, audience ?? null, audience ?? null, cursor?.createdAt ?? null, cursor?.createdAt ?? null, cursor?.createdAt ?? null, cursor?.id ?? null, 100)
+      .all<NotificationRow & { template: string; requestId: string }>();
+    for (const { template, requestId, ...notice } of result.results) {
+      const source = { template, requestId, relatedId: notice.relatedId, relatedType: notice.relatedType, userId,
+        audience: notice.audienceRole, channel: notice.channel, requiredPermission: notice.requiredPermission };
+      if (await isCurrentCatalogNotice(database, source) && await isCurrentOperationalNotice(database, source) && await isCurrentCaseNotice(database, source)) current.push(notice);
+      if (current.length === limit) break;
+    }
+    if (result.results.length < 100) break;
+    const last = result.results.at(-1)!;
+    cursor = { createdAt: last.createdAt, id: last.id };
+  }
+  return current;
 }
 
 export async function markNotificationRead(
@@ -121,7 +141,11 @@ export async function markNotificationRead(
 ): Promise<void> {
   const result = await database
     .prepare(
-      `UPDATE notification_messages SET status = CASE WHEN channel = 'in_app' THEN 'read' ELSE status END, read_at = COALESCE(read_at, ?) WHERE id = ? AND recipient_user_id = ? AND ${riderNotificationSourceSql('notification_messages')}`,
+      `UPDATE notification_messages SET status = 'read', read_at = COALESCE(read_at, ?) WHERE id = ? AND recipient_user_id = ?
+       AND channel='in_app' AND audience_role IN ('customer','seller')
+       AND EXISTS(SELECT 1 FROM users u WHERE u.id=notification_messages.recipient_user_id AND u.status='active'
+         AND EXISTS(SELECT 1 FROM user_roles WHERE user_id=u.id AND role IN ('customer','seller')))
+       AND ${riderNotificationSourceSql('notification_messages')}`,
     )
     .bind(now, notificationId, userId)
     .run();
@@ -298,12 +322,13 @@ export async function createShippingJob(
       throw new FormRequestConflictError('Request reference is already used.');
     return duplicate.id;
   }
+  const deliverySource = options.direction === 'outbound' ? ', orders.delivery_rate_snapshot_json AS deliverySnapshotJson' : '';
   const owned = await database
     .prepare(
-      `SELECT orders.id FROM orders INNER JOIN order_items ON order_items.order_id = orders.id WHERE orders.id = ? AND order_items.seller_id = ? LIMIT 1`,
+      `SELECT orders.id${deliverySource} FROM orders INNER JOIN order_items ON order_items.order_id = orders.id WHERE orders.id = ? AND order_items.seller_id = ? LIMIT 1`,
     )
     .bind(options.orderId, options.sellerId)
-    .first();
+    .first<{ id: string; deliverySnapshotJson?: string | null }>();
   if (!owned)
     throw new OperationsConflictError('Order is not assigned to this seller.');
   if (options.direction === 'outbound')
@@ -334,6 +359,12 @@ export async function createShippingJob(
           options.now,
           options.now,
         ),
+      ...(options.direction === 'outbound' ? prepareOutboundDeliveryUnitMappings(database, {
+        orderId: options.orderId,
+        sellerId: options.sellerId,
+        deliverySnapshotJson: owned.deliverySnapshotJson ?? null,
+        now: options.now,
+      }) : []),
       database
         .prepare(
           `INSERT INTO shipping_job_events (id, shipping_job_id, from_status, to_status, action, actor_id, actor_role, note, request_id, created_at) VALUES (?, ?, NULL, 'pickup_requested', 'request_pickup', ?, 'seller', ?, ?, ?)`,
@@ -719,37 +750,9 @@ type PrivacyFormSubmission = {
   answers: FormAnswerSnapshot;
 };
 
-export async function validatePrivacyRequestForm(
-  database: D1Database,
-  formVersion: number,
-  customAnswers: unknown,
-): Promise<PrivacyFormSubmission> {
-  const config = await resolvePublishedForm(
-    database,
-    'account.privacy-request',
-  );
-  if (formVersion !== config.version)
-    throw new FormRuntimeError(
-      'stale_version',
-      'This form changed. Refresh it and review your answers.',
-    );
-  const answers = validateAnswersForDefinition(
-    FORM_REGISTRY['account.privacy-request'],
-    config,
-    customAnswers,
-  );
-  const version = await database
-    .prepare(
-      `SELECT id FROM form_config_versions WHERE form_id='account.privacy-request' AND status='published' AND version=? LIMIT 1`,
-    )
-    .bind(config.version)
-    .first<{ id: string }>();
-  if (!version)
-    throw new FormRuntimeError(
-      'config_unavailable',
-      'Published form version unavailable',
-    );
-  return { formVersion: config.version, versionId: version.id, answers };
+export async function validatePrivacyRequestForm(database: D1Database, formVersion: number, customAnswers: unknown): Promise<PrivacyFormSubmission> {
+  const checked = await validateSellerFormSubmission(database, 'account.privacy-request', formVersion, customAnswers);
+  return { formVersion: checked.answers.version, versionId: checked.versionId, answers: checked.answers };
 }
 
 export async function privacyRequestStatus(
@@ -776,8 +779,8 @@ export async function privacyRequestStatus(
   try {
     row = await database
       .prepare(`SELECT d.id,d.customer_id AS customerId,d.request_type AS requestType,d.detail,
-        f.answers_json AS answersJson,v.config_json AS configJson,v.version AS savedVersion,v.published_at AS publishedAt
-      FROM data_rights_requests d LEFT JOIN form_answer_sets f
+        f.answers_json AS answersJson,COALESCE(v.config_json,f.core_config) AS configJson,COALESCE(v.version,f.core_version) AS savedVersion,COALESCE(v.published_at,f.core_published_at) AS publishedAt
+      FROM data_rights_requests d LEFT JOIN ${formAnswerSourceSql(database)} f
         ON f.form_id='account.privacy-request' AND f.request_id=d.created_request_id
       LEFT JOIN form_config_versions v ON v.id=f.config_version_id
       WHERE d.created_request_id=? LIMIT 1`)
@@ -877,14 +880,14 @@ export async function createDataRightsRequest(
       ? [
           database
             .prepare(`SELECT CASE WHEN
-      EXISTS(SELECT 1 FROM users WHERE id=? AND status='active')
-      AND (SELECT MAX(version) FROM form_config_versions WHERE form_id='account.privacy-request' AND status='published')=?
+      EXISTS(SELECT 1 FROM users WHERE id=? AND status='active' AND ${CURRENT_CUSTOMER_ROLE_SQL})
+      AND ${currentFormVersionCondition('account.privacy-request', options.form.versionId).sql}
       AND NOT EXISTS(SELECT 1 FROM data_rights_requests WHERE created_request_id=?)
       AND NOT EXISTS(SELECT 1 FROM form_answer_sets WHERE form_id='account.privacy-request' AND request_id=?)
       THEN 1 ELSE json_extract('invalid','$') END AS valid`)
             .bind(
               options.customerId,
-              options.form.formVersion,
+              ...currentFormVersionCondition('account.privacy-request', options.form.versionId).bindings,
               options.requestId,
               options.requestId,
             ),
@@ -958,6 +961,7 @@ export async function createDataRightsRequest(
         throw new OperationsConflictError(
           'This request ID was already used for different privacy request values.',
         );
+      await assertCurrentCustomerScope(database,options.customerId);
       const current = await database
         .prepare(
           `SELECT MAX(version) AS version FROM form_config_versions WHERE form_id='account.privacy-request' AND status='published'`,
@@ -1052,7 +1056,7 @@ export async function operateDataRightsRequest(
         .bind(options.requestId + ':audit', options.actorId, options.id)
         .first<{ nextJson: string | null }>();
       const answer = await database
-        .prepare(`SELECT 1 AS valid FROM form_answer_sets WHERE form_id='staff.privacy-action'
+        .prepare(`SELECT 1 AS valid FROM ${formAnswerSourceSql(database)} original_answers WHERE form_id='staff.privacy-action'
         AND request_id=? AND config_version_id=? AND subject_type='data_rights_request'
         AND subject_id=? AND actor_id=?`)
         .bind(
@@ -1152,7 +1156,7 @@ export async function operateDataRightsRequest(
         .prepare(
           `UPDATE data_rights_requests SET status = ?, assigned_to = COALESCE(assigned_to, ?), resolution = CASE WHEN ? IN ('rejected','completed') THEN ? ELSE resolution END, operation_request_id = ?, updated_at = ?, completed_at = CASE WHEN ? = 'completed' THEN ? ELSE completed_at END WHERE id = ? AND status = ?
          AND (? <> 'completed' OR request_type <> 'deletion' OR NOT EXISTS (
-           SELECT 1 FROM form_answer_sets answers WHERE ${ownedAnswerSql}
+           SELECT 1 FROM ${formAnswerSourceSql(database)} answers WHERE ${ownedAnswerSql}
          ))${retainedFinancialGuard}`,
         )
         .bind(
@@ -1258,12 +1262,12 @@ export async function operateDataRightsRequest(
           );
         const remaining = await database
           .prepare(`SELECT 1 AS valid FROM data_rights_requests
-          WHERE id=? AND EXISTS (SELECT 1 FROM form_answer_sets answers WHERE ${ownedAnswerSql}) LIMIT 1`)
+          WHERE id=? AND EXISTS (SELECT 1 FROM ${formAnswerSourceSql(database)} answers WHERE ${ownedAnswerSql}) LIMIT 1`)
           .bind(options.id)
           .first();
         if (remaining)
           throw new OperationsConflictError(
-            'Erase the remaining linked form answers before completing this request.',
+            'Linked form answers or retained native proof prevent full deletion completion.',
           );
       }
       await staffMutationGuard(
@@ -1440,7 +1444,7 @@ async function governanceReplay(
   if (!audits.results.length) {
     const orphan = await database
       .prepare(
-        'SELECT 1 FROM form_answer_sets WHERE form_id=? AND request_id=? LIMIT 1',
+        `SELECT 1 FROM ${formAnswerSourceSql(database)} original_answers WHERE form_id=? AND request_id=? LIMIT 1`,
       )
       .bind(input.formId, input.requestId)
       .first();
@@ -1451,7 +1455,7 @@ async function governanceReplay(
   const audit = audits.results[0];
   const answer = await database
     .prepare(`SELECT actor_id AS actorId,subject_type AS subjectType,
-    subject_id AS subjectId,config_version_id AS versionId FROM form_answer_sets
+    subject_id AS subjectId,config_version_id AS versionId FROM ${formAnswerSourceSql(database)} original_answers
     WHERE form_id=? AND request_id=? LIMIT 1`)
     .bind(input.formId, input.requestId)
     .first<{
@@ -1552,6 +1556,10 @@ export async function performGovernanceAction(
     };
   },
 ): Promise<void> {
+  if(options.action==='incident.create'||options.action==='incident.update'){
+    await staffMutationGuard(database,options.actorId,'system.incidents.manage',OperationsConflictError);
+    throw new OperationsConflictError('Use the System health incident workspace at /admin/system-health/incidents. Legacy incident history is retained; this route cannot resolve or rewrite it.');
+  }
   if (!options.requestId || options.requestId.length > 100)
     throw new OperationsConflictError(
       'A valid request identifier is required.',
@@ -1881,6 +1889,10 @@ export async function performGovernanceAction(
         .prepare(`UPDATE users SET status = ?, updated_at = ? WHERE id = ?`)
         .bind(status, options.now, subjectId),
     );
+    // Re-enabling an account must require a new sign-in. Delete the sessions
+    // in the same transaction as disabling it, while keeping MFA enrollment.
+    if (status === 'disabled')
+      statements.push(database.prepare('DELETE FROM user_sessions WHERE user_id = ?').bind(subjectId));
     next = { status };
   } else if (options.action === 'incident.create') {
     const id = crypto.randomUUID();

@@ -2,7 +2,7 @@
 
 import { FormGuide } from '@/components/forms/form-guide';
 import { useRouter } from 'next/navigation';
-import { useState, useRef } from 'react';
+import { useState, useRef,useEffect } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,15 +10,20 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ConfiguredFields, focusConfiguredField } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
+import {useAccountCommand} from './use-account-command';
+import {AccountCommandRecovery} from './account-command-recovery';
 
 const BASE_KEYS = ['rating', 'title', 'body', 'orderItemId', 'idempotencyKey', 'photos', 'customerId'] as const;
 
-export function ReviewForm({
+export function ReviewForm(props:{actorId:string;productId:string;orderItemId:string;orderNumber:string}){return <CurrentReviewForm key={JSON.stringify([props.actorId,props.productId,props.orderItemId])} {...props}/>;}
+function CurrentReviewForm({
+  actorId,
   productId,
   orderItemId,
   orderNumber,
 }: {
+  actorId:string;
   productId: string;
   orderItemId: string;
   orderNumber: string;
@@ -28,13 +33,17 @@ export function ReviewForm({
   const [message, setMessage] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const requestId = useRef(crypto.randomUUID());
+  const formRef=useRef<HTMLFormElement|null>(null);
+  const command=useAccountCommand({actorId,scopeKey:JSON.stringify(['review',productId,orderItemId]),onRecorded:(_data,current)=>{if(!current())return;setMessage('Your verified-purchase review submission is recorded. Its current public status follows moderation.');setFieldErrors({});formRef.current?.reset();requestId.current=crypto.randomUUID();command.setMessage('');router.refresh();},onDenied:()=>router.refresh()});
   const { config, status, message: configMessage, canSubmit, refresh, handleSubmissionResponse } = usePublishedFormConfig('account.review');
+  useEffect(()=>{const fieldId=Object.keys(fieldErrors)[0];if(!busy&&!command.blocked&&fieldId&&formRef.current)focusConfiguredField(formRef.current,fieldId);},[busy,command.blocked,fieldErrors]);
   async function submit(event: {
     preventDefault(): void;
     currentTarget: HTMLFormElement;
   }) {
     event.preventDefault();
-    if (busy || !canSubmit || !config) return;
+    if (busy || command.blocked || !canSubmit || !config) return;
+    const current=command.capture();
     const formElement = event.currentTarget;
     setBusy(true);
     setMessage('');
@@ -58,48 +67,42 @@ export function ReviewForm({
         .filter((f): f is File => f instanceof File && f.size > 0);
       if (files.length > 3 || files.some((f) => f.size > 5 * 1024 * 1024))
         throw new Error('Choose up to three photos, each no larger than 5 MB.');
-      const response = await fetch(
-        `/api/products/${encodeURIComponent(productId)}/reviews`,
-        { method: 'POST', body: data },
-      );
-      const result = (await response.json().catch(() => null)) as {
+      const response = await command.run({action:'review.submit',sourceId:orderItemId,relatedId:productId,requestId:requestId.current,endpoint:`/api/products/${encodeURIComponent(productId)}/reviews`,method:'POST',body:data});
+      if(!response||!current())return;
+      const result = response.data as {
         id?: string;
         error?: string;
         fieldId?: string;
       } | null;
-      if (!response.ok || !result?.id)
+      if (!response.ok)
       {
-        if (response.status === 409 && (result as { code?: unknown } | null)?.code === 'stale_version') handleSubmissionResponse(response);
+        if (response.status === 409 && (result as { code?: unknown } | null)?.code === 'stale_version') handleSubmissionResponse(response, 'stale_version');
         else if (response.status === 400 || response.status === 409) requestId.current = crypto.randomUUID();
         const explanation = result?.error ?? 'Review could not be submitted. Please try again.';
         if (typeof result?.fieldId === 'string') {
           setFieldErrors({ [result.fieldId]: explanation });
-          focusConfiguredField(formElement, result.fieldId);
         }
         throw new Error(explanation);
       }
-      setMessage(
-        'Thank you. Your verified-purchase review is awaiting moderation.',
-      );
-      formElement.reset();
-      requestId.current = crypto.randomUUID();
-      router.refresh();
     } catch (reason) {
+      if(!current())return;
       setMessage(
         reason instanceof Error
           ? reason.message
           : 'Review could not be submitted.',
       );
     } finally {
-      setBusy(false);
+      if(current())setBusy(false);
     }
   }
+  if(command.accessDenied)return <section role="alert" className="space-y-3 rounded-xl border bg-card p-5"><p>Review access changed. Reopen the current product before viewing or submitting private review details.</p><Button type="button" variant="outline" onClick={()=>router.refresh()}>Refresh current product</Button></section>;
   return (
     <form
+      ref={formRef}
       data-form-id="account.review"
       onSubmit={submit}
       onChange={() => {
-        if (!busy) requestId.current = crypto.randomUUID();
+        if (!busy&&!command.blocked) requestId.current = crypto.randomUUID();
       }}
       className="customer-form mt-5 grid gap-4 rounded-2xl border bg-card p-5"
     >
@@ -110,7 +113,8 @@ export function ReviewForm({
       <p className="text-sm text-muted-foreground">
         Delivered order {orderNumber}
       </p>
-      <fieldset disabled={busy} className="grid gap-4">
+      <AccountCommandRecovery command={command}/>
+      <fieldset disabled={busy||command.blocked} className="grid gap-4">
         {config ? <ConfiguredFields config={config} baseKeys={BASE_KEYS} errors={fieldErrors} /> : null}
         <div className="space-y-2">
           <Label htmlFor="rating">Rating</Label>
@@ -168,7 +172,7 @@ export function ReviewForm({
             <output className="text-sm text-muted-foreground">{status === 'loading' ? 'Form configuration is loading.' : configMessage}</output>
             {status !== 'loading' ? <Button type="button" variant="outline" onClick={refresh}>Refresh form</Button> : null}
           </div> : null}
-          <Button type="submit" disabled={busy || !canSubmit}>
+          <Button type="submit" disabled={busy || command.blocked || !canSubmit}>
             {busy ? 'Submitting…' : 'Submit review'}
           </Button>
           {message ? (

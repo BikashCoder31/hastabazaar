@@ -154,6 +154,8 @@ async function fixture() {
   sqlite.exec(`INSERT INTO users(id,email,display_name,status,created_at,updated_at) VALUES
     ('super','super@example.test','Super','active',1,1),('staff','staff@example.test','Staff','active',1,1);
     INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('super','super_admin',1),('staff','admin',1);`);
+  const {historicalCommissionFixture} = await import('./helpers/historical-commission-fixture');
+  historicalCommissionFixture(sqlite,'super');
   const database=new TestDatabase(sqlite) as unknown as D1Database;
   registerTransitionFixture(database,sqlite);
   return {sqlite,database};
@@ -749,13 +751,15 @@ void test('managed government ID and optional personal PAN evidence stay private
       assert.ok(await getSellerDocumentForStaff(database,documentId,'super'));
     }
     const staffView=await getSellerApplicationForReview(database,'maker','staff');
-    assert.equal(staffView?.documents.length,2);assert.equal(staffView?.documentCount,2);
-    assert.deepEqual(staffView?.documents.map(document=>document.kind).sort(),['bank_verification','business_registration'],'Only new business and receiving certificates are visible to ordinary staff');
+    assert.equal(staffView?.documents.length,1);assert.equal(staffView?.documentCount,1);
+    assert.deepEqual(staffView?.documents.map(document=>document.kind).sort(),['business_registration'],'Bank evidence remains restricted to Super Admin after a route transition.');
+    const bankId=String(sqlite.prepare("SELECT id FROM seller_documents WHERE seller_id='maker' AND kind='bank_verification' LIMIT 1").get()!.id);
+    await assert.rejects(getSellerDocumentForStaff(database,bankId,'staff'),/Super Admin/i);
     assert.equal(JSON.stringify(staffView).includes('123456789'),false,'private filenames must not reach ordinary staff');
     assert.equal((await getSellerApplicationForReview(database,'maker','super'))?.documents.length,7);
     sqlite.exec('DROP TRIGGER managed_maker_details_no_delete; DELETE FROM managed_maker_application_details;');
     await assert.rejects(getSellerDocumentForStaff(database,'original-pan','staff'),/Super Admin/i,'historical transition also protects legacy makers without new acceptance');
-    assert.equal((await getSellerApplicationForReview(database,'maker','staff'))?.documents.length,2);
+    assert.equal((await getSellerApplicationForReview(database,'maker','staff'))?.documents.length,1);
   }finally{sqlite.close();}
 });
 void test('originally registered seller certificates retain ordinary staff document and review access',async()=>{

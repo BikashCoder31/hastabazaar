@@ -1,0 +1,62 @@
+import type {Route as BrowserRoute,ConsoleMessage as BrowserConsoleMessage} from 'playwright-core';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {registerHooks} from 'node:module';
+import {build} from 'esbuild';
+import {mkdir} from 'node:fs/promises';
+import {join} from 'node:path';
+import {publishedLiveMakerFixture} from './helpers/live-maker-offer-fixture';
+
+declare global{var managedLiveBrowserDb:D1Database;var managedLiveBrowserActor:string;var managedLiveBrowserBucket:R2Bucket;}
+registerHooks({resolve(specifier,context,next){
+ if(specifier==='cloudflare:workers')return {url:'data:text/javascript,export const env={get DB(){return globalThis.managedLiveBrowserDb},get MEDIA(){return globalThis.managedLiveBrowserBucket}}',shortCircuit:true};
+ if(specifier==='@/lib/auth/staff')return {url:'data:text/javascript,export class StaffAuthorizationError extends Error{constructor(message,status=403){super(message);this.status=status}};export async function requireStaffApi(){return{id:globalThis.managedLiveBrowserActor}}',shortCircuit:true};
+ return next(specifier,context);
+}});
+
+// Explicitly assigned isolated actual-route/component harness; every browser request is intercepted.
+void test('protected live clearance and activation recover uploaded bytes and recorded decisions after lost acknowledgement and reload',async()=>{
+ const f=await publishedLiveMakerFixture();try{
+  globalThis.managedLiveBrowserDb=f.db;globalThis.managedLiveBrowserActor='reviewer';globalThis.managedLiveBrowserBucket=f.bucket;
+  const api=await import('../app/api/admin/managed-makers/[id]/live/route'),files=await import('../app/api/admin/managed-makers/[id]/live-evidence/route'),params={params:Promise.resolve({id:f.sellerId})};
+  assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM managed_live_clearances').get()!.n,0);
+  const code=(await build({stdin:{loader:'tsx',resolveDir:process.cwd(),contents:`import React from'react';import{createRoot}from'react-dom/client';import{ManagedLiveActivationPanel}from'./components/admin/managed-live-activation-panel';createRoot(document.getElementById('root')).render(<ManagedLiveActivationPanel actorId="reviewer" sellerId="${f.sellerId}"/>);`},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"production"'},plugins:[{name:'managed-live-browser-framework',setup(builder){builder.onResolve({filter:/^next\/(navigation|link)$/},args=>({path:args.path,namespace:'fixture'}));builder.onLoad({filter:/.*/,namespace:'fixture'},({path})=>({contents:path.endsWith('navigation')?"export function useRouter(){return{refresh(){window.dispatchEvent(new Event('fixture-refresh'))}}}":"import React from'react';export default function Link({children,...props}){return React.createElement('a',props,children)}",loader:'js',resolveDir:process.cwd()}));}}]})).outputFiles[0].text;
+  const {chromium}=await import(process.env.PLAYWRIGHT_MODULE??'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs');
+  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH??'C:/Program Files/Google/Chrome/Application/chrome.exe'});try{
+   const context=await browser.newContext({viewport:{width:1280,height:900}}),origin='https://managed-live-activation.test',endpoint='/api/admin/managed-makers/'+f.sellerId,postedActions:string[]=[],lost=new Set<string>(),runtimeErrors:string[]=[],consoleErrors:string[]=[],responses:{path:string;status:number}[]=[];
+   await context.route('**/*',async(route:BrowserRoute)=>{
+    const incoming=route.request(),url=new URL(incoming.url());if(url.origin!==origin)return route.abort();
+    if(url.pathname==='/admin/sellers/'+f.sellerId)return route.fulfill({status:200,contentType:'text/html',body:'<!doctype html><html><head><link rel="icon" href="data:,"><title>Fictional managed live activation</title></head><body><main id="root"></main></body></html>'});
+    if(![endpoint+'/live',endpoint+'/live-evidence'].includes(url.pathname))return route.abort();
+    const method=incoming.method(),request=new Request(url,{method,headers:{...incoming.headers(),origin},...(method==='POST'?{body:Uint8Array.from(incoming.postDataBuffer()??[])}:{})});
+    let action='';if(method==='POST'){action=url.pathname.endsWith('live-evidence')?'private_upload':JSON.parse(incoming.postData()??'').action;postedActions.push(action);}
+    const handler=url.pathname.endsWith('live-evidence')?files:api,response=method==='POST'?await handler.POST(request,params):await handler.GET(request,params);responses.push({path:url.pathname,status:response.status});
+    if(method==='POST'&&response.ok&&['financial_scope','private_upload','activate'].includes(action)&&!lost.has(action)){lost.add(action);return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Fictional lost '+action+' acknowledgement'})});}
+    return route.fulfill({status:response.status,headers:Object.fromEntries(response.headers),body:Buffer.from(await response.arrayBuffer())});
+   });
+   const page=await context.newPage();page.setDefaultTimeout(10000);page.on('pageerror',(error:Error)=>runtimeErrors.push(error.message));page.on('console',(message:BrowserConsoleMessage)=>{if(message.type()==='error')consoleErrors.push(message.text());});
+   const mount=async(reload=false)=>{if(reload)await page.reload();else await page.goto(origin+'/admin/sellers/'+f.sellerId);await page.addScriptTag({content:code});await page.getByRole('heading',{name:'Managed maker live trading',exact:true}).waitFor();};
+   const decision=(label:string)=>page.locator('form[aria-label="'+label+'"]').locator('..');
+   const open=async(label:string)=>{const area=decision(label);await area.locator('summary').first().click();return area;};
+   const checkStorage=async()=>{const stored=await page.evaluate(()=>({session:Object.entries(sessionStorage),local:Object.entries(localStorage)}));assert.deepEqual(stored.local,[]);for(const[,value]of stored.session)assert.match(value,/^[0-9a-f-]{36}$/i);assert.doesNotMatch(JSON.stringify(stored),/123456789|TEST-MANAGED|fictional-issued-clearance|FICTIONAL-BROWSER-CLEARANCE|FIC-BROWSER-LIVE|FICTIONAL EXTERNAL LEGAL ACCOUNTING CLEARANCE/);return stored;};
+   await mount();assert.equal(await page.title(),'Fictional managed live activation');assert.equal(page.url(),origin+'/admin/sellers/'+f.sellerId);await page.getByText('13.75%',{exact:true}).waitFor();
+   globalThis.managedLiveBrowserActor=f.ownerId;assert.equal((await api.GET(new Request(origin+endpoint+'/live'),params)).status,403);globalThis.managedLiveBrowserActor='reviewer';
+   const financialLabel='Record cleared invoice issuer and opening series',financial=await open(financialLabel);
+   await financial.getByLabel('Cleared series prefix',{exact:true}).fill('FIC-BROWSER-LIVE');await financial.getByLabel('Series version reference',{exact:true}).fill('FICTIONAL-BROWSER-SERIES-1');await financial.getByLabel('Reconciled first invoice number',{exact:true}).fill('100');await financial.getByLabel('External issuer and sequence evidence reference',{exact:true}).fill('FICTIONAL-BROWSER-ISSUER-OPENING');await financial.getByLabel('Reason for this decision',{exact:true}).fill('Independently inspect this actual fictional external issuer and reconciled invoice opening sequence.');
+   await financial.getByRole('button',{name:financialLabel,exact:true}).click();await page.getByText('Fictional lost financial_scope acknowledgement',{exact:true}).waitFor();assert.equal((await checkStorage()).session.length,1);
+   await mount(true);const financialRecovery=await open(financialLabel);await financialRecovery.getByRole('button',{name:'Check saved outcome',exact:true}).click();await financialRecovery.getByText('The original action was recorded. Current case facts have been refreshed.',{exact:true}).waitFor();assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM managed_live_financial_scopes').get()!.n,1);assert.equal((await checkStorage()).session.length,0);
+   const file=f.externalFile();await page.getByLabel('Private source document',{exact:true}).setInputFiles({name:file.name,mimeType:file.type,buffer:Buffer.from(await file.arrayBuffer())});await page.getByRole('button',{name:'Retain private file',exact:true}).click();await page.getByText('Fictional lost private_upload acknowledgement',{exact:true}).waitFor();assert.equal((await checkStorage()).session.length,1);
+   await mount(true);await page.getByRole('button',{name:'Check saved upload',exact:true}).click();await page.getByText('The original private file is retained and available for review.',{exact:true}).waitFor();assert.equal(f.objects.size,1);assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM managed_clearance_evidence_files').get()!.n,1);assert.equal((await checkStorage()).session.length,0);
+   const reviewLabel='Review external legal and accounting clearance',clearance=await open(reviewLabel);await clearance.getByRole('checkbox').first().check();await clearance.getByLabel('External issuing authority',{exact:true}).fill('Fictional External Legal Accounting Authority');await clearance.getByLabel('External source reference',{exact:true}).fill('FICTIONAL-BROWSER-CLEARANCE');
+   const local=(minutes:number)=>new Date(Date.now()+345*60000-minutes*60000).toISOString().slice(0,16);await clearance.getByLabel('Actual source issue time',{exact:true}).fill(local(20));await clearance.getByLabel('Effective from',{exact:true}).fill(local(10));
+   for(const label of ['I independently checked the authenticity and scope of the external source.','The source explicitly assesses this supplier’s registration and tax position.','The source clears the actual company commercial invoice issuer and model shown here.','The source clears the verified payout legal identity shown here.'])await clearance.getByLabel(label,{exact:true}).check();
+   await clearance.getByLabel('Reason for this decision',{exact:true}).fill('Independently assess the genuine fictional external supplier registration and tax clearance, actual issuer and verified payout legal identity.');await clearance.getByRole('button',{name:reviewLabel,exact:true}).click();await page.getByText('Current evidence is ready for an explicit activation decision',{exact:true}).waitFor();
+   assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM managed_live_clearances').get()!.n,1);
+   const activationLabel='Enable this cleared sale-linked scope',activation=await open(activationLabel);await activation.getByLabel('Reason for this decision',{exact:true}).fill('Enable only this current genuinely cleared and explicitly accepted fictional live commercial scope.');await activation.getByRole('button',{name:activationLabel,exact:true}).click();await page.getByText('Fictional lost activate acknowledgement',{exact:true}).waitFor();assert.equal((await checkStorage()).session.length,1);
+   await mount(true);await page.getByText('Enabled for new orders',{exact:true}).waitFor();const activationRecovery=await open(activationLabel);await activationRecovery.getByRole('button',{name:'Check saved outcome',exact:true}).click();await activationRecovery.getByText('The original action was recorded. Current case facts have been refreshed.',{exact:true}).waitFor();assert.equal((await checkStorage()).session.length,0);
+   assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM managed_live_activation_decisions').get()!.n,1);assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM managed_clearance_evidence_files').get()!.n,1);assert.equal(f.objects.size,1);assert.equal(postedActions.filter(a=>a==='activate').length,1);assert.equal(postedActions.filter(a=>a==='financial_scope').length,1);assert.equal(postedActions.filter(a=>a==='review_clearance').length,1);assert.equal(postedActions.filter(a=>a==='private_upload').length,2);
+   const artifactDirectory=join(process.cwd(),'.test-artifacts','t28');await mkdir(artifactDirectory,{recursive:true});const screenshot=join(artifactDirectory,'managed-live-activation-enabled.png');await page.screenshot({path:screenshot,fullPage:true});console.log('T28 activation screenshot: '+screenshot);
+   assert.ok(consoleErrors.every(message=>message.includes('503')),JSON.stringify(consoleErrors));assert.deepEqual(runtimeErrors,[]);assert.equal(responses.some(r=>r.status>=500),false);assert.equal(await page.getByText(/Application error|Unhandled Runtime Error|Internal Server Error/).count(),0);
+  }finally{await browser.close();}
+ }finally{f.dispose();}
+});

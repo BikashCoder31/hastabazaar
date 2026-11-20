@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {createIncentiveDb} from './helpers/incentive-db';
+import {getCommonFeeState,publishCommonFeePolicy} from '../lib/commission/coordinated-policy';
+const day=86400000,now=Date.UTC(2026,10,1),ctx=(requestId:string)=>({actorId:'owner',requestId,expectedRevision:null,now});
+void test('disposable native D1 serializes paired publication and rolls back both routes on a late failure',async()=>{
+ const f=await createIncentiveDb();try{
+  await f.db.prepare("INSERT INTO users(id,email,display_name,status,created_at,updated_at) VALUES('owner','owner@local.hastabazaar.test','Fictional Owner','active',1,1)").run();await f.db.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES('owner','super_admin',1)").run();
+  for(const key of ['independent_seller_commission_bps','managed_sale_linked_platform_retention_bps'])await f.db.prepare("INSERT INTO business_setting_versions(id,setting_key,version,value_json,status,revision,change_control,effective_from,reason,created_by,created_at,last_request_id) VALUES(?,?,1,'900','published',1,'controlled',1,'Isolated native baseline','owner',1,?)").bind('native-'+key,key,'native-'+key).run();
+  const state=await getCommonFeeState(f.db,now),input={expectedContext:state.context,basisPoints:1200,effectiveAt:now+16*day,reason:'Publish a fictional paired native fee policy',replacesId:null};
+  await f.db.prepare("CREATE TRIGGER fictional_late_fee_failure BEFORE INSERT ON audit_logs WHEN NEW.action='commission.common.published' BEGIN SELECT RAISE(ABORT,'fictional_late_failure'); END").run();await assert.rejects(()=>publishCommonFeePolicy(f.db,ctx('native-late-fee'),input));assert.equal((await f.db.prepare('SELECT COUNT(*) n FROM commission_common_policies').first<{n:number}>())?.n,0);assert.equal((await f.db.prepare("SELECT COUNT(*) n FROM business_setting_versions WHERE effective_until IS NOT NULL").first<{n:number}>())?.n,0);await f.db.prepare('DROP TRIGGER fictional_late_fee_failure').run();
+  const results=await Promise.allSettled(['native-fee-a','native-fee-b'].map(id=>publishCommonFeePolicy(f.db,ctx(id),input)));assert.equal(results.filter(result=>result.status==='fulfilled').length,1);assert.equal((await f.db.prepare('SELECT COUNT(*) n FROM commission_common_policies').first<{n:number}>())?.n,1);assert.equal((await f.db.prepare('SELECT COUNT(*) n FROM business_setting_versions WHERE effective_from=?').bind(input.effectiveAt).first<{n:number}>())?.n,2);assert.equal((await f.db.prepare("SELECT COUNT(*) n FROM notification_messages WHERE template_key='business.fee.policy'").first<{n:number}>())?.n,2);
+  const winningIndex=results.findIndex(result=>result.status==='fulfilled'),winning=results[winningIndex] as PromiseFulfilledResult<unknown>;assert.deepEqual(await publishCommonFeePolicy(f.db,ctx(['native-fee-a','native-fee-b'][winningIndex]),input),winning.value);await assert.rejects(f.db.prepare('UPDATE commission_common_policies SET basis_points=1').run(),/immutable/);
+ }finally{await f.dispose();}
+});

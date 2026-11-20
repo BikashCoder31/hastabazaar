@@ -21,7 +21,7 @@ async function load(file: string, append = '', stubs: Record<string, string> = {
     } }],
   });
   const result = { exports: {} as Record<string, unknown> };
-  runInNewContext(compiled.outputFiles[0].text, { require: createRequire(import.meta.url), module: result, exports: result.exports, process, crypto, URLSearchParams });
+  runInNewContext(compiled.outputFiles[0].text, { require: createRequire(import.meta.url), module: result, exports: result.exports, process, crypto, URL, URLSearchParams });
   return result.exports;
 }
 
@@ -33,6 +33,7 @@ void test('return detail identifies the original order delivery snapshot without
     '@/lib/auth/staff': 'exports.requireStaffPage=async()=>({id:"staff-test",role:"admin",permissions:["refund.approve.standard"]});',
     '@/lib/db/d1': 'exports.requireDatabase=()=>({});',
     '@/lib/db/repositories/returns': `exports.getOperationsReturnDetail=async()=>(${JSON.stringify(item)});`,
+    '@/lib/returns/courier-expenses': 'exports.recordedReturnCourierExpenses=async()=>({needsPricingReconciliation:true,expenses:[{id:"invoice",direction:"outbound",amountPaisa:12000,evidenceReference:"outbound-invoice",claimReference:null}]});',
     '@/lib/db/repositories/form-answers': 'exports.listFormAnswersForSubjectPage=async()=>({answers:[],next:null});',
     '@/lib/forms/access': 'exports.authorizeFormAnswerRead=async()=>true;',
     '@/components/admin/return-case-actions': 'exports.ReturnCaseActions=()=>null;',
@@ -44,6 +45,8 @@ void test('return detail identifies the original order delivery snapshot without
   assert.ok(delivery, 'Original delivery snapshot label must identify the displayed charge');
   assert.match(delivery, /<dd\b[^>]*>NPR(?:\s|\u00a0)123\.45<\/dd>/);
   assert.doesNotMatch(html, /Delivery paid/);
+  assert.match(html, /The saved buyer price needs reconciliation/);
+  assert.match(html, /outbound-invoice/);
 });
 
 void test('return action fields associate distinct labels with input, select and textarea while preserving control props', async () => {

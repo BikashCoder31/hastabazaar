@@ -1,15 +1,13 @@
 import { env } from 'cloudflare:workers';
 
-import {
-  CustomerAuthorizationError,
-  requireCustomerApi,
-} from '@/lib/auth/customer';
+import { requireNotificationRecipientApi, NotificationRecipientError } from '@/lib/auth/notification-recipient';
 import { requireDatabase } from '@/lib/db/d1';
 import {
   markNotificationRead,
   OperationsConflictError,
 } from '@/lib/db/repositories/operations';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import {hasActorIntentMismatch} from '@/lib/http/actor-intent';
 
 export async function POST(
   request: Request,
@@ -21,7 +19,8 @@ export async function POST(
       { status: 403 },
     );
   try {
-    const customer = await requireCustomerApi();
+    const customer = await requireNotificationRecipientApi();
+    if(hasActorIntentMismatch(request,customer.userId))return Response.json({error:'Your signed-in account changed. Refresh the notification workspace.'},{status:403});
     const { id } = await context.params;
     await markNotificationRead(
       requireDatabase(env as unknown as { DB?: D1Database }),
@@ -31,7 +30,7 @@ export async function POST(
     );
     return Response.json({ ok: true });
   } catch (error) {
-    if (error instanceof CustomerAuthorizationError)
+    if (error instanceof NotificationRecipientError)
       return Response.json({ error: error.message }, { status: error.status });
     if (error instanceof OperationsConflictError)
       return Response.json({ error: error.message }, { status: 404 });

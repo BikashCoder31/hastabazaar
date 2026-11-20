@@ -1,5 +1,18 @@
-import { seedCheckoutBuyer, seedVerifiedCheckoutContact } from './helpers/checkout-contact';
+import {deliverLegacyCheckout} from './helpers/legacy-checkout-fulfillment';
+import {legacyPayoutCapital} from './helpers/legacy-payout-capital';
+import * as payoutTransfers from '../lib/payments/payout-transfers';
+import {recordRefundPacketOutcome,prepareRefundPacket} from '../lib/payments/refund-obligations';
+import {prepareLegacyReturnSources,startLegacyReturnPacket,prepareLegacyCancelledDeliveryOrder,collectLegacyManagedBeforeAccrual} from './helpers/legacy-return-money';
+import {prepareLegacyCodReceipt} from './helpers/legacy-cod-receipt';
+import { fakeProviderMail } from './helpers/fake-provider-mail';
+import { MailDeliveryError } from '../lib/email/delivery-attempts';
+import {payoutRequestBankFixture} from './helpers/payout-request-bank-fixture';
+import {getReturnHandling,recordReturnHandling} from '../lib/returns/handling';
+import { seedCheckoutBuyer, seedVerifiedCheckoutContact, readyCheckoutSeller } from './helpers/checkout-contact';
+import { historicalCommissionFixture } from './helpers/historical-commission-fixture';
 import assert from 'node:assert/strict';
+import {billingPreviewSnapshot} from '../lib/staging/billing-preview';
+import type {OrderDocumentSnapshot} from '../lib/db/repositories/orders';
 import { readdir, readFile } from 'node:fs/promises';
 import {
   DatabaseSync,
@@ -34,6 +47,22 @@ async function resetAuthFixture(db: D1Database) {
     )
     .run();
 }
+
+void test('disabling then reactivating an account cannot reactivate its previous hosted sessions', async () => {
+  const fixture = await databaseFixture();
+  const db = fixture.database as unknown as D1Database;
+  try {
+    await resetAuthFixture(db);
+    await db.prepare("INSERT INTO user_sessions VALUES ('revoked-on-disable','admin-1',?,?,?)").bind(now + 8 * 3600000, now, now).run();
+    await db.prepare("INSERT INTO user_sessions VALUES ('other-owner-session','super-1',?,?,?)").bind(now + 8 * 3600000, now, now).run();
+    await performGovernanceAction(db, { actorId:'super-1', actorRole:'super_admin', action:'user.status', requestId:'fixture-disable', data:{id:'admin-1',status:'disabled'}, now });
+    assert.equal(await db.prepare("SELECT token_hash FROM user_sessions WHERE user_id='admin-1'").first(), null);
+    await performGovernanceAction(db, { actorId:'super-1', actorRole:'super_admin', action:'user.status', requestId:'fixture-reactivate', data:{id:'admin-1',status:'active'}, now:now+1 });
+    assert.equal(await db.prepare("SELECT token_hash FROM user_sessions WHERE user_id='admin-1'").first(), null);
+    assert.ok(await db.prepare("SELECT token_hash FROM user_sessions WHERE user_id='super-1'").first());
+    assert.equal((await db.prepare("SELECT status FROM users WHERE id='admin-1'").first<{status:string}>())?.status,'active');
+  } finally { await fixture.dispose(); }
+});
 
 void test('password reset consumes a distinct challenge, replaces credentials and revokes sessions atomically', async () => {
   const fixture = await databaseFixture();
@@ -306,7 +335,7 @@ void test('review photos and seller replies respect purchase ownership and moder
   }
 });
 import {
-  deliverOrderEmails,
+  deliverOrderEmails as actualDeliverOrderEmails,
   buildOrderEmail,
 } from '../lib/email/order-updates';
 import { findOrderTracking } from '../lib/db/repositories/order-tracking';
@@ -337,7 +366,7 @@ void test('order emails queue once per status, retry failures and claim concurre
     const broken = {
       send: async () => {
         attempts++;
-        throw new Error('sensitive SMTP response');
+        throw new MailDeliveryError('temporary','delivery_failed',{},'sensitive SMTP response');
       },
     };
     assert.deepEqual(
@@ -354,7 +383,7 @@ void test('order emails queue once per status, retry failures and claim concurre
     );
     await deliverOrderEmails(db, broken, 'https://hastabazaar.com');
     assert.equal(attempts, 1);
-    await db.prepare('UPDATE order_email_jobs SET next_attempt_at=0').run();
+    const retryAt=(await db.prepare('SELECT next_attempt_at AS due FROM order_email_jobs').first<{due:number}>())!.due;
     const messages: {
       subject: string;
       text: string;
@@ -368,8 +397,8 @@ void test('order emails queue once per status, retry failures and claim concurre
       },
     };
     await Promise.all([
-      deliverOrderEmails(db, mail, 'https://hastabazaar.com'),
-      deliverOrderEmails(db, mail, 'https://hastabazaar.com'),
+      deliverOrderEmails(db, mail, 'https://hastabazaar.com',{now:retryAt}),
+      deliverOrderEmails(db, mail, 'https://hastabazaar.com',{now:retryAt}),
     ]);
     assert.equal(messages.length, 1);
     assert.match(messages[0].text, /Track your order/);
@@ -506,7 +535,6 @@ import {
   type ReturnPolicySnapshot,
 } from '../lib/returns/validation';
 import {
-  advanceReturnAsAdmin,
   createCustomerReturnRequest,
   decideHighValueRefund,
   respondToReturnAsSeller,
@@ -646,6 +674,8 @@ void test('referral checkout rewards only collected, delivered orders after the 
   const f = await databaseFixture();
   const db = f.database as unknown as D1Database;
   try {
+    historicalCommissionFixture(f.sqlite, 'super-1', true);
+    await readyCheckoutSeller({database:db,sqlite:f.sqlite},'seller-1','seller-user-1','super-1',now);
     await db.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('admin-1','customer',?),('seller-user-1','customer',?)").bind(now, now).run();
     await seedVerifiedCheckoutContact(db, 'admin-1', '9822222222', now);
     await seedVerifiedCheckoutContact(db, 'seller-user-1', '9833333333', now);
@@ -695,30 +725,25 @@ void test('referral checkout rewards only collected, delivered orders after the 
       order.orderNumber,
     );
     assert.equal((await getWallet(db, 'seller-user-1', now)).balancePaisa, 0);
-    await db
-      .prepare(
-        "UPDATE orders SET status='delivered',payment_status='paid',delivered_at=? WHERE id=?",
-      )
-      .bind(now, stored!.id)
-      .run();
-    await releaseReferralRewards(db, 'seller-user-1', now + 8 * 86400000);
+    const custody=await deliverLegacyCheckout(db,{orderId:stored!.id,requestId:'referral-original-custody',at:now});
+    await releaseReferralRewards(db, 'seller-user-1', custody.deliveredAt + 8 * 86400000);
     assert.equal(
       (await getWallet(db, 'seller-user-1', now)).balancePaisa,
       0,
       'uncaptured COD never earns a reward',
     );
-    await db
-      .prepare("UPDATE payments SET status='captured' WHERE order_id=?")
-      .bind(stored!.id)
-      .run();
-    await releaseReferralRewards(db, 'seller-user-1', now + 7 * 86400000);
+    await custody.collect();await custody.collect();
+    await releaseReferralRewards(db, 'seller-user-1', custody.deliveredAt + 7 * 86400000);
     assert.equal(
       (await getWallet(db, 'seller-user-1', now)).balancePaisa,
       0,
       'full return window stays open',
     );
-    await releaseReferralRewards(db, 'seller-user-1', now + 8 * 86400000);
-    await releaseReferralRewards(db, 'seller-user-1', now + 9 * 86400000);
+    await releaseReferralRewards(db,'seller-user-1',custody.deliveredAt+8*86400000);
+    assert.equal((await getWallet(db,'seller-user-1',now)).balancePaisa,0,'Unremitted carrier cash does not earn a referral reward.');
+    await custody.remit();
+    await releaseReferralRewards(db, 'seller-user-1', custody.deliveredAt + 8 * 86400000);
+    await releaseReferralRewards(db, 'seller-user-1', custody.deliveredAt + 9 * 86400000);
     assert.equal(
       (await getWallet(db, 'seller-user-1', now)).balancePaisa,
       5000,
@@ -843,19 +868,10 @@ void test('partial refunds allocate original shopping credit and discounts, and 
     const split = await splitCreditRefund(db, 'order-1', 50000);
     assert.equal(split.walletPaisa, 5000);
     assert.equal(split.discountPaisa, 5000);
-    await db
-      .prepare(`INSERT INTO refunds(id,order_id,status,amount_paisa,item_amount_paisa,delivery_amount_paisa,reason,requested_at,wallet_credit_paisa,referral_discount_paisa,credit_base_paisa)
-      VALUES ('wf','order-1','processing',50000,50000,0,'test',?,5000,5000,0)`)
-      .bind(now)
-      .run();
-    await db
-      .prepare("UPDATE refunds SET status='paid',processed_at=? WHERE id='wf'")
-      .bind(now)
-      .run();
-    await db
-      .prepare("UPDATE refunds SET status='paid',processed_at=? WHERE id='wf'")
-      .bind(now)
-      .run();
+    const created=await auditReturn(db);
+    await reviewReturnAsAdmin(db,{...auditReview(created.id,'credit-refund-approved'),actorId:'super-1',actorRole:'super_admin',responsibility:'platform',itemRefundPaisa:50000});
+    await recordFictionalReturnDisposition(db,created.id);
+    const actual=await startLegacyReturnPacket(db,{caseId:created.id,actorId:'super-1'});await actual.complete();await actual.complete();
     assert.equal((await getWallet(db, 'admin-1', now)).balancePaisa, 5000);
     const remainder = await splitCreditRefund(db, 'order-1', 50000);
     assert.equal(remainder.walletPaisa, 5000);
@@ -1008,6 +1024,15 @@ void test('staging staff bootstrap is identity-bound, idempotent, and maker-chec
     await fixture.dispose();
   }
 });
+
+// Only called with this file's freshly migrated :memory: fixture; physical facts remain separate from money.
+async function recordFictionalReturnDisposition(db:D1Database,caseId:string,restock=false){
+ for(const action of (restock?['receive','inspect']:['waive_return']) as ('receive'|'inspect'|'waive_return')[]){
+  const row=(await getReturnHandling(db,caseId))!;
+  await recordReturnHandling(db,{actorId:'super-1',expectedRevision:String(row.revision),requestId:caseId+'-fixture-'+action,now:Date.now()},
+   {caseId,action,occurredAt:row.now,quantity:row.quantity,...(action==='inspect'?{disposition:'restock' as const}:{}),publicMessage:'The actual return handling decision has been recorded.',privateNote:restock?'Fictional goods actually received, inspected and confirmed safe to restock.':'Fictional evidence supports a Super Admin no-return remedy; no inventory is restored.',evidenceReference:'FICTIONAL-RETURN-DISPOSITION'});
+ }
+}
 
 async function databaseFixture(includeApprovalUpgrade = true) {
   const sqlite = new DatabaseSync(':memory:');
@@ -1193,7 +1218,7 @@ async function databaseFixture(includeApprovalUpgrade = true) {
       )
       .run();
   }
-  return { database, dispose: async () => sqlite.close() };
+  return { sqlite, database, dispose: async () => sqlite.close() };
 }
 
 class TestD1PreparedStatement {
@@ -1204,11 +1229,12 @@ class TestD1PreparedStatement {
     return this;
   }
   async first<T>() {
-    return (this.statement.get(...this.values) as T | undefined) ?? null;
+    const row=this.statement.get(...this.values);
+    return row?({...row} as T):null;
   }
   async all<T>() {
     return {
-      results: this.statement.all(...this.values) as T[],
+      results: this.statement.all(...this.values).map(row=>({...row})) as T[],
       success: true,
       meta: {},
     };
@@ -1277,18 +1303,21 @@ void test('seller overview counts distinct owned orders and keeps list data priv
       packing: 0,
       ready: 0,
       needsChanges: 1,
+      awaitingConfirmation: 0,
     });
     assert.deepEqual(await getSellerWorkSummary(db, 'seller-2'), {
       toPack: 0,
       packing: 1,
       ready: 0,
       needsChanges: 0,
+      awaitingConfirmation: 0,
     });
     assert.deepEqual(await getSellerWorkSummary(db, 'missing-seller'), {
       toPack: 0,
       packing: 0,
       ready: 0,
       needsChanges: 0,
+      awaitingConfirmation: 0,
     });
     const list = await listOrdersForSeller(db, 'seller-1');
     assert.equal(list.length, 1);
@@ -1448,7 +1477,7 @@ void test('governance reads exclude restricted datasets for Admin and preserve S
   const db = fixture.database as unknown as D1Database;
   try {
     const base = { actorId: 'super-1', actorRole: 'super_admin' as const, now };
-    await performGovernanceAction(db, {
+    await assert.rejects(performGovernanceAction(db, {
       ...base,
       action: 'incident.create',
       requestId: 'gov-incident',
@@ -1457,7 +1486,9 @@ void test('governance reads exclude restricted datasets for Admin and preserve S
         severity: 'low',
         detail: 'A test-only incident for verifying restricted staff data.',
       },
-    });
+    }),/System health|incident workspace/);
+    // Retained pre-governance history remains readable under its old boundary.
+    await db.prepare("INSERT INTO operational_incidents(id,reference_number,severity,status,title,detail,resolution,owner_id,request_id,created_at,updated_at,resolved_at) VALUES('retained-incident','INC-RETAINED','low','open','Fixture incident','A retained legacy incident for restricted read verification.',NULL,'super-1','legacy-gov-incident',?,?,NULL)").bind(now,now).run();
     await performGovernanceAction(db, {
       ...base,
       action: 'backup.verify',
@@ -1719,6 +1750,9 @@ void test('mixed-seller checkout includes preparation, adds half the base and pr
   const fixture = await databaseFixture();
   const db = fixture.database as unknown as D1Database;
   try {
+    historicalCommissionFixture(fixture.sqlite, 'super-1', true);
+    await readyCheckoutSeller({database:db,sqlite:fixture.sqlite},'seller-1','seller-user-1','super-1',now);
+    await readyCheckoutSeller({database:db,sqlite:fixture.sqlite},'seller-2','seller-user-2','super-1',now);
     await seedCheckoutBuyer(db, 'checkout-buyer', 'buyer@example.test', '9811111111', now);
     const before = await db
       .prepare('SELECT id, return_policy_snapshot_json FROM orders ORDER BY id')
@@ -1842,6 +1876,8 @@ void test('checkout retains accepted terms and issues immutable order and COD do
   const fixture = await databaseFixture();
   const db = fixture.database as unknown as D1Database;
   try {
+    historicalCommissionFixture(fixture.sqlite, 'super-1', true);
+    await readyCheckoutSeller({database:db,sqlite:fixture.sqlite},'seller-1','seller-user-1','super-1',now);
     await seedCheckoutBuyer(db, 'checkout-buyer', 'buyer@example.test', '9811111111', now);
     await db
       .prepare(
@@ -1962,33 +1998,10 @@ void test('checkout retains accepted terms and issues immutable order and COD do
       .bind(order.orderNumber)
       .first<{ id: string }>();
     assert.ok(orderId);
-    await db
-      .prepare(`UPDATE orders SET status = 'ready_for_pickup' WHERE id = ?`)
-      .bind(orderId.id)
-      .run();
-    await db
-      .prepare(
-        `UPDATE order_items SET fulfillment_status = 'ready_for_pickup' WHERE order_id = ?`,
-      )
-      .bind(orderId.id)
-      .run();
-    await transitionAdminFulfillment(db, {
-      orderId: orderId.id,
-      actorId: 'admin-1',
-      action: 'dispatch',
-      note: 'Manual dispatch reference confirmed.',
-      trackingCode: 'MANUAL-TEST-1',
-      requestId: 'dispatch-doc-test',
-      now: now + 1,
-    });
-    await transitionAdminFulfillment(db, {
-      orderId: orderId.id,
-      actorId: 'admin-1',
-      action: 'deliver',
-      note: 'COD collection and delivery confirmed.',
-      requestId: 'deliver-doc-test',
-      now: now + 2,
-    });
+    const custody=await deliverLegacyCheckout(db,{orderId:orderId.id,requestId:'checkout-original-documents',at:now+2});
+    const uncollected=await getOrderReceipt(db,order.orderNumber,'receipt-token-docs');
+    assert.equal(uncollected?.documents.length,1);assert.notEqual(uncollected?.paymentStatus,'paid','Delivery alone is not actual customer cash.');
+    await custody.collect();await custody.collect();
     const delivered = await getOrderReceipt(
       db,
       order.orderNumber,
@@ -2330,6 +2343,8 @@ void test('seller earnings and payouts enforce immutable ledger and maker-checke
   const db = fixture.database as unknown as D1Database;
   const payoutNow = now + 8 * 86_400_000;
   try {
+    await payoutRequestBankFixture(fixture.sqlite,db,'seller-1');
+    await payoutRequestBankFixture(fixture.sqlite,db,'seller-2');
     await db
       .prepare(
         `UPDATE seller_profiles SET approved_at = ? WHERE id = 'seller-2'`,
@@ -2466,35 +2481,11 @@ void test('seller earnings and payouts enforce immutable ledger and maker-checke
       requestId: 'payout-approve-1',
       now: payoutNow,
     });
-    await operatePayout(db, {
-      payoutId: prepared.id,
-      actorId: 'super-1',
-      actorRole: 'super_admin',
-      action: 'start_processing',
-      note: 'Approved settlement entered the verified manual payment queue.',
-      requestId: 'payout-processing-1',
-      now: payoutNow,
-    });
-    await operatePayout(db, {
-      payoutId: prepared.id,
-      actorId: 'super-1',
-      actorRole: 'super_admin',
-      action: 'mark_paid',
-      note: 'Bank confirmation was checked against the approved settlement.',
-      providerReference: 'BANK-PAYOUT-001',
-      requestId: 'payout-paid-1',
-      now: payoutNow,
-    });
-    await operatePayout(db, {
-      payoutId: prepared.id,
-      actorId: 'super-1',
-      actorRole: 'super_admin',
-      action: 'mark_paid',
-      note: 'Bank confirmation was checked against the approved settlement.',
-      providerReference: 'BANK-PAYOUT-001',
-      requestId: 'payout-paid-1',
-      now: payoutNow,
-    });
+    const capital=await legacyPayoutCapital(db),packet=await payoutTransfers.preparePayoutTransfer(db,capital.ctx('payout-packet'),{model:'registered',payoutId:prepared.id,accountVersionId:capital.accountVersionId,reason:'Bind the original verified beneficiary, actual reserved earnings and free company funds.'});
+    await payoutTransfers.approvePayoutTransfer(db,capital.ctx('payout-approved','0'),{packetId:packet.id,reason:'Approve this exact original funded manual payout instruction.'});
+    await payoutTransfers.startPayoutTransfer(db,capital.ctx('payout-started','1'),{packetId:packet.id,reason:'Record the actual original fictional manual instruction as processing.'});
+    const actual={packetId:packet.id,outcome:'paid' as const,amountPaisa:264000,bankAt:Date.now()-100,transactionIdentity:'BANK-PAYOUT-001',completedTransferConfirmed:true,exactBeneficiaryConfirmed:true,evidenceReference:'FICTIONAL-INDEPENDENT-COMPLETED-ORIGINAL-PAYOUT',reason:'Reconcile the actual original transfer and exact retained beneficiary once.'},paidContext=capital.ctx('payout-paid','2');
+    await payoutTransfers.recordPayoutTransferOutcome(db,paidContext,actual);await payoutTransfers.recordPayoutTransferOutcome(db,paidContext,actual);
     const paid = await db
       .prepare(
         `SELECT status, amount_paisa AS amountPaisa, approved_by AS approvedBy, provider_reference AS providerReference, (SELECT COUNT(*) FROM payout_events WHERE payout_id = payouts.id) AS eventCount, (SELECT COUNT(*) FROM seller_ledger_entries WHERE payout_id = payouts.id) AS paidLedgerCount FROM payouts WHERE id = ?`,
@@ -2556,34 +2547,12 @@ void test('seller earnings and payouts enforce immutable ledger and maker-checke
       requestId: 'payout-approve-2',
       now: payoutNow,
     });
-    await operatePayout(db, {
-      payoutId: retried.id,
-      actorId: 'super-1',
-      actorRole: 'super_admin',
-      action: 'start_processing',
-      note: 'Approved payout entered the verified manual bank queue.',
-      requestId: 'payout-processing-2',
-      now: payoutNow,
-    });
-    await operatePayout(db, {
-      payoutId: retried.id,
-      actorId: 'super-1',
-      actorRole: 'super_admin',
-      action: 'mark_failed',
-      note: 'The bank rejected this attempt because its service was unavailable.',
-      requestId: 'payout-failed-2',
-      now: payoutNow,
-    });
-    await operatePayout(db, {
-      payoutId: retried.id,
-      actorId: 'super-1',
-      actorRole: 'super_admin',
-      action: 'mark_failed',
-      note: 'The bank rejected this attempt because its service was unavailable.',
-      requestId: 'payout-failed-2',
-      now: payoutNow,
-    });
-    await operatePayout(db, {
+    const retriedPacket=await payoutTransfers.preparePayoutTransfer(db,capital.ctx('retry-packet'),{model:'registered',payoutId:retried.id,accountVersionId:capital.accountVersionId,reason:'Prepare the actual original seller balance after an unsent rejection.'});
+    await payoutTransfers.approvePayoutTransfer(db,capital.ctx('retry-approved','0'),{packetId:retriedPacket.id,reason:'Approve the exact current source and actual available company funding.'});
+    await payoutTransfers.startPayoutTransfer(db,capital.ctx('retry-started','1'),{packetId:retriedPacket.id,reason:'Record this actual original payout instruction before its bank result.'});
+    const failure={packetId:retriedPacket.id,outcome:'failed' as const,failureBasis:'no_debit' as const,noDebitConfirmed:true,evidenceReference:'FICTIONAL-INDEPENDENT-NO-DEBIT-CONFIRMATION',reason:'The original fictional bank instruction has independently confirmed no debit.'},failureContext=capital.ctx('retry-no-debit','2');
+    await payoutTransfers.recordPayoutTransferOutcome(db,failureContext,failure);await payoutTransfers.recordPayoutTransferOutcome(db,failureContext,failure);
+    await assert.rejects(operatePayout(db, {
       payoutId: retried.id,
       actorId: 'super-1',
       actorRole: 'super_admin',
@@ -2591,7 +2560,7 @@ void test('seller earnings and payouts enforce immutable ledger and maker-checke
       note: 'The failed settlement was returned to processing for a controlled retry.',
       requestId: 'payout-reprocessing-2',
       now: payoutNow,
-    });
+    }), /original verified payout execution packet/);
     assert.deepEqual(
       {
         ...(await db
@@ -2601,7 +2570,7 @@ void test('seller earnings and payouts enforce immutable ledger and maker-checke
           .bind(retried.id)
           .first()),
       },
-      { status: 'processing', eventCount: 5 },
+      { status: 'failed', eventCount: 4 },
     );
   } finally {
     await fixture.dispose();
@@ -2846,6 +2815,7 @@ void test('seller payout requests enter Admin preparation before independent app
   const db = fixture.database as unknown as D1Database;
   const payoutNow = now + 8 * 86_400_000;
   try {
+    await payoutRequestBankFixture(fixture.sqlite,db,'seller-1');
     await accrueExistingDeliveredEarnings(db, {
       actorId: 'admin-1',
       requestId: 'request-accrual',
@@ -2911,6 +2881,8 @@ void test('item return, refund liability, maker-checker, idempotency, and owners
   const fixture = await databaseFixture();
   const db = fixture.database as unknown as D1Database;
   try {
+    await prepareLegacyReturnSources(db,'order-1');
+    const initialStock=(await db.prepare("SELECT inventory_quantity n FROM products WHERE id='product-1'").first<{n:number}>())!.n;
     await db
       .prepare(
         `INSERT INTO seller_ledger_entries (
@@ -2995,38 +2967,16 @@ void test('item return, refund liability, maker-checker, idempotency, and owners
       responsibility: 'seller',
       outcome: 'refund',
       itemRefundPaisa: 100_000,
-      deliveryRefundPaisa: 0,
+
       requestId: 'admin-review-1',
       now,
     });
-    await advanceReturnAsAdmin(db, {
-      returnRequestId: created.id,
-      actorId: 'admin-1',
-      actorRole: 'admin',
-      action: 'start_refund',
-      note: 'COD refund entered in the verified manual payment queue.',
-      publicMessageEn: 'Your refund is being processed.',
-      publicMessageNe: 'तपाईंको फिर्ता रकम प्रक्रिया हुँदैछ।',
-      requestId: 'refund-start-1',
-      now,
-    });
-    const completeRefund = (requestId: string, database: D1Database = db) => advanceReturnAsAdmin(database, {
-      returnRequestId: created.id,
-      actorId: 'admin-1',
-      actorRole: 'admin',
-      action: 'complete_refund',
-      note: 'Verified COD refund transfer completed successfully.',
-      publicMessageEn: 'Your refund has been paid.',
-      publicMessageNe: 'तपाईंको फिर्ता रकम भुक्तानी भयो।',
-      reference: 'BANK-REF-1',
-      restockQuantity: 1,
-      requestId,
-      now,
-    });
-    await assert.rejects(completeRefund('refund-paid-1', beforeAuditBatch(db,
-      () => completeRefund('refund-paid-race'))), /stale-refund-transition/);
-    const winningRequestId = 'refund-paid-race';
-    await completeRefund(winningRequestId);
+    const packet=await startLegacyReturnPacket(db,{caseId:created.id,actorId:'super-1'});
+    await recordFictionalReturnDisposition(db,created.id,true);
+    const outcome={packetId:packet.packetId,outcome:'paid' as const,amountPaisa:115000,bankAt:Date.now()-10,transactionIdentity:'BANK-REF-1',completedTransferConfirmed:true,exactBeneficiaryConfirmed:true,evidenceReference:'FICTIONAL-INDEPENDENT-ORIGINAL-BANK-REFUND',reason:'Reconcile the actual original refund once with its independent bank evidence.'};
+    const completeRefund=(requestId:string,database:D1Database=db)=>recordRefundPacketOutcome(database,{actorId:'super-1',requestId,expectedRevision:'2',now:Date.now()},outcome);
+    await assert.rejects(completeRefund('refund-paid-1',beforeAuditBatch(db,()=>completeRefund('refund-paid-race'))),/stale-refund-transition|CHECK constraint failed: valid=1|UNIQUE constraint failed: company_outgoing_bank_identities/);
+    await completeRefund('refund-paid-race');
     const result = await db
       .prepare(
         `SELECT return_requests.status, refunds.status AS refundStatus,
@@ -3064,14 +3014,15 @@ void test('item return, refund liability, maker-checker, idempotency, and owners
         refundStatus: 'paid',
         commissionBaseRefundedPaisa: 100_000,
         commissionReversalPaisa: 12_000,
-        paymentStatus: 'part_refunded',
-        inventory: 10,
+        paymentStatus: 'refunded',
+        inventory: initialStock+1,
         ledgerCount: 2,
         ledgerReversalPaisa: 12_000,
         otherItemStatus: 'delivered',
       },
     );
 
+    await prepareLegacyReturnSources(db,'order-2');
     const high = await createCustomerReturnRequest(db, {
       orderNumber: 'HK-TEST-2',
       receiptTokenHash: 'receipt-hash-2',
@@ -3096,7 +3047,7 @@ void test('item return, refund liability, maker-checker, idempotency, and owners
       responsibility: 'seller',
       outcome: 'refund',
       itemRefundPaisa: 2_000_000,
-      deliveryRefundPaisa: 0,
+
       requestId: 'admin-review-high',
       now,
     });
@@ -3258,7 +3209,7 @@ void test('complaint assignment, customer reply, seller isolation, escalation, a
       sellerId: 'seller-1',
       actorId: 'seller-user-1',
       response:
-        'We isolated the batch and provided the production record to HastaBazaar.',
+        'We isolated the batch and provided the production record to Hastabazaar.',
       requestId: 'complaint-seller-response',
       now,
     });
@@ -3849,7 +3800,56 @@ import {
 } from '../lib/db/repositories/fulfillment';
 import { emailQueueSummary } from '../lib/operations/email-queue';
 
-async function parcelFixture() {
+void test('approved parcel receipts preserve captured SKUs after cancellation and collection rollback/replay',async()=>{
+  const f=await parcelFixture(),db=f.db;
+  try{
+    const snapshot=billingPreviewSnapshot('mixed',now);
+    snapshot.orderNumber='HK-TEST-1';snapshot.billing!.receiptIssuance='pending_clearance';
+    delete snapshot.billing!.receiptGroups;
+    snapshot.items=snapshot.items.map((item,index)=>({...item,orderItemId:`item-${index+1}`,sellerId:`seller-${index+1}`,
+      quantity:1,unitPricePaisa:index?2000000:100000,lineTotalPaisa:index?2000000:100000,listPricePaisa:index?2000000:100000,
+      billingPromotionPaisa:0,billingWalletPaisa:0}));
+    snapshot.itemSubtotalPaisa=2100000;snapshot.deliveryChargePaisa=15000;snapshot.buyerPlatformFeePaisa=0;snapshot.grandTotalPaisa=2115000;
+    const original=JSON.stringify(snapshot);
+    await db.prepare(`INSERT INTO order_documents(id,order_id,kind,document_number,snapshot_json,status,request_id,issued_at)
+      VALUES ('approved-original','order-1','order_statement','CONFIRMATION',?,'issued','approved-original',?)`).bind(original,now).run();
+    const access={orderNumber:'HK-TEST-1',actorId:'admin-1'};
+    const preview=await cancellationPreview(db,access,['seller-1']);
+    await cancelSelectedParcels(db,access,{sellerIds:['seller-1'],fingerprint:preview.fingerprint,requestId:'approved-cancel',note:'Fictional supplier cancellation.',now});
+    const parcel=(await listParcels(db,'order-1')).find(p=>p.sellerId==='seller-2')!;
+    let sequence=0;
+    const op=async(action:string,extra:Record<string,unknown>={})=>{
+      const current=(await listParcels(db,'order-1')).find(p=>p.id===parcel.id)!;
+      const input={jobId:parcel.id,actorId:'admin-1',action,version:current.version,note:'Fictional parcel evidence.',requestId:'approved-parcel-'+sequence++,now,...extra};
+      await operateParcel(db,input);return input;
+    };
+    await op('assign',{method:'courier',courierName:'Fictional courier',trackingCode:'FIXTURE-TRACK'});
+    await db.prepare("UPDATE order_items SET fulfillment_status='ready_for_pickup' WHERE id='item-2'").run();
+    await op('dispatch');await op('deliver');
+    const remaining=(await listParcels(db,'order-1')).find(p=>p.id===parcel.id)!;
+    await op('collect',{amountPaisa:1,reference:'FIXTURE-PARTIAL'});
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM order_documents WHERE order_id='order-1' AND kind='payment_receipt'").first<{n:number}>())?.n,0);
+    const latest=(await listParcels(db,'order-1')).find(p=>p.id===parcel.id)!;
+    const final={jobId:parcel.id,actorId:'admin-1',action:'collect',version:latest.version,note:'Fictional final collection.',
+      requestId:'approved-final-collect',now,amountPaisa:remaining.codDuePaisa-1,reference:'FIXTURE-FINAL'};
+    const broken={prepare:db.prepare.bind(db),batch:(statements:D1PreparedStatement[])=>db.batch([...statements,
+      db.prepare("INSERT INTO operation_transaction_guards(id,valid) VALUES ('approved-rollback',0)")])} as D1Database;
+    await assert.rejects(operateParcel(broken,final));
+    assert.equal((await listParcels(db,'order-1')).find(p=>p.id===parcel.id)!.collectedPaisa,1);
+    await operateParcel(db,final);await operateParcel(db,final);
+    const receipts=await db.prepare("SELECT snapshot_json AS json FROM order_documents WHERE order_id='order-1' AND kind='payment_receipt'").all<{json:string}>();
+    assert.equal(receipts.results.length,1);
+    const receipt=JSON.parse(receipts.results[0]!.json) as OrderDocumentSnapshot;
+    assert.equal(receipt.items.length,1);assert.equal(receipt.items[0]!.orderItemId,'item-2');
+    assert.equal(receipt.items[0]!.sellerSku,snapshot.items[1]!.sellerSku);
+    assert.equal(receipt.items[0]!.issuer!.legalName,snapshot.items[1]!.issuer!.legalName);
+    assert.equal(receipt.billing!.receiptGroups!.reduce((sum,g)=>sum+g.totalPaisa,0),receipt.grandTotalPaisa);
+    assert.ok(receipt.billing!.receiptGroups!.some(g=>g.scope==='order_charges'));
+    assert.equal((await db.prepare("SELECT snapshot_json AS json FROM order_documents WHERE id='approved-original'").first<{json:string}>())?.json,original);
+  }finally{await f.dispose();}
+});
+
+async function parcelFixture(beforeParcels?:(db:D1Database)=>Promise<void>) {
   const fixture = await databaseFixture();
   const db = fixture.database as unknown as D1Database;
   await db
@@ -3867,6 +3867,7 @@ async function parcelFixture() {
       "UPDATE payments SET status='pending',amount_paisa=2115000 WHERE order_id='order-1'",
     )
     .run();
+  if(beforeParcels)await beforeParcels(db);
   await prepareSellerParcels(db, {
     orderId: 'order-1',
     actorId: 'admin-1',
@@ -4163,21 +4164,10 @@ void test('two seller parcels separate delivery, collection, remittance, return 
       )?.n,
       0,
     );
-    for (const r of (await parcelCashRecords(db, 'order-1')).filter(
-      (r) => r.status === 'pending',
-    )) {
-      if (r.maker === 'admin-1') {
-        await assert.rejects(() =>
-          op(r.jobId, 'approve_remittance', { cashRecordId: r.id }),
-        );
-        await op(
-          r.jobId,
-          'approve_remittance',
-          { cashRecordId: r.id },
-          'super-1',
-        );
-      } else
-        await op(r.jobId, 'approve_remittance', { cashRecordId: r.id }, 'super-1');
+    for(const r of (await parcelCashRecords(db,'order-1')).filter(r=>r.status==='pending')){
+      if(r.maker==='admin-1')await assert.rejects(()=>op(r.jobId,'approve_remittance',{cashRecordId:r.id}));
+      const receipt=await prepareLegacyCodReceipt(db,{jobId:r.jobId,actorId:'super-1',requestId:'actual-two-parcel-'+r.jobId,amountPaisa:r.amountPaisa,reference:r.reference});
+      await receipt.confirm();await receipt.confirm();
     }
     assert.ok(
       ((
@@ -4414,6 +4404,7 @@ void test('R006 positive small payouts agree across queue request and preparatio
     const fixture = await databaseFixture();
     const db = fixture.database as unknown as D1Database;
     try {
+      await payoutRequestBankFixture(fixture.sqlite,db,'seller-1');
       await db
         .prepare(
           "INSERT INTO seller_ledger_entries (id,seller_id,type,amount_paisa,available_at,description,created_at) VALUES ('r006','seller-1','sale',?,?, 'Synthetic eligible earnings',?)",
@@ -5145,6 +5136,7 @@ void test('manual email trace distinguishes attempted, pending, finished and thr
   const fixture = await databaseFixture();
   const db = fixture.database as unknown as D1Database;
   try {
+    await db.prepare("UPDATE user_roles SET role='super_admin' WHERE user_id='admin-1'").run();
     const { auditManualOrderEmailProcessing } =
       await import('../lib/operations/manual-email-audit');
     let calls = 0;
@@ -5229,6 +5221,7 @@ void test('business manual email trace exists before fake processor completes an
   const fixture = await databaseFixture();
   const db = fixture.database as unknown as D1Database;
   try {
+    await db.prepare("UPDATE user_roles SET role='super_admin' WHERE user_id='admin-1'").run();
     const { auditManualOrderEmailProcessing } =
       await import('../lib/operations/manual-email-audit');
     let calls = 0;
@@ -5626,15 +5619,12 @@ void test('R018 packing ordinary items is cancellable but readiness and changed 
       )
       .bind(sellerIds[0])
       .run();
-    await assert.rejects(() =>
-      cancelSelectedParcels(db, access, {
-        sellerIds: [sellerIds[0]],
-        fingerprint: p.fingerprint,
-        requestId: 'ready-race',
-        note: 'Readiness wins this race.',
-        now: Date.now(),
-      }),
-    );
+    const reviewed=await cancelSelectedParcels(db, access, {
+      sellerIds:[sellerIds[0]],fingerprint:p.fingerprint,requestId:'ready-race',
+      note:'Readiness wins this race.',now:Date.now()});
+    assert.equal(reviewed.status,'review_requested');
+    assert.equal((await db.prepare("SELECT COUNT(*) n FROM order_fulfillment_holds WHERE source_type='cancellation_review' AND source_id='ready-race' AND ended_at IS NULL").first<{n:number}>())?.n,1);
+    assert.equal((await db.prepare("SELECT fulfillment_status status FROM order_items WHERE order_id='order-1' AND seller_id=?").bind(sellerIds[0]).first<{status:string}>())?.status,'ready_for_pickup');
     assert.equal(
       await db.prepare('SELECT id FROM order_cancellation_events').first(),
       null,
@@ -5896,8 +5886,10 @@ void test('Super Admin carrier remittance posts directly with audit and exact re
     await operate('collect',{amountPaisa:100,reference:'LOCAL-COLLECTION'});
     const input = await operate('propose_remittance',{amountPaisa:100,reference:'LOCAL-REMITTANCE'});
     const cash = (await parcelCashRecords(db,'order-1')).find(row => row.kind==='remittance')!;
-    assert.equal(cash.status,'posted');
+    assert.equal(cash.status,'pending');
     assert.equal(cash.maker,'super-1');
+    const counted=await prepareLegacyCodReceipt(db,{jobId:p.id,actorId:'super-1',requestId:'single-sa-independent-cash',amountPaisa:100,reference:'LOCAL-REMITTANCE'});
+    await counted.confirm();await counted.confirm();
     await operateParcel(db,input);
     const row = await db.prepare('SELECT status,created_by AS maker,approved_by AS approver FROM parcel_cash_records WHERE id=?').bind(cash.id).first<{status:string;reason:string;attempts:number}>();
     assert.deepEqual({...row},{status:'posted',maker:'super-1',approver:'super-1'});
@@ -5989,7 +5981,8 @@ void test('Admin carrier submission stays pending until a Super Admin confirms i
         await assert.rejects(operate(actor, action, {cashRecordId:cash.id}), /authorized reviewer/);
       }
     }
-    await operate('super-1', 'approve_remittance', {cashRecordId:cash.id});
+    const counted=await prepareLegacyCodReceipt(db,{jobId:p.id,actorId:'super-1',requestId:'admin-claim-independent-cash',amountPaisa:100,reference:'LOCAL-PENDING'});
+    await counted.confirm();await counted.confirm();
     assert.equal((await parcelCashRecords(db,'order-1')).find(row => row.id === cash.id)!.status, 'posted');
     const row = await db.prepare('SELECT created_by, approved_by FROM parcel_cash_records WHERE id=?').bind(cash.id).first();
     assert.deepEqual({...row}, {created_by:'admin-1',approved_by:'super-1'});
@@ -5997,8 +5990,7 @@ void test('Admin carrier submission stays pending until a Super Admin confirms i
   } finally { await f.dispose(); }
 });
 
-void test('direct carrier posting rejects excess cash and role races without partial records', async () => {
-  for (const failure of ['excess', 'demoted', 'suspended'] as const) {
+for(const failure of ['excess','demoted','suspended'] as const)void test('actual carrier receipt posting rejects '+failure+' without partial allocations',async()=>{
     const f = await parcelFixture(); const db = f.db;
     try {
       const p = (await listParcels(db, 'order-1'))[0];
@@ -6012,8 +6004,12 @@ void test('direct carrier posting rejects excess cash and role races without par
           amountPaisa:100,reference:'LOCAL-COLLECTION',note:'SIMULATED carrier setup.',
           requestId:'carrier-guard-'+action,now:Date.now()});
       }
-      const before = (await listParcels(db, 'order-1')).find(row => row.id === p.id)!;
-      const beforeCash = await parcelCashRecords(db, 'order-1');
+      const proposal=(await listParcels(db,'order-1')).find(row=>row.id===p.id)!;
+      const amount=failure==='excess'?200:100;
+      await operateParcel(db,{jobId:p.id,actorId:'super-1',action:'propose_remittance',version:proposal.version,amountPaisa:amount,reference:'LOCAL-GUARDED',note:'Retain a claim separately from actual received company money.',requestId:'carrier-guard-claim',now:Date.now()});
+      const actual=await prepareLegacyCodReceipt(db,{jobId:p.id,actorId:'super-1',requestId:'carrier-guard-verified',amountPaisa:amount,reference:'LOCAL-GUARDED'});
+      const before=(await listParcels(db,'order-1')).find(row=>row.id===p.id)!;
+      const beforeCash=await parcelCashRecords(db,'order-1');
       const guarded = {
         prepare: db.prepare.bind(db),
         batch: async (statements: D1PreparedStatement[]) => {
@@ -6022,24 +6018,22 @@ void test('direct carrier posting rejects excess cash and role races without par
           return db.batch(statements);
         },
       } as unknown as D1Database;
-      await assert.rejects(operateParcel(guarded, {jobId:p.id,actorId:'super-1',action:'propose_remittance',
-        version:before.version,amountPaisa:failure === 'excess' ? 200 : 100,reference:'LOCAL-GUARDED',note:'SIMULATED atomicity check.',
-        requestId:'carrier-guard-failure',now:Date.now()}));
+      await assert.rejects(actual.confirm(guarded));
       assert.deepEqual((await listParcels(db, 'order-1')).find(row => row.id === p.id),before);
       assert.deepEqual(await parcelCashRecords(db, 'order-1'),beforeCash);
-      assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM parcel_operation_events WHERE id='carrier-guard-failure'").first<{n:number}>())?.n,0);
-      assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE request_id='carrier-guard-failure:audit'").first<{n:number}>())?.n,0);
+      assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM cod_company_receipt_allocations").first<{n:number}>())?.n,0);
+      assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM audit_logs WHERE request_id=?').bind(actual.context.requestId).first<{n:number}>())?.n,0);
     } finally {await f.dispose();}
-  }
 });
 
-async function auditReturn(db: D1Database, itemId = 'item-1', customerId?: string) {
+async function auditReturn(db: D1Database, itemId = 'item-1', customerId?: string,requestKey?:string) {
+  await prepareLegacyReturnSources(db,'order-1');
   return createCustomerReturnRequest(db, { orderNumber: 'HK-TEST-1', receiptTokenHash: 'receipt-hash-1',
     orderItemId: itemId, quantity: 1, reason: 'defective', requestedResolution: 'refund',
     detail: 'SIMULATED audit regression: defective delivered item.', locale: 'en-NP',
-    idempotencyKey: 'audit-return-' + itemId, evidence: [], now, customerId });
+    idempotencyKey: requestKey??'audit-return-' + itemId, evidence: [], now, customerId });
 }
-function auditReview(caseId: string, requestId: string, deliveryRefundPaisa = 0) {
+function auditReview(caseId: string, requestId: string, deliveryRefundPaisa?: number) {
   return { returnRequestId: caseId, actorId: 'admin-1', actorRole: 'admin' as const,
     action: 'approve' as const, note: 'SIMULATED audit evidence reviewed.', publicMessageEn: 'Approved.',
     publicMessageNe: 'Approved.', responsibility: 'seller' as const, outcome: 'refund' as const,
@@ -6051,42 +6045,36 @@ function beforeAuditBatch(db: D1Database, interleave: () => Promise<unknown>): D
   } } as D1Database;
 }
 
-void test('F02 standard delivery refunds use cancellation current allowance and subtract prior reservations', async () => {
-  const f = await databaseFixture(), db = f.database as unknown as D1Database;
-  try {
-    await db.prepare("UPDATE orders SET delivery_charge_paisa=60000,current_delivery_paisa=40000,current_subtotal_paisa=item_subtotal_paisa,current_total_paisa=item_subtotal_paisa+40000,current_wallet_paisa=0,current_discount_paisa=0 WHERE id='order-1'").run();
-    await db.prepare("UPDATE order_items SET order_id='order-1' WHERE id='item-3'").run();
-    const first = await auditReturn(db), second = await auditReturn(db, 'item-3');
-    await assert.rejects(reviewReturnAsAdmin(db, auditReview(first.id, 'audit-over-refund', 60000)), /remaining delivery charge/);
-    await reviewReturnAsAdmin(db, auditReview(first.id, 'audit-valid-refund', 30000));
-    await assert.rejects(reviewReturnAsAdmin(db, auditReview(second.id, 'audit-prior-refund', 20000)), /remaining delivery charge/);
-    await reviewReturnAsAdmin(db, auditReview(second.id, 'audit-remaining-refund', 10000));
-    const totals = await db.prepare("SELECT SUM(delivery_amount_paisa) AS n FROM refunds WHERE order_id='order-1'").first<{n:number}>();
-    assert.equal(totals?.n, 40000);
-    assert.equal((await db.prepare("SELECT delivery_charge_paisa AS n FROM orders WHERE id='order-1'").first<{n:number}>())?.n, 60000);
-  } finally { await f.dispose(); }
+void test('F02 standard delivery refunds preserve actual cancelled original allocation and prior reservations',async()=>{
+ const f=await databaseFixture(),db=f.database as unknown as D1Database;try{
+  const shares=await prepareLegacyCancelledDeliveryOrder(db),first=await auditReturn(db),second=await auditReturn(db,'item-3');
+  await assert.rejects(reviewReturnAsAdmin(db,auditReview(first.id,'audit-over-refund',60000)),/exact attributable original delivery/);
+  await reviewReturnAsAdmin(db,auditReview(first.id,'audit-valid-refund',shares.get('item-1')!));
+  await assert.rejects(reviewReturnAsAdmin(db,auditReview(second.id,'audit-prior-refund',40000)),/exact attributable original delivery/);
+  await reviewReturnAsAdmin(db,auditReview(second.id,'audit-remaining-refund',shares.get('item-3')!));
+  assert.equal((await db.prepare("SELECT SUM(delivery_amount_paisa) n FROM refunds WHERE order_id='order-1'").first<{n:number}>())?.n,40000);
+  assert.equal((await db.prepare("SELECT delivery_charge_paisa n FROM orders WHERE id='order-1'").first<{n:number}>())?.n,60000);
+ }finally{await f.dispose();}
 });
-
-void test('F02 competing standard delivery approvals fail for capacity and roll back every losing effect', async () => {
-  const f = await databaseFixture(), db = f.database as unknown as D1Database;
-  try {
-    await db.prepare("UPDATE orders SET delivery_charge_paisa=60000,current_delivery_paisa=40000,current_subtotal_paisa=item_subtotal_paisa,current_total_paisa=item_subtotal_paisa+40000,current_wallet_paisa=0,current_discount_paisa=0 WHERE id='order-1'").run();
-    await db.prepare("UPDATE order_items SET order_id='order-1' WHERE id='item-3'").run();
-    const a = await auditReturn(db), b = await auditReturn(db, 'item-3');
-    const competing = beforeAuditBatch(db, () => reviewReturnAsAdmin(db, auditReview(b.id, 'audit-capacity-winner', 40000)));
-    await assert.rejects(reviewReturnAsAdmin(competing, auditReview(a.id, 'audit-capacity-loser', 40000)), /stale-delivery-refund-capacity|remaining delivery charge/);
-    assert.equal((await db.prepare('SELECT status FROM return_requests WHERE id=?').bind(a.id).first<{status:string}>())?.status, 'requested');
-    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM refunds WHERE order_id='order-1'").first<{n:number}>())?.n, 1);
-    assert.equal(await db.prepare("SELECT id FROM return_request_events WHERE request_id='audit-capacity-loser'").first(), null);
-    assert.equal(await db.prepare("SELECT id FROM audit_logs WHERE request_id='audit-capacity-loser'").first(), null);
-  } finally { await f.dispose(); }
+void test('F02 competing approval commands reserve one exact original delivery allocation',async()=>{
+ const f=await databaseFixture(),db=f.database as unknown as D1Database;try{
+  const shares=await prepareLegacyCancelledDeliveryOrder(db),a=await auditReturn(db);let reached=false;
+  const competing=beforeAuditBatch(db,async()=>{reached=true;await reviewReturnAsAdmin(db,auditReview(a.id,'audit-capacity-winner'));});
+  await assert.rejects(reviewReturnAsAdmin(competing,auditReview(a.id,'audit-capacity-loser')),/CHECK constraint failed: valid=1|stale-initial-return-review/);assert.equal(reached,true);
+  assert.equal((await db.prepare('SELECT status FROM return_requests WHERE id=?').bind(a.id).first<{status:string}>())?.status,'approved');
+  assert.equal((await db.prepare("SELECT COUNT(*) n FROM refunds WHERE order_id='order-1'").first<{n:number}>())?.n,1);
+  assert.equal((await db.prepare('SELECT delivery_amount_paisa n FROM refunds WHERE return_request_id=?').bind(a.id).first<{n:number}>())?.n,shares.get('item-1'));
+  assert.equal(await db.prepare("SELECT id FROM return_request_events WHERE request_id='audit-capacity-loser'").first(),null);assert.equal(await db.prepare("SELECT id FROM audit_logs WHERE request_id='audit-capacity-loser'").first(),null);
+ }finally{await f.dispose();}
 });
 
 void test('F03 checkout consuming the last replacement unit rolls back outcome inventory log and notifications', async () => {
   const f = await databaseFixture(), db = f.database as unknown as D1Database;
   try {
+    historicalCommissionFixture(f.sqlite, 'super-1', true);
     const created = await auditReturn(db);
     await reviewReturnAsAdmin(db, { ...auditReview(created.id, 'audit-replacement-approve'), outcome: 'replacement' });
+    await readyCheckoutSeller({database:db,sqlite:f.sqlite},'seller-1','seller-user-1','super-1',now);
     await db.prepare("UPDATE products SET inventory_quantity=1 WHERE id='product-1'").run();
     await seedCheckoutBuyer(db,'audit-checkout-buyer','audit-buyer@example.test','9811111111',now);
     await db.prepare("INSERT INTO carts(id,anonymous_token_hash,currency,created_at,updated_at) VALUES ('audit-stock-cart','audit-stock-token','NPR',?,?)").bind(now,now).run();
@@ -6099,9 +6087,10 @@ void test('F03 checkout consuming the last replacement unit rolls back outcome i
       },now,'audit-checkout-buyer');
       notificationCountAfterCheckout=(await db.prepare('SELECT COUNT(*) AS n FROM notification_messages').first<{n:number}>())!.n;
     });
-    await assert.rejects(advanceReturnAsAdmin(competing, { returnRequestId: created.id, actorId: 'admin-1', actorRole: 'admin',
-      action: 'resolve_replacement', note: 'SIMULATED replacement evidence.', publicMessageEn: 'Replaced.', publicMessageNe: 'Replaced.',
-      reference: 'SIM-REPLACEMENT', requestId: 'audit-lost-stock', now }), /lost-return-inventory-transition|not enough inventory/);
+    const handling=(await getReturnHandling(db,created.id))!;
+    await assert.rejects(recordReturnHandling(competing,{actorId:'admin-1',expectedRevision:String(handling.revision),requestId:'audit-lost-stock',now:Date.now()},
+      {caseId:created.id,action:'prepare_replacement',occurredAt:handling.now,publicMessage:'Prepare the agreed replacement from actual available inventory.',privateNote:'SIMULATED replacement evidence.',evidenceReference:'SIM-REPLACEMENT-PROOF',customerAgreementReference:'SIM-CUSTOMER-AGREEMENT',promisedAt:Date.now()+86400000}),/CHECK constraint failed: valid=1|not enough inventory/);
+    assert.equal(await db.prepare('SELECT id FROM return_replacement_shipments WHERE case_id=?').bind(created.id).first(),null);
     assert.equal((await db.prepare('SELECT status FROM return_requests WHERE id=?').bind(created.id).first<{status:string}>())?.status, 'approved');
     assert.equal(await db.prepare('SELECT id FROM return_outcomes WHERE return_request_id=?').bind(created.id).first(), null);
     assert.equal(await db.prepare("SELECT id FROM inventory_adjustments WHERE reason LIKE '%SIMULATED replacement evidence%'").first(), null);
@@ -6119,7 +6108,7 @@ void test('F04 dual-role customer requester is retained and cannot review their 
     const created = await auditReturn(db, 'item-1', 'admin-1');
     assert.equal((await db.prepare('SELECT requested_by AS actor FROM return_requests WHERE id=?').bind(created.id).first<{actor:string}>())?.actor, 'admin-1');
     await assert.rejects(reviewReturnAsAdmin(db, auditReview(created.id, 'audit-self-review', 1000)), /cannot review/);
-    await reviewReturnAsAdmin(db, { ...auditReview(created.id, 'audit-independent-review', 1000), actorId: 'super-1', actorRole: 'super_admin' });
+    await reviewReturnAsAdmin(db, { ...auditReview(created.id, 'audit-independent-review'), actorId: 'super-1', actorRole: 'super_admin' });
     assert.equal((await db.prepare('SELECT reviewed_by AS actor FROM return_requests WHERE id=?').bind(created.id).first<{actor:string}>())?.actor, 'super-1');
   } finally { await f.dispose(); }
 });
@@ -6132,7 +6121,7 @@ void test('F04 legacy NULL requester and order-owner reassignment are independen
       const setOwner = async () => { await db.prepare("UPDATE orders SET customer_id='admin-1' WHERE id='order-1'").run(); };
       if (!interleave) await setOwner();
       await assert.rejects(reviewReturnAsAdmin(interleave ? beforeAuditBatch(db, setOwner) : db,
-        auditReview(created.id, 'audit-owner-review', 1000)), /cannot review|stale-initial-return-review/);
+        auditReview(created.id, 'audit-owner-review')), /cannot review|stale-initial-return-review/);
       assert.equal((await db.prepare('SELECT status FROM return_requests WHERE id=?').bind(created.id).first<{status:string}>())?.status, 'requested');
       assert.equal(await db.prepare("SELECT id FROM refunds WHERE operation_request_id='audit-owner-review'").first(), null);
     } finally { await f.dispose(); }
@@ -6202,22 +6191,22 @@ void test('F06 managed partial refund completion appends one proportional revers
     await auditManagedSnapshot(db);
     await db.prepare("UPDATE order_items SET quantity=2,unit_price_paisa=50000 WHERE id='item-1'").run();
     await accrueManagedEntitlements(db,{orderId:'order-1',actorId:'admin-1',requestId:'audit-managed-earned',now});
+    await prepareLegacyReturnSources(db,'order-1');
     for (const [index,amount] of [25000,25000].entries()) {
       const created = await createCustomerReturnRequest(db, {orderNumber:'HK-TEST-1',receiptTokenHash:'receipt-hash-1',orderItemId:'item-1',
         quantity:1,reason:'defective',requestedResolution:'refund',detail:'SIMULATED partial managed refund.',locale:'en-NP',
         idempotencyKey:'audit-managed-return-'+index,evidence:[],now});
       await reviewReturnAsAdmin(db,{...auditReview(created.id,'audit-managed-review-'+index),itemRefundPaisa:amount});
-      const common = {returnRequestId:created.id,actorId:'admin-1',actorRole:'admin' as const,
-        note:'SIMULATED managed partial refund.',publicMessageEn:'Paid.',publicMessageNe:'Paid.',now};
-      await advanceReturnAsAdmin(db,{...common,action:'start_refund',requestId:'audit-managed-start-'+index});
-      const completion={...common,action:'complete_refund' as const,reference:'SIM-PAY-'+index,requestId:'audit-managed-complete-'+index};
-      await advanceReturnAsAdmin(db,completion); await advanceReturnAsAdmin(db,completion);
+      await recordFictionalReturnDisposition(db,created.id);
+      const packet=await startLegacyReturnPacket(db,{caseId:created.id,actorId:'super-1'});
+      await packet.complete();await packet.complete();
       assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM managed_settlement_entries WHERE type='refund_adjustment'").first<{n:number}>())?.n,index+1);
     }
     assert.equal((await db.prepare("SELECT SUM(amount_paisa) AS n FROM managed_settlement_entries WHERE type='refund_adjustment'").first<{n:number}>())?.n,-45500);
-    assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,45500);
+    assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,30500);
     assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM seller_ledger_entries WHERE order_item_id='item-1'").first<{n:number}>())?.n,0);
     assert.equal((await db.prepare("SELECT maker_entitlement_paisa AS n FROM managed_commercial_snapshots WHERE id='audit-managed-snapshot'").first<{n:number}>())?.n,91000);
+    assert.equal((await db.prepare("SELECT SUM(amount_paisa) n FROM managed_settlement_entries WHERE reason_code='refund_responsibility'").first<{n:number}>())?.n,-15000,'Original delivery is a separate evidenced responsibility adjustment, not a second merchandise reversal.');
   } finally {await f.dispose();}
 });
 
@@ -6241,16 +6230,18 @@ void test('F06 tiny partial refunds reconcile cumulative retention rounding thro
     await db.prepare("UPDATE order_items SET quantity=3,unit_price_paisa=1,line_total_paisa=3,commission_base_paisa=3 WHERE id='item-1'").run();
     await db.prepare("UPDATE orders SET item_subtotal_paisa=3,grand_total_paisa=15003 WHERE id='order-1'").run();
     await accrueManagedEntitlements(db,{orderId:'order-1',actorId:'admin-1',requestId:'audit-round-earned',now});
+    await prepareLegacyReturnSources(db,'order-1');
     for(let index=0;index<3;index++) {
       const created=await createCustomerReturnRequest(db,{orderNumber:'HK-TEST-1',receiptTokenHash:'receipt-hash-1',orderItemId:'item-1',quantity:1,
         reason:'defective',requestedResolution:'refund',detail:'SIMULATED tiny item refund.',locale:'en-NP',idempotencyKey:'audit-round-return-'+index,evidence:[],now});
       await reviewReturnAsAdmin(db,{...auditReview(created.id,'audit-round-review-'+index),itemRefundPaisa:1});
-      const common={returnRequestId:created.id,actorId:'admin-1',actorRole:'admin' as const,note:'SIMULATED tiny refund.',publicMessageEn:'Paid.',publicMessageNe:'Paid.',now};
-      await advanceReturnAsAdmin(db,{...common,action:'start_refund',requestId:'audit-round-start-'+index});
-      await advanceReturnAsAdmin(db,{...common,action:'complete_refund',reference:'SIM-TINY-'+index,requestId:'audit-round-complete-'+index});
+      await recordFictionalReturnDisposition(db,created.id);
+      const packet=await startLegacyReturnPacket(db,{caseId:created.id,actorId:'super-1'});
+      await packet.complete();await packet.complete();
     }
-    assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,0);
+    assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,-15000);
     assert.equal((await db.prepare("SELECT SUM(base_amount_paisa) AS n FROM managed_settlement_entries WHERE type='refund_adjustment'").first<{n:number}>())?.n,3);
+    assert.equal((await db.prepare("SELECT SUM(amount_paisa) n FROM managed_settlement_entries WHERE reason_code='refund_responsibility'").first<{n:number}>())?.n,-15000,'Original delivery is a separate evidenced responsibility adjustment, not a second merchandise reversal.');
   }finally{await f.dispose();}
 });
 
@@ -6261,18 +6252,17 @@ void test('F06 failed managed reversal guard rolls refund outcome ledger and not
     await accrueManagedEntitlements(db,{orderId:'order-1',actorId:'admin-1',requestId:'audit-rollback-earned',now});
     const created=await auditReturn(db);
     await reviewReturnAsAdmin(db,{...auditReview(created.id,'audit-rollback-review'),itemRefundPaisa:50000});
-    const common={returnRequestId:created.id,actorId:'admin-1',actorRole:'admin' as const,note:'SIMULATED guard rollback.',publicMessageEn:'Paid.',publicMessageNe:'Paid.',now};
-    await advanceReturnAsAdmin(db,{...common,action:'start_refund',requestId:'audit-rollback-start'});
+    const packet=await startLegacyReturnPacket(db,{caseId:created.id,actorId:'super-1'});
     const before=await db.prepare('SELECT COUNT(*) AS n FROM notification_messages').first<{n:number}>();
     const raced=beforeAuditBatch(db,async()=>{
       await db.prepare(`INSERT INTO managed_settlement_entries(id,entitlement_id,refund_id,type,amount_paisa,base_amount_paisa,metadata_json,reason_code,request_id,created_by,created_at)
         VALUES ('audit-other-adjustment','audit-entitlement',NULL,'refund_adjustment',-910,1000,'{}','SIMULATED competing adjustment','audit-other-adjustment','admin-1',?)`).bind(now).run();
     });
-    await assert.rejects(advanceReturnAsAdmin(raced,{...common,action:'complete_refund',reference:'SIM-ROLLBACK',requestId:'audit-rollback-complete'}),/CHECK constraint failed: valid=1/);
+    await assert.rejects(packet.complete(raced),/CHECK constraint failed: valid=1/);
     assert.equal((await db.prepare('SELECT status FROM return_requests WHERE id=?').bind(created.id).first<{status:string}>())?.status,'approved');
     assert.equal((await db.prepare('SELECT status FROM refunds WHERE return_request_id=?').bind(created.id).first<{status:string}>())?.status,'processing');
     assert.equal(await db.prepare('SELECT id FROM return_outcomes WHERE return_request_id=?').bind(created.id).first(),null);
-    assert.equal(await db.prepare("SELECT id FROM audit_logs WHERE request_id='audit-rollback-complete'").first(),null);
+    assert.equal(await db.prepare("SELECT id FROM audit_logs WHERE action='refund.obligation.packet_outcome' AND subject_id=?").bind(packet.obligationId).first(),null);
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM notification_messages').first<{n:number}>())?.n,before?.n);
     assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,90090);
   }finally{await f.dispose();}
@@ -6290,7 +6280,7 @@ void test('F08 cancelling the final inactive parcel preserves earlier active del
     let active=(await listParcels(db,'order-1')).find(p=>p.id===a.id)!;
     await operateParcel(db,{jobId:a.id,actorId:'admin-1',action:'deliver',version:active.version,note:'SIMULATED first active delivery.',requestId:'audit-earlier-delivery',now});
     assert.equal((await db.prepare("SELECT delivered_at AS n FROM orders WHERE id='order-1'").first<{n:number|null}>())?.n,null);
-    await operateParcel(db,{jobId:b.id,actorId:'admin-1',action:'cancel',version:b.version,note:'SIMULATED final inactive cancellation.',requestId:'audit-later-cancel',now:now+5000});
+    await operateParcel(db,{jobId:b.id,actorId:'super-1',action:'cancel',version:b.version,note:'SIMULATED independent final inactive cancellation.',requestId:'audit-later-cancel',now:now+5000});
     const order=await db.prepare("SELECT status,delivered_at AS delivered FROM orders WHERE id='order-1'").first<{status:string;delivered:number}>();
     assert.equal(order?.status,'delivered'); assert.equal(order?.delivered,now);
     active=(await listParcels(db,'order-1')).find(p=>p.id===a.id)!;
@@ -6299,6 +6289,8 @@ void test('F08 cancelling the final inactive parcel preserves earlier active del
       await operateParcel(db,{jobId:a.id,actorId,action,version:p.version,amountPaisa:active.codDuePaisa,reference:'SIM-FINAL-'+action,
         note:'SIMULATED final active COD receipt.',requestId:'audit-final-'+action,now:now+10000});
     }
+    const counted=await prepareLegacyCodReceipt(db,{jobId:a.id,actorId:'super-1',requestId:'last-active-parcel-receipt',amountPaisa:active.codDuePaisa,reference:'SIM-FINAL-propose_remittance'});
+    await counted.confirm();await counted.confirm();
     const entry=await db.prepare("SELECT available_at AS available,created_at AS created FROM seller_ledger_entries WHERE order_item_id='item-1' AND type='sale'").first<{available:number;created:number}>();
     assert.equal(entry?.created,now); assert.equal(entry?.available,now+7*86400000);
     await releaseReferralRewards(db,'seller-user-1',now+7*86400000);
@@ -6339,9 +6331,7 @@ void test('F05/F06 fixed-supply customer refund preserves the single accepted su
     const before=await getFixedSupplyBalance(db,supply);
     const created=await auditReturn(db);
     await reviewReturnAsAdmin(db,{...auditReview(created.id,'audit-fixed-refund-review'),itemRefundPaisa:100000});
-    const common={returnRequestId:created.id,actorId:'admin-1',actorRole:'admin' as const,note:'SIMULATED fixed supply customer refund.',publicMessageEn:'Paid.',publicMessageNe:'Paid.',now};
-    await advanceReturnAsAdmin(db,{...common,action:'start_refund',requestId:'audit-fixed-refund-start'});
-    await advanceReturnAsAdmin(db,{...common,action:'complete_refund',reference:'SIM-FIXED-REFUND',requestId:'audit-fixed-refund-complete'});
+    const packet=await startLegacyReturnPacket(db,{caseId:created.id,actorId:'super-1'});await packet.complete();await packet.complete();
     assert.deepEqual(await getFixedSupplyBalance(db,supply),before);
     assert.equal(before.originalOwedPaisa,50000);
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM managed_supplier_obligations').first<{n:number}>())?.n,1);
@@ -6350,30 +6340,23 @@ void test('F05/F06 fixed-supply customer refund preserves the single accepted su
   }finally{await f.dispose();}
 });
 
-void test('F05 historical standard payouts containing managed items cannot advance approval processing or payment',async()=>{
-  for(const action of ['approve','start_processing','mark_paid'] as const) {
-    const f=await databaseFixture(),db=f.database as unknown as D1Database;
-    try {
-      await db.prepare(`INSERT INTO seller_ledger_entries(id,seller_id,order_item_id,type,amount_paisa,available_at,description,created_at)
-        VALUES ('audit-payout-sale','seller-1','item-1','sale',100000,?,'SIMULATED historical sale',?)`).bind(now,now).run();
-      const prepared=await prepareSellerPayout(db,{sellerId:'seller-1',actorId:action==='approve'?'admin-1':'super-1',actorRole:action==='approve'?'admin':'super_admin',
-        note:'SIMULATED historical payout prepared.',requestId:'audit-old-payout-prepare',now});
-      const common={payoutId:prepared.id,actorId:'super-1',actorRole:'super_admin' as const,note:'SIMULATED model eligibility check.',now};
-      if(action==='mark_paid')await operatePayout(db,{...common,action:'start_processing',requestId:'audit-old-payout-start'});
-      const state=(await db.prepare('SELECT status FROM payouts WHERE id=?').bind(prepared.id).first<{status:string}>())!.status;
-      if(action==='mark_paid') {
-        await assert.rejects(operatePayout(beforeAuditBatch(db,()=>auditManagedSnapshot(db)),{...common,action,
-          providerReference:'SIM-WRONG-MODEL',requestId:'audit-old-payout-advance'}),/CHECK constraint failed: valid=1/);
-      } else {
-        await auditManagedSnapshot(db);
-        await assert.rejects(operatePayout(db,{...common,action,requestId:'audit-old-payout-advance'}),/CHECK constraint failed: valid=1/);
-      }
-      assert.equal((await db.prepare('SELECT status FROM payouts WHERE id=?').bind(prepared.id).first<{status:string}>())?.status,state);
-      assert.equal(await db.prepare("SELECT id FROM payout_events WHERE request_id='audit-old-payout-advance'").first(),null);
-    }finally{await f.dispose();}
-  }
+for(const stage of ['approval','start','payment'] as const)void test('F05 historical standard payout with managed items rejects '+stage+' without effects',async()=>{
+ const f=await databaseFixture(),db=f.database as unknown as D1Database;try{
+  await payoutRequestBankFixture(f.sqlite,db,'seller-1');
+  await db.prepare("INSERT INTO seller_ledger_entries(id,seller_id,order_item_id,type,amount_paisa,available_at,description,created_at) VALUES('audit-payout-sale','seller-1','item-1','sale',100000,?,'Fictional original earned source',?)").bind(now,now).run();
+  const payout=await prepareSellerPayout(db,{sellerId:'seller-1',actorId:'admin-1',actorRole:'admin',note:'Prepare original earned entries before a later native model change.',requestId:'audit-old-payout-prepare',now}),capital=await legacyPayoutCapital(db);
+  const packet=await payoutTransfers.preparePayoutTransfer(db,capital.ctx('model-packet'),{model:'registered',payoutId:payout.id,accountVersionId:capital.accountVersionId,reason:'Retain the actual original standard-source snapshot before the model race.'});
+  if(stage!=='approval')await payoutTransfers.approvePayoutTransfer(db,capital.ctx('model-approve','0'),{packetId:packet.id,reason:'Approve this original unmodified source and actual company funding.'});
+  if(stage==='payment')await payoutTransfers.startPayoutTransfer(db,capital.ctx('model-start','1'),{packetId:packet.id,reason:'Record the actual original instruction before its outcome is reconciled.'});
+  const before=(await db.prepare('SELECT status FROM payouts WHERE id=?').bind(payout.id).first<{status:string}>())!.status;
+  const target=stage==='payment'?beforeAuditBatch(db,()=>auditManagedSnapshot(db)):db;
+  if(stage!=='payment')await auditManagedSnapshot(db);
+  const advance=()=>stage==='approval'?payoutTransfers.approvePayoutTransfer(target,capital.ctx('model-loser','0'),{packetId:packet.id,reason:'A later managed item cannot be paid through the old standard model.'}):stage==='start'?payoutTransfers.startPayoutTransfer(target,capital.ctx('model-loser','1'),{packetId:packet.id,reason:'Recheck the original model immediately before sending any instruction.'}):payoutTransfers.recordPayoutTransferOutcome(target,capital.ctx('model-loser','2'),{packetId:packet.id,outcome:'paid',amountPaisa:100000,bankAt:Date.now()-100,transactionIdentity:'FICTIONAL-MODEL-RACE-PAID',completedTransferConfirmed:true,exactBeneficiaryConfirmed:true,evidenceReference:'FICTIONAL-ACTUAL-MODEL-RACE-OUTCOME',reason:'Retain the actual original outcome only when its native source is still lawful.'});
+  await assert.rejects(advance(),/managed|original source|changed|standard|model/i);
+  assert.equal((await db.prepare('SELECT status FROM payouts WHERE id=?').bind(payout.id).first<{status:string}>())?.status,before);
+  assert.equal(await db.prepare("SELECT id FROM payout_events WHERE request_id=?").bind(capital.ctx('model-loser').requestId).first(),null);
+ }finally{await f.dispose();}
 });
-
 
 void test('F06 first collected managed parcel refund defers debit until final parcel collection earns the net balance', async () => {
   const f=await parcelFixture(),db=f.db;
@@ -6381,6 +6364,7 @@ void test('F06 first collected managed parcel refund defers debit until final pa
   try {
     await auditManagedSnapshot(db);
     await db.prepare("UPDATE order_items SET quantity=2,unit_price_paisa=50000 WHERE id='item-1'").run();
+    await prepareLegacyReturnSources(db,'order-1',{collect:false});
     const parcels=await listParcels(db,'order-1');
     const first=parcels.find(p=>p.sellerId==='seller-1')!,second=parcels.find(p=>p.sellerId==='seller-2')!;
     const op=async(id:string,action:'assign'|'dispatch'|'deliver'|'collect',extra:Record<string,unknown>={})=>{
@@ -6397,11 +6381,7 @@ void test('F06 first collected managed parcel refund defers debit until final pa
     await op(first.id,'collect',{amountPaisa:first.codDuePaisa,reference:'SIM-FIRST-COLLECT'});
     const created=await auditReturn(db);
     await reviewReturnAsAdmin(db,{...auditReview(created.id,'audit-deferred-review'),itemRefundPaisa:50000});
-    const common={returnRequestId:created.id,actorId:'admin-1',actorRole:'admin' as const,
-      note:'SIMULATED first parcel refund before whole-order completion.',publicMessageEn:'Paid.',publicMessageNe:'Paid.',now};
-    await advanceReturnAsAdmin(db,{...common,action:'start_refund',requestId:'audit-deferred-start'});
-    const completion={...common,action:'complete_refund' as const,reference:'SIM-DEFERRED-REFUND',requestId:'audit-deferred-complete'};
-    await advanceReturnAsAdmin(db,completion);await advanceReturnAsAdmin(db,completion);
+    const packet=await startLegacyReturnPacket(db,{caseId:created.id,actorId:'super-1'});await packet.complete();await packet.complete();
     assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,0,'unearned refund must not create a negative maker liability');
     assert.equal((await db.prepare("SELECT status FROM managed_entitlements WHERE id='audit-entitlement'").first<{status:string}>())?.status,'calculated');
     await op(second.id,'deliver');
@@ -6420,7 +6400,7 @@ void test('F06 first collected managed parcel refund defers debit until final pa
     await operateParcel(db,finalCollection);
 
     assert.equal((await db.prepare("SELECT payment_status AS status FROM orders WHERE id='order-1'").first<{status:string}>())?.status,'part_refunded');
-    assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,45500);
+    assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,45143);
     assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM managed_invoice_groups WHERE order_id='order-1'").first<{n:number}>())?.n,1);
     const invoice=await db.prepare("SELECT snapshot_json AS snapshot FROM managed_invoice_groups WHERE order_id='order-1'").first<{snapshot:string}>();
     assert.equal(JSON.parse(invoice!.snapshot).productTotalPaisa,100000);
@@ -6429,7 +6409,7 @@ void test('F06 first collected managed parcel refund defers debit until final pa
     assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM managed_invoice_groups WHERE order_id='order-1'").first<{n:number}>())?.n,1);
     assert.equal(await accrueManagedEntitlements(db,{orderId:'order-1',actorId:'admin-1',requestId:'audit-deferred-retry',now}),0);
     assert.deepEqual((await db.prepare("SELECT type,amount_paisa AS amount FROM managed_settlement_entries WHERE entitlement_id='audit-entitlement' ORDER BY amount_paisa DESC").all<{type:string;amount:number}>()).results.map(row=>({...row})),
-      [{type:'earned',amount:91000},{type:'refund_adjustment',amount:-45500}]);
+      [{type:'earned',amount:91000},{type:'dispute_adjustment',amount:-357},{type:'refund_adjustment',amount:-45500}]);
     assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM seller_ledger_entries WHERE order_item_id='item-1'").first<{n:number}>())?.n,0);
     assert.equal((await db.prepare("SELECT maker_entitlement_paisa AS n FROM managed_commercial_snapshots WHERE id='audit-managed-snapshot'").first<{n:number}>())?.n,91000);
   } finally {await f.dispose();}
@@ -6440,58 +6420,55 @@ void test('F06 refund completed between accrual pre-read and claim rolls stale c
   const f=await parcelFixture(),db=f.db;
   try {
     await auditManagedSnapshot(db);
-    await db.prepare("UPDATE orders SET status='delivered',payment_status='paid',delivered_at=? WHERE id='order-1'").bind(now).run();
-    await db.prepare("UPDATE order_items SET fulfillment_status='delivered' WHERE order_id='order-1'").run();
-    await db.prepare("UPDATE shipping_jobs SET status='delivered' WHERE order_id='order-1'").run();
-    await db.prepare("UPDATE shipping_parcels SET collected_paisa=cod_due_paisa WHERE shipping_job_id IN (SELECT id FROM shipping_jobs WHERE order_id='order-1')").run();
+    await collectLegacyManagedBeforeAccrual(db,now);
     const created=await auditReturn(db);
     await reviewReturnAsAdmin(db,{...auditReview(created.id,'audit-accrual-race-review'),itemRefundPaisa:50000});
-    const common={returnRequestId:created.id,actorId:'admin-1',actorRole:'admin' as const,
-      note:'SIMULATED refund race with calculated accrual.',publicMessageEn:'Paid.',publicMessageNe:'Paid.',now};
-    await advanceReturnAsAdmin(db,{...common,action:'start_refund',requestId:'audit-accrual-race-start'});
-    const raced=beforeAuditBatch(db,()=>advanceReturnAsAdmin(db,{...common,action:'complete_refund',reference:'SIM-RACE-REFUND',requestId:'audit-accrual-race-complete'}));
+    const packet=await startLegacyReturnPacket(db,{caseId:created.id,actorId:'super-1'});
+    const raced=beforeAuditBatch(db,()=>packet.complete());
     await assert.rejects(accrueManagedEntitlements(raced,{orderId:'order-1',actorId:'admin-1',requestId:'audit-stale-accrual',now}),/stale-managed-refund-accrual/);
     assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM managed_settlement_entries WHERE entitlement_id='audit-entitlement'").first<{n:number}>())?.n,0);
     const competing=beforeAuditBatch(db,async()=>{
       assert.equal(await accrueManagedEntitlements(db,{orderId:'order-1',actorId:'admin-1',requestId:'audit-net-winner',now}),1);
     });
     assert.equal(await accrueManagedEntitlements(competing,{orderId:'order-1',actorId:'admin-1',requestId:'audit-net-loser',now}),0);
-    assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,45500);
-    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM managed_settlement_entries WHERE entitlement_id='audit-entitlement'").first<{n:number}>())?.n,2);
+    assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,44786);
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM managed_settlement_entries WHERE entitlement_id='audit-entitlement'").first<{n:number}>())?.n,3);
   }finally{await f.dispose();}
 });
 
 
 void test('F06 several unearned tiny refunds aggregate original rounding and consumed refund replay stays a no-op',async()=>{
-  const f=await parcelFixture(),db=f.db;
+  const f=await parcelFixture(async db=>{
+    await auditManagedSnapshot(db,'managed_sale_linked_percentage_v1',3,1);
+    await db.prepare("UPDATE order_items SET quantity=3,unit_price_paisa=1,line_total_paisa=3,commission_base_paisa=3 WHERE id='item-1'").run();
+    await db.prepare("UPDATE orders SET item_subtotal_paisa=2000003,grand_total_paisa=2015003 WHERE id='order-1'").run();
+    await db.prepare("UPDATE payments SET amount_paisa=2015003 WHERE order_id='order-1'").run();
+  }),db=f.db;
   const refundIds:string[]=[];
   try {
-    await auditManagedSnapshot(db,'managed_sale_linked_percentage_v1',3,1);
-    await db.prepare("UPDATE order_items SET quantity=3,unit_price_paisa=1,line_total_paisa=3,commission_base_paisa=3,fulfillment_status='delivered' WHERE id='item-1'").run();
-    await db.prepare("UPDATE order_items SET fulfillment_status='delivered' WHERE id='item-2'").run();
-    await db.prepare("UPDATE orders SET status='delivered',payment_status='paid',delivered_at=? WHERE id='order-1'").bind(now).run();
-    await db.prepare("UPDATE shipping_parcels SET collected_paisa=cod_due_paisa WHERE shipping_job_id IN (SELECT id FROM shipping_jobs WHERE order_id='order-1')").run();
+    await collectLegacyManagedBeforeAccrual(db,now);
     for(let index=0;index<3;index++) {
       const created=await createCustomerReturnRequest(db,{orderNumber:'HK-TEST-1',receiptTokenHash:'receipt-hash-1',orderItemId:'item-1',quantity:1,
         reason:'defective',requestedResolution:'refund',detail:'SIMULATED unearned tiny refund.',locale:'en-NP',idempotencyKey:'audit-unearned-tiny-'+index,evidence:[],now});
       await reviewReturnAsAdmin(db,{...auditReview(created.id,'audit-unearned-tiny-review-'+index),itemRefundPaisa:1});
-      const common={returnRequestId:created.id,actorId:'admin-1',actorRole:'admin' as const,note:'SIMULATED unearned tiny refund.',publicMessageEn:'Paid.',publicMessageNe:'Paid.',now};
-      await advanceReturnAsAdmin(db,{...common,action:'start_refund',requestId:'audit-unearned-tiny-start-'+index});
-      await advanceReturnAsAdmin(db,{...common,action:'complete_refund',reference:'SIM-UNEARNED-TINY-'+index,requestId:'audit-unearned-tiny-complete-'+index});
+      await recordFictionalReturnDisposition(db,created.id);
+      const packet=await startLegacyReturnPacket(db,{caseId:created.id,actorId:'super-1'});await packet.complete();await packet.complete();
       refundIds.push((await db.prepare('SELECT id FROM refunds WHERE return_request_id=?').bind(created.id).first<{id:string}>())!.id);
       assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM managed_settlement_entries WHERE entitlement_id='audit-entitlement'").first<{n:number}>())?.n,0);
     }
     assert.equal(await accrueManagedEntitlements(db,{orderId:'order-1',actorId:'admin-1',requestId:'audit-unearned-tiny-earned',now}),1);
     assert.equal((await getManagedFinanceSummary(db,'seller-1',now)).balancePaisa,0);
+    const beforeReplay=(await db.prepare("SELECT COUNT(*) n FROM managed_settlement_entries WHERE entitlement_id='audit-entitlement'").first<{n:number}>())!.n;
     for(const refundId of refundIds)await applyManagedRefundAdjustment(db,{entitlementId:'audit-entitlement',refundId,
       refundedEligibleBasePaisa:1,actorId:'admin-1',reasonCode:'consumed_refund_replay',requestId:'audit-consumed-'+refundId,now});
-    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM managed_settlement_entries WHERE entitlement_id='audit-entitlement'").first<{n:number}>())?.n,2);
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM managed_settlement_entries WHERE entitlement_id='audit-entitlement'").first<{n:number}>())?.n,beforeReplay);
     assert.equal((await db.prepare("SELECT SUM(base_amount_paisa) AS n FROM managed_settlement_entries WHERE type='refund_adjustment'").first<{n:number}>())?.n,3);
   }finally{await f.dispose();}
 });
 
 
 async function auditHighValueCase(db:D1Database,customerId?:string) {
+  await prepareLegacyReturnSources(db,'order-2');
   const created=await createCustomerReturnRequest(db,{orderNumber:'HK-TEST-2',receiptTokenHash:'receipt-hash-2',orderItemId:'item-2',quantity:1,
     reason:'wrong_item',requestedResolution:'refund',detail:'SIMULATED high-value ownership review.',locale:'en-NP',
     idempotencyKey:'audit-high-owner-create',evidence:[],now,customerId});
@@ -6539,55 +6516,51 @@ void test('F04 high-value owner or requester reassignment before commit rolls bo
 });
 
 
-async function auditFailedDeliveryRefund(db:D1Database) {
-  await db.prepare("UPDATE orders SET delivery_charge_paisa=60000,current_delivery_paisa=40000,current_subtotal_paisa=item_subtotal_paisa,current_total_paisa=item_subtotal_paisa+40000,current_wallet_paisa=0,current_discount_paisa=0 WHERE id='order-1'").run();
-  await db.prepare("UPDATE order_items SET order_id='order-1' WHERE id='item-3'").run();
-  const a=await auditReturn(db),b=await auditReturn(db,'item-3');
-  await reviewReturnAsAdmin(db,auditReview(a.id,'audit-restart-approve-a',40000));
-  const action=(id:string,action:'start_refund'|'fail_refund'|'complete_refund',requestId:string)=>({returnRequestId:id,actorId:'admin-1',actorRole:'admin' as const,action,
-    note:'SIMULATED failed delivery refund reacquisition.',publicMessageEn:'Reviewed.',publicMessageNe:'Reviewed.',requestId,now,reference:action==='complete_refund'?'SIM-RESTART-PAID':undefined});
-  await advanceReturnAsAdmin(db,action(a.id,'start_refund','audit-restart-start-a'));
-  await advanceReturnAsAdmin(db,action(a.id,'fail_refund','audit-restart-fail-a'));
-  return {a,b,action};
+async function auditFailedDeliveryRefund(db:D1Database){
+ const shares=await prepareLegacyCancelledDeliveryOrder(db),a=await auditReturn(db),b=await auditReturn(db,'item-3');
+ await reviewReturnAsAdmin(db,auditReview(a.id,'audit-restart-original-a'));
+ const original=await startLegacyReturnPacket(db,{caseId:a.id,actorId:'super-1'});
+ await recordRefundPacketOutcome(db,{actorId:'super-1',requestId:'audit-original-no-debit',expectedRevision:'2',now:Date.now()},{packetId:original.packetId,outcome:'failed',failureBasis:'no_debit',evidenceReference:'FICTIONAL-INDEPENDENT-ORIGINAL-NO-DEBIT',reason:'Independent original bank evidence confirms this actual instruction made no debit.'});
+ return{a,b,shares,original};
 }
-void test('F02 failed standard refund cannot restart after another refund reserves its released delivery allowance',async()=>{
-  const f=await databaseFixture(),db=f.database as unknown as D1Database;
-  try {
-    const {a,b,action}=await auditFailedDeliveryRefund(db);
-    await reviewReturnAsAdmin(db,auditReview(b.id,'audit-restart-approve-b',40000));
-    await assert.rejects(advanceReturnAsAdmin(db,action(a.id,'start_refund','audit-restart-denied')),/remaining delivery charge/);
-    assert.equal((await db.prepare('SELECT status FROM refunds WHERE return_request_id=?').bind(a.id).first<{status:string}>())?.status,'failed');
-    assert.equal(await db.prepare("SELECT id FROM return_request_events WHERE request_id='audit-restart-denied'").first(),null);
-    await advanceReturnAsAdmin(db,action(b.id,'start_refund','audit-restart-start-b'));
-    await advanceReturnAsAdmin(db,action(b.id,'complete_refund','audit-restart-complete-b'));
-    await assert.rejects(advanceReturnAsAdmin(db,action(a.id,'start_refund','audit-restart-denied-paid')),/remaining delivery charge/);
-    assert.equal((await db.prepare("SELECT SUM(delivery_amount_paisa) AS n FROM refunds WHERE order_id='order-1' AND status='paid'").first<{n:number}>())?.n,40000);
-  }finally{await f.dispose();}
+void test('F02 failed refund retains its exact delivery entitlement through another lawful refund and fresh retry',async()=>{
+ const f=await databaseFixture(),db=f.database as unknown as D1Database;try{
+  const {a,b,shares,original}=await auditFailedDeliveryRefund(db);
+  await assert.rejects(reviewReturnAsAdmin(db,auditReview(b.id,'audit-steal-failed-entitlement',40000)),/exact attributable original delivery/);
+  assert.equal((await db.prepare('SELECT status FROM refunds WHERE return_request_id=?').bind(a.id).first<{status:string}>())?.status,'failed');
+  await reviewReturnAsAdmin(db,auditReview(b.id,'audit-own-delivery-b'));const other=await startLegacyReturnPacket(db,{caseId:b.id,actorId:'super-1'});await other.complete();
+  const retry=await startLegacyReturnPacket(db,{caseId:a.id,actorId:'super-1'});assert.equal(retry.obligationId,original.obligationId);assert.notEqual(retry.packetId,original.packetId);await retry.complete();await retry.complete();
+  assert.equal((await db.prepare("SELECT SUM(delivery_amount_paisa) n FROM refunds WHERE order_id='order-1' AND status='paid'").first<{n:number}>())?.n,40000);
+  assert.equal((await db.prepare('SELECT delivery_amount_paisa n FROM refunds WHERE return_request_id=?').bind(a.id).first<{n:number}>())?.n,shares.get('item-1'));
+  assert.equal((await db.prepare('SELECT COUNT(*) n FROM refund_obligations WHERE source_id=(SELECT id FROM refunds WHERE return_request_id=?)').bind(a.id).first<{n:number}>())?.n,1);
+ }finally{await f.dispose();}
 });
-void test('F02 competing failed-refund restart and new approval reserve only one delivery allowance',async()=>{
-  for(const winner of ['approval','restart']){
-    const f=await databaseFixture(),db=f.database as unknown as D1Database;
-    try {
-      const {a,b,action}=await auditFailedDeliveryRefund(db);
-      const approve=()=>reviewReturnAsAdmin(db,auditReview(b.id,'audit-restart-race-approve',40000));
-      const restart=()=>advanceReturnAsAdmin(db,action(a.id,'start_refund','audit-restart-race-start'));
-      const loserCase=winner==='approval'?a.id:b.id;
-      const beforeNotifications=(await db.prepare('SELECT COUNT(*) AS n FROM notification_messages WHERE related_id=?').bind(loserCase).first<{n:number}>())!.n;
-      if(winner==='approval') {
-        await assert.rejects(advanceReturnAsAdmin(beforeAuditBatch(db,approve),action(a.id,'start_refund','audit-restart-race-loser')),/stale-refund-restart-capacity/);
-        assert.equal((await db.prepare('SELECT status FROM refunds WHERE return_request_id=?').bind(a.id).first<{status:string}>())?.status,'failed');
-      }else {
-        await assert.rejects(reviewReturnAsAdmin(beforeAuditBatch(db,restart),auditReview(b.id,'audit-restart-race-loser',40000)),/stale-delivery-refund-capacity/);
-        assert.equal((await db.prepare('SELECT status FROM return_requests WHERE id=?').bind(b.id).first<{status:string}>())?.status,'requested');
-      }
-      assert.equal((await db.prepare("SELECT SUM(delivery_amount_paisa) AS n FROM refunds WHERE order_id='order-1' AND status NOT IN ('failed','rejected')").first<{n:number}>())?.n,40000);
-      assert.equal(await db.prepare("SELECT id FROM audit_logs WHERE request_id='audit-restart-race-loser'").first(),null);
-      assert.equal(await db.prepare("SELECT id FROM return_request_events WHERE request_id='audit-restart-race-loser'").first(),null);
-      assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM notification_messages WHERE related_id=?').bind(loserCase).first<{n:number}>())?.n,beforeNotifications);
-    }finally{await f.dispose();}
-  }
+void test('F02 concurrent other-item approval and failed-refund retry retain distinct saved delivery allocations',async()=>{
+ for(const first of ['approval','retry']){const f=await databaseFixture(),db=f.database as unknown as D1Database;try{
+  const {a,b,original}=await auditFailedDeliveryRefund(db);let reached=false;
+  const approve=()=>reviewReturnAsAdmin(db,auditReview(b.id,'audit-distinct-approval'));
+  let retry:Awaited<ReturnType<typeof startLegacyReturnPacket>>;
+  if(first==='approval')retry=await startLegacyReturnPacket(beforeAuditBatch(db,async()=>{reached=true;await approve();}),{caseId:a.id,actorId:'super-1'});
+  else{await reviewReturnAsAdmin(beforeAuditBatch(db,async()=>{reached=true;retry=await startLegacyReturnPacket(db,{caseId:a.id,actorId:'super-1'});}),auditReview(b.id,'audit-distinct-approval'));}
+  assert.equal(reached,true);assert.equal(retry!.obligationId,original.obligationId);
+  await assert.rejects(startLegacyReturnPacket(db,{caseId:a.id,actorId:'super-1'}),/original|processing|open|active|prepared/i);
+  assert.equal((await db.prepare("SELECT COUNT(*) n FROM outgoing_payment_packets WHERE obligation_id=? AND state IN('prepared','approved','processing','uncertain')").bind(original.obligationId).first<{n:number}>())?.n,1);
+  assert.equal((await db.prepare("SELECT SUM(delivery_amount_paisa) n FROM refunds WHERE order_id='order-1' AND status<>'rejected'").first<{n:number}>())?.n,40000);
+  const other=await startLegacyReturnPacket(db,{caseId:b.id,actorId:'super-1'});await other.complete();await retry!.complete();
+  assert.equal((await db.prepare("SELECT SUM(delivery_amount_paisa) n FROM refunds WHERE order_id='order-1' AND status='paid'").first<{n:number}>())?.n,40000);
+ }finally{await f.dispose();}}
 });
-
+void test('F02 competing failed-refund packet preparations commit one winner and no losing receipt or reservation',async()=>{
+ const f=await databaseFixture(),db=f.database as unknown as D1Database;try{
+  const {original}=await auditFailedDeliveryRefund(db),row=(await db.prepare('SELECT revision FROM refund_obligations WHERE id=?').bind(original.obligationId).first<{revision:number}>())!,packet=(await db.prepare('SELECT destination_version_id destination,funding_statement_id funding FROM outgoing_payment_packets WHERE id=?').bind(original.packetId).first<{destination:string;funding:string}>())!;
+  const input={obligationId:original.obligationId,destinationVersionId:packet.destination,fundingStatementId:packet.funding,reason:'Prepare one freshly reviewed original failed obligation without another economic refund.'},context=(requestId:string)=>({actorId:'super-1',requestId,expectedRevision:String(row.revision),now:Date.now()});let reached=false;
+  const raced=beforeAuditBatch(db,async()=>{reached=true;await prepareRefundPacket(db,context('actual-retry-packet-winner'),input);});
+  await assert.rejects(prepareRefundPacket(raced,context('actual-retry-packet-loser'),input),/UNIQUE|CHECK constraint failed: valid=1|changed|original|open/i);assert.equal(reached,true);
+  assert.equal((await db.prepare("SELECT COUNT(*) n FROM outgoing_payment_packets WHERE obligation_id=? AND state='prepared'").bind(original.obligationId).first<{n:number}>())?.n,1);
+  assert.equal(await db.prepare("SELECT id FROM audit_logs WHERE request_id='actual-retry-packet-loser'").first(),null);
+  assert.equal((await db.prepare('SELECT COUNT(*) n FROM company_outgoing_bank_identities').first<{n:number}>())?.n,0);
+ }finally{await f.dispose();}
+});
 
 void test('managed paid parcel exact replay resumes a failed invoice after committed cash and earned credit',async()=>{
   const f=await parcelFixture(),db=f.db;
@@ -6653,6 +6626,11 @@ void test('expiry cleans exhausted and delayed retries without taking an active 
     const mail = {send:async () => {assert.fail('An expired update must not be sent');}};
     assert.deepEqual(await deliverOrderEmails(db, mail, 'https://hastabazaar.com', {now}), {sent:0,failed:0,cancelled:0});
     assert.equal((await db.prepare('SELECT claim_token AS token FROM order_email_jobs').first<{token:string}>())?.token, 'active-claim');
+    // These are known current pre-handoff failures, rather than ambiguous
+    // pre-ledger counters. Legacy missing history is deliberately held instead.
+    const jobId=(await db.prepare('SELECT id FROM order_email_jobs').first<{id:string}>())!.id;
+    const {recordUnstartedDeliveryAttempt}=await import('../lib/email/delivery-attempts');
+    for(let attemptNumber=1;attemptNumber<=5;attemptNumber++)await recordUnstartedDeliveryAttempt(db,{queueKind:'order',queueId:jobId,claimToken:crypto.randomUUID(),attemptNumber,now:now-100+attemptNumber,retryAt:now+600_000});
     await db.prepare("UPDATE order_email_jobs SET status='retry',lease_until=0,attempts=5,next_attempt_at=?").bind(now+600_000).run();
     assert.deepEqual(await deliverOrderEmails(db, mail, 'https://hastabazaar.com', {now}), {sent:0,failed:0,cancelled:1});
     assert.equal((await db.prepare('SELECT failure_code AS reason FROM order_email_jobs').first<{reason:string}>())?.reason, 'expired_order_update');
@@ -6692,4 +6670,27 @@ void test('claimed update expires before SMTP without recording a delivery attem
     const record=await db.prepare('SELECT attempts,failure_code AS reason FROM order_email_jobs').first<{attempts:number;reason:string}>();
     assert.equal(record?.attempts,0);assert.equal(record?.reason,'expired_order_update');
   } finally {await f.dispose();}
+});
+
+// This test suite models an explicitly accepting fake provider.
+const deliverOrderEmails: typeof actualDeliverOrderEmails = (db,mail,origin,options) => actualDeliverOrderEmails(db,fakeProviderMail(mail),origin,options);
+
+async function guestCodReconciliationFixture(){
+ const f=await parcelFixture();try{const parcel=(await listParcels(f.db,'order-1'))[0];
+ for(const [index,action]of (['assign','dispatch','collect','propose_remittance'] as const).entries()){
+  if(action==='dispatch')await f.db.prepare("UPDATE order_items SET fulfillment_status='ready_for_pickup' WHERE order_id='order-1'").run();
+  const current=(await listParcels(f.db,'order-1')).find(p=>p.id===parcel.id)!;
+  await operateParcel(f.db,{jobId:parcel.id,actorId:'super-1',action,version:current.version,note:'Record actual fictional courier collection and independent company receipt.',requestId:'guest-cod-step-'+index,now:Date.now(),...(action==='assign'?{method:'courier',courierName:'Fictional carrier',trackingCode:'LOCAL-GUEST-COD'}:{}),...(action==='collect'||action==='propose_remittance'?{amountPaisa:100,reference:'LOCAL-GUEST-COD-CLAIM'}:{})});
+ }
+ const receipt=await prepareLegacyCodReceipt(f.db,{jobId:parcel.id,actorId:'super-1',requestId:'guest-cod-receipt',amountPaisa:100,reference:'LOCAL-GUEST-COD-CLAIM'});return{...f,jobId:parcel.id,receipt};
+ }catch(error){await f.dispose();throw error;}
+}
+void test('T24 guest COD verified receipt reconciles without inventing a registered customer',async()=>{
+ const f=await guestCodReconciliationFixture();try{assert.equal((await f.db.prepare("SELECT customer_id id FROM orders WHERE id='order-1'").first<{id:string|null}>())?.id,null);const result=await f.receipt.confirm();assert.deepEqual(await f.receipt.confirm(),result);assert.equal((await listParcels(f.db,'order-1')).find(p=>p.id===f.jobId)!.remittedPaisa,100);assert.equal((await f.db.prepare('SELECT SUM(amount_paisa) n FROM cod_company_receipt_allocations WHERE shipping_job_id=?').bind(f.jobId).first<{n:number}>())?.n,100);}finally{await f.dispose();}
+});
+void test('T24 registered customer cannot reconcile their own COD company receipt even as Super Admin',async()=>{
+ const f=await guestCodReconciliationFixture();try{await f.db.prepare("UPDATE orders SET customer_id='super-1' WHERE id='order-1'").run();await assert.rejects(f.receipt.confirm(),/personal cash or beneficiary interest/);assert.equal((await f.db.prepare('SELECT COUNT(*) n FROM cod_company_receipt_allocations').first<{n:number}>())?.n,0);}finally{await f.dispose();}
+});
+void test('T24 guest COD role loss or customer-source race at commit rolls all reconciliation effects back',async()=>{
+ for(const race of ['role','owner']){const f=await guestCodReconciliationFixture();try{const before=(await listParcels(f.db,'order-1')).find(p=>p.id===f.jobId)!;const target=beforeAuditBatch(f.db,()=>race==='role'?f.db.prepare("DELETE FROM user_roles WHERE user_id='super-1' AND role='super_admin'").run():f.db.prepare("UPDATE orders SET customer_id='super-1' WHERE id='order-1'").run());await assert.rejects(f.receipt.confirm(target));assert.equal((await listParcels(f.db,'order-1')).find(p=>p.id===f.jobId)!.version,before.version);assert.equal((await f.db.prepare('SELECT COUNT(*) n FROM cod_company_receipt_allocations').first<{n:number}>())?.n,0);assert.equal((await f.db.prepare("SELECT COUNT(*) n FROM parcel_cash_records WHERE kind='remittance' AND status='pending'").first<{n:number}>())?.n,1);assert.equal((await f.db.prepare('SELECT revision FROM company_receipt_controls WHERE receipt_id=?').bind(f.receipt.receiptId).first<{revision:number}>())?.revision,0);}finally{await f.dispose();}}
 });

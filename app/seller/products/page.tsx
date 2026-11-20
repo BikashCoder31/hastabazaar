@@ -9,7 +9,8 @@ import { InventoryEditor } from '@/components/seller/inventory-editor';
 import { SellerHeading, SellerEmpty } from '@/components/seller/workspace-ui';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { requireSellerPage } from '@/lib/auth/seller';
+import { requireSellerCenterPage } from '@/lib/auth/seller-center';
+import { ApplicantSection } from '@/components/seller/applicant-section';
 import { requireDatabase } from '@/lib/db/d1';
 import { listSellerProducts } from '@/lib/db/repositories/products';
 import { mediaObjectClass, mediaSizes } from '@/lib/media/responsive-media';
@@ -45,7 +46,9 @@ export default async function SellerProductsPage({
 }: {
   searchParams: Promise<{ status?: string; q?: string }>;
 }) {
-  const seller = await requireSellerPage('/seller/products');
+  const seller = await requireSellerCenterPage('/seller/products');
+  if (!seller.approvedSeller || !seller.sellerId) return <ApplicantSection viewer={seller} section="products" />;
+  const sellerId = seller.sellerId;
   const params = await searchParams;
   const activeStatus = filters.some(([value]) => value === params.status)
     ? params.status!
@@ -73,7 +76,7 @@ export default async function SellerProductsPage({
               await productClosureBlockers(
                 database,
                 product.id,
-                seller.sellerId,
+                sellerId,
               ),
             ] as const,
         ),
@@ -93,6 +96,7 @@ export default async function SellerProductsPage({
         >
           <PackagePlus /> Add product
         </Button>
+        <Link href="/seller/products/intakes" className="rounded-lg border px-4 py-2 text-sm">Saved product workspaces</Link>
       </SellerHeading>
 
       <section className="space-y-4 rounded-2xl border bg-card p-4 sm:p-5">
@@ -242,7 +246,7 @@ function ProductRow({
                 {product.categoryName}
               </p>
               <p className="mt-1 break-all text-xs text-muted-foreground">
-                SKU {product.sku}
+                Platform SKU: {product.sku}<span className="block">Seller SKU: {product.sellerSku || '—'}</span>
               </p>
             </div>
           </div>

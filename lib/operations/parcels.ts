@@ -1,4 +1,13 @@
+import {preparePaymentException} from '../payments/payment-exceptions';
 import { assertFirstCodFulfillmentAllowed } from '../orders/first-cod-review';
+import { payableOrderTotalSql } from '../db/repositories/platform-service-fee';
+import { readOriginalBuyerLinePricing } from '../db/repositories/order-item-pricing-snapshots';
+import { allocateCancellationItems, calculateCancellation } from '../cancellation/accounting';
+import {
+  readSavedSellerShipmentCharges,
+  SELLER_SHIPMENT_DELIVERY_POLICY,
+  usesSellerShipmentDelivery,
+} from '../returns/seller-shipment-delivery';
 import {
   cancellationPreview,
   cancelSelectedParcels,
@@ -18,6 +27,9 @@ import { safeCourierUrl, parseLocation } from '../delivery/validation';
 import { buildEarningsAccrualStatements } from '../db/repositories/payouts';
 import { accrueManagedEntitlements } from '../db/repositories/managed-settlements';
 import { issueManagedInvoiceGroups } from '../db/repositories/managed-documents';
+import { withReceiptGroups } from '../documents/billing';
+import type { OrderDocumentSnapshot } from '../db/repositories/orders';
+import { receiptNumberStatements,withLiveInvoiceReferences } from '../db/repositories/billing-documents';
 import { getEffectiveBusinessSetting } from '../db/repositories/business-settings';
 import {
   addKathmanduBusinessDays,
@@ -259,7 +271,7 @@ function compensationStatement(
       now,
     );
 }
-async function remittanceAllocationStatements(
+export async function remittanceAllocationStatements(
   db: D1Database,
   input: {
     recordId: string;
@@ -301,6 +313,81 @@ async function remittanceAllocationStatements(
   }
   return result;
 }
+/** A carrier request and parcel setup can reuse the same outbound job. */
+export function prepareOutboundDeliveryUnitMappings(
+  db: D1Database,
+  input: { orderId: string; sellerId: string; deliverySnapshotJson: string | null; now: number },
+): D1PreparedStatement[] {
+  if (!usesSellerShipmentDelivery(input.deliverySnapshotJson)) return [];
+  const { orderId, sellerId, deliverySnapshotJson, now } = input;
+  return [
+    ...assertion(db,
+      'EXISTS(SELECT 1 FROM orders WHERE id=? AND HEX(delivery_rate_snapshot_json)=HEX(?))',
+      [orderId, deliverySnapshotJson],
+    ),
+    db.prepare(`INSERT INTO order_delivery_unit_parcels(order_item_id,unit_ordinal,shipping_job_id,created_at)
+      SELECT u.order_item_id,u.unit_ordinal,j.id,?
+      FROM order_delivery_unit_allocations u
+      JOIN order_delivery_shipment_allocations s ON s.id=u.shipment_id AND s.order_id=u.order_id
+      JOIN order_items i ON i.id=u.order_item_id AND i.order_id=s.order_id AND i.seller_id=s.seller_id
+      JOIN shipping_jobs j ON j.order_id=s.order_id AND j.seller_id=s.seller_id AND j.direction='outbound'
+      WHERE s.order_id=? AND s.seller_id=? AND i.fulfillment_status<>'cancelled'
+        AND NOT EXISTS(SELECT 1 FROM order_delivery_unit_parcels retained
+          WHERE retained.order_item_id=u.order_item_id AND retained.unit_ordinal=u.unit_ordinal
+            AND retained.shipping_job_id=j.id)`)
+      .bind(now, orderId, sellerId),
+    ...assertion(db, `NOT EXISTS(SELECT 1 FROM order_items i
+      WHERE i.order_id=? AND i.seller_id=? AND i.fulfillment_status<>'cancelled'
+        AND i.quantity<>(SELECT COUNT(*) FROM order_delivery_unit_parcels mapped
+          JOIN shipping_jobs j ON j.id=mapped.shipping_job_id
+          WHERE mapped.order_item_id=i.id AND j.order_id=i.order_id AND j.seller_id=i.seller_id AND j.direction='outbound'))`,
+      [orderId, sellerId],
+    ),
+  ];
+}
+
+type ParcelSetupOrder = {
+  total: number;
+  cancellationVersion: number;
+  paymentMode: string;
+  deliverySnapshotJson: string | null;
+  subtotal: number;
+  delivery: number;
+  wallet: number;
+  discount: number;
+  promo: number;
+  serviceFee: number;
+};
+
+async function originalShipmentCashAllocation(db: D1Database, orderId: string, order: ParcelSetupOrder) {
+  try {
+    const { results } = await db.prepare(`SELECT id,seller_id AS sellerId,line_total_paisa AS amount,
+      promo_discount_paisa AS promo FROM order_items WHERE order_id=? AND fulfillment_status<>'cancelled'`)
+      .bind(orderId).all<{ id: string; sellerId: string; amount: number; promo: number }>();
+    const [buyerPricing, sellerCharges] = await Promise.all([
+      readOriginalBuyerLinePricing(db, orderId),
+      readSavedSellerShipmentCharges(db, orderId, order.delivery, results.map(item => item.sellerId)),
+    ]);
+    const items = allocateCancellationItems(results.map(item => ({
+      id: item.id,
+      sellerId: item.sellerId,
+      amount: buyerPricing?.get(item.id)?.customerSubtotalPaisa ?? item.amount,
+      ...(order.promo ? { promo: item.promo } : {}),
+    })), order.wallet, order.discount);
+    const allocation = calculateCancellation(items, new Set<string>(), {
+      pricingPolicy: SELLER_SHIPMENT_DELIVERY_POLICY,
+      sellerCharges,
+    }, order.serviceFee);
+    if (allocation.subtotal !== order.subtotal || allocation.total !== order.total ||
+        allocation.parcels.reduce((sum, parcel) => sum + parcel.amount, 0) !== order.total) {
+      throw new Error('Saved buyer amounts and parcel dues differ from the accepted order.');
+    }
+    return allocation.parcels;
+  } catch (cause) {
+    throw new ParcelConflictError('Reconcile the original buyer amounts and seller shipment charges before preparing parcels.', { cause });
+  }
+}
+
 export async function prepareSellerParcels(
   db: D1Database,
   o: { orderId: string; actorId: string; requestId: string; now: number },
@@ -316,10 +403,14 @@ export async function prepareSellerParcels(
   if (await repeated(db, o.requestId, o.actorId, payload)) return;
   const order = await db
     .prepare(
-      "SELECT COALESCE(current_total_paisa,grand_total_paisa) AS total,cancellation_version AS cancellationVersion FROM orders WHERE id=? AND status IN ('confirmed','packing','ready_for_pickup')",
+      `SELECT ${payableOrderTotalSql()} AS total,cancellation_version AS cancellationVersion,payment_mode AS paymentMode,
+        delivery_rate_snapshot_json AS deliverySnapshotJson,item_subtotal_paisa AS subtotal,delivery_charge_paisa AS delivery,
+        wallet_credit_paisa AS wallet,referral_discount_paisa+promo_discount_paisa AS discount,
+        promo_discount_paisa AS promo,buyer_platform_fee_paisa AS serviceFee
+        FROM orders WHERE id=? AND status IN ('confirmed','packing','ready_for_pickup')`,
     )
     .bind(o.orderId)
-    .first<{ total: number; cancellationVersion: number }>();
+    .first<ParcelSetupOrder>();
   if (!order)
     throw new ParcelConflictError(
       'Prepare parcels before dispatch. Historical delivered orders remain unchanged.',
@@ -330,8 +421,12 @@ export async function prepareSellerParcels(
     )
     .bind(o.orderId)
     .all<{ sellerId: string; amount: number }>();
-  let allocated = allocateOrderCash(order.total, items.results);
-  if (order.cancellationVersion) {
+  const useOriginalShipmentCash = order.paymentMode === 'cod' && !order.cancellationVersion &&
+    usesSellerShipmentDelivery(order.deliverySnapshotJson);
+  let allocated = useOriginalShipmentCash
+    ? await originalShipmentCashAllocation(db, o.orderId, order)
+    : allocateOrderCash(order.paymentMode==='cod'?order.total:0, items.results);
+  if (order.cancellationVersion && order.paymentMode==='cod') {
     const event = await db
       .prepare(
         'SELECT next_json AS next FROM order_cancellation_events WHERE order_id=? AND version=?',
@@ -358,8 +453,8 @@ export async function prepareSellerParcels(
       .bind(o.orderId),
     ...assertion(
       db,
-      `EXISTS(SELECT 1 FROM orders WHERE id=? AND status IN ('confirmed','packing','ready_for_pickup')) AND NOT EXISTS(SELECT 1 FROM shipping_parcels p JOIN shipping_jobs j ON j.id=p.shipping_job_id WHERE j.order_id=?) AND ${staffSql}`,
-      [o.orderId, o.orderId, o.actorId],
+      `EXISTS(SELECT 1 FROM orders WHERE id=? AND status IN ('confirmed','packing','ready_for_pickup') AND payment_mode=? AND cancellation_version=? AND ${payableOrderTotalSql()}=?) AND NOT EXISTS(SELECT 1 FROM shipping_parcels p JOIN shipping_jobs j ON j.id=p.shipping_job_id WHERE j.order_id=?) AND ${staffSql}`,
+      [o.orderId, order.paymentMode, order.cancellationVersion, order.total, o.orderId, o.actorId],
     ),
   ];
   for (const part of allocated) {
@@ -391,6 +486,12 @@ export async function prepareSellerParcels(
           "INSERT INTO shipping_parcels(shipping_job_id,cod_due_paisa,created_at) SELECT id,?,? FROM shipping_jobs WHERE order_id=? AND seller_id=? AND direction='outbound'",
         )
         .bind(part.amount, o.now, o.orderId, part.sellerId),
+      ...prepareOutboundDeliveryUnitMappings(db, {
+        orderId: o.orderId,
+        sellerId: part.sellerId,
+        deliverySnapshotJson: order.deliverySnapshotJson,
+        now: o.now,
+      }),
     );
   }
   statements.push(
@@ -829,12 +930,13 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
     if (o.action === 'collect' || o.action === 'propose_remittance') {
       const amount = o.amountPaisa,
         reference = (o.reference ?? '').trim();
+      const referenceLength = o.action === 'collect' ? Array.from(reference).length : reference.length;
       if (
         !Number.isSafeInteger(amount) ||
         !amount ||
         amount < 1 ||
-        reference.length < 4 ||
-        reference.length > 120
+        referenceLength < 4 ||
+        referenceLength > 120
       )
         throw new ParcelConflictError(
           'Enter a positive paisa amount and an evidence reference of 4–120 characters.',
@@ -857,12 +959,11 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
       }
       if (o.action === 'propose_remittance' && p.method === 'own_rider')
         throw new ParcelConflictError(
-          'The assigned rider must submit this cash handover from the rider dashboard.',
+          'The rider portal remains on hold. Reconcile retained collector cash through Incoming payments.',
         );
       const kind = o.action === 'collect' ? 'collection' : 'remittance';
       const cashId = crypto.randomUUID();
-      const directRemittance =
-        kind === 'remittance' && authority.role === 'super_admin';
+      const directRemittance = false; // A claim/reference is never independent company receipt.
       statements.push(
         db
           .prepare(
@@ -891,6 +992,7 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
             .bind(amount, o.jobId),
         );
       }
+      if(kind==='remittance')statements.push(...await preparePaymentException(db,{sourceKey:'cod:'+o.jobId,orderId:p.orderId,receiptId:null,kind:'cod_remittance',reason:'A carrier remittance is claimed. Match actual company receipt, exact parcel allocations and authorized costs.',ownerId:authority.role==='super_admin'?o.actorId:null,now:o.now}));
       if (kind === 'collection' && p.method === 'own_rider' && p.riderUserId) {
         const obligation = await cashObligationSnapshot(
           db,
@@ -938,33 +1040,15 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
           [o.cashRecordId, o.jobId, o.actorId, o.actorId, authority.role],
         ),
       );
-      if (o.action === 'approve_remittance') {
-        statements.push(
-          db
-            .prepare(
-              'UPDATE shipping_parcels SET remitted_paisa=remitted_paisa+? WHERE shipping_job_id=?',
-            )
-            .bind(record.amount, o.jobId),
-        );
-        if (record.riderId)
-          statements.push(
-            ...(await remittanceAllocationStatements(db, {
-              recordId: o.cashRecordId ?? '',
-              jobId: o.jobId,
-              riderId: record.riderId,
-              amount: record.amount,
-              actorId: o.actorId,
-              now: o.now,
-            })),
-          );
-      }
+      if (o.action === 'approve_remittance') throw new ParcelConflictError('Match an actual company receipt and approved deductions in Incoming payments before confirming this remittance.');
+
       statements.push(
         db
           .prepare(
             'UPDATE parcel_cash_records SET status=?,approved_by=?,approved_at=? WHERE id=?',
           )
           .bind(
-            o.action === 'approve_remittance' ? 'posted' : 'rejected',
+            'rejected',
             o.actorId,
             o.now,
             o.cashRecordId,
@@ -1124,6 +1208,8 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
       p.orderId,
       JSON.parse(statement.snapshot) as Record<string, unknown>,
     );
+    const paymentReceiptSnapshot=await withLiveInvoiceReferences(db,p.orderId,withReceiptGroups({...snapshot,
+      documentTitle:'Cash on delivery payment receipt',paymentStatus:'paid',issuedAt:o.now} as OrderDocumentSnapshot));
     statements.push(
       db
         .prepare(
@@ -1132,17 +1218,14 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
         .bind(
           crypto.randomUUID(),
           'RCPT-PARCEL-' + p.orderId,
-          JSON.stringify({
-            ...snapshot,
-            documentTitle: 'Cash on delivery payment receipt',
-            paymentStatus: 'paid',
-            issuedAt: o.now,
-          }),
+          JSON.stringify(paymentReceiptSnapshot),
           o.requestId + ':payment-receipt',
           o.now,
           p.orderId,
         ),
     );
+    statements.push(...await receiptNumberStatements(db,{snapshot:paymentReceiptSnapshot,
+      requestId:o.requestId+':payment-receipt',now:o.now}));
   }
   statements.push(
     ...buildEarningsAccrualStatements(db, { orderId: p.orderId, now: o.now }),

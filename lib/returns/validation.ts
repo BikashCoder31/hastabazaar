@@ -21,6 +21,7 @@ export interface ReturnPolicySnapshot {
   changeOfMindEnabled: boolean;
   highValueRefundThresholdPaisa: number;
   refundInitiationBusinessDays: number;
+    refundCompletionCalendarDays?: number;
   codRefundEstimateBusinessDays: readonly [number, number];
 }
 
@@ -129,6 +130,9 @@ export function evaluateReturnEligibility(options: {
   originalSealIntact?: boolean;
   policy: ReturnPolicySnapshot;
 }): EligibilityResult {
+  if (!Number.isFinite(options.deliveredAt) || options.deliveredAt <= 0 || options.deliveredAt > options.now) {
+    return {decision:'manual_review',reasonEn:'The actual item delivery date needs reconciliation. The request is retained without inventing a return-window start.',reasonNe:'सामान प्राप्त गरेको वास्तविक मिति पुष्टि गर्नुपर्छ। फिर्ता अवधिको सुरुवात अनुमान नगरी अनुरोध सुरक्षित राखिएको छ।'};
+  }
   const elapsedCalendarDays = Math.max(
     0,
     calendarDayIndex(options.now) - calendarDayIndex(options.deliveredAt),
@@ -222,13 +226,4 @@ export function validateEvidenceFile(file: File): string | null {
     return 'Use a JPG, PNG, WebP, or PDF file.';
   }
   return null;
-}
-
-export async function validateEvidenceContent(file: File): Promise<string | null> {
-  const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
-  const jpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-  const png = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
-  const webp = String.fromCharCode(...bytes.slice(0, 4)) === 'RIFF' && String.fromCharCode(...bytes.slice(8, 12)) === 'WEBP';
-  const pdf = String.fromCharCode(...bytes.slice(0, 5)) === '%PDF-';
-  return jpeg || png || webp || pdf ? null : 'The file contents do not match an accepted image or PDF.';
 }

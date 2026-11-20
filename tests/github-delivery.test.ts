@@ -13,7 +13,7 @@ const load = async () => {
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'hastabazaar-ci-'));
-  for (const name of ['app.cjs', 'server.js', 'package.json',
+  for (const name of ['app.cjs', 'server.js', 'package.json', 'hosted-security.mjs',
     'deployment/babal/release-manifest.json', 'dist/client/vinext-client-entry-manifest.json']) {
     await mkdir(join(root, name, '..'), { recursive: true });
     await writeFile(join(root, name), '{}');
@@ -26,8 +26,8 @@ void test('release inventory is exact, sorted and verifies all required files', 
   const root = await fixture();
   try {
     const files = await inventoryRelease(root);
-    assert.equal(files.length, 5);
-    assert.equal(files.reduce((sum: number, file: { bytes: number }) => sum + file.bytes, 0), 10);
+    assert.equal(files.length, 6);
+    assert.equal(files.reduce((sum: number, file: { bytes: number }) => sum + file.bytes, 0), 12);
     assert.deepEqual(files.map((file: { path: string }) => file.path),
       files.map((file: { path: string }) => file.path).sort((a: string, b: string) => a < b ? -1 : a > b ? 1 : 0));
     await verifyRelease(root, files);
@@ -76,7 +76,7 @@ void test('only explicitly approved migration SQL can enter a release', async ()
     await writeFile(join(root, migration), 'ALTER TABLE fixture ADD field INT;');
     await assert.rejects(() => inventoryRelease(root), /forbidden/i);
     const files = await inventoryRelease(root, [migration]);
-    assert.equal(files.length, 6);
+    assert.equal(files.length, 7);
     await verifyRelease(root, files, [migration]);
     await writeFile(join(root, 'deployment/babal/unapproved.sql'), 'unknown');
     await assert.rejects(() => inventoryRelease(root, [migration]), /forbidden/i);
@@ -88,7 +88,18 @@ void test('archive runtime smoke rejects missing packaged dependencies outside t
   assert.equal(typeof implementation.smokeStandalone, 'function', 'isolated archive smoke must be implemented');
   const root = await fixture();
   try {
+    await writeFile(join(root, 'hosted-security.mjs'), "console.log('--provision-new-host --recover-existing-host --check-readiness');");
     await assert.rejects(() => implementation.smokeStandalone(root, 'hastabazaar-release-test'), /sharp|dependency/i);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+void test('release verification refuses a package without the hosted-security operator', async () => {
+  const { inventoryRelease, verifyRelease } = await load();
+  const root = await fixture();
+  try {
+    await rm(join(root, 'hosted-security.mjs'));
+    const files = await inventoryRelease(root);
+    await assert.rejects(() => verifyRelease(root, files), /hosted-security/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

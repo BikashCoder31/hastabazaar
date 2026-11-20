@@ -86,6 +86,23 @@ async function fixture() {
     const sql = await readFile(new URL(`../drizzle/${migration}`, import.meta.url), 'utf8');
     for (const part of sql.split('--> statement-breakpoint')) if (part.trim()) sqlite.exec(part);
   }
+  // Actual receipt writes require the current schema even in this isolated memory fixture.
+  const healthMigration = await readFile(new URL('../drizzle/0151_form_health_records.sql', import.meta.url), 'utf8');
+  for (const part of healthMigration.split('--> statement-breakpoint').slice(0, 4))
+    if (part.trim()) sqlite.exec(part);
+  // The current care reader checks operational receipts before financial history.
+  // Keep their canonical empty tables and audit columns, rather than stubbing that reader.
+  for (const [migration, prefix] of [
+    ['0079_complete_version_foundation.sql', 'ALTER TABLE audit_logs ADD COLUMN command_digest'],
+    ['0079_complete_version_foundation.sql', 'ALTER TABLE audit_logs ADD COLUMN command_result_json'],
+    ['0102_return_physical_handling.sql', 'CREATE TABLE return_handling_events('],
+    ['0103_aftercare_followups.sql', 'CREATE TABLE aftercare_followup_events('],
+  ]) {
+    const source = await readFile(new URL(`../drizzle/${migration}`, import.meta.url), 'utf8');
+    const part = source.split('--> statement-breakpoint').find(statement => statement.includes(prefix));
+    assert.ok(part, `canonical fixture schema must contain ${prefix}`);
+    sqlite.exec(part);
+  }
   const wrapper = new Database(sqlite);
   return { sqlite, db: wrapper as unknown as D1Database };
 }
@@ -104,7 +121,8 @@ async function store(h: Awaited<ReturnType<typeof fixture>>, formId: FormId, sub
   const answer = await getFormAnswerById(h.db, id); assert.ok(answer); return answer;
 }
 function audit(sqlite: DatabaseSync, subjectType: string, subjectId: string, requestId: string, action: string, actorId: string | null = 'actor', next: Record<string, unknown> = { catalogDigest: digest }) {
-  sqlite.prepare('INSERT INTO audit_logs VALUES(?,?,?,?,?,NULL,NULL,?,?,NULL,100)')
+  sqlite.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,
+    next_json,request_id,ip_hash,created_at) VALUES(?,?,?,?,?,NULL,NULL,?,?,NULL,100)`)
     .run(`audit-${requestId}`, actorId, action, subjectType, subjectId, JSON.stringify(next), requestId);
 }
 async function records(h: Awaited<ReturnType<typeof fixture>>) {

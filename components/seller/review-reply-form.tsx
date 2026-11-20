@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { sendJson } from '@/lib/http/client-request';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 
 const catalogBaseKeys = ['reviewId', 'body', 'version', 'idempotencyKey', 'sellerId', 'formVersion', 'customAnswers'];

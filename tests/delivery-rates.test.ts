@@ -1,4 +1,6 @@
-import { seedCheckoutBuyer } from './helpers/checkout-contact';
+import { seedCheckoutBuyer, readyCheckoutSeller } from './helpers/checkout-contact';
+import { confirmFixtureRemittance } from './helpers/verified-cod-remittance';
+import { historicalCommissionFixture } from './helpers/historical-commission-fixture';
 import assert from 'node:assert/strict';
 import { readdir, readFile } from 'node:fs/promises';
 import {
@@ -44,6 +46,7 @@ void test('Super Admin rate page explains distinct-store pricing without the sup
 });
 async function databaseFixture() {
   const sqlite = new DatabaseSync(':memory:');
+  sqlite.exec('PRAGMA foreign_keys = ON');
   const database = new TestD1Database(sqlite);
   const names = (await readdir(new URL('../drizzle/', import.meta.url)))
     .filter((name) => /^\d{4}_.+\.sql$/.test(name))
@@ -226,7 +229,11 @@ async function databaseFixture() {
       )
       .run();
   }
-  return { database, sqlite, dispose: async () => sqlite.close() };
+  historicalCommissionFixture(sqlite, 'super-1', true);
+  return { database, sqlite, dispose: async () => {
+    try { assert.deepEqual(sqlite.prepare('PRAGMA foreign_key_check').all(), []); }
+    finally { sqlite.close(); }
+  } };
 }
 
 class TestD1PreparedStatement {
@@ -458,7 +465,10 @@ import {
   getOrderReceipt,
 } from '../lib/db/repositories/orders';
 import { getOperationsOrderDetail } from '../lib/db/repositories/fulfillment';
-async function checkoutCart(db: D1Database) {
+async function checkoutCart(f: Awaited<ReturnType<typeof databaseFixture>>) {
+  const db = f.database as unknown as D1Database;
+  for (const suffix of ['1', '2'])
+    await readyCheckoutSeller({ database: db, sqlite: f.sqlite }, `seller-${suffix}`, `seller-user-${suffix}`, 'super-1', now);
   await seedCheckoutBuyer(db, 'checkout-buyer', 'buyer@example.test', '9811111111', now);
   await db
     .prepare(
@@ -478,7 +488,7 @@ void test('checkout cart exposes stable seller identity for distinct-store prici
   const f = await databaseFixture();
   try {
     const db = f.database as unknown as D1Database;
-    await checkoutCart(db);
+    await checkoutCart(f);
     assert.deepEqual(
       (await getCart(db, 'rate-token')).items
         .map((item) => item.sellerId)
@@ -513,7 +523,7 @@ void test('checkout snapshots the two-store surcharge; later changes and idempot
   const f = await databaseFixture();
   const db = f.database as unknown as D1Database;
   try {
-    await checkoutCart(db);
+    await checkoutCart(f);
     const initial = await getDeliveryRates(db);
     const input = checkoutInput(initial.version);
     const order = await createCodOrder(
@@ -653,7 +663,7 @@ void test('receipt store count uses seller identity when two stores share a disp
         "UPDATE seller_profiles SET trading_name='Shared display name' WHERE id IN ('seller-1','seller-2')",
       )
       .run();
-    await checkoutCart(db);
+    await checkoutCart(f);
     const rates = await getDeliveryRates(db);
     const order = await createCodOrder(
       db,
@@ -673,17 +683,18 @@ void test('receipt store count uses seller identity when two stores share a disp
     await f.dispose();
   }
 });
-void test('checkout snapshots another recipient without mutating or depending on the saved address', async () => {
+void test('checkout saves an edited recipient as a new address without changing the original', async () => {
   const f = await databaseFixture();
   try {
     const db = f.database as unknown as D1Database;
-    await checkoutCart(db);
+    await checkoutCart(f);
     await db
       .prepare(
         "INSERT INTO addresses(id,user_id,label,recipient_name,phone,province,district,municipality,locality,is_default,created_at,updated_at) VALUES ('owned-address','checkout-buyer','Home','Original recipient','9811111111','Bagmati','Kathmandu','Kathmandu','Original locality',1,?,?)",
       )
       .bind(now, now)
       .run();
+    const originalAddress = await db.prepare("SELECT * FROM addresses WHERE id='owned-address'").first();
     const rates = await getDeliveryRates(db);
     const input = {
       ...checkoutInput(rates.version),
@@ -717,7 +728,9 @@ void test('checkout snapshots another recipient without mutating or depending on
       }>();
     assert.equal(snapshot?.deliveryFor, 'other');
     assert.equal(snapshot?.recipientEmail, 'recipient@example.test');
-    assert.equal(snapshot?.sourceAddressId, 'owned-address');
+    assert.notEqual(snapshot?.sourceAddressId, 'owned-address');
+    assert.equal((await db.prepare('SELECT locality FROM addresses WHERE id=? AND user_id=?')
+      .bind(snapshot!.sourceAddressId, 'checkout-buyer').first<{locality:string}>())?.locality, 'One-order locality');
     assert.equal(
       JSON.parse(snapshot!.addressJson).locality,
       'One-order locality',
@@ -730,6 +743,7 @@ void test('checkout snapshots another recipient without mutating or depending on
       )?.locality,
       'Original locality',
     );
+    assert.deepEqual(await db.prepare("SELECT * FROM addresses WHERE id='owned-address'").first(),originalAddress);
     await db.prepare("DELETE FROM addresses WHERE id='owned-address'").run();
     assert.equal(
       JSON.parse(
@@ -746,6 +760,125 @@ void test('checkout snapshots another recipient without mutating or depending on
     await f.dispose();
   }
 });
+void test('checkout automatically saves a new address and its pin once without an opt-in flag', async () => {
+  const f = await databaseFixture();
+  try {
+    const db = f.database as unknown as D1Database;
+    await checkoutCart(f);
+    const rates = await getDeliveryRates(db);
+    const input = { ...checkoutInput(rates.version), saveAddressForFuture: false,
+      address: { ...checkoutInput(rates.version).address, location: {latitude:27.7172, longitude:85.324} } };
+    const order = await createCodOrder(db,'rate-token','automatic-address',input,now,'checkout-buyer');
+    const row = await db.prepare('SELECT source_address_id AS addressId,address_saved_for_future AS saved FROM orders WHERE order_number=?')
+      .bind(order.orderNumber).first<{addressId:string;saved:number}>();
+    assert.equal(row?.saved,1);
+    assert.ok(row?.addressId);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM addresses WHERE user_id=?').bind('checkout-buyer').first<{n:number}>())?.n,1);
+    const saved = await db.prepare('SELECT is_default AS isDefault FROM addresses WHERE id=?').bind(row!.addressId).first<{isDefault:number}>();
+    assert.equal(saved?.isDefault,1);
+    assert.deepEqual({...await db.prepare('SELECT latitude,longitude FROM address_locations WHERE address_id=?').bind(row!.addressId).first()},{latitude:27.7172,longitude:85.324});
+    const before = await db.prepare('SELECT COUNT(*) AS n FROM audit_logs').first();
+    assert.deepEqual(await createCodOrder(db,'rate-token','automatic-address',input,now+1,'checkout-buyer'),order);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM addresses WHERE user_id=?').bind('checkout-buyer').first<{n:number}>())?.n,1);
+    assert.deepEqual(await db.prepare('SELECT COUNT(*) AS n FROM audit_logs').first(),before);
+    await db.prepare("INSERT INTO cart_items(id,cart_id,product_id,quantity,created_at,updated_at) VALUES ('repeat-line','rate-cart','product-1',1,?,?)").bind(now+2,now+2).run();
+    const repeated = await createCodOrder(db,'rate-token','repeat-destination',{
+      ...input,idempotencyKey:crypto.randomUUID(),address:{...input.address,phone:'+9779811111111'},
+    },now+2,'checkout-buyer');
+    assert.equal((await db.prepare('SELECT source_address_id AS addressId FROM orders WHERE order_number=?').bind(repeated.orderNumber).first<{addressId:string}>())?.addressId,row!.addressId);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM addresses WHERE user_id=?').bind('checkout-buyer').first<{n:number}>())?.n,1);
+  } finally { await f.dispose(); }
+});
+
+void test('checkout reuses an unchanged owned saved address and guards its commit-time presence', async () => {
+  for (const concurrentChange of ['none','delete','edit','pin']) {
+    const f = await databaseFixture();
+    try {
+      const db = f.database as unknown as D1Database;
+      await checkoutCart(f);
+      await db.prepare("INSERT INTO addresses(id,user_id,label,recipient_name,phone,province,district,municipality,locality,is_default,created_at,updated_at) VALUES ('same-address','checkout-buyer','Home','Buyer','9811111111','Bagmati','Kathmandu','Kathmandu','Local QA',1,?,?)").bind(now,now).run();
+      const original = await db.prepare("SELECT * FROM addresses WHERE id='same-address'").first();
+      const existingOrders = await db.prepare('SELECT COUNT(*) AS n FROM orders').first();
+      const rates = await getDeliveryRates(db);
+      const batch = f.database.batch.bind(f.database);
+      let raced=false;
+      if (concurrentChange !== 'none') f.database.batch = async statements => {
+        raced=true;
+        if (concurrentChange === 'delete') await db.prepare("DELETE FROM addresses WHERE id='same-address'").run();
+        else if (concurrentChange === 'edit') await db.prepare("UPDATE addresses SET locality='Concurrent edit' WHERE id='same-address'").run();
+        else await db.prepare("INSERT INTO address_locations(address_id,latitude,longitude) VALUES ('same-address',27.7,85.3)").run();
+        return batch(statements);
+      };
+      const operation = () => createCodOrder(db,'rate-token','same-address-receipt',{
+        ...checkoutInput(rates.version),selectedAddressId:'same-address',
+      },now,'checkout-buyer');
+      if (concurrentChange !== 'none') {
+        await assert.rejects(operation);
+        assert.equal(raced,true,'The owned-address mutation must reach the checkout commit batch.');
+        assert.deepEqual(await db.prepare('SELECT COUNT(*) AS n FROM orders').first(),existingOrders);
+      } else {
+        const result=await operation();
+        const row=await db.prepare('SELECT source_address_id AS addressId,address_saved_for_future AS saved FROM orders WHERE order_number=?').bind(result.orderNumber).first<{addressId:string;saved:number}>();
+        assert.equal(row?.addressId,'same-address');assert.equal(row?.saved,0);
+        assert.deepEqual(await db.prepare("SELECT * FROM addresses WHERE id='same-address'").first(),original);
+        assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM addresses WHERE user_id=?').bind('checkout-buyer').first<{n:number}>())?.n,1);
+      }
+    } finally { await f.dispose(); }
+  }
+});
+
+void test('concurrent address creation requires a safe retry and cannot duplicate the same destination', async () => {
+  for (const mode of ['insert','edit','replace']) {
+  const f=await databaseFixture();
+  try {
+    const db=f.database as unknown as D1Database;
+    await checkoutCart(f);
+    const rates=await getDeliveryRates(db);
+    const input=checkoutInput(rates.version);
+    if (mode !== 'insert') await db.prepare("INSERT INTO addresses(id,user_id,label,recipient_name,phone,province,district,municipality,locality,is_default,created_at,updated_at) VALUES ('old-address','checkout-buyer','Home','Buyer','9811111111','Bagmati','Kathmandu','Kathmandu','Another locality',1,?,?)").bind(now,now).run();
+    const orders=await db.prepare('SELECT COUNT(*) AS n FROM orders').first();
+    const batch=f.database.batch.bind(f.database);
+    let raced=false;
+    f.database.batch=async statements=>{
+      raced=true;
+      if (mode === 'edit') await db.prepare("UPDATE addresses SET locality='Local QA' WHERE id='old-address'").run();
+      else {
+        if (mode === 'replace') await db.prepare("DELETE FROM addresses WHERE id='old-address'").run();
+        await db.prepare("INSERT INTO addresses(id,user_id,label,recipient_name,phone,province,district,municipality,locality,is_default,created_at,updated_at) VALUES ('concurrent-address','checkout-buyer','Home','Buyer','9811111111','Bagmati','Kathmandu','Kathmandu','Local QA',1,?,?)").bind(now,now).run();
+      }
+      return batch(statements);
+    };
+    await assert.rejects(()=>createCodOrder(db,'rate-token','concurrent-address-receipt',input,now,'checkout-buyer'));
+    assert.equal(raced,true,'The competing address write must run after checkout preparation.');
+    assert.deepEqual(await db.prepare('SELECT COUNT(*) AS n FROM orders').first(),orders);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM addresses WHERE user_id=?').bind('checkout-buyer').first<{n:number}>())?.n,1);
+    f.database.batch=batch;
+    const retried=await createCodOrder(db,'rate-token','concurrent-address-receipt',input,now+1,'checkout-buyer');
+    assert.equal((await db.prepare('SELECT source_address_id AS addressId FROM orders WHERE order_number=?').bind(retried.orderNumber).first<{addressId:string}>())?.addressId,mode === 'edit' ? 'old-address' : 'concurrent-address');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM addresses WHERE user_id=?').bind('checkout-buyer').first<{n:number}>())?.n,1);
+  } finally {await f.dispose();}
+  }
+});
+
+void test('late checkout failure rolls back automatically saved address and optional pin', async () => {
+  const f = await databaseFixture();
+  try {
+    const db=f.database as unknown as D1Database;
+    await checkoutCart(f);
+    const rates=await getDeliveryRates(db);
+    const tables=['orders','addresses','address_locations','audit_logs','products','cart_items'];
+    const before=await Promise.all(tables.map(table=>db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()));
+    const originalBatch=f.database.batch.bind(f.database);
+    let reached=false;
+    f.database.batch=statements=>{reached=true;return originalBatch([...statements,f.database.prepare("INSERT INTO operation_transaction_guards(id,valid) VALUES ('late-checkout-failure',0)")]);};
+    await assert.rejects(()=>createCodOrder(db,'rate-token','late-address-failure',{
+      ...checkoutInput(rates.version),address:{...checkoutInput(rates.version).address,location:{latitude:27.7172,longitude:85.324}},
+    },now,'checkout-buyer'));
+    assert.equal(reached,true,'The late failure must execute the actual order batch.');
+    for(let i=0;i<tables.length;i++)assert.deepEqual((await db.prepare(`SELECT * FROM ${tables[i]} ORDER BY rowid`).all()).results,before[i].results,tables[i]);
+  } finally { await f.dispose(); }
+});
+
 void test('checkout rejects another account address and can explicitly save a new address atomically', async () => {
   const f = await databaseFixture();
   try {
@@ -756,7 +889,7 @@ void test('checkout rejects another account address and can explicitly save a ne
       )
       .bind(now, now)
       .run();
-    await checkoutCart(db);
+    await checkoutCart(f);
     const rates = await getDeliveryRates(db);
     await assert.rejects(
       () =>
@@ -809,7 +942,7 @@ void test('rate change between quote and checkout batch rolls back order, invent
   const f = await databaseFixture();
   const db = f.database as unknown as D1Database;
   try {
-    await checkoutCart(db);
+    await checkoutCart(f);
     const initial = await getDeliveryRates(db);
     const inventory = await db
       .prepare('SELECT id,inventory_quantity FROM products ORDER BY id')
@@ -848,6 +981,7 @@ void test('rate change between quote and checkout batch rolls back order, invent
         ),
       CheckoutConflictError,
     );
+    assert.equal(injected,true,'The rate publication must run after the actual checkout read.');
     assert.deepEqual(
       await db.prepare('SELECT COUNT(*) AS n FROM orders').first(),
       orders,
@@ -1053,19 +1187,24 @@ void test('configured open-box assignment snapshots rider exposure, remittance d
       )?.count,
       1,
     );
+    // Earlier fictional delivery custody belongs to its own parcel, not this new trip.
+    await db.prepare(`INSERT INTO shipping_jobs(id,order_id,seller_id,direction,status,created_by,created_request_id,created_at,updated_at)
+      VALUES('overdue-job','order-3','seller-1','outbound','delivered','super-1','overdue-job',?,?)`).bind(now-10000,now-10000).run();
+    await db.prepare(`INSERT INTO shipping_parcels(shipping_job_id,cod_due_paisa,collected_paisa,remitted_paisa,method,rider_user_id,delivered_at,created_at)
+      VALUES('overdue-job',215000,1000,0,'own_rider','rider-1',?,?)`).bind(now-10000,now-10000).run();
     await db
       .prepare(
         `INSERT INTO parcel_cash_records(id,shipping_job_id,kind,amount_paisa,evidence_reference,status,created_by,approved_by,created_at,approved_at,rider_user_id) VALUES
         ('overdue-collection',?,'collection',1000,'SIM-OVERDUE-COLLECTION','posted','admin-1',NULL,?,NULL,'rider-1'),
-        ('overdue-remittance',?,'remittance',1000,'SIM-OVERDUE-REMITTANCE','posted','admin-1','super-1',?,?,'rider-1')`,
+        ('overdue-remittance',?,'remittance',1000,'SIM-OVERDUE-REMITTANCE','pending','admin-1',NULL,?,NULL,'rider-1')`,
       )
-      .bind(parcel.id, now - 10000, parcel.id, now - 9000, now - 8000)
+      .bind('overdue-job', now - 10000, 'overdue-job', now - 9000)
       .run();
     await db
       .prepare(
         `INSERT INTO rider_cash_obligations(id,collection_record_id,shipping_job_id,rider_user_id,amount_paisa,due_at,policy_snapshot_json,created_at) VALUES ('overdue-obligation','overdue-collection',?,'rider-1',1000,?,'{"status":"scheduled"}',?)`,
       )
-      .bind(parcel.id, now - 1, now - 10000)
+      .bind('overdue-job', now - 1, now - 10000)
       .run();
     await assert.rejects(
       () =>
@@ -1083,12 +1222,8 @@ void test('configured open-box assignment snapshots rider exposure, remittance d
         }),
       /overdue cash remittance/i,
     );
-    await db
-      .prepare(
-        `INSERT INTO rider_remittance_allocations(id,remittance_record_id,obligation_id,amount_paisa,allocated_by,allocated_at) VALUES ('clear-overdue','overdue-remittance','overdue-obligation',1000,'super-1',?)`,
-      )
-      .bind(now)
-      .run();
+    await confirmFixtureRemittance(db,{jobId:'overdue-job',actorId:'super-1',requestId:'clear-overdue',amountPaisa:1000,reference:'SIM-OVERDUE-REMITTANCE'});
+    assert.equal((await db.prepare("SELECT SUM(amount_paisa) n FROM rider_remittance_allocations WHERE obligation_id='overdue-obligation'").first<{n:number}>())?.n,1000);
     await operateParcel(db, {
       jobId: parcel.id,
       actorId: 'super-1',
@@ -1199,16 +1334,12 @@ void test('configured open-box assignment snapshots rider exposure, remittance d
       .prepare('SELECT version FROM shipping_parcels WHERE shipping_job_id=?')
       .bind(parcel.id)
       .first<{ version: number }>();
-    await operateParcel(db, {
-      jobId: parcel.id,
-      actorId: 'super-1',
-      requestId: 'approve-partial-remittance',
-      version: afterProposal!.version,
-      action: 'approve_remittance',
-      note: 'Independent fictional receipt verification.',
-      cashRecordId: pending!.id,
-      now: now + 5,
-    });
+    await assert.rejects(operateParcel(db, {
+      jobId: parcel.id, actorId: 'super-1', requestId: 'legacy-approve-partial-remittance',
+      version: afterProposal!.version, action: 'approve_remittance',
+      note: 'A carrier claim alone cannot establish company cash.', cashRecordId: pending!.id, now: now + 5,
+    }), /actual company receipt/i);
+    await confirmFixtureRemittance(db,{jobId:parcel.id,actorId:'super-1',requestId:'approve-partial-remittance',amountPaisa:5000,reference:'SIM-REM-1'});
     assert.equal(
       (
         await db

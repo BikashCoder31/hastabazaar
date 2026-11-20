@@ -7,6 +7,7 @@ const labels: Record<string, string> = {
   under_review: 'Under review',
   needs_changes: 'Needs changes',
   approved: 'Approved',
+  approved_for_activation: 'Approved for activation',
   published: 'Published',
   rejected: 'Rejected',
   out_of_stock: 'Out of stock',

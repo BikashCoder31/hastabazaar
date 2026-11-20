@@ -27,7 +27,7 @@ export default async function PrivacyPage() {
         deletion request does not immediately erase your account or purchase
         history.
       </p>
-      <PrivacyRequestForm />
+      <PrivacyRequestForm actorId={customer.userId} />
       <div className="space-y-3">
         <h2 className="font-heading text-2xl">Request history</h2>
         {rows.length ? (

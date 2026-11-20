@@ -47,8 +47,8 @@ void test('always mounted finance and access forms render their configured field
   const permissions = await import('../components/admin/staff-permission-manager');
   const markup = [
     renderToStaticMarkup(createElement(delivery.DeliveryRateSettings, { rates: { version: 'rates-v1', zones: { valley: 15000, terai: 18000, nationwide: 25000 }, districts: {} } })),
-    renderToStaticMarkup(createElement(referral.ReferralSettings, { campaign: { enabled: 1, friendDiscountPaisa: 1000, rewardPaisa: 500, minimumSubtotalPaisa: 5000, returnWindowDays: 14 } })),
-    renderToStaticMarkup(createElement(invite.StaffInvitationManager, { pendingInvitations: [] })),
+    renderToStaticMarkup(createElement(referral.ReferralSettings, { actorId:'sa1',campaign: { enabled: 1, friendDiscountPaisa: 1000, rewardPaisa: 500, minimumSubtotalPaisa: 5000, returnWindowDays: 14 } })),
+    renderToStaticMarkup(createElement(invite.StaffInvitationManager, { actorId:'sa1',pendingInvitations: [] })),
     renderToStaticMarkup(createElement(permissions.StaffPermissionManager, {
       actorId: 'sa2', members: [{ userId: 'admin1', permissions: [], version: 0, updatedBy: null, updatedAt: null, displayName: 'Admin', email: 'admin@example.test' }],
       requests: [{ id: 'request', userId: 'admin1', permissionsJson: '[]', expectedVersion: 0, presetName: null,
@@ -87,9 +87,10 @@ class Statement {
   async run() { return { meta: { changes: Number(this.sql.run(...this.values).changes) } }; }
 }
 class Database {
+  lastError?:string;
   beforeBatch?: (statements: readonly Statement[]) => void;
   constructor(readonly sqlite: DatabaseSync) {}
-  prepare(sql: string) { return new Statement(this.sqlite.prepare(sql), sql); }
+  prepare(sql: string) {try{return new Statement(this.sqlite.prepare(sql), sql);}catch(error){this.lastError=(error as Error).message;throw error;} }
   async batch(statements: readonly Statement[]) {
     this.beforeBatch?.(statements); this.beforeBatch = undefined;
     this.sqlite.exec('BEGIN');
@@ -98,7 +99,7 @@ class Database {
       for (const statement of statements) results.push(await statement.run());
       this.sqlite.exec('COMMIT');
       return results;
-    } catch (error) { this.sqlite.exec('ROLLBACK'); throw error; }
+    } catch (error) { this.lastError=(error as Error).message;this.sqlite.exec('ROLLBACK'); throw error; }
   }
 }
 
@@ -106,8 +107,8 @@ const financeKeys = {
   'staff.delivery-rate': ['rates', 'valley', 'terai', 'nationwide', 'districts', 'expectedVersion', 'reason', 'requestId'],
   'staff.payout-1': ['sellerId', 'note', 'amount', 'amountPaisa', 'destinationReference', 'idempotencyKey'],
   'staff.payout-2': ['payoutId', 'action', 'note', 'providerReference', 'amountPaisa', 'idempotencyKey'],
-  'staff.referral-settings': ['enabled', 'discount', 'reward', 'minimum', 'days', 'friendDiscountPaisa', 'rewardPaisa', 'minimumSubtotalPaisa', 'returnWindowDays', 'reason', 'requestId'],
-  'staff.staff-invitation': ['email', 'role', 'requestId'],
+  'staff.referral-settings': ['enabled', 'discount', 'reward', 'minimum', 'days', 'friendDiscountPaisa', 'rewardPaisa', 'minimumSubtotalPaisa', 'returnWindowDays', 'expectedUpdatedAt','reason', 'requestId'],
+  'staff.staff-invitation': ['email', 'role', 'permissions', 'requestId'],
   'staff.staff-permission-1': ['action', 'userId', 'permissions', 'version', 'reason', 'presetName', 'requestId'],
   'staff.staff-permission-2': ['action', 'requestId', 'formRequestId', 'reason'],
 } as const;
@@ -126,7 +127,7 @@ void test('all seven finance adapters protect every actual domain key and snake 
 function fixture(formId: string) {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec(`PRAGMA foreign_keys=ON;
-    CREATE TABLE users(id TEXT PRIMARY KEY,email TEXT,status TEXT,display_name TEXT);
+    CREATE TABLE users(id TEXT PRIMARY KEY,email TEXT,status TEXT,display_name TEXT,auth_subject TEXT);
     CREATE TABLE user_roles(user_id TEXT,role TEXT);
     CREATE TABLE audit_logs(id TEXT PRIMARY KEY,actor_id TEXT,action TEXT,subject_type TEXT,subject_id TEXT,reason TEXT,previous_json TEXT,next_json TEXT,request_id TEXT UNIQUE,ip_hash TEXT,created_at INTEGER);
     CREATE TABLE notification_messages(id TEXT PRIMARY KEY,recipient_user_id TEXT,audience_role TEXT,channel TEXT,template_key TEXT,subject_en TEXT,subject_ne TEXT,body_en TEXT,body_ne TEXT,related_type TEXT,related_id TEXT,status TEXT,provider_reference TEXT,failure_reason TEXT,request_id TEXT UNIQUE,created_at INTEGER,sent_at INTEGER,read_at INTEGER);
@@ -135,9 +136,9 @@ function fixture(formId: string) {
     CREATE TABLE delivery_rate_versions(id TEXT PRIMARY KEY,config_json TEXT,created_by TEXT,reason TEXT,created_at INTEGER);
     CREATE TABLE delivery_rate_current(id TEXT PRIMARY KEY,version_id TEXT);
     CREATE TABLE referral_campaign(id TEXT PRIMARY KEY,enabled INTEGER,friend_discount_paisa INTEGER,reward_paisa INTEGER,minimum_subtotal_paisa INTEGER,return_window_days INTEGER,updated_at INTEGER);
-    INSERT INTO users VALUES ('sa1','sa1@example.test','active','First Super');
-    INSERT INTO users VALUES ('sa2','sa2@example.test','active','Second Super');
-    INSERT INTO users VALUES ('admin1','admin1@example.test','active','Admin');
+    INSERT INTO users VALUES ('sa1','sa1@example.test','active','First Super','sa1');
+    INSERT INTO users VALUES ('sa2','sa2@example.test','active','Second Super','sa2');
+    INSERT INTO users VALUES ('admin1','admin1@example.test','active','Admin','admin1');
     INSERT INTO user_roles VALUES ('sa1','super_admin'),('sa2','super_admin'),('admin1','admin');`);
   const rates = { zones: { valley: 15000, terai: 18000, nationwide: 25000 }, districts: {} };
   sqlite.prepare("INSERT INTO delivery_rate_versions VALUES ('rates-v1',?,'sa1','Fixture',1)").run(JSON.stringify(rates));
@@ -149,8 +150,12 @@ function fixture(formId: string) {
   assert.ok(staffUpgrade);
   sqlite.exec(staffUpgrade);
   sqlite.exec(readFileSync('drizzle/0033_business_notifications.sql', 'utf8'));
+  sqlite.exec(readFileSync('drizzle/0147_durable_email_delivery.sql','utf8'));
+  sqlite.exec(readFileSync('drizzle/0080_review_task_ownership.sql','utf8'));
+  sqlite.exec(readFileSync('drizzle/0149_team_governance.sql','utf8'));
   for (const statement of readFileSync('drizzle/0056_form_catalog.sql', 'utf8').split('--> statement-breakpoint'))
     if (statement.trim()) sqlite.exec(statement);
+  sqlite.exec(readFileSync('drizzle/0151_form_health_records.sql','utf8'));
   publish(sqlite, formId);
   return { sqlite, database: new Database(sqlite) as unknown as D1Database };
 }
@@ -170,7 +175,7 @@ function answer(formId: 'staff.staff-invitation' | 'staff.staff-permission-1' | 
 void test('invitation records one contextual snapshot with exact actor, role and answer replay', async () => {
   const { sqlite, database } = fixture('staff.staff-invitation');
   try {
-    const options = { email: 'new@example.test', role: 'admin' as const, invitedBy: 'sa1', now: 100,
+    const options = { email: 'new@example.test', role: 'admin' as const, permissions:['order.manage'], invitedBy: 'sa1', now: 100,
       requestId: 'invite-one', form: answer('staff.staff-invitation', 'invite-one') };
     const first = await createStaffInvitation(database, options);
     assert.equal(first.duplicate, false);
@@ -199,7 +204,9 @@ void test('the sole active Super Admin can invite another Super Admin', async ()
       { role: 'super_admin', status: 'pending', invitedBy: 'sa1' });
     assert.equal((await createStaffInvitation(database, options)).duplicate, true);
     await assert.rejects(createStaffInvitation(database, { ...options, invitedBy: 'admin1', requestId: 'admin-invite',
-      form: answer('staff.staff-invitation', 'admin-invite') }), /Super Admin authority/);
+      form: answer('staff.staff-invitation', 'admin-invite') }), /Current staff permission/);
+    assert.equal(sqlite.prepare('SELECT COUNT(*) n FROM staff_invitations').get()!.n,1,'Denied ordinary staff must not create another invitation.');
+    assert.equal(sqlite.prepare('SELECT COUNT(*) n FROM staff_invitation_grants').get()!.n,1,'The original exact work grant is retained without another grant.');
   } finally { sqlite.close(); }
 });
 
@@ -210,6 +217,7 @@ void test('referral route records contextual evidence once without changing prot
   try {
     const route = await import('../app/api/admin/referrals/route');
     const body = { enabled: true, friendDiscountPaisa: 1200, rewardPaisa: 600,
+      expectedUpdatedAt:1,
       minimumSubtotalPaisa: 7000, returnWindowDays: 14, reason: 'Campaign economics review.',
       requestId: 'referral-one', formVersion: 1,
       customAnswers: [{ fieldId: 'context_note', value: 'Reviewed promotion budget' }] };
@@ -217,7 +225,7 @@ void test('referral route records contextual evidence once without changing prot
       method: 'PUT', headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' },
       body: JSON.stringify(value),
     });
-    assert.equal((await route.PUT(request(body))).status, 200);
+    assert.equal((await route.PUT(request(body))).status, 200,(database as unknown as Database).lastError);
     assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM form_answer_sets WHERE form_id='staff.referral-settings'").get() as { count: number }).count, 1);
     assert.equal((await route.PUT(request(body))).status, 200);
     assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE action='referral.offer.updated'").get() as { count: number }).count, 1);
@@ -234,7 +242,7 @@ void test('staff invitation route validates configured answers and does not rese
   globalThis.financeCatalogEmails = 0;
   try {
     const route = await import('../app/api/admin/staff-invitations/route');
-    const body = { email: 'route@example.test', role: 'admin', requestId: 'route-invite-one',
+    const body = { email: 'route@example.test', role: 'admin', permissions:['order.manage'], requestId: 'route-invite-one',
       formVersion: 1, customAnswers: [{ fieldId: 'context_note', value: 'Reviewed HR request' }] };
     const request = (value: unknown) => new Request('http://localhost:3000/api/admin/staff-invitations', {
       method: 'POST', headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' },
@@ -303,9 +311,9 @@ const routeCases = [
   { id: 'staff.delivery-rate', kind: 'delivery-rate', path: '/api/admin/delivery-rates', method: 'PUT',
     body: { expectedVersion: 'rates-v1', rates: { zones: { valley: 17000, terai: 18000, nationwide: 25000 }, districts: {} }, reason: 'Fictional tariff review', requestId: 'route-rate' } },
   { id: 'staff.referral-settings', kind: 'referral-settings', path: '/api/admin/referrals', method: 'PUT',
-    body: { enabled: true, friendDiscountPaisa: 1200, rewardPaisa: 600, minimumSubtotalPaisa: 7000, returnWindowDays: 14, reason: 'Fictional campaign review', requestId: 'route-referral' } },
+    body: { enabled: true, expectedUpdatedAt:1,friendDiscountPaisa: 1200, rewardPaisa: 600, minimumSubtotalPaisa: 7000, returnWindowDays: 14, reason: 'Fictional campaign review', requestId: 'route-referral' } },
   { id: 'staff.staff-invitation', kind: 'staff-invitation', path: '/api/admin/staff-invitations', method: 'POST',
-    body: { email: 'fictional-invite@example.test', role: 'admin', requestId: 'route-invitation' } },
+    body: { email: 'fictional-invite@example.test', role: 'admin', permissions:['order.manage'], requestId: 'route-invitation' } },
   { id: 'staff.staff-permission-1', kind: 'staff-permission-proposal', path: '/api/admin/staff-permissions', method: 'POST',
     body: { action: 'propose', userId: 'admin1', permissions: ['order.manage'], version: 0, reason: 'Fictional access review', requestId: 'route-proposal' } },
   { id: 'staff.staff-permission-2', kind: 'staff-permission-decision', path: '/api/admin/staff-permissions', method: 'POST',

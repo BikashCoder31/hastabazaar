@@ -13,7 +13,7 @@ const fixtures = `
  import {ManagedMakerActivationForm} from './components/admin/managed-maker-activation-form';
  import {ParcelControls} from './components/admin/parcel-controls';
  function element(mode,subject='subject-one'){
-  if(mode==='homepage')return <HomepageVisibilityControl productId={subject} productName="Fictional product" hidden={false} version={1} lastReason={null}/>;
+  if(mode==='homepage')return <HomepageVisibilityControl actorId="fixture-staff" productId={subject} productName="Fictional product" hidden={false} version={1} lastReason={null}/>;
   if(mode==='product')return <ProductReviewActions productId={subject} status="under_review"/>;
   if(mode==='seller')return <SellerReviewActions sellerId={subject} status="under_review"/>;
   if(mode==='governance')return <SellerGovernanceActions sellerId={subject} current={null}/>;
@@ -35,7 +35,7 @@ const plugin: Plugin = {name:'hydration-read-fixtures',setup(bundler){
     : 'export function usePublishedFormConfig(formId){return {config:{formId,version:1,publishedAt:1,fields:[]},canSubmit:true,status:"ready",message:"",handleSubmissionResponse(){}}}',loader:'js',resolveDir:process.cwd()}));
 }};
 
-void test('retained staff attempts hydrate server markup without mismatch and preserve explicit warning resets', async (t) => {
+void test('retained staff attempts hydrate server markup without mismatch and preserve guarded recovery or explicit warning resets', async (t) => {
   const server = await build({stdin:{resolveDir:process.cwd(),sourcefile:'retry-server.tsx',loader:'tsx',contents:fixtures+`
     import {renderToString} from 'react-dom/server';export function markup(mode){return renderToString(element(mode),{identifierPrefix:'retry-'})}
   `},bundle:true,write:false,platform:'node',format:'cjs',external:['react','react-dom/server'],plugins:[plugin]});
@@ -59,11 +59,43 @@ void test('retained staff attempts hydrate server markup without mismatch and pr
       try {
         const key=`hastabazaar:profile-attempt:${formId}:subject-one`;
         await page.addInitScript(({key}:{key:string})=>sessionStorage.setItem(key,'11111111-1111-4111-8111-111111111111'),{key});
+        let recoveryReads=0;
         // oxlint-disable-next-line typescript/no-explicit-any -- External browser runtime supplies this type.
-        await page.route('https://retry-hydration.test/**',(route:any)=>route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:`<!doctype html><meta charset="utf-8"><div id="root">${serverModule.exports.markup(mode)}</div>`}));
+        await page.route('https://retry-hydration.test/**',(route:any)=>{
+          const url=new URL(route.request().url());
+          if(url.pathname.startsWith('/api/')){
+            assert.equal(route.request().method(),'GET','a restored homepage reference permits only original-outcome checking');
+            assert.equal(url.pathname,'/api/admin/products/subject-one/homepage');
+            assert.equal(url.searchParams.get('attempt'),'11111111-1111-4111-8111-111111111111');
+            recoveryReads++;
+            return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({status:'unconfirmed',actorId:'fixture-staff',productId:'subject-one',requestId:url.searchParams.get('attempt')})});
+          }
+          return route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:`<!doctype html><meta charset="utf-8"><div id="root">${serverModule.exports.markup(mode)}</div>`});
+        });
         await page.goto(`https://retry-hydration.test/?mode=${mode}`);
         await page.addScriptTag({content:client.outputFiles[0].text});
-        if(mode==='homepage')await page.getByRole('button',{name:'Hide from homepage',exact:true}).click();
+        if(mode==='homepage'){
+          // A restored original decision can no longer be discarded with a new
+          // UUID. Exercise the real keyboard recovery control after hydration.
+          const check=page.getByRole('button',{name:'Check original saved outcome',exact:true});
+          await check.waitFor();
+          assert.deepEqual(await page.evaluate(()=> (window as unknown as {hydrationErrors:string[]}).hydrationErrors),[]);
+          assert.equal(await page.getByRole('button',{name:'Hide from homepage',exact:true}).isDisabled(),true);
+          assert.equal(await page.getByRole('button',{name:'Start a new attempt',exact:true}).count(),0);
+          await check.press('Enter');
+          await page.getByText('No original decision was confirmed.',{exact:false}).waitFor();
+          assert.equal(recoveryReads,1);
+          assert.equal(await page.evaluate((key:string)=>sessionStorage.getItem(key),key),'11111111-1111-4111-8111-111111111111');
+          assert.equal(await page.getByRole('button',{name:'Hide from homepage',exact:true}).isDisabled(),true);
+          const otherKey=`hastabazaar:profile-attempt:${formId}:subject-two`;
+          await page.evaluate((key:string)=>sessionStorage.setItem(key,'22222222-2222-4222-8222-222222222222'),otherKey);
+          await page.evaluate(()=> (window as unknown as {switchSubject(subject:string):void}).switchSubject('subject-two'));
+          await page.getByText('Original homepage request reference: 22222222-2222-4222-8222-222222222222',{exact:true}).waitFor();
+          await page.evaluate(()=> (window as unknown as {switchSubject(subject:string):void}).switchSubject('subject-one'));
+          await page.getByText('Original homepage request reference: 11111111-1111-4111-8111-111111111111',{exact:true}).waitFor();
+          assert.equal(await page.evaluate((key:string)=>sessionStorage.getItem(key),otherKey),'22222222-2222-4222-8222-222222222222');
+          return;
+        }
         await page.getByRole('button',{name:'Start a new attempt',exact:true}).waitFor();
         const errors=await page.evaluate(()=> (window as unknown as {hydrationErrors:string[]}).hydrationErrors);
         assert.deepEqual(errors,[],mode+' must hydrate existing server markup without React #418');

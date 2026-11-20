@@ -1,3 +1,5 @@
+import {readOrderCustomerIntent} from '@/lib/orders/customer-intent';
+import { validateEvidenceContent } from '@/lib/documents/document-content';
 import { readBoundedForm, BodyTooLargeError } from '@/lib/http/bounded-body';
 import { env } from 'cloudflare:workers';
 
@@ -14,7 +16,7 @@ import {
 } from '@/lib/db/repositories/returns';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { consumePublicRequestRateLimit as consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
-import { getCustomerUser } from '@/lib/auth/customer';
+
 import { validateSellerFormSubmission } from '@/lib/forms/submission';
 import { FormRuntimeError } from '@/lib/forms/runtime';
 import { FormValidationError } from '@/lib/forms/validation';
@@ -23,7 +25,7 @@ import {
   maximumReturnRequestBytes,
   parseReturnRequest,
   validateEvidenceFile,
-  validateEvidenceContent,
+
 } from '@/lib/returns/validation';
 
 export const dynamic = 'force-dynamic';
@@ -42,7 +44,9 @@ export async function POST(
   if (!isTrustedMutationRequest(request))
     return json({ error: 'Request origin was not accepted.' }, 403);
   const token = readCookie(request, RECEIPT_COOKIE);
-  const customer = await getCustomerUser();
+  const intent=await readOrderCustomerIntent(request);
+  if(!intent.ok)return json({error:intent.error},intent.status);
+  const customer=intent.customer;
   if (!token && !customer)
     return json({ error: 'Order access could not be verified.' }, 404);
   const bindings = env as unknown as { DB?: D1Database; MEDIA?: R2Bucket };

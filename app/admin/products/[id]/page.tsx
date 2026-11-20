@@ -1,11 +1,13 @@
+import {ProductAvailabilityPanel} from '@/components/products/product-availability-panel';
 import { StaffFormHistoryLinks } from '@/components/admin/staff-form-history-links';
+import {ReviewBackLink} from '@/components/admin/review-back-link';
+import {safeAdminReturnTo,withAdminReturnTo} from '@/lib/admin/return-context';
 import { can } from '@/lib/marketplace/permissions';
 import { env } from 'cloudflare:workers';
 import Image from 'next/image';
-import Link from 'next/link';
-import { notFound } from 'next/navigation';
+
+import { notFound, redirect } from 'next/navigation';
 import {
-  ArrowLeft,
   Boxes,
   FileText,
   History,
@@ -20,6 +22,8 @@ import { StatusBadge } from '@/components/admin/status-badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
+import {staffMutationGuard} from '@/lib/db/repositories/staff-mutation-guard';
+import {OfferError,offerGuard,productStaffPartyGuards} from '@/lib/products/offer-support';
 import {
   mediaFrameClass,
   mediaObjectClass,
@@ -60,36 +64,45 @@ function Detail({
   );
 }
 
+class ProductReadAccessError extends OfferError{constructor(message:string){super(message,403);}}
+
 export default async function ProductReviewPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?:Promise<{returnTo?:string}>;
 }) {
   const { id } = await params;
-  const staff = await requireStaffPage(
+  let staff = await requireStaffPage(
     `/admin/products/${id}`,
     'product.review',
   );
   const database = requireDatabase(env as unknown as { DB?: D1Database });
+  const backHref=safeAdminReturnTo((await searchParams)?.returnTo,'/admin/products'),currentHref=withAdminReturnTo('/admin/products/'+encodeURIComponent(id),backHref);
   const [product, categories, occasions] = await Promise.all([
     getProductForReview(database, id),
     listActiveCategories(database),
     listActiveOccasions(database),
   ]);
   if (!product) notFound();
+  const retained=await database.prepare('SELECT l.draft_id AS draftId,c.id AS caseId FROM product_publication_links l LEFT JOIN product_intake_cases c ON c.draft_id=l.draft_id WHERE l.product_id=? ORDER BY c.cycle_number DESC LIMIT 1').bind(id).first<{draftId:string;caseId:string|null}>();
+
+  const reader=await staffMutationGuard(database,staff.id,'product.review',ProductReadAccessError,staff.role);
+  const parties=await productStaffPartyGuards(database,staff.id,id);
+  await database.batch([...reader.statements,...parties,...offerGuard(database,'EXISTS(SELECT 1 FROM products WHERE id=? AND seller_id=? AND updated_at=?)',[id,product.sellerId,product.updatedAt])]);
+  staff={...staff,role:reader.role,permissions:reader.permissions};
+  if(retained?.caseId)redirect(withAdminReturnTo('/admin/products/intakes/'+encodeURIComponent(retained.caseId),backHref));
+  if(retained)return <div className="space-y-5"><h1 className="font-heading text-3xl">{product.nameEn}</h1><p>The owner has a retained private workspace. Review becomes available when they explicitly share a candidate or request help.</p><ReviewBackLink returnTo={backHref} actorId={staff.id}/>{staff.role==='super_admin'&&<ProductAvailabilityPanel key={`${staff.id}:${id}`} actorId={staff.id} productId={id} scope="admin"/>}</div>;
   return (
     <div className="space-y-7">
-      <StaffFormHistoryLinks entries={[{kind:'product-review',subjectId:id,label:'Product decision answers'},
+      <StaffFormHistoryLinks returnTo={currentHref} entries={[{kind:'product-review',subjectId:id,label:'Product decision answers'},
         ...(staff.role === 'super_admin' ? [{kind:'homepage-visibility' as const,subjectId:id,label:'Homepage visibility answers'}] : [])]} />
-      <Link
-        href="/admin/products"
-        className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" /> Back to product queue
-      </Link>
+      <ReviewBackLink returnTo={backHref} actorId={staff.id}/>
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <p className="eyebrow break-all">SKU {product.sku}</p>
+          <p className="eyebrow break-all">Platform SKU: {product.sku}</p>
+          <p className="mt-1 break-all text-sm">Seller SKU: {product.sellerSku || '—'}</p>
           <h1 className="mt-2 font-heading text-4xl tracking-tight">
             {product.nameEn}
           </h1>
@@ -261,6 +274,7 @@ export default async function ProductReviewPage({
                   listing remains published and available in the shop.
                 </p>
                 <HomepageVisibilityControl
+                  actorId={staff.id}
                   productId={product.id}
                   productName={product.nameEn}
                   hidden={Boolean(product.homepageHidden)}
@@ -275,6 +289,10 @@ export default async function ProductReviewPage({
               <CardTitle>Review decision</CardTitle>
             </CardHeader>
             <CardContent>
+              {product.status === 'published' ? <p className="mb-4 rounded-xl border bg-muted p-3 text-sm">
+                {product.publiclyVisible ? 'Visible in the public catalogue.' : 'Not visible in the public catalogue because seller eligibility is incomplete or restricted.'}{' '}
+                {product.purchasable ? 'Commercial eligibility is met; stock and checkout checks still apply.' : 'Customers cannot order until commercial eligibility is met.'}
+              </p> : null}
               <ProductReviewActions
                 productId={product.id}
                 canUnpublish={staff.role === 'super_admin'}
@@ -340,3 +358,4 @@ export default async function ProductReviewPage({
     </div>
   );
 }
+

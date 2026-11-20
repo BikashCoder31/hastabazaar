@@ -1,0 +1,20 @@
+import type {TeamSourceReadProof} from './team-read-fence';
+import {checkoutCommitClock} from '../checkout/commit-policy-guards';
+import {currentNativeProcedureIdSql} from '../legal-procedures/lifecycle';
+/** One final SQL statement observes actor and only the source facts returned by the own DTO. */
+export function teamOwnScopeProof(db:D1Database,actorId:string,input:{coverage:{id:string;revision:number|null}[];procedures:{id:string;version:number;retiredAt:number|null;nativeSourceId:string|null;current:boolean}[];handoffs:Record<string,unknown>[];contacts:Record<string,unknown>[];policyTasks:{id:string;ownerId:string;revision:number;sourceReference:string}[]}):TeamSourceReadProof{
+ const expected=new Map<string,Record<string,unknown>>(),clock=checkoutCommitClock(db),values:unknown[]=[];
+ const sql=[`SELECT 'duty' AS kind,d.id,json_object('revision',d.revision) AS payload FROM team_duties d WHERE d.primary_user_id=? OR EXISTS(SELECT 1 FROM team_duty_backups b WHERE b.duty_id=d.id AND b.user_id=?) OR EXISTS(SELECT 1 FROM team_handoffs h WHERE h.duty_id=d.id AND h.state IN('pending','accepted') AND h.ends_at>${clock} AND (h.to_user_id=? OR h.from_user_id=?))`];values.push(actorId,actorId,actorId,actorId);
+ for(const duty of input.coverage)expected.set('duty:'+duty.id,{revision:duty.revision});
+ sql.push("SELECT 'procedure' AS kind,p.id,json_object('version',p.version,'retiredAt',p.retired_at) AS payload FROM team_procedures p JOIN team_procedure_assignments a ON a.procedure_id=p.id WHERE a.user_id=?");values.push(actorId);
+ for(const procedure of input.procedures)expected.set('procedure:'+procedure.id,{version:procedure.version,retiredAt:procedure.retiredAt});
+ sql.push("SELECT 'handoff' AS kind,h.id,json_object('revision',h.revision,'state',h.state,'fromUserId',h.from_user_id,'toUserId',h.to_user_id,'startsAt',h.starts_at,'endsAt',h.ends_at) AS payload FROM (SELECT * FROM team_handoffs WHERE to_user_id=? OR from_user_id=? ORDER BY starts_at DESC LIMIT 100) h");values.push(actorId,actorId);
+ for(const handoff of input.handoffs)expected.set('handoff:'+String(handoff.id),Object.fromEntries(['revision','state','fromUserId','toUserId','startsAt','endsAt'].map(key=>[key,handoff[key]])));
+ sql.push("SELECT 'policy' AS kind,p.id,json_object('ownerId',p.subject_user_id,'revision',p.revision,'sourceReference',p.source_reference_json) AS payload FROM (SELECT * FROM team_governance_tasks WHERE kind='policy_review' AND subject_user_id=? ORDER BY due_at,id LIMIT 100) p");values.push(actorId);
+ for(const task of input.policyTasks)expected.set('policy:'+task.id,{ownerId:task.ownerId,revision:task.revision,sourceReference:task.sourceReference});
+ const ids=input.contacts.map(contact=>String(contact.id));
+ if(ids.length){const selector=(db as D1Database&{dialect?:string}).dialect==='mariadb'?"SELECT scoped.id FROM JSON_TABLE(?, '$[*]' COLUMNS(id VARCHAR(191) PATH '$')) AS scoped":'SELECT value FROM json_each(?)';sql.push("SELECT 'contact' AS kind,u.id,json_object('displayName',u.display_name,'email',u.email) AS payload FROM users u WHERE u.status='active' AND u.id IN("+selector+") AND EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role IN('admin','super_admin'))");values.push(JSON.stringify(ids));for(const contact of input.contacts)expected.set('contact:'+String(contact.id),{displayName:contact.displayName,email:contact.email});}
+ const native=input.procedures.find(procedure=>procedure.current&&procedure.nativeSourceId)?.nativeSourceId;
+ if(native){sql.push("SELECT 'native' AS kind,'active' AS id,json_object('id',("+currentNativeProcedureIdSql(db)+')) AS payload');expected.set('native:active',{id:native});}
+ return {sql:sql.join(' UNION ALL '),values,verify(rows){if(rows.length!==expected.size)return false;for(const row of rows){const prior=expected.get(row.kind+':'+row.id);if(!prior||!row.payload)return false;let value:Record<string,unknown>;try{value=JSON.parse(row.payload);}catch{return false;}if(!Object.keys(prior).every(key=>prior[key]===value[key]))return false;}return true;}};
+}

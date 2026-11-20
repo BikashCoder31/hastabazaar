@@ -73,7 +73,7 @@ export function readLocalTestRole(requestHeaders: Headers): LocalTestRole | null
     ?.slice(localTestCookieName.length + 1);
   if (!value) return null;
 
-  const decoded = decodeURIComponent(value);
+  let decoded:string;try{decoded=decodeURIComponent(value);}catch{return null;}
   return localTestRoles.find((role) => role === decoded) ?? null;
 }
 

@@ -1,3 +1,4 @@
+import {hasActorIntentMismatch} from '@/lib/http/actor-intent';
 import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 import { BodyTooLargeError } from '@/lib/http/bounded-body';
@@ -21,6 +22,7 @@ const actions: readonly ReturnOperationsAction[] = [
   'mark_received',
   'resolve_replacement',
   'resolve_return_to_origin',
+  'close_paid_refund',
   'start_refund',
   'complete_refund',
   'fail_refund',
@@ -35,6 +37,7 @@ export async function POST(
     return json({ error: 'Request origin was not accepted.' }, 403);
   try {
     const staff = await requireStaffApi('refund.approve.standard');
+    if(hasActorIntentMismatch(request,staff.id))throw new StaffAuthorizationError('The signed-in staff account changed. Open this original care record again.',403);
     const { id } = await context.params;
     let parsed: unknown;
     try { parsed = await readBoundedJsonObject(request); }

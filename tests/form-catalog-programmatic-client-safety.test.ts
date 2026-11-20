@@ -14,9 +14,9 @@ function clientBundle() {
     createRoot(document.getElementById('root')).render(mode==='order'
       ? <AdminOrderFulfillmentActions orderId="order-one" status="ready_for_pickup"/>
       : mode==='review'||mode==='reply'?<ReviewModerationActions id="review-one" status="pending" replyVersion={mode==='reply'?1:undefined}/>
-      : mode==='complaint'?<ComplaintCaseActions id="complaint-one" status="open"/>
-      : <ReturnCaseActions id="return-one" quantity={1} role={mode==='high-value'?'super_admin':'admin'}
-        canApproveStandard={mode!=='high-value'} status={mode==='return'?'requested':mode==='high-value'?'pending_high_value_approval':'approved'}
+      : mode==='complaint'?<ComplaintCaseActions actorId="admin" id="complaint-one" status="open"/>
+      : <ReturnCaseActions actorId={mode==='high-value'?'super':'admin'} id="return-one" quantity={1} role={mode==='high-value'?'super_admin':'admin'}
+        canApproveStandard={mode!=='high-value'} status={mode==='return'?'requested':mode==='high-value'?'pending_high_value_approval':'received'}
         outcome={mode==='operations'?'replacement':null} refundStatus={null}/>);
   ` }, bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"production"'},
   plugins:[{name:'client-safety-stubs',setup(bundler){
@@ -60,7 +60,7 @@ for(const mode of ['order','review','reply','return','high-value','operations','
     const formId=mode==='order'?'staff.order-fulfillment':mode==='review'||mode==='reply'?'staff.review-moderation'
       :mode==='complaint'?'staff.complaint-case-action':'staff.return-case-action';
     const button=mode==='order'?'Mark dispatched':mode==='review'?'Publish review':mode==='reply'?'Publish reply'
-      :mode==='return'?'Save decision':mode==='high-value'?'Approve high-value refund':mode==='operations'?'Mark return in transit':'Apply action';
+      :mode==='return'?'Save decision':mode==='high-value'?'Approve high-value refund':mode==='operations'?'Complete replacement':'Apply action';
     try {
       // oxlint-disable-next-line typescript/no-explicit-any -- Route types come from the supplied local runtime.
       await page.route('https://client-safety.test/**',(route:any)=>{
@@ -83,7 +83,7 @@ for(const mode of ['order','review','reply','return','high-value','operations','
         else {
           await form.locator('textarea').nth(0).fill('Fictional case note');
           await form.locator('textarea').nth(1).fill('Fictional public message');
-          if(mode==='operations')await form.locator('input').nth(0).fill('SIM-TRACK-1');
+          if(mode==='operations')await form.getByLabel('Shipment, replacement, or payment reference').fill('SIM-TRACK');
         }
         return form;
       };
@@ -96,6 +96,11 @@ for(const mode of ['order','review','reply','return','high-value','operations','
         await page.waitForTimeout(70);
       };
       await submit();
+      if(mode==='operations') {
+        assert.equal(requests[0].action,'resolve_replacement');
+        assert.equal(requests[0].reference,'SIM-TRACK');
+        assert.equal(await form.getByRole('button',{name:'Mark return in transit',exact:true}).count(),0);
+      }
       const firstId=String(requests[0].requestId??requests[0].idempotencyKey);
       assert.match(firstId,/^[0-9a-f-]{36}$/i);
       assert.equal(await page.evaluate((id:string)=>Object.values(sessionStorage).includes(id),firstId),true,

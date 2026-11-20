@@ -1,3 +1,5 @@
+import { cataloguePayoutSources, cataloguePayoutPacket } from './helpers/catalogue-payout-execution';
+import { recordPayoutTransferOutcome } from '../lib/payments/payout-transfers';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { registerHooks } from 'node:module';
@@ -35,9 +37,11 @@ class Statement {
 }
 class Database {
   beforeBatch?: () => void;
+  batchCalls = 0;
   constructor(readonly sqlite: DatabaseSync) {}
   prepare(sql: string) { return new Statement(this.sqlite.prepare(sql)); }
   async batch(statements: readonly Statement[]) {
+    this.batchCalls++;
     this.beforeBatch?.(); this.beforeBatch = undefined;
     this.sqlite.exec('BEGIN');
     try {
@@ -49,7 +53,8 @@ class Database {
   }
 }
 const now = 1_800_000_000_000;
-function fixture(includeApprovalUpgrade = true) {
+function fixture(includeApprovalUpgrade = true, fixtureNow = now, initialReference: string | null = 'SIMULATED-ACCOUNT') {
+  const now = fixtureNow;
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec('PRAGMA foreign_keys=ON');
   for (const name of readdirSync('drizzle').filter((item) => /^\d{4}_.+\.sql$/.test(item) && (includeApprovalUpgrade || item < '0062')).sort()) {
@@ -65,10 +70,10 @@ function fixture(includeApprovalUpgrade = true) {
   sqlite.prepare(`INSERT INTO seller_profiles(id,user_id,legal_name,trading_name,registration_authority,
     registration_number,tax_mode,tax_registration_number,representative_name,support_phone,
     support_email,province,district,municipality,locality,payout_account_reference,status,
-    approved_at,created_at,updated_at) VALUES
+    approved_at,created_at,updated_at,applicant_type) VALUES
     ('seller-one','seller-user','Fictional Seller','Fictional Shop','Local','REG','PAN','PAN',
     'Representative','9800000000','seller@example.test','Madhesh','Dhanusha','Janakpur',
-    'Ward 1','SIMULATED-ACCOUNT','approved',?,?,?)`).run(now - 1000, now, now);
+    'Ward 1',?,'approved',?,?,?,'individual')`).run(initialReference, now - 1000, now, now);
   sqlite.prepare(`INSERT INTO seller_ledger_entries(id,seller_id,type,amount_paisa,available_at,description,created_at)
     VALUES ('earning-one','seller-one','sale',5000,?,'SIMULATED available earning',?)`).run(now - 100, now - 100);
   for (const formId of ['staff.payout-1','staff.payout-2']) {
@@ -96,9 +101,17 @@ function count(sqlite: DatabaseSync, table: string) {
 }
 
 void test('approval schema upgrade preserves rows, dependent entries, indexes and domain triggers', async () => {
-  const { sqlite, db } = fixture(false);
+  const { sqlite } = fixture(false);
   try {
-    const payout = await prepareSellerPayout(db, {sellerId:'seller-one',actorId:'admin1',actorRole:'admin',note:'Reviewed original eligible balance',requestId:'before-upgrade',now});
+    // Historical schema preservation must use historical records, not today's domain against pre-0062 tables.
+    const payout={id:'legacy-payout-before-upgrade'};
+    sqlite.prepare(`INSERT INTO payouts(id,seller_id,payout_number,status,amount_paisa,destination_reference,prepared_by,scheduled_for,created_at,updated_at,created_request_id)
+      VALUES(?,'seller-one','LEGACY-PAYOUT','prepared',5000,'SIMULATED-ACCOUNT','admin1',?,?,?,'before-upgrade')`).run(payout.id,now,now,now);
+    sqlite.prepare("INSERT INTO payout_entries(payout_id,ledger_entry_id) VALUES(?,'earning-one')").run(payout.id);
+    sqlite.prepare(`INSERT INTO payout_events(id,payout_id,to_status,action,actor_id,actor_type,note,request_id,created_at)
+      VALUES('legacy-prepare-event',?,'prepared','prepare','admin1','admin','Reviewed original eligible balance','before-upgrade',?)`).run(payout.id,now);
+    sqlite.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,next_json,request_id,created_at)
+      VALUES('legacy-prepare-audit','admin1','payout.prepared','payout',?,'Reviewed original eligible balance','{"status":"prepared"}','before-upgrade',?)`).run(payout.id,now);
     sqlite.exec(`INSERT INTO managed_payouts(id,seller_id,payout_number,amount_paisa,status,destination_reference,simulation_label,prepared_by,scheduled_for,request_id,created_at,updated_at)
       VALUES('managed-upgrade','seller-one','SIM-UPGRADE',5000,'prepared','SIM-ACCOUNT','SIMULATED','sa1',1,'managed-upgrade',1,1);
       INSERT INTO promotions(id,name_en,name_ne,placement,starts_at,ends_at,created_by,note,created_request_id,created_at,updated_at)
@@ -134,8 +147,8 @@ void test('managed payout approvals accept their active Super Admin preparer and
       sqlite.prepare("INSERT INTO users(id,email,display_name,status,created_at,updated_at) VALUES(?,?,?,'active',1,1)").run(id, `${id}@local.hastabazaar.test`, id);
       sqlite.prepare('INSERT INTO user_roles(user_id,role,assigned_at) VALUES(?,?,1)').run(id,role);
     }
-    sqlite.exec(`INSERT INTO managed_payouts(id,seller_id,payout_number,amount_paisa,status,destination_reference,simulation_label,prepared_by,scheduled_for,request_id,created_at,updated_at)
-      VALUES('managed-one','maker','SIM-MANAGED-ONE',91000,'prepared','SIM-REVIEWED-MAKER-RECEIVING','SIMULATED','sa1',1,'managed-one',1,1)`);
+    sqlite.prepare(`INSERT INTO managed_payouts(id,seller_id,payout_number,amount_paisa,status,destination_reference,simulation_label,prepared_by,scheduled_for,request_id,created_at,updated_at)
+      VALUES('managed-one','maker','SIM-MANAGED-ONE',91000,'prepared',?,'SIMULATED','sa1',1,'managed-one',1,1)`).run(f.context.destinationReference);
     sqlite.prepare("INSERT INTO managed_payout_entries(payout_id,settlement_entry_id) SELECT 'managed-one',id FROM managed_settlement_entries WHERE entitlement_id=?").run(f.entitlementId);
     const approval={payoutId:'managed-one',actorId:'sa1',action:'approve' as const,requestId:'managed-approved',now,environment:f.context.environment};
     await assert.rejects(transitionManagedPayout(db,{...approval,actorId:'admin1'}),/permission|Super Admin/i);
@@ -144,8 +157,17 @@ void test('managed payout approvals accept their active Super Admin preparer and
     await transitionManagedPayout(db,approval);
     sqlite.exec("UPDATE users SET status='suspended' WHERE id='sa1'");
     await assert.rejects(transitionManagedPayout(db,approval),/permission|Super Admin/i);
-    await transitionManagedPayout(db,{...approval,actorId:'sa2',action:'mark_paid',requestId:'managed-paid',providerReference:'SIM-MANAGED-PAID'});
-    assert.equal((sqlite.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE subject_type='managed_payout'").get() as {n:number}).n,2);
+    await assert.rejects(transitionManagedPayout(db,{...approval,actorId:'sa2',action:'mark_paid',requestId:'managed-paid',providerReference:'SIM-MANAGED-PAID'}),/original verified|execution packet/i);
+    const execution=await cataloguePayoutPacket(f,{actorId:'sa2',model:'managed',payoutId:'managed-one',
+      accountVersionId:f.payoutSources.accountVersionId,amountPaisa:91000,environment:f.context.environment});
+    assert.equal(sqlite.prepare("SELECT status FROM managed_payouts WHERE id='managed-one'").get()?.status,'processing');
+    const paid=await execution.complete();
+    assert.deepEqual(await execution.complete(),paid);
+    await assert.rejects(recordPayoutTransferOutcome(db,{...execution.completion,actorId:'sa1'},execution.outcome),/permission|Super Admin/i);
+    assert.equal(sqlite.prepare("SELECT status FROM managed_payouts WHERE id='managed-one'").get()?.status,'paid');
+    assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM audit_logs WHERE subject_type='managed_payout' AND subject_id='managed-one'").get()?.n,3,'one approval, one processing, one paid source event');
+    assert.equal(count(sqlite,'company_outgoing_bank_identities'),1);
+    assert.deepEqual(sqlite.prepare('PRAGMA foreign_key_check').all(),[]);
   } finally {sqlite.close();}
 });
 
@@ -190,7 +212,9 @@ void test('direct preparation rolls back financial rows when answer or current s
         (id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
         SELECT 'staff.payout-1-v2',form_id,2,2,'published',config_json,'New version','sa1',2,'sa1',2,'sa1',2,'new-version'
         FROM form_config_versions WHERE id='staff.payout-1-v1'`).run();
+      const batchCalls=database.batchCalls;
       await assert.rejects(prepareSellerPayout(db,options),race);
+      assert.equal(database.batchCalls,batchCalls+1,`${race}: reaches actual batch`);
       for (const [table,n] of Object.entries(prior))
         assert.equal(count(sqlite,table),n,`${race}:${table}`);
     } finally { sqlite.close(); }
@@ -198,8 +222,10 @@ void test('direct preparation rolls back financial rows when answer or current s
 });
 
 void test('payout actions replay exact actor/action/note/reference and never double debit or release', async () => {
-  const { sqlite, db } = fixture();
+  const now=Date.now()-1000;
+  const { sqlite, db } = fixture(true,now,null);
   try {
+    const sources=await cataloguePayoutSources({sqlite,db},'seller-one','sa1');
     const payout = await prepareSellerPayout(db,{sellerId:'seller-one',actorId:'admin1',actorRole:'admin',
       note:'Verified eligible balance and destination',requestId:'prepare-base',now});
     const approve = {payoutId:payout.id,actorId:'sa1',actorRole:'super_admin' as const,
@@ -216,16 +242,30 @@ void test('payout actions replay exact actor/action/note/reference and never dou
     await assert.rejects(operatePayout(db,{...approve,form:form('staff.payout-2','approve-one','Different answer')}));
     const processing = {...approve,action:'start_processing' as const,requestId:'processing-one',
       note:'Start simulated processing after approval',form:form('staff.payout-2','processing-one')};
-    await operatePayout(db,processing);
+    await assert.rejects(operatePayout(db,processing),/original verified payout execution packet/);
     const paid = {...approve,action:'mark_paid' as const,requestId:'paid-one',
       providerReference:'SIMULATED-REFERENCE',note:'Verified simulated provider confirmation',
       form:form('staff.payout-2','paid-one')};
-    await operatePayout(db,paid);
-    await operatePayout(db,paid);
-    await assert.rejects(operatePayout(db,{...paid,providerReference:'DIFFERENT-REFERENCE'}));
-    assert.equal(count(sqlite,'form_answer_sets'),3);
+    await assert.rejects(operatePayout(db,paid),/original verified payout execution packet/);
+    assert.equal(count(sqlite,'form_answer_sets'),1,'refused legacy execution creates no configurable answer');
+    const execution=await cataloguePayoutPacket({sqlite,db},{actorId:'sa1',model:'registered',payoutId:payout.id,
+      accountVersionId:sources.accountVersionId,amountPaisa:5000});
+    assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM seller_ledger_entries WHERE type='payout'").get()?.n,0);
+    const result=await execution.complete();
+    const retained=sqlite.prepare('SELECT * FROM payout_transfer_packets WHERE id=?').get(execution.packetId);
+    const identity=sqlite.prepare('SELECT * FROM company_outgoing_bank_identities WHERE packet_id=?').get(execution.packetId);
+    assert.deepEqual(await execution.complete(),result);
+    for(const changed of [{...execution.outcome,transactionIdentity:'DIFFERENT-REFERENCE'},
+      {...execution.outcome,reason:'Different independently supplied bank evidence'}])
+      await assert.rejects(recordPayoutTransferOutcome(db,execution.completion,changed),/different command content/);
+    await assert.rejects(recordPayoutTransferOutcome(db,{...execution.completion,actorId:'sa2'},execution.outcome));
+    assert.deepEqual(sqlite.prepare('SELECT * FROM payout_transfer_packets WHERE id=?').get(execution.packetId),retained);
+    assert.deepEqual(sqlite.prepare('SELECT * FROM company_outgoing_bank_identities WHERE packet_id=?').get(execution.packetId),identity);
+    assert.equal(count(sqlite,'company_outgoing_bank_identities'),1);
+    assert.equal(count(sqlite,'form_answer_sets'),1,'system execution retains native receipts, not configurable evidence');
     assert.equal(count(sqlite,'payout_events'),4);
     assert.equal((sqlite.prepare("SELECT COUNT(*) AS n FROM seller_ledger_entries WHERE type='payout'").get() as {n:number}).n,1);
+    assert.deepEqual(sqlite.prepare('PRAGMA foreign_key_check').all(),[]);
   } finally { sqlite.close(); }
 });
 
@@ -247,7 +287,9 @@ void test('payout action status or permission race and answer failure leave zero
         (id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
         SELECT 'staff.payout-2-v2',form_id,2,2,'published',config_json,'New version','sa1',2,'sa1',2,'sa1',2,'new-version'
         FROM form_config_versions WHERE id='staff.payout-2-v1'`).run();
+      const batchCalls=database.batchCalls;
       await assert.rejects(operatePayout(db,options),race);
+      assert.equal(database.batchCalls,batchCalls+1,`${race}: reaches actual batch`);
       for(const [table,n] of Object.entries(prior))assert.equal(count(sqlite,table),n,`${race}:${table}`);
       assert.equal((sqlite.prepare('SELECT status FROM payouts WHERE id=?').get(payout.id) as {status:string}).status,
         race==='state'?'rejected':'prepared');
@@ -464,7 +506,9 @@ void test('direct seller preparation rolls back approval attribution and answers
       const prior=Object.fromEntries(['payouts','payout_entries','payout_events','audit_logs','form_answer_sets','notification_messages'].map(table=>[table,count(sqlite,table)]));
       const requestId=`authority-${configured}-${race}`;
       database.beforeBatch=()=>sqlite.exec(race==='role'?"DELETE FROM user_roles WHERE user_id='sa1'":"UPDATE users SET status='suspended' WHERE id='sa1'");
+      const batchCalls=database.batchCalls;
       await assert.rejects(prepareSellerPayout(db,{sellerId:'seller-one',actorId:'sa1',actorRole:'super_admin',note:'Verified eligible balance and destination',requestId,now,...(configured?{form:form('staff.payout-1',requestId)}:{})}));
+      assert.equal(database.batchCalls,batchCalls+1,'current authority race reaches actual batch');
       for(const [table,n] of Object.entries(prior))assert.equal(count(sqlite,table),n,table);
     }finally{sqlite.close();}
   }

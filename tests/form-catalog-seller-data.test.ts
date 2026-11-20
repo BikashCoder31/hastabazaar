@@ -1,6 +1,12 @@
+import { passivePdfFixture } from './helpers/passive-pdf';
 import { getRegisteredSellerTerms } from '../lib/db/repositories/marketplace-settings';
+import { createHash } from 'node:crypto';
+import { MANAGED_SUPPLIER_AGREEMENT_VERSION, managedMakerAgreementSnapshot } from '../lib/sellers/managed-identity';
+import { getBusinessSettingDefinition } from '../lib/configuration/definitions';
+import { parseCurrentSellerApplication } from '../lib/sellers/onboarding';
 import { startSellerRegistration } from '../lib/db/repositories/seller-commercial-access';
 import { addManagedIdentityUpload, managedIdentityDocument } from './helpers/managed-identity-fixture';
+import { historicalCommissionFixture } from './helpers/historical-commission-fixture';
 import assert from 'node:assert/strict';
 import { createRequire, registerHooks } from 'node:module';
 import { readdir, readFile } from 'node:fs/promises';
@@ -15,23 +21,25 @@ import { FORM_REGISTRY, IMPLEMENTED_FORM_ADAPTERS } from '../lib/forms/registry'
 import { validateAnswersForDefinition, validateFormDraft } from '../lib/forms/validation';
 import { listFormAnswersForSubject } from '../lib/db/repositories/form-answers';
 import { authorizeFormAnswerRead } from '../lib/forms/access';
-import { createSellerApplication, updateSellerParticipationPublicProfile } from '../lib/db/repositories/seller-applications';
-import { updateSellerProfile } from '../lib/db/repositories/seller-profile';
+import { createSellerApplication, createCurrentSellerApplication } from '../lib/db/repositories/seller-applications';
+import { updateSellerProfile,getEditableSellerProfile } from '../lib/db/repositories/seller-profile';
+import {getPublicProfileWorkspace,savePublicProfileDraft,submitPublicProfileRevision} from '../lib/sellers/public-profile';
 import { createProductSubmission, setProductInventory } from '../lib/db/repositories/products';
 import { digestMultipartRequest, validateSellerMultipartStructure } from '../lib/forms/submission';
 import { requestFingerprint } from '../lib/http/rate-limit';
-import { parseSellerApplication } from '../lib/sellers/application';
+import { parseSellerApplication, sellerDocumentsForApplication } from '../lib/sellers/application';
 
 declare global {
   var sellerCatalogDb: D1Database;
   var sellerCatalogActor: { sellerId: string; userId: string } | null;
-  var sellerCatalogCustomer: { userId: string; email: string } | null;
+  var sellerCatalogCustomer: { userId: string; email: string; authSubject?:string } | null;
   var sellerCatalogMedia: { stored: string[]; deleted: string[]; put(key: string): Promise<void>; delete(key: string): Promise<void> };
   var sellerCatalogReact:typeof createElement;
 }
 globalThis.sellerCatalogReact=createElement;
 registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier === 'cloudflare:workers') return { url: 'data:text/javascript,export const env={get DB(){return globalThis.sellerCatalogDb},get MEDIA(){return globalThis.sellerCatalogMedia}}', shortCircuit: true };
+  if(specifier==='@/lib/auth/seller-center')return{url:`data:text/javascript,export class SellerCenterAuthorizationError extends Error{constructor(message,status){super(message);this.status=status}};export async function requireSellerCenterApi(){if(!globalThis.sellerCatalogActor)throw new SellerCenterAuthorizationError('Sign in',401);return globalThis.sellerCatalogActor};export async function requireSellerCenterPage(){if(!globalThis.sellerCatalogActor)throw new Error('Not found');return {...globalThis.sellerCatalogActor,approvedSeller:true}}`,shortCircuit:true};
   if (specifier === '@/lib/auth/seller') return { url: `data:text/javascript,
     export class SellerAuthorizationError extends Error{constructor(message,status){super(message);this.status=status}}
     export async function requireSellerApi(){if(!globalThis.sellerCatalogActor)throw new SellerAuthorizationError('Authentication is required.',401);return globalThis.sellerCatalogActor}
@@ -52,8 +60,8 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 } });
 
 const sellerForms = [
-  ['seller.application', '/api/seller-applications'],
-  ['seller.maker-profile', '/api/seller-applications/profile'],
+  ['seller.application', '/api/seller-registrations'],
+  ['seller.maker-profile', '/api/seller/public-profile'],
   ['seller.profile', '/api/seller/profile'],
   ['seller.product-submission', '/api/seller/products'],
   ['seller.inventory', '/api/seller/products/:id/inventory'],
@@ -246,6 +254,7 @@ async function fixture() {
     for (const part of source.split('--> statement-breakpoint')) if (part.trim()) sqlite.exec(part);
   }
   sqlite.exec("INSERT INTO users(id,email,display_name,status,created_at,updated_at) VALUES ('admin','admin@example.test','Fictional Admin','active',1,1)");
+  historicalCommissionFixture(sqlite, 'admin');
   sqlite.exec("INSERT INTO categories(id,slug,name_en,is_active,sort_order,created_at,updated_at) VALUES ('cat-test','fictional-clay','Fictional Clay',1,1,1,1)");
   const db = new Database(sqlite);
   globalThis.sellerCatalogDb = db as unknown as D1Database;
@@ -263,10 +272,13 @@ function seed(sqlite: DatabaseSync, formId: string, fields: unknown[] = [field])
 async function signInApplicant(sqlite: DatabaseSync,userId='applicant-user',email='maker@example.test') {
   sqlite.prepare(`INSERT INTO users(id,auth_subject,email,display_name,status,created_at,updated_at) VALUES (?,?,?,'Fictional Applicant','active',1,1)`).run(userId,'test:'+userId,email);
   sqlite.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES (?,'customer',1)").run(userId);
-  globalThis.sellerCatalogCustomer={userId,email};
+  sqlite.prepare('UPDATE users SET phone=? WHERE id=?').run('9800000000',userId);
+  sqlite.prepare('INSERT INTO account_email_verifications(user_id,email,verified_at) VALUES (?,?,1)').run(userId,email);
+  sqlite.prepare('INSERT INTO account_phone_verifications(user_id,phone,verified_at) VALUES (?,\'+9779800000000\',1)').run(userId);
+  globalThis.sellerCatalogCustomer={userId,email,authSubject:'test:'+userId};
   await startSellerRegistration(globalThis.sellerCatalogDb,{userId,requestId:'start-'+userId,now:1});
 }
-function managedApplication() {
+function managedApplication(current=false) {
   const form = new FormData();
   for (const [key, value] of Object.entries({
     hasBusinessTaxRegistration: 'no', applicantType: 'individual', legalName: 'Fictional Maker', tradingName: 'Fictional Studio',
@@ -275,7 +287,22 @@ function managedApplication() {
     productCategories: 'Clay', experienceCraft: 'Clay', experienceBand: 'less_than_one_year', applicationAcknowledgement: 'yes',
   })) form.set(key, value);
   addManagedIdentityUpload(form);
+  if(current) {
+  form.set('managedAgreementVersion',MANAGED_SUPPLIER_AGREEMENT_VERSION);
+  form.set('managedAgreementContext',createHash('sha256').update(JSON.stringify(managedMakerAgreementSnapshot(getBusinessSettingDefinition('managed_maker_company_account').defaultValue,900,MANAGED_SUPPLIER_AGREEMENT_VERSION))).digest('hex'));
+  form.set('personalPan','123456789');
+  addCurrentPayoutFields(form);
+  for(const key of ['personalPanCertificate','bankVerification'])form.set(key,new File([passivePdfFixture('Fictional evidence')],key+'.pdf',{type:'application/pdf'}));
+  }
   return form;
+}
+function addCurrentPayoutFields(form:FormData) {
+  for(const [key,value] of Object.entries({payoutBeneficiary:'Fictional Applicant',bankName:'Fictional Bank',bankBranch:'Birgunj',bankAccountNumber:'1234567890',
+    pickupAddress:'Fictional pickup, Birgunj 11, Parsa',returnAddress:'Fictional return, Birgunj 11, Parsa'}))form.set(key,value);
+}
+function currentApplicationDocuments(input:NonNullable<ReturnType<typeof parseCurrentSellerApplication>['input']>,sellerId:string) {
+  return sellerDocumentsForApplication(input).filter(doc=>doc.required).map(doc=>({id:crypto.randomUUID(),kind:doc.kind,
+    objectKey:`private/seller-documents/${sellerId}/${crypto.randomUUID()}`,originalName:'Fictional.pdf',mimeType:'application/pdf',sizeBytes:30}));
 }
 const answer = { formId: 'seller.application', version: 1, answers: [{ fieldId: field.id, label: field.label, type: field.type, value: 'Fictional answer' }] } as const;
 function formLink(formId: string, requestId: string) {
@@ -287,6 +314,13 @@ async function createSeller(database: D1Database, sellerId = 'seller-one', userI
   await createSellerApplication(database, { userId, sellerId, applicationReference: `HB-TEST-${sellerId}`,
     input: { ...parsed.input, email: `${sellerId}@example.test`, phone: sellerId === 'seller-one' ? '9800000000' : '9800000001' },
     documents: [managedIdentityDocument(sellerId)], now: 1_800_000_000_000 });
+}
+async function reviewedProfileRequest(database:D1Database,requestId:string,now=1_800_000_000_100){
+ const view=await getPublicProfileWorkspace(database,'seller-one','seller-user','owner',now);
+ const draft=await savePublicProfileDraft(database,{sellerId:'seller-one',actorId:'seller-user',expectedDraftRevision:view.draft?.revision??null,baseVersion:view.state.version,
+  values:{...view.state.current,about:'Fictional proposed story for independent review.'},requestId:requestId+'-draft',now});
+ return{sellerId:'seller-one',actorId:'seller-user',draftRevision:draft.revision,baseVersion:view.state.version,requestId,now,
+  form:{version:1,answers:[{fieldId:field.id,value:'Fictional answer'}]}};
 }
 const productInput = {
   categoryId: 'cat-test', occasionIds: [], sku: '', nameEn: 'Fictional clay cup', nameNe: null,
@@ -325,15 +359,12 @@ void test('maker and approved seller profile edits link one versioned answer to 
     await createSeller(database);
     seed(sqlite, 'seller.maker-profile');
     seed(sqlite, 'seller.profile');
-    await updateSellerParticipationPublicProfile(database, {
-      sellerId: 'seller-one', actorId: 'seller-user', expectedVersion: 1, publicName: 'Fictional Studio',
-      publicCity: 'Birgunj', craftExperience: [], socialLinks: {}, requestId: 'maker-profile-one',
-      now: 1_800_000_000_100, form: formLink('seller.maker-profile', 'maker-profile-one'),
-    } as Parameters<typeof updateSellerParticipationPublicProfile>[1]);
+    await submitPublicProfileRevision(database,await reviewedProfileRequest(database,'maker-profile-one'));
     sqlite.prepare("UPDATE seller_profiles SET status='approved' WHERE id='seller-one'").run();
+    sqlite.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('seller-user','seller',1)").run();
     await updateSellerProfile(database, { sellerId: 'seller-one', actorId: 'seller-user', requestId: 'seller-profile-one',
-      now: 1_800_000_000_200, input: { tradingName: 'Fictional Studio', businessDescription: 'Fictional clay work.',
-        productCategories: 'Clay', supportPhone: '9800000000', supportEmail: 'shop@example.test', province: 'Madhesh',
+      now: 1_800_000_000_200, input: { ...(await getEditableSellerProfile(database,'seller-one'))!,
+        productCategories: 'Clay', province: 'Madhesh',
         district: 'Parsa', municipality: 'Birgunj', ward: null, locality: 'Private workshop' },
       form: formLink('seller.profile', 'seller-profile-one') } as Parameters<typeof updateSellerProfile>[1]);
     const history = await listFormAnswersForSubject(database, 'seller', 'seller-one');
@@ -437,26 +468,28 @@ void test('maker and approved seller profile routes require versioned custom ans
     await createSeller(database);
     seed(sqlite, 'seller.maker-profile', [field, builtIn('publicName')]);
     seed(sqlite, 'seller.profile', [field, builtIn('tradingName')]);
-    const { PATCH: makerPatch } = await import('../app/api/seller-applications/profile/route');
-    const makerBody = { publicName: 'Fictional Studio', publicCity: 'Birgunj', expectedVersion: 1,
+    const { POST: makerPatch } = await import('../app/api/seller/public-profile/route');
+    const draft=await reviewedProfileRequest(database,'maker-route-one');
+    const makerBody = {action:'submit',sellerId:'seller-one',ownerId:'seller-user',draftRevision:draft.draftRevision,baseVersion:0,
       requestId: 'maker-route-one', formVersion: 1, customAnswers: [{ fieldId: field.id, value: 'Fictional answer' }] };
     const sendMaker = (body: unknown) => makerPatch(new Request('http://localhost:3000/api/seller-applications/profile', {
-      method: 'PATCH', headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' }, body: JSON.stringify(body),
+      method: 'POST', headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' }, body: JSON.stringify(body),
     }));
     assert.equal((await sendMaker({ ...makerBody, requestId: 'maker-missing', customAnswers: [] })).status, 400);
     assert.equal((await sendMaker(makerBody)).status, 200);
     assert.equal((await sendMaker(makerBody)).status, 200);
-    assert.equal((await sendMaker({ ...makerBody, publicCity: 'Kathmandu' })).status, 409);
+    assert.equal((await sendMaker({ ...makerBody, baseVersion:1 })).status, 409);
     sqlite.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
       VALUES ('seller.maker-profile-v2','seller.maker-profile',2,1,'published',?,'Archive','admin',2,'admin',2,'admin',2,'seed-maker-v2')`)
       .run(JSON.stringify({ formId: 'seller.maker-profile', fields: [{ ...field, status: 'archived' }] }));
     assert.equal((await sendMaker(makerBody)).status, 200);
-    assert.equal((await sendMaker({ ...makerBody, publicCity: 'Kathmandu' })).status, 409);
+    assert.equal((await sendMaker({ ...makerBody, baseVersion:1 })).status, 409);
     assert.equal((await sendMaker({ ...makerBody, requestId: 'maker-new-stale' })).status, 409);
     sqlite.prepare("UPDATE seller_profiles SET status='approved' WHERE id='seller-one'").run();
+    sqlite.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('seller-user','seller',1)").run();
     const { PATCH: profilePatch } = await import('../app/api/seller/profile/route');
-    const profile = { tradingName: 'Fictional Studio', businessDescription: null, productCategories: null,
-      supportPhone: '9800000000', supportEmail: 'shop@example.test', province: 'Madhesh', district: 'Parsa',
+    const profile = { ...(await getEditableSellerProfile(database,'seller-one'))!,
+      province: 'Madhesh', district: 'Parsa',
       municipality: 'Birgunj', ward: null, locality: 'Private workshop' };
     const profileBody = { profile, idempotencyKey: 'profile-route-one', formVersion: 1,
       customAnswers: [{ fieldId: field.id, value: 'Fictional answer' }] };
@@ -487,7 +520,7 @@ void test('application route rejects missing, unknown and file custom answers an
     await signInApplicant(sqlite);    seed(sqlite, 'seller.application', [field, builtIn('tradingName')]);
     const { POST } = await import('../app/api/seller-applications/route');
     const send = (requestId: string, options: { answer?: string | null; unknown?: boolean; tradingName?: string } = {}) => {
-      const form = managedApplication();
+      const form = managedApplication(true);
       form.set('tradingName', options.tradingName ?? 'Fictional Studio');
       form.set('formVersion', '1');
       form.set('requestId', requestId);
@@ -504,7 +537,7 @@ void test('application route rejects missing, unknown and file custom answers an
       ['application-top-level', (form: FormData) => form.set('unrelatedAdminOverride', 'yes')],
       ['application-duplicate', (form: FormData) => form.append('tradingName', 'Injected alternate')],
     ] as const) {
-      const form = managedApplication(); form.set('formVersion', '1'); form.set('requestId', requestId);
+      const form = managedApplication(true); form.set('formVersion', '1'); form.set('requestId', requestId);
       form.set('custom.workshop_note', 'Fictional answer'); mutate(form);
       assert.equal((await POST(new Request('http://localhost:3000/api/seller-applications', { method: 'POST',
         headers: { origin: 'http://localhost:3000' }, body: form }))).status, 400, requestId);
@@ -532,7 +565,7 @@ void test('exhausted seller application quota rejects before consuming the multi
   try {
 
     await signInApplicant(sqlite);    const { POST } = await import('../app/api/seller-applications/route');
-    const form = managedApplication();
+    const form = managedApplication(true);
     form.set('email', 'admin@example.test');
     form.set('requestId', 'application-over-quota');
     const request = new Request('http://localhost:3000/api/seller-applications', {
@@ -560,11 +593,11 @@ void test('invalid and existing-email seller application attempts consume the pu
       });
       return { request, response: POST(request) };
     };
-    const invalid = managedApplication();
+    const invalid = managedApplication(true);
     invalid.delete('legalName');
     const first = send(invalid);
     assert.equal((await first.response).status, 400);
-    const existing = managedApplication();
+    const existing = managedApplication(true);
     existing.set('email', 'admin@example.test');
     existing.set('requestId', 'application-existing-email');
     const second = send(existing);
@@ -809,8 +842,8 @@ void test('seller profile history is owner-only and keeps archived answers', asy
     sqlite.prepare("UPDATE seller_profiles SET status='approved' WHERE id='seller-one'").run();
     seed(sqlite, 'seller.profile');
     await updateSellerProfile(database, { sellerId: 'seller-one', actorId: 'seller-user', requestId: 'profile-history',
-      input: { tradingName: 'Fictional Studio', businessDescription: 'Fictional clay work.',
-        productCategories: 'Clay', supportPhone: '9800000000', supportEmail: 'shop@example.test', province: 'Madhesh',
+      input: { ...(await getEditableSellerProfile(database,'seller-one'))!,
+        productCategories: 'Clay', province: 'Madhesh',
         district: 'Parsa', municipality: 'Birgunj', ward: null, locality: 'Private workshop' }, now: 1_800_000_000_300,
       form: formLink('seller.profile', 'profile-history') } as Parameters<typeof updateSellerProfile>[1]);
     sqlite.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
@@ -841,10 +874,7 @@ void test('application progress shows only the current maker’s application and
     await createSellerApplication(database, { userId: 'seller-user', sellerId: 'seller-one', applicationReference: 'HB-HISTORY',
       input: parsed.input, documents: [managedIdentityDocument('seller-one')], now: 1_800_000_000_000,
       form: formLink('seller.application', 'application-history') } as Parameters<typeof createSellerApplication>[1]);
-    await updateSellerParticipationPublicProfile(database, { sellerId: 'seller-one', actorId: 'seller-user',
-      expectedVersion: 1, publicName: 'Fictional Studio', publicCity: 'Birgunj', craftExperience: [],
-      socialLinks: {}, requestId: 'maker-history', now: 1_800_000_000_100,
-      form: formLink('seller.maker-profile', 'maker-history') } as Parameters<typeof updateSellerParticipationPublicProfile>[1]);
+    await submitPublicProfileRevision(database,await reviewedProfileRequest(database,'maker-history'));
     const page = await import('../app/sell/application/page');
     const html = renderToStaticMarkup(await page.default({ searchParams: Promise.resolve({}) }));
     assert.match(html, /Application answer history/);
@@ -899,9 +929,10 @@ void test('applicant can reach older owned draft histories after 50 tied drafts 
     const first = await page.default({ searchParams: Promise.resolve({ appAt: '100', appId: 'application-cursor',
       makerAt: '101', makerId: 'maker-cursor' }) });
     const firstHtml = renderToStaticMarkup(first);
-    assert.equal((firstHtml.match(/Answer history/g) ?? []).length, 50);
-    assert.match(firstHtml, /owned-draft-51/);
-    assert.doesNotMatch(firstHtml, /owned-draft-01|foreign-draft/);
+    // Task suggestions have their own ordering; pagination governs the record-local answer links.
+    const answerIds = (html: string) => [...html.matchAll(/href="\/sell\/application\/products\/([^"/]+)\/answers"[^>]*>Answer history<\/a>/g)].map(match => match[1]);
+    assert.deepEqual(answerIds(firstHtml), Array.from({ length: 50 }, (_, i) => `owned-draft-${String(51 - i).padStart(2, '0')}`));
+    assert.doesNotMatch(firstHtml, /foreign-draft/);
     const href = firstHtml.match(/href="([^"]+)"[^>]*>Older products<\/a>/)?.[1].replaceAll('&amp;','&');
     assert.ok(href, 'older private drafts must remain navigable');
     const older = new URL(href, 'http://localhost:3000');
@@ -909,13 +940,12 @@ void test('applicant can reach older owned draft histories after 50 tied drafts 
     assert.equal(older.searchParams.get('makerId'), 'maker-cursor');
     const second = await page.default({ searchParams: Promise.resolve(Object.fromEntries(older.searchParams)) });
     const secondHtml = renderToStaticMarkup(second);
-    assert.match(secondHtml, /owned-draft-01/);
-    assert.match(secondHtml, /owned-draft-00/);
-    assert.doesNotMatch(secondHtml, /owned-draft-51|foreign-draft/);
+    assert.deepEqual(answerIds(secondHtml), ['owned-draft-01', 'owned-draft-00']);
+    assert.doesNotMatch(secondHtml, /foreign-draft/);
     assert.doesNotMatch(secondHtml, />Older products<\/a>/);
     globalThis.sellerCatalogActor = { sellerId: 'other-seller', userId: 'other-user' };
     const foreignHtml = renderToStaticMarkup(await page.default({ searchParams: Promise.resolve({}) }));
-    assert.match(foreignHtml, /foreign-draft/);
+    assert.deepEqual(answerIds(foreignHtml), ['foreign-draft']);
     assert.doesNotMatch(foreignHtml, /owned-draft-/);
   } finally { sqlite.close(); }
 });
@@ -969,13 +999,11 @@ void test('maker-profile audit-key race replays only the exact winning write', a
   try {
     await createSeller(database);
     seed(sqlite, 'seller.maker-profile');
-    const request = { sellerId: 'seller-one', actorId: 'seller-user', expectedVersion: 1,
-      publicName: 'Fictional Studio', publicCity: 'Birgunj', craftExperience: [], socialLinks: {},
-      requestId: 'maker-race-key', now: 1_800_000_000_400, form: formLink('seller.maker-profile', 'maker-race-key') };
-    db.beforeBatch = () => updateSellerParticipationPublicProfile(database, request as Parameters<typeof updateSellerParticipationPublicProfile>[1]);
-    await updateSellerParticipationPublicProfile(database, request as Parameters<typeof updateSellerParticipationPublicProfile>[1]);
+    const request=await reviewedProfileRequest(database,'maker-race-key',1_800_000_000_400);
+    db.beforeBatch = () => submitPublicProfileRevision(database,request).then(()=>undefined);
+    await submitPublicProfileRevision(database,request);
     assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE request_id='maker-race-key'").get() as { count: number }).count, 1);
-    await assert.rejects(updateSellerParticipationPublicProfile(database, { ...request, publicCity: 'Kathmandu' } as Parameters<typeof updateSellerParticipationPublicProfile>[1]), /Request reference/);
+    await assert.rejects(submitPublicProfileRevision(database,{...request,baseVersion:1}),/Request reference/);
   } finally { sqlite.close(); }
 });
 
@@ -985,9 +1013,10 @@ void test('approved seller-profile audit-key race replays only the exact winning
     await createSeller(database);
     seed(sqlite, 'seller.profile');
     sqlite.prepare("UPDATE seller_profiles SET status='approved' WHERE id='seller-one'").run();
+    sqlite.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('seller-user','seller',1)").run();
     const request = { sellerId: 'seller-one', actorId: 'seller-user', requestId: 'profile-race-key',
-      now: 1_800_000_000_400, input: { tradingName: 'Fictional Studio', businessDescription: 'Fictional clay work.',
-        productCategories: 'Clay', supportPhone: '9800000000', supportEmail: 'shop@example.test', province: 'Madhesh',
+      now: 1_800_000_000_400, input: { ...(await getEditableSellerProfile(database,'seller-one'))!,
+        productCategories: 'Clay', province: 'Madhesh',
         district: 'Parsa', municipality: 'Birgunj', ward: null, locality: 'Private workshop' },
       form: formLink('seller.profile', 'profile-race-key') };
     db.beforeBatch = () => updateSellerProfile(database, request as Parameters<typeof updateSellerProfile>[1]);
@@ -1022,18 +1051,16 @@ void test('signed-in application batch race responds with the winning reference,
   try {
 
     await signInApplicant(sqlite);    seed(sqlite, 'seller.application');
-    const requestForm = managedApplication();
+    const requestForm = managedApplication(true);
     requestForm.set('requestId', 'application-route-race');
     requestForm.set('formVersion', '1');
     requestForm.set('custom.workshop_note', 'Fictional answer');
-    requestForm.set('profileImage', new File([validPhotoBytes],
-      'maker.jpg', { type: 'image/jpeg' }));
     const digest = await digestMultipartRequest(requestForm);
-    const parsed = parseSellerApplication(requestForm);
+    const parsed = parseCurrentSellerApplication(requestForm);
     assert.ok(parsed.input, parsed.errors.join('; '));
     const input = parsed.input;
-    db.beforeBatch = () => createSellerApplication(database, { userId: 'applicant-user', existingAccount: true, sellerId: 'winning-seller',
-      applicationReference: 'HB-WINNING', input, documents: [managedIdentityDocument('winning-seller')], now: 1_800_000_000_400,
+    db.beforeBatch = () => createCurrentSellerApplication(database, { userId: 'applicant-user', existingAccount: true, sellerId: 'winning-seller',
+      applicationReference: 'HB-WINNING', input, documents: currentApplicationDocuments(input,'winning-seller'), now: 1_800_000_000_400,
       form: { ...formLink('seller.application', 'application-route-race'), digest } });
     const { POST } = await import('../app/api/seller-applications/route');
     const send = (form: FormData) => POST(new Request('http://localhost:3000/api/seller-applications', {
@@ -1045,7 +1072,7 @@ void test('signed-in application batch race responds with the winning reference,
     assert.equal(globalThis.sellerCatalogMedia.stored.length, 2);
     assert.deepEqual(globalThis.sellerCatalogMedia.deleted, globalThis.sellerCatalogMedia.stored,
       'the losing application must remove private media uploaded before its DB race');
-    const changed = managedApplication();
+    const changed = managedApplication(true);
     changed.set('email', 'changed@example.test');
     changed.set('requestId', 'application-route-race');
     changed.set('formVersion', '1');
@@ -1059,14 +1086,12 @@ for (const signedIn of [false, true]) {
     const { sqlite, database } = await fixture();
     try {
       seed(sqlite, 'seller.application');
-      const form = managedApplication();
+      const form = managedApplication(true);
       const requestId = `application-prebatch-${signedIn ? 'auth' : 'anon'}`;
       form.set('requestId', requestId);
       form.set('formVersion', '1');
       form.set('custom.workshop_note', 'Fictional answer');
-      form.set('profileImage', new File([validPhotoBytes],
-        'maker.jpg', { type: 'image/jpeg' }));
-      const parsed = parseSellerApplication(form);
+      const parsed = parseCurrentSellerApplication(form);
       assert.ok(parsed.input, parsed.errors.join('; '));
       const digest = await digestMultipartRequest(form);
       const winnerUserId = signedIn ? 'signed-in-user' : 'winning-user';
@@ -1076,9 +1101,9 @@ for (const signedIn of [false, true]) {
       globalThis.sellerCatalogMedia.put = async function (key) {
         this.stored.push(key);
         if (this.stored.length !== 1) return;
-        await createSellerApplication(database, { userId: winnerUserId, existingAccount: signedIn,
+        await createCurrentSellerApplication(database, { userId: winnerUserId, existingAccount: signedIn,
           sellerId: 'winning-seller', applicationReference: 'HB-WINNING-PREBATCH',
-          input: parsed.input!, documents: [managedIdentityDocument('winning-seller')], now: 1_800_000_000_400,
+          input: parsed.input!, documents: currentApplicationDocuments(parsed.input!,'winning-seller'), now: 1_800_000_000_400,
           form: { ...formLink('seller.application', requestId), digest } });
       };
       const { POST } = await import('../app/api/seller-applications/route');
@@ -1101,11 +1126,10 @@ for (const signedIn of [false, true]) {
       assert.equal((sqlite.prepare('SELECT COUNT(*) AS count FROM audit_logs WHERE request_id=?').get(requestId) as { count: number }).count, 1);
       assert.equal((sqlite.prepare('SELECT COUNT(*) AS count FROM form_answer_sets WHERE request_id=?').get(requestId) as { count: number }).count, 1);
 
-      const changed = managedApplication();
+      const changed = managedApplication(true);
       changed.set('requestId', requestId);
       changed.set('formVersion', '1');
       changed.set('custom.workshop_note', 'Changed answer');
-      changed.set('profileImage', form.get('profileImage') as File);
       const changedResponse = await send(changed);
       assert.equal(changedResponse.status, 409);
       assert.doesNotMatch(await changedResponse.text(), /HB-WINNING-PREBATCH/);
@@ -1133,13 +1157,15 @@ void test('seller approval revoked at the batch boundary cannot commit an audit 
     await createSeller(database);
     seed(sqlite, 'seller.profile');
     sqlite.prepare("UPDATE seller_profiles SET status='approved' WHERE id='seller-one'").run();
+    sqlite.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('seller-user','seller',1)").run();
     const request = { sellerId: 'seller-one', actorId: 'seller-user', requestId: 'profile-revoked-key',
-      now: 1_800_000_000_400, input: { tradingName: 'Changed Studio', businessDescription: 'Fictional clay work.',
-        productCategories: 'Clay', supportPhone: '9800000000', supportEmail: 'shop@example.test', province: 'Madhesh',
+      now: 1_800_000_000_400, input: { ...(await getEditableSellerProfile(database,'seller-one'))!, province: 'Madhesh',
         district: 'Parsa', municipality: 'Birgunj', ward: null, locality: 'Private workshop' },
       form: formLink('seller.profile', 'profile-revoked-key') };
-    db.beforeBatch = () => { sqlite.prepare("UPDATE seller_profiles SET status='suspended' WHERE id='seller-one'").run(); };
+    let boundaryReached = false;
+    db.beforeBatch = () => { boundaryReached = true; sqlite.prepare("UPDATE seller_profiles SET status='suspended' WHERE id='seller-one'").run(); };
     await assert.rejects(updateSellerProfile(database, request as Parameters<typeof updateSellerProfile>[1]));
+    assert.equal(boundaryReached, true, 'The fixture must reach the commit boundary before authority changes.');
     assert.equal((sqlite.prepare("SELECT trading_name AS name FROM seller_profiles WHERE id='seller-one'").get() as { name: string }).name, 'Fictional Studio');
     assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE request_id='profile-revoked-key'").get() as { count: number }).count, 0);
     assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM form_answer_sets WHERE request_id='profile-revoked-key'").get() as { count: number }).count, 0);
@@ -1152,16 +1178,42 @@ void test('seller owner changed at the batch boundary cannot commit a stale acto
     await createSeller(database);
     seed(sqlite, 'seller.profile');
     sqlite.prepare("UPDATE seller_profiles SET status='approved' WHERE id='seller-one'").run();
+    sqlite.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('seller-user','seller',1)").run();
     sqlite.prepare("INSERT INTO users(id,email,display_name,status,created_at,updated_at) VALUES ('new-owner','new-owner@example.test','New owner','active',1,1)").run();
     const request = { sellerId: 'seller-one', actorId: 'seller-user', requestId: 'profile-owner-race',
-      now: 1_800_000_000_400, input: { tradingName: 'Changed Studio', businessDescription: 'Fictional clay work.',
-        productCategories: 'Clay', supportPhone: '9800000000', supportEmail: 'shop@example.test', province: 'Madhesh',
+      now: 1_800_000_000_400, input: { ...(await getEditableSellerProfile(database,'seller-one'))!, province: 'Madhesh',
         district: 'Parsa', municipality: 'Birgunj', ward: null, locality: 'Private workshop' },
       form: formLink('seller.profile', 'profile-owner-race') };
-    db.beforeBatch = () => { sqlite.prepare("UPDATE seller_profiles SET user_id='new-owner' WHERE id='seller-one'").run(); };
+    let boundaryReached = false;
+    db.beforeBatch = () => { boundaryReached = true; sqlite.prepare("UPDATE seller_profiles SET user_id='new-owner' WHERE id='seller-one'").run(); };
     await assert.rejects(updateSellerProfile(database, request as Parameters<typeof updateSellerProfile>[1]));
+    assert.equal(boundaryReached, true, 'The fixture must reach the commit boundary before ownership changes.');
     assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE request_id='profile-owner-race'").get() as { count: number }).count, 0);
     assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM form_answer_sets WHERE request_id='profile-owner-race'").get() as { count: number }).count, 0);
+  } finally { sqlite.close(); }
+});
+
+void test('seller role revoked at the batch boundary preserves private workshop values and answer history', async () => {
+  const { sqlite, db, database } = await fixture();
+  try {
+    await createSeller(database);
+    seed(sqlite, 'seller.profile');
+    sqlite.prepare("UPDATE seller_profiles SET status='approved' WHERE id='seller-one'").run();
+    sqlite.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('seller-user','seller',1)").run();
+    const previous = (await getEditableSellerProfile(database, 'seller-one'))!;
+    let boundaryReached = false;
+    db.beforeBatch = () => {
+      boundaryReached = true;
+      sqlite.prepare("DELETE FROM user_roles WHERE user_id='seller-user' AND role='seller'").run();
+    };
+    await assert.rejects(updateSellerProfile(database, { sellerId: 'seller-one', actorId: 'seller-user',
+      requestId: 'profile-role-revoked', now: 1_800_000_000_400,
+      input: { ...previous, locality: 'Changed private workshop' },
+      form: formLink('seller.profile', 'profile-role-revoked') }), /CHECK constraint failed/);
+    assert.equal(boundaryReached, true);
+    assert.deepEqual(await getEditableSellerProfile(database, 'seller-one'), previous);
+    assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE request_id='profile-role-revoked'").get() as { count: number }).count, 0);
+    assert.equal((sqlite.prepare("SELECT COUNT(*) AS count FROM form_answer_sets WHERE request_id='profile-role-revoked'").get() as { count: number }).count, 0);
   } finally { sqlite.close(); }
 });
 
@@ -1281,20 +1333,43 @@ void test('actual registered application controller accepts displayed context an
     const terms=await getRegisteredSellerTerms(database);
     const form=new FormData();for(const [key,value] of Object.entries({
       hasBusinessTaxRegistration:'yes',applicantType:'individual',taxStatus:'business_pan_only',
-      taxRegistrationNumber:'123456789',legalName:'Fictional Applicant',tradingName:'Fictional Registered Studio',
+      taxRegistrationNumber:'123456789',legalName:'Fictional Applicant',tradingName:'Fictional Registered Studio',representativeName:'Fictional Applicant',
+      registrationAuthority:'Fictional firm office',registrationNumber:'FICTIONAL-FIRM-1',
       email:'maker@example.test',phone:'9800000000',province:'Madhesh',district:'Parsa',municipality:'Birgunj',
       locality:'Private workshop',businessDescription:'Fictional registered craft goods',productCategories:'Clay',
-      acceptedTerms:'yes',sellerAgreementContext:terms.context,formVersion:'1',requestId:'registered-controller',
+      acceptedTerms:'yes',applicationAcknowledgement:'yes',sellerAgreementContext:terms.context,formVersion:'1',requestId:'registered-controller',
     }))form.set(key,value);
-    const parsed=parseSellerApplication(form);assert.ok(parsed.input,parsed.errors.join('; '));
+    addCurrentPayoutFields(form);
+    const parsed=parseCurrentSellerApplication(form);assert.ok(parsed.input,parsed.errors.join('; '));
     const {sellerDocumentsForApplication}=await import('../lib/sellers/application');
     for(const doc of sellerDocumentsForApplication(parsed.input).filter(doc=>doc.required)){
-      form.set(doc.field,new File(['%PDF-1.4\nFictional document'],doc.kind+'.pdf',{type:'application/pdf'}));
+      form.set(doc.field,new File([passivePdfFixture('Fictional document')],doc.kind+'.pdf',{type:'application/pdf'}));
     }
     const {POST}=await import('../app/api/seller-applications/route');
     const response=await POST(new Request('http://localhost:3000/api/seller-applications',{method:'POST',headers:{origin:'http://localhost:3000'},body:form}));
     assert.equal(response.status,201,await response.text());
     const row=sqlite.prepare("SELECT commission_bps,accepted_by FROM seller_agreement_acceptance_history WHERE acceptance_request_id='registered-controller'").get();
     assert.equal(row?.commission_bps,terms.basisPoints);assert.equal(row?.accepted_by,'applicant-user');
+  }finally{sqlite.close();}
+});
+
+void test('lost committed application response preserves private evidence and exact replay recovers without uploading again',async()=>{
+  const {sqlite,db,database}=await fixture();
+  try {
+    await signInApplicant(sqlite);seed(sqlite,'seller.application',[]);
+    const form=managedApplication(true);form.set('requestId','uncertain-private-evidence');form.set('formVersion','1');
+    const originalBatch=db.batch.bind(db);const originalPrepare=db.prepare.bind(db);let outage=false;
+    db.batch=async statements=>{await originalBatch(statements);outage=true;throw new Error('Lost committed response');};
+    db.prepare=(sql:string)=>{if(outage)throw new Error('Replay read unavailable');return originalPrepare(sql);};
+    const {POST}=await import('../app/api/seller-applications/route');
+    const send=()=>POST(new Request('http://localhost:3000/api/seller-applications',{method:'POST',headers:{origin:'http://localhost:3000'},body:form}));
+    assert.equal((await send()).status,500);
+    assert.equal((sqlite.prepare('SELECT COUNT(*) AS n FROM seller_documents').get() as {n:number}).n,2);
+    assert.equal(globalThis.sellerCatalogMedia.stored.length,2);assert.equal(globalThis.sellerCatalogMedia.deleted.length,0);
+    outage=false;db.batch=originalBatch;
+    assert.equal((await send()).status,201);
+    assert.equal(globalThis.sellerCatalogMedia.stored.length,2,'exact replay recovers before uploads');
+    assert.equal(globalThis.sellerCatalogMedia.deleted.length,0);
+    assert.ok(database);
   }finally{sqlite.close();}
 });

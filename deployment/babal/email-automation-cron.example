@@ -1,0 +1,28 @@
+# REVIEW EXAMPLE ONLY. No job is installed or enabled by this file.
+# Copy ONLY the application-host block to its separately reviewed scheduler;
+# copy ONLY the watchdog block to an independent off-platform host/scheduler.
+# Do not paste both into the application host or add a second sender job.
+MAILTO=""
+SHELL=/bin/sh
+PATH=/usr/local/bin:/usr/bin:/bin
+
+# APPLICATION HOST — one minute, one bounded existing sender/reminder endpoint.
+# Actual Node path, app path, credential path, lock filesystem and host limits
+# must be verified first. Secrets stay in protected environment files, not URLs.
+# * * * * * /reviewed/node --env-file=/reviewed/private/email-sender.env /reviewed/app/scripts/run-email-automation.mjs --config /reviewed/private/email-sender.json --execute >> /reviewed/logs/email-sender.jsonl 2>&1
+
+# INDEPENDENT WATCHDOG HOST — separate host, scheduler and contact transport.
+# This host needs only email-automation-watchdog.mjs and Node's standard library.
+# * * * * * /reviewed/node --env-file=/reviewed/private/email-watchdog.env /reviewed/monitor/email-automation-watchdog.mjs --config /reviewed/private/email-watchdog.json --execute >> /reviewed/logs/email-watchdog.jsonl 2>&1
+
+# INDEPENDENT SYSTEM MONITOR — separate state/lock and reviewed system mapping.
+# See system-health-setup-proposal.md. This does not add another email sender.
+# * * * * * /reviewed/node --env-file=/reviewed/private/system-watchdog.env /reviewed/monitor/email-automation-watchdog.mjs --config /reviewed/private/system-watchdog.json --execute >> /reviewed/logs/system-watchdog.jsonl 2>&1
+
+# Each CLI re-executes itself under Linux util-linux:
+# flock --no-fork --nonblock --conflict-exit-code 75 <configured-lock-path> node ...
+# OS process death releases ownership. There is no sticky owner-file lock and
+# no age-based stealing. Busy exits 75 without HTTP work. Linux flock support,
+# shared lock paths and process/signal behavior remain enablement evidence.
+# JSON mappings must explicitly enable reviewed scopes; sample docs are disabled.
+# Do not install these lines or contact real services during local verification.

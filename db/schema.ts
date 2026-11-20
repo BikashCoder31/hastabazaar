@@ -9,11 +9,31 @@ import {
   primaryKey,
   sqliteTable,
   text,
+  unique,
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 
 const id = (name = 'id') => text(name).primaryKey();
 const timestamp = (name: string) => integer(name, { mode: 'timestamp_ms' });
+
+// Private registration progress is durable across devices and hosting transfers.
+export const sellerApplicationDrafts = sqliteTable('seller_application_drafts', {
+  userId: text('user_id').primaryKey().references(() => users.id),
+  revision: text('revision').notNull(), attemptId: text('attempt_id').notNull(), formVersion: integer('form_version').notNull(),
+  answersJson: text('answers_json').notNull(), filesJson: text('files_json').notNull(),
+  updatedAt: timestamp('updated_at').notNull(), expiresAt: timestamp('expires_at').notNull(),
+}, table => [index('seller_application_drafts_expiry').on(table.expiresAt)]);
+export const sellerApplicationDraftUploads = sqliteTable('seller_application_draft_uploads', {
+  id: id(), userId: text('user_id').notNull().references(() => users.id), objectKey: text('object_key').notNull().unique(),
+  status: text('status', { enum: ['uploading', 'ready', 'deleting'] }).notNull(), expiresAt: timestamp('expires_at').notNull(),
+}, table => [index('seller_application_draft_uploads_expiry').on(table.status, table.expiresAt),
+  check('seller_application_draft_uploads_status', sql`${table.status} IN ('uploading','ready','deleting')`)]);
+export const sellerRegistrationIntakes = sqliteTable('seller_registration_intakes', {
+  sellerId: text('seller_id').primaryKey().references(() => sellerProfiles.id),
+  userId: text('user_id').notNull().unique().references(() => users.id), version: integer('version').notNull(),
+  answersJson: text('answers_json').notNull(), documentsJson: text('documents_json').notNull(),
+  reviewReady: integer('review_ready', { mode: 'boolean' }).notNull(), updatedAt: timestamp('updated_at').notNull(),
+}, table => [check('seller_registration_intakes_ready', sql`${table.reviewReady} IN (0,1)`)]);
 
 export const users = sqliteTable(
   'users',
@@ -203,6 +223,20 @@ export const sellerDocuments = sqliteTable(
     index('idx_seller_documents_seller_kind').on(table.sellerId, table.kind),
   ],
 );
+
+export const sellerDocumentChangeRequests = sqliteTable('seller_document_change_requests', {
+  id: id(),
+  sellerId: text('seller_id').notNull().references(() => sellerProfiles.id),
+  documentId: text('document_id').notNull().references(() => sellerDocuments.id),
+  requestedBy: text('requested_by').notNull().references(() => users.id),
+  reason: text('reason').notNull(),
+  status: text('status', { enum: ['submitted','approved','rejected','completed'] }).notNull().default('submitted'),
+  requestedAt: timestamp('requested_at').notNull(),
+  reviewedBy: text('reviewed_by').references(() => users.id),
+  reviewedAt: timestamp('reviewed_at'),
+  reviewReason: text('review_reason'),
+}, table => [index('idx_seller_document_change_requests_seller').on(table.sellerId,table.status),
+  check('seller_document_change_requests_status', sql`${table.status} IN ('submitted','approved','rejected','completed')`)]);
 
 export const sellerRestrictions = sqliteTable(
   'seller_restrictions',
@@ -417,7 +451,7 @@ export const sellerProfileMedia = sqliteTable(
     }),
   },
   (table) => [
-    uniqueIndex('idx_seller_profile_media_kind').on(table.sellerId, table.kind),
+    index('seller_profile_media_history').on(table.sellerId,table.kind,table.uploadedAt,table.id),
     uniqueIndex('idx_seller_profile_media_object_key').on(table.objectKey),
   ],
 );
@@ -1103,6 +1137,7 @@ export const orderItems = sqliteTable(
     sellerNameSnapshot: text('seller_name_snapshot').notNull(),
     productNameSnapshot: text('product_name_snapshot').notNull(),
     skuSnapshot: text('sku_snapshot').notNull(),
+    offerReservationId: text('offer_reservation_id').unique().references(():AnySQLiteColumn=>offerStockReservations.id),
     unitPricePaisa: integer('unit_price_paisa').notNull(),
     quantity: integer('quantity').notNull(),
     sellerDiscountPaisa: integer('seller_discount_paisa').notNull().default(0),
@@ -1145,6 +1180,21 @@ export const orderItems = sqliteTable(
       'order_items_commission_valid',
       sql`${table.commissionBps} >= 0 AND ${table.commissionBps} <= 10000`,
     ),
+  ],
+);
+
+export const orderItemPricingSnapshots = sqliteTable(
+  'order_item_pricing_snapshots',
+  {
+    orderItemId: text('order_item_id').notNull().primaryKey().references(() => orderItems.id),
+    orderId: text('order_id').notNull().references(() => orders.id),
+    snapshotJson: text('snapshot_json').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [
+    index('order_item_pricing_snapshots_order').on(table.orderId, table.orderItemId),
+    check('order_item_pricing_snapshot_json', sql`json_valid(${table.snapshotJson}) AND json_type(${table.snapshotJson})='object'`),
+    check('order_item_pricing_snapshot_clock', sql`typeof(${table.createdAt})='integer' AND ${table.createdAt} BETWEEN 0 AND 9007199254740991`),
   ],
 );
 
@@ -1424,6 +1474,7 @@ export const returnRequests = sqliteTable(
     returnShipmentReference: text('return_shipment_reference'),
     createdRequestId: text('created_request_id'),
     operationRequestId: text('operation_request_id'),
+    recordedAt:timestamp('recorded_at'),intakeChannel:text('intake_channel',{enum:['web','email','support']}).notNull().default('web'),intakeRecordedBy:text('intake_recorded_by').references(()=>users.id),receivedEvidenceReference:text('received_evidence_reference'),deliveredAtSnapshot:timestamp('delivered_at_snapshot'),
     requestedAt: timestamp('requested_at').notNull(),
     updatedAt: timestamp('updated_at')
       .notNull()
@@ -1677,6 +1728,12 @@ export const sellerLedgerEntries = sqliteTable(
         'adjustment',
         'payout',
         'payout_reversal',
+        'recovery_settlement',
+        'recovery_absorption',
+        'recovery_netting_relief',
+        'recovery_netting_withholding',
+        'recovery_correction',
+        'recovery_source_compensation',
       ],
     }).notNull(),
     amountPaisa: integer('amount_paisa').notNull(),
@@ -1768,6 +1825,7 @@ export const payoutRequests = sqliteTable(
       .notNull()
       .default('submitted'),
     sellerNote: text('seller_note').notNull(),
+    purpose:text('purpose'),firstFinanceDueAt:integer('first_finance_due_at'),calendarVersion:text('calendar_version'),
     availableAmountSnapshotPaisa: integer(
       'available_amount_snapshot_paisa',
     ).notNull(),
@@ -1868,6 +1926,7 @@ export const complaints = sqliteTable(
   'complaints',
   {
     id: id(),
+    firstDueAt:integer('first_due_at'),firstActionAt:integer('first_action_at'),nextUpdateAt:integer('next_update_at'),backupId:text('backup_id').references(()=>users.id),waitingFor:text('waiting_for').notNull().default('none'),clarificationAt:integer('clarification_at'),clarificationDueAt:integer('clarification_due_at'),followupRevision:integer('followup_revision').notNull().default(0),recordedAt:integer('recorded_at'),intakeChannel:text('intake_channel').notNull().default('web'),intakeRecordedBy:text('intake_recorded_by').references(()=>users.id),receivedEvidenceReference:text('received_evidence_reference'),
     referenceNumber: text('reference_number').notNull(),
     customerId: text('customer_id').references(() => users.id, {
       onDelete: 'set null',
@@ -1978,6 +2037,9 @@ export const auditLogs = sqliteTable(
     previousJson: text('previous_json'),
     nextJson: text('next_json'),
     requestId: text('request_id'),
+    commandKey: text('command_key'),
+    commandDigest: text('command_digest'),
+    commandResultJson: text('command_result_json'),
     ipHash: text('ip_hash'),
     createdAt: timestamp('created_at').notNull(),
   },
@@ -1988,15 +2050,28 @@ export const auditLogs = sqliteTable(
       table.createdAt,
     ),
     index('idx_audit_logs_actor').on(table.actorId, table.createdAt),
+    uniqueIndex('audit_command_key_unique').on(table.commandKey),
   ],
 );
+
+export const reviewTasks = sqliteTable('review_tasks', {
+  id: id(), sourceType: text('source_type').notNull(), sourceId: text('source_id').notNull(),
+  sourceRevision: text('source_revision').notNull(), startedAt: timestamp('started_at').notNull(),
+  dueAt: timestamp('due_at').notNull(), calendarVersion: text('calendar_version').notNull(),
+  hasDeadline: integer('has_deadline').notNull().default(1),
+  ownerId: text('owner_id').references(() => users.id), revision: integer('revision').notNull().default(0),
+  updatedAt: timestamp('updated_at').notNull(),
+}, table => [uniqueIndex('review_tasks_source').on(table.sourceType, table.sourceId, table.sourceRevision),
+  check('review_tasks_has_deadline',sql`${table.hasDeadline} IN (0,1)`),
+  index('review_tasks_due').on(table.dueAt, table.ownerId), check('review_tasks_revision', sql`${table.revision}>=0`),
+  check('review_tasks_deadline', sql`${table.dueAt}>=${table.startedAt}`)]);
 
 export const notificationMessages = sqliteTable(
   'notification_messages',
   {
+    deliveryTransport: text('delivery_transport', {enum: ['capture','provider']}),
     id: id(),
     recipientUserId: text('recipient_user_id')
-      .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     audienceRole: text('audience_role', {
       enum: ['customer', 'seller', 'staff'],
@@ -2017,12 +2092,25 @@ export const notificationMessages = sqliteTable(
     providerReference: text('provider_reference'),
     failureReason: text('failure_reason'),
     requestId: text('request_id').notNull(),
+    sourceEventId: text('source_event_id'),
+    sourceRevision: text('source_revision'),
+    businessEventKey: text('business_event_key'),
+    requiredPermission: text('required_permission'),
+    deliveryAttempts: integer('delivery_attempts').notNull().default(0),
+    deliveryNextAttemptAt: integer('delivery_next_attempt_at').notNull().default(0),
+    deliveryLeaseUntil: integer('delivery_lease_until').notNull().default(0),
+    deliveryClaimToken: text('delivery_claim_token'),
+    guestEmail: text('guest_email'),
+    guestOrderId: text('guest_order_id'),
     createdAt: timestamp('created_at').notNull(),
     sentAt: timestamp('sent_at'),
     readAt: timestamp('read_at'),
   },
   (table) => [
     uniqueIndex('idx_notification_messages_request_unique').on(table.requestId),
+    uniqueIndex('notification_source_recipient_channel').on(table.sourceEventId, table.sourceRevision, table.recipientUserId, table.channel),
+    check('notification_recipient_shape',sql`${table.recipientUserId} IS NOT NULL OR (${table.audienceRole}='customer' AND ${table.channel}='email' AND ${table.guestEmail} IS NOT NULL AND ${table.guestOrderId} IS NOT NULL AND ${table.businessEventKey} IS NOT NULL)`),
+    index('idx_business_notification_queue').on(table.channel,table.status,table.deliveryNextAttemptAt,table.deliveryLeaseUntil),
     index('idx_notification_messages_recipient_created').on(
       table.recipientUserId,
       table.createdAt,
@@ -2724,10 +2812,17 @@ export const managedCommercialSnapshots = sqliteTable(
       .notNull()
       .default(0),
     agreedSupplierAmountPaisa: integer('agreed_supplier_amount_paisa'),
-    simulationLabel: text('simulation_label').notNull(),
+    simulationLabel: text('simulation_label'),
+    recordKind: text('record_kind', { enum: ['simulation', 'live'] }).notNull().default('simulation'),
+    liveActivationDecisionId: text('live_activation_decision_id').references(() => managedLiveActivationDecisions.id),
+    liveClearanceId: text('live_clearance_id').references(() => managedLiveClearances.id),
+    liveFinancialScopeId: text('live_financial_scope_id').references(() => managedLiveFinancialScopes.id),
+    liveCustomerId: text('live_customer_id').references(() => users.id),
     createdAt: timestamp('created_at').notNull(),
   },
   (t) => [
+    check('managed_commercial_snapshots_record_kind', sql`${t.recordKind} IN ('simulation','live')`),
+    check('managed_commercial_snapshots_simulation_label', sql`${t.simulationLabel} IS NULL OR length(trim(${t.simulationLabel}))>0`),
     uniqueIndex('idx_managed_snapshots_order_item').on(t.orderItemId),
     index('idx_managed_snapshots_seller_created').on(t.sellerId, t.createdAt),
     check(
@@ -2846,7 +2941,8 @@ export const managedPayouts = sqliteTable(
       ],
     }).notNull(),
     destinationReference: text('destination_reference').notNull(),
-    simulationLabel: text('simulation_label').notNull(),
+    simulationLabel: text('simulation_label'),
+    recordKind: text('record_kind', { enum: ['simulation', 'live'] }).notNull().default('simulation'),
     preparedBy: text('prepared_by')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
@@ -2861,6 +2957,8 @@ export const managedPayouts = sqliteTable(
     paidAt: timestamp('paid_at'),
   },
   (t) => [
+    check('managed_payouts_record_kind', sql`${t.recordKind} IN ('simulation','live')`),
+    check('managed_payouts_simulation_label', sql`${t.simulationLabel} IS NULL OR length(trim(${t.simulationLabel}))>0`),
     uniqueIndex('idx_managed_payouts_number').on(t.payoutNumber),
     uniqueIndex('idx_managed_payouts_request').on(t.requestId),
     index('idx_managed_payouts_status').on(t.status, t.scheduledFor),
@@ -2896,7 +2994,8 @@ export const managedInvoiceGroups = sqliteTable(
     snapshotJson: text('snapshot_json').notNull(),
     barcodePayload: text('barcode_payload').notNull(),
     qrPayload: text('qr_payload').notNull(),
-    simulationLabel: text('simulation_label').notNull(),
+    simulationLabel: text('simulation_label'),
+    recordKind: text('record_kind', { enum: ['simulation', 'live'] }).notNull().default('simulation'),
     status: text('status', { enum: ['issued', 'voided'] })
       .notNull()
       .default('issued'),
@@ -2905,6 +3004,8 @@ export const managedInvoiceGroups = sqliteTable(
     voidedAt: timestamp('voided_at'),
   },
   (t) => [
+    check('managed_invoice_groups_record_kind', sql`${t.recordKind} IN ('simulation','live')`),
+    check('managed_invoice_groups_simulation_label', sql`${t.simulationLabel} IS NULL OR length(trim(${t.simulationLabel}))>0`),
     uniqueIndex('idx_managed_invoice_number').on(t.invoiceNumber),
     uniqueIndex('idx_managed_invoice_request').on(t.requestId),
     uniqueIndex('idx_managed_invoice_order_issuer').on(
@@ -2925,12 +3026,15 @@ export const managedInvoiceAdjustments = sqliteTable(
     reasonCode: text('reason_code').notNull(),
     note: text('note').notNull(),
     snapshotJson: text('snapshot_json').notNull(),
-    simulationLabel: text('simulation_label').notNull(),
+    simulationLabel: text('simulation_label'),
+    recordKind: text('record_kind', { enum: ['simulation', 'live'] }).notNull().default('simulation'),
     requestId: text('request_id').notNull(),
     createdBy: text('created_by').notNull().references(() => users.id, { onDelete: 'restrict' }),
     issuedAt: timestamp('issued_at').notNull(),
   },
   (t) => [
+    check('managed_invoice_adjustments_record_kind', sql`${t.recordKind} IN ('simulation','live')`),
+    check('managed_invoice_adjustments_simulation_label', sql`${t.simulationLabel} IS NULL OR length(trim(${t.simulationLabel}))>0`),
     uniqueIndex('idx_managed_invoice_adjustments_number').on(t.adjustmentNumber),
     uniqueIndex('idx_managed_invoice_adjustments_request').on(t.requestId),
     index('idx_managed_invoice_adjustments_invoice').on(t.invoiceGroupId, t.issuedAt),
@@ -3038,6 +3142,8 @@ export const formAnswerSets = sqliteTable(
     subjectId: text('subject_id').notNull(),
     actorId: text('actor_id').references(() => users.id, { onDelete: 'restrict' }),
     answersJson: text('answers_json').notNull(),
+    healthEnvironment: text('health_environment'),
+    healthReleaseId: text('health_release_id'),
     createdAt: timestamp('created_at').notNull(),
   },
   (table) => [
@@ -3050,6 +3156,7 @@ export const formAnswerSets = sqliteTable(
     index('idx_form_answer_sets_owner').on(table.subjectType, table.subjectId, table.createdAt),
     index('idx_form_answer_sets_version').on(table.configVersionId, table.createdAt),
     check('form_answer_sets_form_id_length', sql`length(${table.formId}) BETWEEN 1 AND 191`),
+    check('form_answer_sets_health_environment', sql`${table.healthEnvironment} IN ('production','development','local_staging','test')`),
     check('form_answer_sets_request_length', sql`length(${table.requestId}) BETWEEN 1 AND 191`),
     check('form_answer_sets_subject_type_length', sql`length(${table.subjectType}) BETWEEN 1 AND 64`),
     check('form_answer_sets_subject_id_length', sql`length(${table.subjectId}) BETWEEN 1 AND 191`),
@@ -3083,7 +3190,7 @@ export const feedbackDeliveryJobs = sqliteTable(
     id: id(),
     requestId: text('request_id').notNull().unique(),
     formId: text('form_id').notNull(),
-    configVersionId: text('config_version_id').notNull(),
+    configVersionId: text('config_version_id'),
     payloadHash: text('payload_hash').notNull(),
     feedbackJson: text('feedback_json').notNull(),
     status: text('status').notNull(),
@@ -3130,3 +3237,1852 @@ export const managedMakerApplicationDetails = sqliteTable('managed_maker_applica
   check('managed_maker_details_personal_pan',sql`${table.personalPan} IS NULL OR (length(${table.personalPan})=9 AND ${table.personalPan} NOT GLOB '*[^0-9]*')`),
   check('managed_maker_details_accepted_at',sql`${table.agreementAcceptedAt}>0`),
   check('managed_maker_details_snapshot_json',sql`json_valid(${table.agreementSnapshotJson})`)]);
+
+// Public-profile immutable history and baseline capture triggers are defined in 0084.
+export const sellerPublicProfileStates=sqliteTable('seller_public_profile_states',{
+ sellerId:text('seller_id').primaryKey().notNull().references(():AnySQLiteColumn=>sellerProfiles.id),
+ version:integer('version').notNull().default(0),
+ currentJson:text('current_json').notNull(),
+ displayName:text('display_name').notNull(),
+ publicCity:text('public_city').notNull(),
+ about:text('about').notNull(),
+ specialties:text('specialties').notNull(),
+ legacySourcesJson:text('legacy_sources_json').notNull(),
+ provenance:text('provenance').notNull(),
+ legacySavedAt:timestamp('legacy_saved_at'),
+ legacyClockReviewedAt:timestamp('legacy_clock_reviewed_at'),
+ legacyClockValue:integer('legacy_clock_value'),
+ legacyClockEvidence:text('legacy_clock_evidence'),
+ lastNormalPublicationAt:timestamp('last_normal_publication_at'),
+ currentRevisionId:text('current_revision_id'),
+ supportRequestId:text('support_request_id'),
+ updatedAt:timestamp('updated_at').notNull(),
+},_table=>[check('profile_states_check_1',sql.raw("json_valid(current_json)")),
+ check('profile_states_check_2',sql.raw("json_valid(legacy_sources_json)")),
+ check('profile_states_check_3',sql.raw("provenance IN ('legacy_baseline','initial_minimal','reviewed_publication','reviewed_correction')"))]);
+
+export const sellerPublicProfileDrafts=sqliteTable('seller_public_profile_drafts',{
+ sellerId:text('seller_id').primaryKey().notNull().references(():AnySQLiteColumn=>sellerProfiles.id),
+ ownerId:text('owner_id').notNull().references(():AnySQLiteColumn=>users.id),
+ revision:text('revision').notNull(),
+ baseVersion:integer('base_version').notNull(),
+ valuesJson:text('values_json').notNull(),
+ updatedAt:timestamp('updated_at').notNull(),
+},_table=>[check('profile_drafts_check_1',sql.raw("json_valid(values_json)"))]);
+
+export const sellerPublicProfileRevisions=sqliteTable('seller_public_profile_revisions',{
+ id:text('id').primaryKey().notNull(),
+ sellerId:text('seller_id').notNull().references(():AnySQLiteColumn=>sellerProfiles.id),
+ sequence:integer('sequence').notNull(),
+ caseId:text('case_id').notNull().references(():AnySQLiteColumn=>sellerPublicProfileRevisions.id),
+ supersedesId:text('supersedes_id').references(():AnySQLiteColumn=>sellerPublicProfileRevisions.id),
+ kind:text('kind').notNull().default('normal'),
+ correctionCaseId:text('correction_case_id'),
+ baseVersion:integer('base_version').notNull(),
+ baseJson:text('base_json').notNull(),
+ valuesJson:text('values_json').notNull(),
+ contentHash:text('content_hash').notNull(),
+ draftRevision:text('draft_revision').notNull(),
+ submittedBy:text('submitted_by').notNull().references(():AnySQLiteColumn=>users.id),
+ ownerId:text('owner_id').notNull().references(():AnySQLiteColumn=>users.id),
+ submittedAt:timestamp('submitted_at').notNull(),
+ firstSubmittedAt:timestamp('first_submitted_at').notNull(),
+ status:text('status').notNull().default('submitted'),
+ version:integer('version').notNull().default(0),
+ reviewedBy:text('reviewed_by').references(():AnySQLiteColumn=>users.id),
+ reviewedAt:timestamp('reviewed_at'),
+ reviewReason:text('review_reason'),
+ publishedAt:timestamp('published_at'),
+ operationRequestId:text('operation_request_id').notNull(),
+},table=>[check('profile_revisions_check_1',sql.raw("sequence>0")),
+ check('profile_revisions_check_2',sql.raw("kind IN ('normal','correction')")),
+ check('profile_revisions_check_3',sql.raw("json_valid(base_json)")),
+ check('profile_revisions_check_4',sql.raw("json_valid(values_json)")),
+ check('profile_revisions_check_5',sql.raw("status IN ('submitted','changes_requested','rejected','approved','published','withdrawn','needs_rebase')")),
+ uniqueIndex('public_profile_one_normal_candidate').on(table.sellerId).where(sql`kind='normal' AND status IN ('submitted','approved')`),
+ uniqueIndex('public_profile_revision_history').on(table.sellerId,table.sequence)]);
+
+export const sellerPublicProfileRevisionMedia=sqliteTable('seller_public_profile_revision_media',{
+ revisionId:text('revision_id').notNull().references(():AnySQLiteColumn=>sellerPublicProfileRevisions.id),
+ mediaId:text('media_id').notNull().references(():AnySQLiteColumn=>sellerProfileMedia.id),
+ kind:text('kind').notNull(),
+ caption:text('caption').notNull(),
+},table=>[check('profile_revision_media_check_1',sql.raw("kind IN ('profile_image','maker_video')")),
+ primaryKey({columns:[table.revisionId,table.mediaId]}),
+ uniqueIndex('public_profile_revision_media_kind').on(table.revisionId,table.kind)]);
+
+export const sellerPublicProfileEvents=sqliteTable('seller_public_profile_events',{
+ id:text('id').primaryKey().notNull(),
+ sellerId:text('seller_id').notNull().references(():AnySQLiteColumn=>sellerProfiles.id),
+ revisionId:text('revision_id').references(():AnySQLiteColumn=>sellerPublicProfileRevisions.id),
+ correctionId:text('correction_id').references(():AnySQLiteColumn=>sellerPublicProfileCorrections.id),
+ actorId:text('actor_id').references(():AnySQLiteColumn=>users.id),
+ action:text('action').notNull(),
+ reason:text('reason').notNull(),
+ payloadJson:text('payload_json').notNull(),
+ createdAt:timestamp('created_at').notNull(),
+},_table=>[check('profile_events_check_1',sql.raw("json_valid(payload_json)"))]);
+
+export const sellerPublicProfileCorrections=sqliteTable('seller_public_profile_corrections',{
+ id:text('id').primaryKey().notNull(),
+ sellerId:text('seller_id').notNull().references(():AnySQLiteColumn=>sellerProfiles.id),
+ ownerId:text('owner_id').notNull().references(():AnySQLiteColumn=>users.id),
+ category:text('category').notNull(),
+ fieldsJson:text('fields_json').notNull(),
+ scopeHash:text('scope_hash').notNull(),
+ originalBaseVersion:integer('original_base_version').notNull(),
+ originalJson:text('original_json').notNull(),
+ baseVersion:integer('base_version').notNull(),
+ desiredJson:text('desired_json'),
+ requestedBy:text('requested_by').notNull().references(():AnySQLiteColumn=>users.id),
+ requestedAt:timestamp('requested_at').notNull(),
+ reason:text('reason').notNull(),
+ status:text('status').notNull().default('requested'),
+ version:integer('version').notNull().default(0),
+ reviewedBy:text('reviewed_by').references(():AnySQLiteColumn=>users.id),
+ reviewedAt:timestamp('reviewed_at'),
+ reviewReason:text('review_reason'),
+ nextUpdateAt:timestamp('next_update_at'),
+ operationRequestId:text('operation_request_id').notNull(),
+},table=>[check('profile_corrections_check_1',sql.raw("category IN ('wrong_detail','location_correction','privacy','compromised_link','staff_requested')")),
+ check('profile_corrections_check_2',sql.raw("json_valid(fields_json)")),
+ check('profile_corrections_check_3',sql.raw("json_valid(original_json)")),
+ check('profile_corrections_check_4',sql.raw("desired_json IS NULL OR json_valid(desired_json)")),
+ check('profile_corrections_check_5',sql.raw("status IN ('requested','clarification','authorized','declined','applied','withdrawn')")),
+ uniqueIndex('public_profile_correction_active').on(table.sellerId,table.scopeHash).where(sql`status IN ('requested','clarification','authorized')`)]);
+
+export const companyPaymentAccounts=sqliteTable('company_payment_accounts',{
+ id:text('id').primaryKey(),revision:integer('revision').notNull().default(0),latestVersionId:text('latest_version_id'),lastEventId:text('last_event_id').notNull(),
+ createdBy:text('created_by').notNull().references(()=>users.id),createdAt:timestamp('created_at').notNull(),updatedAt:timestamp('updated_at').notNull(),
+},()=>[check('company_account_revision',sql`revision>=0`)]);
+export const companyPaymentAccountIdentities=sqliteTable('company_payment_account_identities',{
+ identityHash:text('identity_hash').primaryKey(),accountId:text('account_id').notNull().references(()=>companyPaymentAccounts.id),
+},()=>[check('company_account_identity_hash',sql`length(identity_hash)=64`)]);
+export const companyPaymentAccountVersions=sqliteTable('company_payment_account_versions',{
+ id:text('id').primaryKey(),accountId:text('account_id').notNull().references(()=>companyPaymentAccounts.id),number:integer('number').notNull(),
+ supersedesId:text('supersedes_id').references(():AnySQLiteColumn=>companyPaymentAccountVersions.id),identityHash:text('identity_hash').notNull().references(()=>companyPaymentAccountIdentities.identityHash),
+ revision:integer('revision').notNull().default(0),status:text('status').notNull().default('draft'),detailsJson:text('details_json').notNull(),evidenceReference:text('evidence_reference').notNull(),conflictsJson:text('conflicts_json').notNull(),
+ createdBy:text('created_by').notNull().references(()=>users.id),createdAt:timestamp('created_at').notNull(),submittedAt:timestamp('submitted_at'),
+ verifiedBy:text('verified_by').references(()=>users.id),verifiedAt:timestamp('verified_at'),verificationReference:text('verification_reference'),
+},table=>[uniqueIndex('company_account_version_number').on(table.accountId,table.number),check('company_account_version_revision',sql`revision>=0 AND number>0`),
+ check('company_account_status',sql`status IN ('draft','awaiting_verification','verified','inactive')`),check('company_account_details',sql`json_valid(details_json) AND json_type(details_json)='object'`),
+ check('company_account_conflicts',sql`json_valid(conflicts_json) AND json_type(conflicts_json)='array'`),check('company_account_evidence',sql`length(trim(evidence_reference)) BETWEEN 8 AND 500`),
+ check('company_account_submission',sql`status NOT IN ('awaiting_verification','verified') OR submitted_at IS NOT NULL`),
+ check('company_account_verification',sql`status<>'verified' OR (verified_by IS NOT NULL AND verified_at IS NOT NULL AND length(trim(verification_reference))>=8)`)]);
+export const companyPaymentAccountCurrent=sqliteTable('company_payment_account_current',{
+ currency:text('currency').primaryKey(),versionId:text('version_id').references(()=>companyPaymentAccountVersions.id),revision:integer('revision').notNull().default(0),updatedBy:text('updated_by').references(()=>users.id),updatedAt:timestamp('updated_at').notNull(),
+},()=>[check('company_receiving_currency',sql`currency='NPR'`),check('company_receiving_revision',sql`revision>=0`)]);
+export const companyPaymentAccountEvents=sqliteTable('company_payment_account_events',{
+ id:text('id').primaryKey(),accountId:text('account_id').notNull().references(()=>companyPaymentAccounts.id),versionId:text('version_id').notNull().references(()=>companyPaymentAccountVersions.id),
+ actorId:text('actor_id').notNull().references(()=>users.id),action:text('action').notNull(),reason:text('reason').notNull(),createdAt:timestamp('created_at').notNull(),
+},()=>[check('company_account_event_reason',sql`length(trim(reason)) BETWEEN 10 AND 1000`)]);
+export const companyPaymentInstructions=sqliteTable('company_payment_instructions',{
+ orderId:text('order_id').primaryKey().references(()=>orders.id),accountVersionId:text('account_version_id').notNull().references(()=>companyPaymentAccountVersions.id),snapshotJson:text('snapshot_json').notNull(),
+ amountPaisa:integer('amount_paisa').notNull(),currency:text('currency').notNull(),paymentReference:text('payment_reference').notNull().unique(),issuedAt:timestamp('issued_at').notNull(),deadlineAt:timestamp('deadline_at').notNull(),
+ calendarVersion:text('calendar_version').notNull(),issuedBy:text('issued_by').notNull().references(()=>users.id),requestId:text('request_id').notNull().unique(),
+},()=>[check('company_instruction_json',sql`json_valid(snapshot_json) AND json_type(snapshot_json)='object'`),check('company_instruction_amount',sql`amount_paisa>0 AND amount_paisa<=9007199254740991`),check('company_instruction_currency',sql`currency='NPR'`),check('company_instruction_deadline',sql`deadline_at=issued_at+86400000`)]);
+
+export const categoryTemplateVersions=sqliteTable('category_template_versions',{
+ id:text('id').primaryKey(),categoryId:text('category_id').notNull().references(()=>categories.id),version:integer('version').notNull(),contractJson:text('contract_json').notNull(),
+ createdBy:text('created_by').notNull().references(()=>users.id),createdAt:timestamp('created_at').notNull(),reason:text('reason').notNull(),
+},table=>[uniqueIndex('category_template_version_number').on(table.categoryId,table.version),check('category_template_number',sql`version>0`),check('category_template_json',sql`json_valid(contract_json)`),check('category_template_reason',sql`length(trim(reason)) BETWEEN 10 AND 1000`)]);
+export const categoryTemplateStates=sqliteTable('category_template_states',{
+ categoryId:text('category_id').primaryKey().references(()=>categories.id),versionId:text('version_id').notNull().references(()=>categoryTemplateVersions.id),revision:integer('revision').notNull(),
+ lastEventId:text('last_event_id').notNull(),updatedBy:text('updated_by').notNull().references(()=>users.id),updatedAt:timestamp('updated_at').notNull(),
+},()=>[check('category_template_revision',sql`revision>=0`)]);
+export const productIntakeDrafts=sqliteTable('product_intake_drafts',{
+ id:text('id').primaryKey(),ownerId:text('owner_id').notNull().references(()=>users.id),sellerId:text('seller_id').notNull().references(()=>sellerProfiles.id),productId:text('product_id').references(()=>products.id),
+ revision:integer('revision').notNull().default(0),categoryId:text('category_id'),answersJson:text('answers_json').notNull(),categoryChangeJson:text('category_change_json'),createdAt:timestamp('created_at').notNull(),updatedAt:timestamp('updated_at').notNull(),
+},()=>[check('product_intake_revision',sql`revision>=0`),check('product_intake_answers',sql`json_valid(answers_json)`),check('product_intake_category_change',sql`category_change_json IS NULL OR json_valid(category_change_json)`)]);
+export const productIntakeVersions=sqliteTable('product_intake_versions',{
+ id:text('id').primaryKey(),draftId:text('draft_id').notNull().references(()=>productIntakeDrafts.id),revision:integer('revision').notNull(),categoryId:text('category_id'),answersJson:text('answers_json').notNull(),
+ categoryContractVersionId:text('category_contract_version_id').references(()=>categoryTemplateVersions.id),createdAt:timestamp('created_at').notNull(),requestId:text('request_id').notNull().unique(),
+},table=>[uniqueIndex('product_intake_saved_revision').on(table.draftId,table.revision),check('product_intake_version_revision',sql`revision>=0`),check('product_intake_version_answers',sql`json_valid(answers_json)`)]);
+
+export const productOfferVersions=sqliteTable('product_offer_versions',{
+ id:text('id').primaryKey(),productId:text('product_id').notNull().references(()=>products.id),matrixJson:text('matrix_json').notNull(),createdBy:text('created_by').notNull().references(()=>users.id),createdAt:timestamp('created_at').notNull(),
+});
+export const productOfferHeads=sqliteTable('product_offer_heads',{
+ productId:text('product_id').primaryKey().references(()=>products.id),revision:integer('revision').notNull(),candidateVersionId:text('candidate_version_id').references(()=>productOfferVersions.id),currentVersionId:text('current_version_id').references(()=>productOfferVersions.id),inventoryMapped:integer('inventory_mapped').notNull().default(0),updatedAt:timestamp('updated_at').notNull(),
+},()=>[check('product_offer_head_revision',sql`revision>=0`),check('product_offer_mapped_boolean',sql`inventory_mapped IN (0,1)`)]);
+export const productOfferIdentities=sqliteTable('product_offer_identities',{
+ id:text('id').primaryKey(),productId:text('product_id').notNull().references(()=>products.id),platformSku:text('platform_sku').notNull().unique(),physicalJson:text('physical_json').notNull(),stockFamilyKey:text('stock_family_key').notNull(),baseUnit:text('base_unit').notNull(),unitsPerOffer:integer('units_per_offer').notNull(),createdAt:timestamp('created_at').notNull(),
+},table=>[index('product_offer_identity_product').on(table.productId),check('product_offer_base_unit',sql`base_unit IN ('piece','gram','millilitre')`),check('product_offer_units_positive',sql`units_per_offer>0`)]);
+export const productOfferCurrent=sqliteTable('product_offer_current',{
+ offerId:text('offer_id').primaryKey().references(()=>productOfferIdentities.id),productId:text('product_id').notNull().references(()=>products.id),versionId:text('version_id').notNull().references(()=>productOfferVersions.id),offerJson:text('offer_json').notNull(),
+},table=>[index('product_offer_current_product').on(table.productId)]);
+export const productOfferDecisions=sqliteTable('product_offer_decisions',{
+ id:text('id').primaryKey(),productId:text('product_id').notNull().references(()=>products.id),versionId:text('version_id').notNull().references(()=>productOfferVersions.id),action:text('action').notNull(),actorId:text('actor_id').notNull().references(()=>users.id),reason:text('reason').notNull(),createdAt:timestamp('created_at').notNull(),
+});
+export const offerStock=sqliteTable('offer_stock',{
+ offerId:text('offer_id').primaryKey().references(()=>productOfferIdentities.id),available:integer('available').notNull(),reserved:integer('reserved').notNull(),revision:integer('revision').notNull(),paused:integer('paused').notNull().default(0),needsReconfirmation:integer('needs_reconfirmation').notNull().default(0),confirmedAt:timestamp('confirmed_at').notNull(),updatedAt:timestamp('updated_at').notNull(),
+},()=>[check('offer_stock_counts',sql`available>=0 AND reserved>=0 AND revision>=0`),check('offer_stock_flags',sql`paused IN (0,1) AND needs_reconfirmation IN (0,1)`)]);
+export const offerStockEvents=sqliteTable('offer_stock_events',{
+ id:text('id').primaryKey(),offerId:text('offer_id').notNull().references(()=>productOfferIdentities.id),kind:text('kind').notNull(),availableDelta:integer('available_delta').notNull(),reservedDelta:integer('reserved_delta').notNull(),relatedOfferId:text('related_offer_id').references(()=>productOfferIdentities.id),reason:text('reason').notNull(),actorId:text('actor_id').references(()=>users.id),requestId:text('request_id').notNull(),createdAt:timestamp('created_at').notNull(),
+},table=>[index('offer_stock_events_history').on(table.offerId,table.createdAt)]);
+export const offerStockReservations=sqliteTable('offer_stock_reservations',{
+ id:text('id').primaryKey(),offerId:text('offer_id').notNull().references(()=>productOfferIdentities.id),versionId:text('version_id').notNull().references(()=>productOfferVersions.id),customerId:text('customer_id').references(()=>users.id),quantity:integer('quantity').notNull(),snapshotJson:text('snapshot_json').notNull(),state:text('state',{enum:['reserved','released','consumed']}).notNull(),revision:integer('revision').notNull(),createdAt:timestamp('created_at').notNull(),updatedAt:timestamp('updated_at').notNull(),
+},table=>[index('offer_reservation_offer').on(table.offerId,table.state),check('offer_reservation_values',sql`quantity>0 AND revision>=0`),check('offer_reservation_state',sql`state IN ('reserved','released','consumed')`)]);
+export const orderItemOfferSnapshots=sqliteTable('order_item_offer_snapshots',{
+ orderItemId:text('order_item_id').primaryKey().references(()=>orderItems.id),offerId:text('offer_id').notNull().references(()=>productOfferIdentities.id),versionId:text('version_id').notNull().references(()=>productOfferVersions.id),reservationId:text('reservation_id').unique().references(()=>offerStockReservations.id),snapshotJson:text('snapshot_json').notNull(),legacyMapping:integer('legacy_mapping').notNull(),createdAt:timestamp('created_at').notNull(),
+},()=>[check('order_offer_legacy_boolean',sql`legacy_mapping IN (0,1)`)]);
+
+export const commissionCommonPolicies=sqliteTable('commission_common_policies',{
+ id:text('id').primaryKey(),registeredSettingId:text('registered_setting_id').notNull().unique().references(()=>businessSettingVersions.id),managedSettingId:text('managed_setting_id').notNull().unique().references(()=>businessSettingVersions.id),basisPoints:integer('basis_points').notNull(),effectiveAt:timestamp('effective_at').notNull(),publishedAt:timestamp('published_at').notNull(),publishedBy:text('published_by').notNull().references(()=>users.id),reason:text('reason').notNull(),termsText:text('terms_text').notNull(),replacesId:text('replaces_id').references(():AnySQLiteColumn=>commissionCommonPolicies.id),
+},()=>[check('common_fee_rate',sql`basis_points BETWEEN 0 AND 10000`),check('common_fee_notice',sql`effective_at>=published_at+1296000000`)]);
+export const commissionCommonCancellations=sqliteTable('commission_common_cancellations',{
+ policyId:text('policy_id').primaryKey().references(()=>commissionCommonPolicies.id),replacementId:text('replacement_id').references(()=>commissionCommonPolicies.id),actorId:text('actor_id').notNull().references(()=>users.id),reason:text('reason').notNull(),createdAt:timestamp('created_at').notNull(),eventId:text('event_id').notNull().unique(),
+});
+export const commissionTermsCases=sqliteTable('commission_terms_cases',{
+ id:text('id').primaryKey(),sellerId:text('seller_id').notNull().references(()=>sellerProfiles.id),sourceVersionId:text('source_version_id').notNull().references(()=>businessSettingVersions.id),offerKey:text('offer_key').notNull(),route:text('route',{enum:['registered_seller','managed_maker']}).notNull(),state:text('state',{enum:['open','accepted','replaced']}).notNull(),revision:integer('revision').notNull().default(1),publishedAt:timestamp('published_at').notNull(),effectiveAt:timestamp('effective_at').notNull(),createdAt:timestamp('created_at').notNull(),observedAt:timestamp('observed_at').notNull(),lastNoticeEventId:text('last_notice_event_id'),lastStaffEventId:text('last_staff_event_id'),lastContactAt:timestamp('last_contact_at'),lastReplyAt:timestamp('last_reply_at'),holdReviewedAt:timestamp('hold_reviewed_at'),superAdminReviewedAt:timestamp('super_admin_reviewed_at'),nextReviewAt:timestamp('next_review_at'),technicalIssueAt:timestamp('technical_issue_at'),technicalOwnerId:text('technical_owner_id').references(()=>users.id),technicalResolvedAt:timestamp('technical_resolved_at'),deliveryIssueAt:timestamp('delivery_issue_at'),deliveryResolvedAt:timestamp('delivery_resolved_at'),
+},table=>[uniqueIndex('commission_terms_case_offer').on(table.sellerId,table.offerKey),check('commission_terms_route',sql`route IN ('registered_seller','managed_maker')`),check('commission_terms_state',sql`state IN ('open','accepted','replaced')`)]);
+export const commissionTermsEvents=sqliteTable('commission_terms_events',{
+ id:text('id').primaryKey(),caseId:text('case_id').notNull().references(()=>commissionTermsCases.id),eventKey:text('event_key').notNull().unique(),kind:text('kind').notNull(),dueAt:timestamp('due_at').notNull(),createdAt:timestamp('created_at').notNull(),routine:integer('routine').notNull(),actorId:text('actor_id').references(()=>users.id),detailJson:text('detail_json').notNull(),
+},()=>[check('commission_terms_routine_boolean',sql`routine IN (0,1)`)]);
+export const commissionTermsEmailControls=sqliteTable('commission_terms_email_controls',{
+ sellerId:text('seller_id').primaryKey().references(()=>sellerProfiles.id),revision:integer('revision').notNull().default(0),lastRoutineQueuedAt:timestamp('last_routine_queued_at'),lastRoutineSentAt:timestamp('last_routine_sent_at'),lastPersonalContactAt:timestamp('last_personal_contact_at'),lastRoutineMessageId:text('last_routine_message_id'),routineClaimToken:text('routine_claim_token'),routineClaimMessageId:text('routine_claim_message_id'),routineClaimUntil:timestamp('routine_claim_until').notNull().default(sql`0`),
+});
+export const commissionTermsHoldBatches=sqliteTable('commission_terms_hold_batches',{id:text('id').primaryKey(),createdAt:timestamp('created_at').notNull()});
+export const commissionTermsHoldBatchEvents=sqliteTable('commission_terms_hold_batch_events',{eventId:text('event_id').primaryKey().references(()=>commissionTermsEvents.id),batchId:text('batch_id').notNull().references(()=>commissionTermsHoldBatches.id)});
+export const commissionTermsScanState=sqliteTable('commission_terms_scan_state',{id:text('id').primaryKey(),cursor:text('cursor').notNull().default(''),revision:integer('revision').notNull().default(0)},()=>[check('fee_terms_scan_singleton',sql`id='default'`)]);
+
+export const productPrivatePriceInputs=sqliteTable('product_private_price_inputs',{
+ id:text('id').primaryKey(),ownerId:text('owner_id').notNull().references(()=>users.id),subjectKind:text('subject_kind',{enum:['product','intake']}).notNull(),subjectId:text('subject_id').notNull(),offerKey:text('offer_key').notNull(),revision:integer('revision').notNull(),costText:text('cost_text').notNull(),targetText:text('target_text').notNull(),updatedAt:timestamp('updated_at').notNull(),
+},table=>[uniqueIndex('private_price_subject').on(table.ownerId,table.subjectKind,table.subjectId,table.offerKey),check('private_price_revision',sql`revision>=0`),check('private_price_kind',sql`subject_kind IN ('product','intake')`)]);
+export const productPrivatePriceRequests=sqliteTable('product_private_price_requests',{
+ ownerId:text('owner_id').notNull().references(()=>users.id),requestId:text('request_id').notNull(),payloadDigest:text('payload_digest').notNull(),revision:integer('revision').notNull(),createdAt:timestamp('created_at').notNull(),
+},table=>[primaryKey({columns:[table.ownerId,table.requestId]}),check('private_price_request_revision',sql`revision>=0`)]);
+
+export const productPriceReferenceReviews=sqliteTable('product_price_reference_reviews',{
+ sellerId:text('seller_id').notNull().references(()=>sellerProfiles.id),
+ id:text('id').primaryKey(),productId:text('product_id').notNull().references(()=>products.id),offerId:text('offer_id').notNull(),versionId:text('version_id').notNull().references(()=>productOfferVersions.id),reviewRevision:integer('review_revision').notNull(),physicalJson:text('physical_json').notNull(),sellingPaisa:integer('selling_paisa').notNull(),comparePaisa:integer('compare_paisa').notNull(),decision:text('decision',{enum:['approved','suppressed']}).notNull(),evidenceKind:text('evidence_kind',{enum:['historical_order','external_offer','review_finding','platform_orderable']}).notNull(),evidenceReference:text('evidence_reference').notNull(),historyBasis:text('history_basis'),offeredFrom:timestamp('offered_from'),offeredTo:timestamp('offered_to'),reason:text('reason').notNull(),actorId:text('actor_id').notNull().references(()=>users.id),createdAt:timestamp('created_at').notNull(),
+},table=>[uniqueIndex('price_reference_review').on(table.productId,table.offerId,table.versionId,table.reviewRevision),check('price_reference_pair',sql`selling_paisa>0 AND compare_paisa>selling_paisa`),check('price_reference_history_basis',sql`(evidence_kind='platform_orderable' AND history_basis IS NOT NULL AND length(trim(history_basis))>=10) OR (evidence_kind<>'platform_orderable' AND history_basis IS NULL)`),check('price_reference_evidence_kind',sql`evidence_kind IN ('historical_order','external_offer','review_finding','platform_orderable')`),check('price_reference_dates',sql`(evidence_kind='review_finding' AND decision='suppressed' AND offered_from IS NULL AND offered_to IS NULL) OR (evidence_kind<>'review_finding' AND offered_from IS NOT NULL AND offered_to IS NOT NULL AND offered_from>=0 AND offered_to>=offered_from AND offered_to<=created_at)`)]);
+export const productDiscountCycles=sqliteTable('product_discount_cycles',{
+ id:text('id').primaryKey(),productId:text('product_id').notNull().references(()=>products.id),offerId:text('offer_id').notNull().references(()=>productOfferIdentities.id),versionId:text('version_id').notNull().references(()=>productOfferVersions.id),referenceId:text('reference_id').notNull().references(()=>productPriceReferenceReviews.id),sellingPaisa:integer('selling_paisa').notNull(),comparePaisa:integer('compare_paisa').notNull(),priceText:text('price_text').notNull(),compareText:text('compare_text').notNull(),firstPublishedAt:timestamp('first_published_at').notNull(),visibleSince:timestamp('visible_since'),dismissedAt:timestamp('dismissed_at'),day23:text('day23',{enum:['pending','sent','skipped']}).notNull().default('pending'),day29:text('day29',{enum:['pending','sent','skipped']}).notNull().default('pending'),revision:integer('revision').notNull().default(0),
+},table=>[uniqueIndex('discount_cycle_pair').on(table.productId,table.offerId,table.sellingPaisa,table.comparePaisa),index('product_discount_pending').on(table.productId,table.firstPublishedAt),check('discount_cycle_values',sql`selling_paisa>0 AND compare_paisa>selling_paisa AND revision>=0`)]);
+export const productDiscountAdvisories=sqliteTable('product_discount_advisories',{
+ id:text('id').primaryKey(),productId:text('product_id').notNull().references(()=>products.id),windowDay:integer('window_day').notNull(),suggestedAt:timestamp('suggested_at').notNull(),createdAt:timestamp('created_at').notNull(),
+},table=>[uniqueIndex('discount_advisory_window').on(table.productId,table.windowDay,table.suggestedAt),check('discount_advisory_day',sql`window_day IN (23,29)`)]);
+export const productDiscountAdvisoryItems=sqliteTable('product_discount_advisory_items',{
+ advisoryId:text('advisory_id').notNull().references(()=>productDiscountAdvisories.id),cycleId:text('cycle_id').notNull().references(()=>productDiscountCycles.id),
+},table=>[primaryKey({columns:[table.advisoryId,table.cycleId]})]);
+
+export const productIntakeWorkspaceVersions=sqliteTable('product_intake_workspace_versions',{
+ id:text('id').primaryKey(),draftId:text('draft_id').notNull().references(()=>productIntakeDrafts.id),revision:integer('revision').notNull(),kind:text('kind',{enum:['private','review_only']}).notNull().default('private'),basePublicVersionId:text('base_public_version_id'),snapshotJson:text('snapshot_json').notNull(),createdBy:text('created_by').notNull().references(()=>users.id),createdAt:timestamp('created_at').notNull(),
+},table=>[uniqueIndex('intake_workspace_revision').on(table.draftId,table.revision).where(sql`kind='private'`),check('intake_workspace_json',sql`json_valid(snapshot_json)`)]);
+export const productIntakeWorkspaceHeads=sqliteTable('product_intake_workspace_heads',{
+ draftId:text('draft_id').primaryKey().references(()=>productIntakeDrafts.id),versionId:text('version_id').notNull().references(()=>productIntakeWorkspaceVersions.id),
+});
+export const productIntakeMedia=sqliteTable('product_intake_media',{
+ id:text('id').primaryKey(),draftId:text('draft_id').notNull().references(()=>productIntakeDrafts.id),ownerId:text('owner_id').notNull().references(()=>users.id),requestId:text('request_id').notNull(),objectKey:text('object_key').notNull().unique(),mimeType:text('mime_type').notNull(),sizeBytes:integer('size_bytes').notNull(),originalName:text('original_name').notNull(),contentDigest:text('content_digest').notNull(),state:text('state',{enum:['uploading','ready']}).notNull(),createdAt:timestamp('created_at').notNull(),completedAt:timestamp('completed_at'),
+},table=>[uniqueIndex('intake_media_request').on(table.ownerId,table.requestId),index('product_intake_media_draft').on(table.draftId,table.createdAt,table.id),check('intake_media_size',sql`size_bytes>0`),check('intake_media_state',sql`state IN ('uploading','ready')`)]);
+export const productIntakeCases=sqliteTable('product_intake_cases',{
+ id:text('id').primaryKey(),draftId:text('draft_id').notNull().references(()=>productIntakeDrafts.id),cycleNumber:integer('cycle_number').notNull().default(0),versionId:text('version_id').notNull().references(()=>productIntakeWorkspaceVersions.id),revision:integer('revision').notNull().default(0),state:text('state',{enum:['details_needed','submitted','in_review','waiting_seller','ready_for_decision','resolved']}).notNull(),firstRequestedAt:timestamp('first_requested_at').notNull(),triageDueAt:timestamp('triage_due_at').notNull(),triagedAt:timestamp('triaged_at'),firstCompleteAt:timestamp('first_complete_at'),reviewDueAt:timestamp('review_due_at'),firstReviewedAt:timestamp('first_reviewed_at'),lastEventId:text('last_event_id').notNull(),activeProposalId:text('active_proposal_id'),
+},table=>[uniqueIndex('intake_case_cycle').on(table.draftId,table.cycleNumber),uniqueIndex('intake_case_active').on(table.draftId).where(sql`state<>'resolved'`),check('intake_case_clock',sql`revision>=0 AND triage_due_at>=first_requested_at`),check('intake_case_state',sql`state IN ('details_needed','submitted','in_review','waiting_seller','ready_for_decision','resolved')`)]);
+export const productIntakeEvents=sqliteTable('product_intake_events',{
+ id:text('id').primaryKey(),caseId:text('case_id').notNull().references(()=>productIntakeCases.id),versionId:text('version_id').notNull().references(()=>productIntakeWorkspaceVersions.id),eventKey:text('event_key').notNull().unique(),kind:text('kind').notNull(),actorId:text('actor_id').notNull().references(()=>users.id),detailJson:text('detail_json').notNull(),createdAt:timestamp('created_at').notNull(),
+},table=>[index('product_intake_event_history').on(table.caseId,table.createdAt,table.id),check('intake_event_json',sql`json_valid(detail_json)`)]);
+export const productIntakeProposals=sqliteTable('product_intake_proposals',{
+ id:text('id').primaryKey(),caseId:text('case_id').notNull().references(()=>productIntakeCases.id),baseVersionId:text('base_version_id').notNull().references(()=>productIntakeWorkspaceVersions.id),patchJson:text('patch_json').notNull(),sourceNote:text('source_note').notNull(),actorId:text('actor_id').notNull().references(()=>users.id),createdAt:timestamp('created_at').notNull(),state:text('state',{enum:['pending','accepted','declined','superseded']}).notNull(),decidedBy:text('decided_by').references(()=>users.id),decidedAt:timestamp('decided_at'),acceptedVersionId:text('accepted_version_id').references(()=>productIntakeWorkspaceVersions.id),
+},table=>[index('product_intake_proposal_history').on(table.caseId,table.createdAt,table.id),check('intake_proposal_json',sql`json_valid(patch_json)`),check('intake_proposal_state',sql`state IN ('pending','accepted','declined','superseded')`)]);
+
+
+export const productPublicationCandidates=sqliteTable('product_publication_candidates',{
+ id:text('id').primaryKey(),productId:text('product_id').notNull().references(()=>products.id),caseId:text('case_id').notNull().references(()=>productIntakeCases.id),workspaceVersionId:text('workspace_version_id').notNull().references(()=>productIntakeWorkspaceVersions.id),offerVersionId:text('offer_version_id').notNull().unique().references(()=>productOfferVersions.id),categoryVersionId:text('category_version_id').notNull().references(()=>categoryTemplateVersions.id),baseVersionId:text('base_version_id').references(():AnySQLiteColumn=>productPublicationCandidates.id),createdBy:text('created_by').notNull().references(()=>users.id),createdAt:timestamp('created_at').notNull(),
+},table=>[index('product_publication_candidates_case').on(table.caseId,table.createdAt)]);
+export const productPublicationLinks=sqliteTable('product_publication_links',{
+ draftId:text('draft_id').primaryKey().references(()=>productIntakeDrafts.id),productId:text('product_id').notNull().unique().references(()=>products.id),baseVersionId:text('base_version_id').references(()=>productPublicationCandidates.id),revision:integer('revision').notNull().default(0),
+});
+export const productPublicationDecisions=sqliteTable('product_publication_decisions',{
+ id:text('id').primaryKey(),versionId:text('version_id').notNull().references(()=>productPublicationCandidates.id),action:text('action',{enum:['approve_only','approve_and_publish','publish_approved','request_changes','reject']}).notNull(),reviewJson:text('review_json').notNull(),publicJson:text('public_json'),orderingFactsReady:integer('ordering_facts_ready',{mode:'boolean'}).notNull().default(false),actorId:text('actor_id').notNull().references(()=>users.id),reason:text('reason').notNull(),createdAt:timestamp('created_at').notNull(),
+});
+export const productOrderablePriceObservations=sqliteTable('product_orderable_price_observations',{
+ id:text('id').primaryKey(),
+ productId:text('product_id').notNull().references(()=>products.id),
+ sellerId:text('seller_id').notNull().references(()=>sellerProfiles.id),
+ offerId:text('offer_id').notNull().references(()=>productOfferIdentities.id),
+ offerVersionId:text('offer_version_id').notNull().references(()=>productOfferVersions.id),
+ publicVersionId:text('public_version_id').notNull().references(()=>productPublicationCandidates.id),
+ publicationId:text('publication_id').notNull().references(()=>productPublicationDecisions.id),
+ physicalJson:text('physical_json').notNull(),scopeJson:text('scope_json').notNull(),
+ sellingPaisa:integer('selling_paisa').notNull(),currency:text('currency',{enum:['NPR']}).notNull(),
+ observedAt:timestamp('observed_at').notNull(),actorId:text('actor_id').notNull().references(()=>users.id),reason:text('reason').notNull(),
+},table=>[index('product_orderable_price_history').on(table.productId,table.sellerId,table.observedAt),check('orderable_price_positive',sql`selling_paisa>0`),check('orderable_price_currency',sql`currency='NPR'`),check('orderable_price_time',sql`observed_at>=0`)]);
+
+export const productPublicationHeads=sqliteTable('product_publication_heads',{
+ productId:text('product_id').primaryKey().references(()=>products.id),revision:integer('revision').notNull().default(0),pendingVersionId:text('pending_version_id').references(()=>productPublicationCandidates.id),currentVersionId:text('current_version_id').references(()=>productPublicationCandidates.id),approvedDecisionId:text('approved_decision_id').references(()=>productPublicationDecisions.id),currentPublicationId:text('current_publication_id').references(()=>productPublicationDecisions.id),lastEventId:text('last_event_id').notNull(),updatedAt:timestamp('updated_at').notNull(),
+});
+export const productPublicationMedia=sqliteTable('product_publication_media',{
+ versionId:text('version_id').notNull().references(()=>productPublicationCandidates.id),mediaId:text('media_id').notNull().references(()=>productMedia.id),sortOrder:integer('sort_order').notNull(),
+},table=>[primaryKey({columns:[table.versionId,table.mediaId]}),uniqueIndex('product_publication_media_order').on(table.versionId,table.sortOrder)]);
+
+export const productAvailabilityEvents=sqliteTable('product_availability_events',{
+ id:text('id').primaryKey(),productId:text('product_id').notNull().references(()=>products.id),revision:integer('revision').notNull(),kind:text('kind',{enum:['owner_pause','owner_resume','owner_stop','owner_restore','staff_withdraw','staff_restore']}).notNull(),ownerPaused:integer('owner_paused',{mode:'boolean'}).notNull(),ownerWithdrawn:integer('owner_withdrawn',{mode:'boolean'}).notNull(),staffWithdrawn:integer('staff_withdrawn',{mode:'boolean'}).notNull(),publicVersionId:text('public_version_id').references(()=>productPublicationCandidates.id),previousEventId:text('previous_event_id').references(():AnySQLiteColumn=>productAvailabilityEvents.id),actorId:text('actor_id').notNull().references(()=>users.id),reason:text('reason').notNull(),requestId:text('request_id').notNull(),createdAt:timestamp('created_at').notNull(),
+},table=>[uniqueIndex('product_availability_event_revision').on(table.productId,table.revision),uniqueIndex('product_availability_event_request').on(table.actorId,table.requestId)]);
+export const productAvailabilityStates=sqliteTable('product_availability_states',{
+ productId:text('product_id').primaryKey().references(()=>products.id),revision:integer('revision').notNull(),ownerPaused:integer('owner_paused',{mode:'boolean'}).notNull(),ownerWithdrawn:integer('owner_withdrawn',{mode:'boolean'}).notNull(),staffWithdrawn:integer('staff_withdrawn',{mode:'boolean'}).notNull(),lastEventId:text('last_event_id').notNull().references(()=>productAvailabilityEvents.id),updatedAt:timestamp('updated_at').notNull(),
+});
+
+export const productLegacyObservations=sqliteTable('product_legacy_observations',{
+ productId:text('product_id').primaryKey().references(()=>products.id),draftId:text('draft_id').notNull().unique().references(()=>productIntakeDrafts.id),sourceFingerprint:text('source_fingerprint').notNull(),observedJson:text('observed_json').notNull(),createdBy:text('created_by').notNull().references(()=>users.id),createdAt:timestamp('created_at').notNull(),
+});
+
+export const productLegacyMediaCopies=sqliteTable('product_legacy_media_copies',{
+ draftId:text('draft_id').notNull().references(()=>productIntakeDrafts.id),sourceMediaId:text('source_media_id').notNull().references(()=>productMedia.id),sourceObjectKey:text('source_object_key').notNull(),intakeMediaId:text('intake_media_id').notNull().unique().references(()=>productIntakeMedia.id),createdBy:text('created_by').notNull().references(()=>users.id),createdAt:timestamp('created_at').notNull(),
+},table=>[primaryKey({columns:[table.draftId,table.sourceMediaId]})]);
+
+export const productPriorityEvents=sqliteTable('product_priority_events',{
+ id:text('id').primaryKey(),caseId:text('case_id').notNull(),productId:text('product_id').notNull().references(()=>products.id),revision:integer('revision').notNull(),kind:text('kind').notNull(),actorId:text('actor_id').notNull().references(()=>users.id),detailJson:text('detail_json').notNull(),createdAt:timestamp('created_at').notNull(),
+},table=>[uniqueIndex('product_priority_event_revision').on(table.caseId,table.revision)]);
+export const productPriorityCases=sqliteTable('product_priority_cases',{
+ id:text('id').primaryKey(),productId:text('product_id').notNull().references(()=>products.id),kind:text('kind').notNull(),publicVersionId:text('public_version_id').references(()=>productPublicationCandidates.id),reportedBy:text('reported_by').notNull().references(()=>users.id),state:text('state').notNull(),activeSlot:integer('active_slot'),revision:integer('revision').notNull(),backupId:text('backup_id').references(()=>users.id),backupUnavailableReason:text('backup_unavailable_reason').notNull().default(''),nextUpdateAt:timestamp('next_update_at'),triagedAt:timestamp('triaged_at'),lastEventId:text('last_event_id').notNull().references(()=>productPriorityEvents.id),createdAt:timestamp('created_at').notNull(),updatedAt:timestamp('updated_at').notNull(),
+},table=>[uniqueIndex('product_priority_active_kind').on(table.productId,table.kind,table.activeSlot)]);
+
+export const productPriorityReportMedia=sqliteTable('product_priority_report_media',{
+ eventId:text('event_id').notNull().references(()=>productPriorityEvents.id),mediaId:text('media_id').notNull().references(()=>productMedia.id),
+},table=>[primaryKey({columns:[table.eventId,table.mediaId]})]);
+
+export const cartOfferLines=sqliteTable('cart_offer_lines',{
+ id:text('id').primaryKey(),cartId:text('cart_id').notNull().references(()=>carts.id),productId:text('product_id').notNull().references(()=>products.id),offerId:text('offer_id').notNull().references(()=>productOfferIdentities.id),versionId:text('version_id').notNull().references(()=>productOfferVersions.id),publicVersionId:text('public_version_id').references(()=>productPublicationCandidates.id),quantity:integer('quantity').notNull(),revision:integer('revision').notNull(),snapshotJson:text('snapshot_json').notNull(),createdAt:timestamp('created_at').notNull(),updatedAt:timestamp('updated_at').notNull(),
+},table=>[uniqueIndex('cart_selected_offer_unique').on(table.cartId,table.offerId)]);
+export const cartOfferCommands=sqliteTable('cart_offer_commands',{
+ cartId:text('cart_id').notNull().references(()=>carts.id),requestId:text('request_id').notNull(),payloadJson:text('payload_json').notNull(),createdAt:timestamp('created_at').notNull(),
+},table=>[primaryKey({columns:[table.cartId,table.requestId]})]);
+
+// T21 original payment windows, independently verified receipts, claims and allocations.
+export const manualPaymentWindows=sqliteTable('manual_payment_windows',{
+ orderId:text('order_id').primaryKey().references(()=>orders.id),
+ amountPaisa:integer('amount_paisa').notNull(),
+ issuedAt:timestamp('issued_at').notNull(),
+ deadlineAt:timestamp('deadline_at').notNull(),
+ bufferEndAt:timestamp('buffer_end_at').notNull(),
+ calendarVersion:text('calendar_version').notNull(),
+ lastEventId:text('last_event_id').notNull(),
+ revision:integer('revision').notNull().default(0),
+ paidAt:timestamp('paid_at'),
+ closedAt:timestamp('closed_at'),
+ releasedAt:timestamp('released_at'),
+ closureReason:text('closure_reason')
+},_t=>[check('manual_payment_windows_check_0',sql`deadline_at=issued_at+86400000`),check('manual_payment_windows_check_1',sql`buffer_end_at>deadline_at`),check('manual_payment_windows_check_2',sql`paid_at IS NULL OR closed_at IS NULL`),check('manual_payment_windows_check_3',sql`released_at IS NULL OR paid_at IS NOT NULL`)]);
+
+export const manualPaymentClaims=sqliteTable('manual_payment_claims',{
+ id:text('id').primaryKey(),
+ orderId:text('order_id').notNull().unique().references(()=>manualPaymentWindows.orderId),
+ customerId:text('customer_id').notNull().references(()=>users.id),
+ claimedAmountPaisa:integer('claimed_amount_paisa').notNull(),
+ paymentDate:text('payment_date').notNull(),
+ bankReference:text('bank_reference'),
+ note:text('note').notNull(),
+ evidenceIdsJson:text('evidence_ids_json').notNull(),
+ firstSubmittedAt:timestamp('first_submitted_at').notNull(),
+ currentState:text('current_state').notNull(),
+ revision:integer('revision').notNull().default(0),
+ updatedAt:timestamp('updated_at').notNull()
+});
+
+export const manualPaymentClaimEvents=sqliteTable('manual_payment_claim_events',{
+ id:text('id').primaryKey(),
+ claimId:text('claim_id').notNull().references(()=>manualPaymentClaims.id),
+ orderId:text('order_id').notNull().references(()=>manualPaymentWindows.orderId),
+ revision:integer('revision').notNull(),
+ state:text('state').notNull(),
+ snapshotJson:text('snapshot_json').notNull(),
+ actorId:text('actor_id').notNull().references(()=>users.id),
+ occurredAt:timestamp('occurred_at').notNull(),
+ requestId:text('request_id').notNull()
+},t=>[uniqueIndex('manual_payment_claim_events_unique').on(t.claimId,t.revision)]);
+
+export const manualPaymentClaimFiles=sqliteTable('manual_payment_claim_files',{
+ id:text('id').primaryKey(),
+ orderId:text('order_id').notNull().references(()=>manualPaymentWindows.orderId),
+ uploadedBy:text('uploaded_by').notNull().references(()=>users.id),
+ objectKey:text('object_key').notNull().unique(),
+ originalName:text('original_name').notNull(),
+ mimeType:text('mime_type').notNull(),
+ sizeBytes:integer('size_bytes').notNull(),
+ createdAt:timestamp('created_at').notNull()
+});
+
+export const companyMoneyReceipts=sqliteTable('company_money_receipts',{
+ id:text('id').primaryKey(),
+ kind:text('kind').notNull(),
+ accountVersionId:text('account_version_id').references(()=>companyPaymentAccountVersions.id),
+ sourceIdentityHash:text('source_identity_hash').notNull().unique(),
+ transactionIdentity:text('transaction_identity').notNull(),
+ bankAt:timestamp('bank_at').notNull(),
+ confirmedAt:timestamp('confirmed_at').notNull(),
+ amountMinor:integer('amount_minor').notNull(),
+ currency:text('currency').notNull(),
+ payerReference:text('payer_reference').notNull(),
+ payerUserId:text('payer_user_id').references(()=>users.id),
+ collectorUserId:text('collector_user_id').references(()=>users.id),
+ evidenceReference:text('evidence_reference').notNull(),
+ verificationReason:text('verification_reason').notNull(),
+ status:text('status').notNull(),
+ revision:integer('revision').notNull().default(0),
+ createdBy:text('created_by').notNull().references(()=>users.id)
+},_t=>[check('company_money_receipts_check_0',sql`kind<>'bank_credit' OR account_version_id IS NOT NULL`),check('company_money_receipts_check_1',sql`kind<>'cash_handover' OR account_version_id IS NULL`)]);
+
+export const companyReceiptConflicts=sqliteTable('company_receipt_conflicts',{
+ receiptId:text('receipt_id').notNull().references(()=>companyMoneyReceipts.id),
+ userId:text('user_id').notNull().references(()=>users.id),
+ recordedBy:text('recorded_by').notNull().references(()=>users.id),
+ recordedAt:timestamp('recorded_at').notNull()
+},t=>[primaryKey({columns:[t.receiptId,t.userId]})]);
+
+export const manualReceiptUses=sqliteTable('manual_receipt_uses',{
+ id:text('id').primaryKey(),
+ receiptId:text('receipt_id').notNull().references(()=>companyMoneyReceipts.id),
+ kind:text('kind').notNull(),
+ targetId:text('target_id').notNull(),
+ amountMinor:integer('amount_minor').notNull(),
+ state:text('state').notNull(),
+ createdBy:text('created_by').notNull().references(()=>users.id),
+ createdAt:timestamp('created_at').notNull(),
+ revision:integer('revision').notNull().default(0)
+});
+
+export const manualPaymentAllocations=sqliteTable('manual_payment_allocations',{
+ id:text('id').primaryKey(),
+ receiptUseId:text('receipt_use_id').notNull().unique().references(()=>manualReceiptUses.id),
+ receiptId:text('receipt_id').notNull().references(()=>companyMoneyReceipts.id),
+ orderId:text('order_id').notNull().references(()=>manualPaymentWindows.orderId),
+ amountPaisa:integer('amount_paisa').notNull(),
+ allocatedAt:timestamp('allocated_at').notNull(),
+ actorId:text('actor_id').notNull().references(()=>users.id),
+ matchingBasis:text('matching_basis').notNull(),
+ exceptionJson:text('exception_json')
+});
+
+export const companyReceiptReversals=sqliteTable('company_receipt_reversals',{
+ id:text('id').primaryKey(),
+ receiptId:text('receipt_id').notNull().references(()=>companyMoneyReceipts.id),
+ sourceIdentityHash:text('source_identity_hash').notNull().unique(),
+ transactionIdentity:text('transaction_identity').notNull(),
+ amountMinor:integer('amount_minor').notNull(),
+ actorId:text('actor_id').notNull().references(()=>users.id),
+ evidenceReference:text('evidence_reference').notNull(),
+ reason:text('reason').notNull(),
+ bankAt:timestamp('bank_at').notNull(),
+ recordedAt:timestamp('recorded_at').notNull()
+});
+
+export const manualPaymentExceptions=sqliteTable('manual_payment_exceptions',{
+ id:text('id').primaryKey(),
+ sourceKey:text('source_key').notNull().unique(),
+ orderId:text('order_id').references(()=>orders.id),
+ receiptId:text('receipt_id').references(()=>companyMoneyReceipts.id),
+ kind:text('kind').notNull(),
+ lastEventId:text('last_event_id').notNull(),
+ state:text('state').notNull(),
+ revision:integer('revision').notNull().default(0),
+ reason:text('reason').notNull(),
+ ownerId:text('owner_id').references(()=>users.id),
+ backupId:text('backup_id').references(()=>users.id),
+ createdAt:timestamp('created_at').notNull(),
+ triagedAt:timestamp('triaged_at'),
+ nextUpdateAt:timestamp('next_update_at').notNull(),
+ updatedAt:timestamp('updated_at').notNull()
+});
+
+export const companyReceiptControls=sqliteTable('company_receipt_controls',{
+ receiptId:text('receipt_id').primaryKey().references(()=>companyMoneyReceipts.id),
+ revision:integer('revision').notNull().default(0)
+});
+
+export const manualPaymentReminders=sqliteTable('manual_payment_reminders',{orderId:text('order_id').primaryKey().references(()=>manualPaymentWindows.orderId),eventId:text('event_id').notNull().unique(),createdAt:timestamp('created_at').notNull()});
+
+export const codCompanyReceiptAllocations=sqliteTable('cod_company_receipt_allocations',{
+ id:text('id').primaryKey(),receiptUseId:text('receipt_use_id').notNull().unique().references(()=>manualReceiptUses.id),receiptId:text('receipt_id').notNull().references(()=>companyMoneyReceipts.id),shippingJobId:text('shipping_job_id').notNull().references(()=>shippingJobs.id),cashRecordId:text('cash_record_id').notNull(),amountPaisa:integer('amount_paisa').notNull(),approvedBy:text('approved_by').notNull().references(()=>users.id),evidenceReference:text('evidence_reference').notNull(),createdAt:timestamp('created_at').notNull()
+});
+export const codApprovedDeductions=sqliteTable('cod_approved_deductions',{
+ id:text('id').primaryKey(),shippingJobId:text('shipping_job_id').notNull().references(()=>shippingJobs.id),courierCostId:text('courier_cost_id').notNull(),amountPaisa:integer('amount_paisa').notNull(),approvedBy:text('approved_by').notNull().references(()=>users.id),termsEvidence:text('terms_evidence').notNull(),partyAllocationJson:text('party_allocation_json').notNull(),createdAt:timestamp('created_at').notNull()
+});
+
+export const manualPaymentExceptionEvents=sqliteTable('manual_payment_exception_events',{
+ id:text('id').primaryKey(),exceptionId:text('exception_id').notNull().references(()=>manualPaymentExceptions.id),revision:integer('revision').notNull(),actorId:text('actor_id').notNull().references(()=>users.id),ownerId:text('owner_id').references(()=>users.id),backupId:text('backup_id').references(()=>users.id),state:text('state').notNull(),note:text('note').notNull(),nextUpdateAt:timestamp('next_update_at').notNull(),createdAt:timestamp('created_at').notNull()
+});
+
+
+// Actual release, scoped holds and immutable preparation follow-up.
+export const orderResponsePortions=sqliteTable('order_response_portions',{
+ id:text('id').primaryKey(),orderId:text('order_id').notNull().references(()=>orders.id),sellerId:text('seller_id').notNull().references(()=>sellerProfiles.id),operatorMode:text('operator_mode',{enum:['seller','company']}).notNull(),createdAt:integer('created_at').notNull(),
+});
+export const orderResponseCases=sqliteTable('order_response_cases',{
+ id:text('id').primaryKey(),portionId:text('portion_id').notNull().references(()=>orderResponsePortions.id),sourceKey:text('source_key').notNull().unique(),kind:text('kind',{enum:['no_response','delay','cannot_fulfill','hold','promise_missed']}).notNull(),state:text('state',{enum:['open','waiting','resolved']}).notNull().default('open'),scopeJson:text('scope_json').notNull(),privateDetail:text('private_detail').notNull(),publicMessage:text('public_message'),proposedReadyAt:integer('proposed_ready_at'),ownerId:text('owner_id').references(()=>users.id),backupId:text('backup_id').references(()=>users.id),reportedBy:text('reported_by').references(()=>users.id),createdAt:integer('created_at').notNull(),firstActionAt:integer('first_action_at'),firstDueAt:integer('first_due_at').notNull(),nextUpdateAt:integer('next_update_at'),commitmentMissing:integer('commitment_missing',{mode:'boolean'}).notNull().default(true),revision:integer('revision').notNull().default(0),lastEventId:text('last_event_id').notNull(),
+});
+export const orderResponseItems=sqliteTable('order_response_items',{
+ orderItemId:text('order_item_id').primaryKey().references(()=>orderItems.id),portionId:text('portion_id').notNull().references(()=>orderResponsePortions.id),releasedAt:integer('released_at').notNull(),progressAt:integer('progress_at'),exceptionCaseId:text('exception_case_id').references(()=>orderResponseCases.id),revision:integer('revision').notNull().default(0),
+});
+export const orderFulfillmentHolds=sqliteTable('order_fulfillment_holds',{
+ id:text('id').primaryKey(),orderItemId:text('order_item_id').notNull().references(()=>orderItems.id),reason:text('reason').notNull(),sourceType:text('source_type').notNull(),sourceId:text('source_id').notNull(),imposedBy:text('imposed_by').references(()=>users.id),ownerId:text('owner_id').references(()=>users.id),preventsPreparation:integer('prevents_preparation',{mode:'boolean'}).notNull(),preventsHandoff:integer('prevents_handoff',{mode:'boolean'}).notNull(),startedAt:integer('started_at').notNull(),reviewDueAt:integer('review_due_at').notNull(),endedAt:integer('ended_at'),endedBy:text('ended_by').references(()=>users.id),releaseReason:text('release_reason'),revision:integer('revision').notNull().default(0),
+});
+export const orderResponseEvents=sqliteTable('order_response_events',{
+ caseState:text('case_state'),caseRevision:integer('case_revision'),dueAt:integer('due_at'),expiresAt:integer('expires_at'),
+ id:text('id').primaryKey(),portionId:text('portion_id').references(()=>orderResponsePortions.id),caseId:text('case_id').references(()=>orderResponseCases.id),orderId:text('order_id').notNull().references(()=>orders.id),kind:text('kind').notNull(),scopeJson:text('scope_json').notNull(),sourceKey:text('source_key').notNull().unique(),actorId:text('actor_id').references(()=>users.id),note:text('note').notNull(),createdAt:integer('created_at').notNull(),
+});
+export const orderResponseMilestones=sqliteTable('order_response_milestones',{
+ orderItemId:text('order_item_id').notNull().references(()=>orderResponseItems.orderItemId),milestone:text('milestone').notNull(),eventId:text('event_id').notNull().references(()=>orderResponseEvents.id),createdAt:integer('created_at').notNull(),
+},table=>[primaryKey({columns:[table.orderItemId,table.milestone]})]);
+
+export const orderResponseCustomerState=sqliteTable('order_response_customer_state',{
+ orderId:text('order_id').primaryKey().references(()=>orders.id),currentEventId:text('current_event_id').notNull().references(()=>orderResponseEvents.id),revision:integer('revision').notNull().default(0),
+});
+
+export const orderCancellationReviews=sqliteTable('order_cancellation_reviews',{
+ id:text('id').primaryKey(),orderId:text('order_id').notNull().references(()=>orders.id),sellerIdsJson:text('seller_ids_json').notNull(),note:text('note').notNull(),status:text('status',{enum:['pending','approved','rejected']}).notNull().default('pending'),requestedBy:text('requested_by'),reviewedBy:text('reviewed_by'),reviewNote:text('review_note'),createdAt:integer('created_at').notNull(),reviewedAt:integer('reviewed_at'),revision:integer('revision').notNull().default(0),ownerId:text('owner_id').references(()=>users.id),backupId:text('backup_id').references(()=>users.id),firstActionAt:integer('first_action_at'),firstDueAt:integer('first_due_at'),nextUpdateAt:integer('next_update_at'),originalFactsJson:text('original_facts_json'),
+});
+
+export const returnHandling=sqliteTable('return_handling',{
+ caseId:text('case_id').primaryKey().references(()=>returnRequests.id),revision:integer('revision').notNull().default(0),ownerId:text('owner_id').references(()=>users.id),backupId:text('backup_id').references(()=>users.id),
+ firstReceivedAt:integer('first_received_at').notNull(),firstDueAt:integer('first_due_at').notNull(),firstActionAt:integer('first_action_at'),nextUpdateAt:integer('next_update_at'),phase:text('phase').notNull().default('requested'),calendarVersion:text('calendar_version'),enoughInformationAt:integer('enough_information_at'),instructionsDueAt:integer('instructions_due_at'),instructionsJson:text('instructions_json'),instructionsAt:integer('instructions_at'),handoffDueAt:integer('handoff_due_at'),handedAt:integer('handed_at'),receivedAt:integer('received_at'),sufficientEvidenceAt:integer('sufficient_evidence_at'),inspectionDueAt:integer('inspection_due_at'),
+ receivedQuantity:integer('received_quantity').notNull().default(0),inspectedQuantity:integer('inspected_quantity').notNull().default(0),restockedQuantity:integer('restocked_quantity').notNull().default(0),waivedQuantity:integer('waived_quantity').notNull().default(0),waitingFor:text('waiting_for').notNull().default('none'),clarificationAt:integer('clarification_at'),clarificationDueAt:integer('clarification_due_at'),lastEventId:text('last_event_id'),createdAt:integer('created_at').notNull(),
+});
+export const returnHandlingEvents=sqliteTable('return_handling_events',{
+ id:text('id').primaryKey(),caseId:text('case_id').notNull().references(()=>returnRequests.id),revision:integer('revision').notNull(),action:text('action').notNull(),actorId:text('actor_id').notNull().references(()=>users.id),occurredAt:integer('occurred_at').notNull(),recordedAt:integer('recorded_at').notNull(),publicMessage:text('public_message').notNull(),privateNote:text('private_note').notNull(),evidenceReference:text('evidence_reference').notNull(),detailsJson:text('details_json').notNull(),requestId:text('request_id').notNull(),
+},table=>[uniqueIndex('return_handling_case_revision').on(table.caseId,table.revision),uniqueIndex('return_handling_actor_request').on(table.actorId,table.requestId)]);
+export const returnReplacementShipments=sqliteTable('return_replacement_shipments',{
+ id:text('id').primaryKey(),caseId:text('case_id').notNull().references(()=>returnRequests.id),quantity:integer('quantity').notNull(),offerId:text('offer_id').references(()=>productOfferIdentities.id),state:text('state').notNull(),revision:integer('revision').notNull().default(0),customerAgreementReference:text('customer_agreement_reference').notNull(),promisedAt:integer('promised_at').notNull(),carrierReference:text('carrier_reference'),dispatchedAt:integer('dispatched_at'),deliveredAt:integer('delivered_at'),closedAt:integer('closed_at'),createdAt:integer('created_at').notNull(),
+});
+export const returnStockActions=sqliteTable('return_stock_actions',{
+ id:text('id').primaryKey(),caseId:text('case_id').notNull().references(()=>returnRequests.id),shipmentId:text('shipment_id').references(()=>returnReplacementShipments.id),offerId:text('offer_id').references(()=>productOfferIdentities.id),productId:text('product_id').references(()=>products.id),kind:text('kind').notNull(),quantity:integer('quantity').notNull(),actorId:text('actor_id').notNull().references(()=>users.id),requestId:text('request_id').notNull(),createdAt:integer('created_at').notNull(),
+},table=>[uniqueIndex('return_stock_case_request_kind').on(table.caseId,table.requestId,table.kind)]);
+
+export const aftercareFollowupEvents=sqliteTable('aftercare_followup_events',{
+ id:text('id').primaryKey(),sourceType:text('source_type').notNull(),sourceId:text('source_id').notNull(),revision:integer('revision').notNull(),actorId:text('actor_id').notNull().references(()=>users.id),ownerId:text('owner_id').references(()=>users.id),backupId:text('backup_id').references(()=>users.id),waitingFor:text('waiting_for').notNull(),nextUpdateAt:integer('next_update_at').notNull(),nextAction:text('next_action').notNull(),publicMessage:text('public_message').notNull(),privateNote:text('private_note').notNull(),requestId:text('request_id').notNull(),createdAt:integer('created_at').notNull(),
+},table=>[uniqueIndex('aftercare_event_request').on(table.actorId,table.requestId),uniqueIndex('aftercare_event_revision').on(table.sourceType,table.sourceId,table.revision)]);
+export const aftercareFollowupMilestones=sqliteTable('aftercare_followup_milestones',{
+ sourceType:text('source_type').notNull(),sourceId:text('source_id').notNull(),cycle:text('cycle').notNull(),kind:text('kind').notNull(),eventId:text('event_id').notNull(),createdAt:integer('created_at').notNull(),
+},table=>[primaryKey({columns:[table.sourceType,table.sourceId,table.cycle,table.kind]})]);
+
+export const refundObligations=sqliteTable('refund_obligations',{
+ id:text('id').primaryKey(),
+ sourceKind:text('source_kind').notNull(),
+ sourceId:text('source_id').notNull(),
+ orderId:text('order_id').references(():AnySQLiteColumn=>orders.id),
+ receiptId:text('receipt_id').references(():AnySQLiteColumn=>companyMoneyReceipts.id),
+ receiptUseId:text('receipt_use_id').references(():AnySQLiteColumn=>manualReceiptUses.id),
+ customerId:text('customer_id').notNull().references(():AnySQLiteColumn=>users.id),
+ cashPaisa:integer('cash_paisa').notNull(),
+ walletPaisa:integer('wallet_paisa').notNull(),
+ currency:text('currency').notNull(),
+ sourceSnapshotJson:text('source_snapshot_json').notNull(),
+ state:text('state').notNull().default('open'),
+ revision:integer('revision').notNull().default(0),
+ ownerId:text('owner_id').notNull().references(():AnySQLiteColumn=>users.id),
+ backupId:text('backup_id').references(():AnySQLiteColumn=>users.id),
+ authorizedAt:integer('authorized_at').notNull(),
+ firstFinanceDueAt:integer('first_finance_due_at').notNull(),
+ firstFinanceAt:integer('first_finance_at'),
+ nextUpdateAt:integer('next_update_at').notNull(),
+ calendarVersion:text('calendar_version').notNull(),
+ createdAt:integer('created_at').notNull()
+});
+
+export const refundObligationEvents=sqliteTable('refund_obligation_events',{
+ id:text('id').primaryKey(),
+ obligationId:text('obligation_id').notNull().references(():AnySQLiteColumn=>refundObligations.id),
+ actorId:text('actor_id').notNull().references(():AnySQLiteColumn=>users.id),
+ action:text('action').notNull(),
+ publicMessage:text('public_message').notNull(),
+ privateDetailsJson:text('private_details_json').notNull(),
+ requestId:text('request_id').notNull(),
+ createdAt:integer('created_at').notNull()
+});
+
+export const refundDestinationHeads=sqliteTable('refund_destination_heads',{
+ obligationId:text('obligation_id').primaryKey().references(():AnySQLiteColumn=>refundObligations.id),
+ versionId:text('version_id'),
+ revision:integer('revision').notNull().default(0)
+});
+
+export const refundDestinationVersions=sqliteTable('refund_destination_versions',{
+ id:text('id').primaryKey(),
+ obligationId:text('obligation_id').notNull().references(():AnySQLiteColumn=>refundObligations.id),
+ number:integer('number').notNull(),
+ revision:integer('revision').notNull().default(0),
+ detailsJson:text('details_json').notNull(),
+ relationship:text('relationship').notNull(),
+ customerAuthorization:text('customer_authorization').notNull(),
+ evidenceReference:text('evidence_reference').notNull(),
+ submittedBy:text('submitted_by').notNull().references(():AnySQLiteColumn=>users.id),
+ sessionHash:text('session_hash').notNull(),
+ authenticatedAt:integer('authenticated_at').notNull(),
+ createdAt:integer('created_at').notNull(),
+ status:text('status').notNull(),
+ verifiedBy:text('verified_by').references(():AnySQLiteColumn=>users.id),
+ verifiedAt:integer('verified_at'),
+ verificationReference:text('verification_reference')
+});
+
+export const companyFundingAccounts=sqliteTable('company_funding_accounts',{
+ accountId:text('account_id').primaryKey().references(():AnySQLiteColumn=>companyPaymentAccounts.id),
+ statementId:text('statement_id'),
+ revision:integer('revision').notNull().default(0)
+});
+
+export const companyFundingStatements=sqliteTable('company_funding_statements',{
+ id:text('id').primaryKey(),
+ accountId:text('account_id').notNull().references(():AnySQLiteColumn=>companyPaymentAccounts.id),
+ accountVersionId:text('account_version_id').notNull().references(():AnySQLiteColumn=>companyPaymentAccountVersions.id),
+ statementIdentity:text('statement_identity').notNull(),
+ asOf:integer('as_of').notNull(),
+ cashPaisa:integer('cash_paisa').notNull(),
+ restrictedPaisa:integer('restricted_paisa').notNull(),
+ evidenceReference:text('evidence_reference').notNull(),
+ restrictionsReference:text('restrictions_reference').notNull(),
+ verifiedBy:text('verified_by').notNull().references(():AnySQLiteColumn=>users.id),
+ recordedAt:integer('recorded_at').notNull()
+});
+
+export const outgoingPaymentPackets=sqliteTable('outgoing_payment_packets',{
+ id:text('id').primaryKey(),
+ obligationId:text('obligation_id').notNull().references(():AnySQLiteColumn=>refundObligations.id),
+ fundingStatementId:text('funding_statement_id').references(():AnySQLiteColumn=>companyFundingStatements.id),
+ accountVersionId:text('account_version_id').references(():AnySQLiteColumn=>companyPaymentAccountVersions.id),
+ destinationVersionId:text('destination_version_id').references(():AnySQLiteColumn=>refundDestinationVersions.id),
+ amountPaisa:integer('amount_paisa').notNull(),
+ currency:text('currency').notNull(),
+ state:text('state').notNull(),
+ revision:integer('revision').notNull().default(0),
+ preparedBy:text('prepared_by').notNull().references(():AnySQLiteColumn=>users.id),
+ approvedBy:text('approved_by').references(():AnySQLiteColumn=>users.id),
+ startedBy:text('started_by').references(():AnySQLiteColumn=>users.id),
+ recordedBy:text('recorded_by').references(():AnySQLiteColumn=>users.id),
+ preparedAt:integer('prepared_at').notNull(),
+ approvedAt:integer('approved_at'),
+ startedAt:integer('started_at'),
+ recordedAt:integer('recorded_at'),
+ bankAt:integer('bank_at'),
+ transactionIdentity:text('transaction_identity'),
+ transactionIdentityHash:text('transaction_identity_hash'),
+ evidenceReference:text('evidence_reference')
+});
+
+export const refundRouteSimulationCaptures = sqliteTable(
+  'refund_route_simulation_captures',
+  {
+    id: text('id').notNull().primaryKey(),
+    orderId: text('order_id').notNull().references(() => orders.id),
+    transactionId: text('transaction_id').notNull(),
+    sessionNumber: text('session_number').notNull(),
+    capturedPaisa: integer('captured_paisa').notNull(),
+    currency: text('currency', { enum: ['NPR'] }).notNull(),
+  },
+  (table) => [
+    unique().on(table.transactionId, table.sessionNumber),
+    check('refund_route_capture_id_valid', sql`length(${table.id})=64 AND ${table.id} NOT GLOB '*[^0-9a-f]*'`),
+    check('refund_route_capture_transaction_valid', sql`length(${table.transactionId}) BETWEEN 1 AND 191`),
+    check('refund_route_capture_session_valid', sql`length(${table.sessionNumber}) BETWEEN 1 AND 191`),
+    check('refund_route_capture_amount_valid', sql`typeof(${table.capturedPaisa})='integer' AND ${table.capturedPaisa} BETWEEN 1 AND 9007199254740991`),
+    check('refund_route_capture_currency_valid', sql`${table.currency}='NPR'`),
+  ],
+);
+
+export const refundRouteSimulationAttempts = sqliteTable(
+  'refund_route_simulation_attempts',
+  {
+    id: text('id').notNull().primaryKey(),
+    obligationId: text('obligation_id').notNull().references(() => refundObligations.id),
+    captureId: text('capture_id').notNull().references(() => refundRouteSimulationCaptures.id),
+    route: text('route', { enum: ['fonepay', 'bank', 'pickup'] }).notNull(),
+    requestId: text('request_id').notNull(),
+    amountPaisa: integer('amount_paisa').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [
+    unique().on(table.obligationId, table.requestId),
+    index('refund_route_capture_attempts').on(table.captureId),
+    check('refund_route_attempt_route_valid', sql`${table.route} IN ('fonepay','bank','pickup')`),
+    check('refund_route_attempt_request_valid', sql`length(${table.requestId}) BETWEEN 1 AND 191`),
+    check('refund_route_attempt_amount_valid', sql`typeof(${table.amountPaisa})='integer' AND ${table.amountPaisa} BETWEEN 1 AND 9007199254740991`),
+    check('refund_route_attempt_clock_valid', sql`typeof(${table.createdAt})='integer' AND ${table.createdAt} BETWEEN 1 AND 9007199254740991`),
+  ],
+);
+
+export const refundRouteSimulationEvents = sqliteTable(
+  'refund_route_simulation_events',
+  {
+    attemptId: text('attempt_id').notNull().references(() => refundRouteSimulationAttempts.id),
+    sequence: integer('sequence').notNull(),
+    route: text('route', { enum: ['fonepay', 'bank', 'pickup'] }).notNull(),
+    providerReference: text('provider_reference').notNull(),
+    eventReference: text('event_reference').notNull(),
+    status: text('status', { enum: ['submitted', 'uncertain', 'partial', 'settled', 'closed'] }).notNull(),
+    settledPaisa: integer('settled_paisa').notNull(),
+    confirmedUnsentPaisa: integer('confirmed_unsent_paisa').notNull(),
+    proofReference: text('proof_reference'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.attemptId, table.sequence] }),
+    unique().on(table.route, table.eventReference),
+    unique().on(table.route, table.proofReference),
+    uniqueIndex('refund_route_original_provider_reference')
+      .on(table.route, table.providerReference)
+      .where(sql`${table.sequence}=1`),
+    check('refund_route_event_sequence_valid', sql`typeof(${table.sequence})='integer' AND ${table.sequence} BETWEEN 1 AND 9007199254740991`),
+    check('refund_route_event_route_valid', sql`${table.route} IN ('fonepay','bank','pickup')`),
+    check('refund_route_event_provider_valid', sql`length(${table.providerReference}) BETWEEN 1 AND 191`),
+    check('refund_route_event_reference_valid', sql`length(${table.eventReference}) BETWEEN 1 AND 191`),
+    check('refund_route_event_status_valid', sql`${table.status} IN ('submitted','uncertain','partial','settled','closed')`),
+    check('refund_route_event_settled_valid', sql`typeof(${table.settledPaisa})='integer' AND ${table.settledPaisa} BETWEEN 0 AND 9007199254740991`),
+    check('refund_route_event_unsent_valid', sql`typeof(${table.confirmedUnsentPaisa})='integer' AND ${table.confirmedUnsentPaisa} BETWEEN 0 AND 9007199254740991`),
+    check('refund_route_event_reference_proof_valid', sql`length(${table.proofReference}) BETWEEN 1 AND 191`),
+    check('refund_route_event_clock_valid', sql`typeof(${table.createdAt})='integer' AND ${table.createdAt} BETWEEN 1 AND 9007199254740991`),
+    check('refund_route_event_terminal_proof_valid', sql`
+      (${table.status} IN ('settled','closed') AND ${table.proofReference} IS NOT NULL)
+      OR (${table.status} NOT IN ('settled','closed') AND ${table.confirmedUnsentPaisa}=0)
+    `),
+  ],
+);
+
+export const refundRouteReservations = sqliteTable(
+  'refund_route_reservations',
+  {
+    obligationId: text('obligation_id').notNull().primaryKey().references(() => refundObligations.id),
+    bankPacketId: text('bank_packet_id').unique().references(() => outgoingPaymentPackets.id),
+    simulationAttemptId: text('simulation_attempt_id').unique().references(() => refundRouteSimulationAttempts.id),
+  },
+  (table) => [
+    check('refund_route_reservation_source_valid', sql`(${table.bankPacketId} IS NULL)<>(${table.simulationAttemptId} IS NULL)`),
+  ],
+);
+
+export const orderDeliveryAllocations=sqliteTable('order_delivery_allocations',{
+ orderItemId:text('order_item_id').primaryKey().references(():AnySQLiteColumn=>orderItems.id),
+ orderId:text('order_id').notNull().references(():AnySQLiteColumn=>orders.id),
+ sellerId:text('seller_id').notNull().references(():AnySQLiteColumn=>sellerProfiles.id),
+ amountPaisa:integer('amount_paisa').notNull(),
+ originalQuantity:integer('original_quantity').notNull(),
+ policyVersion:text('policy_version').notNull(),
+ createdAt:integer('created_at').notNull()
+});
+
+export const lawfulFeeRefundAuthorizations=sqliteTable('lawful_fee_refund_authorizations',{
+ id:text('id').primaryKey(),
+ orderId:text('order_id').notNull().references(():AnySQLiteColumn=>orders.id),
+ customerId:text('customer_id').notNull().references(():AnySQLiteColumn=>users.id),
+ amountPaisa:integer('amount_paisa').notNull(),
+ legalBasis:text('legal_basis').notNull(),
+ caseReference:text('case_reference').notNull(),
+ evidenceReference:text('evidence_reference').notNull(),
+ sourceSnapshotJson:text('source_snapshot_json').notNull(),
+ authorizedBy:text('authorized_by').notNull().references(():AnySQLiteColumn=>users.id),
+ authorizedAt:integer('authorized_at').notNull(),
+ state:text('state').notNull().default('authorized')
+});
+
+export const financeEvidenceIntents=sqliteTable('finance_evidence_intents',{
+ id:text('id').primaryKey(),
+ scopeKind:text('scope_kind').notNull(),
+ scopeId:text('scope_id').notNull(),
+ uploadedBy:text('uploaded_by').notNull().references(():AnySQLiteColumn=>users.id),
+ objectKey:text('object_key').notNull(),
+ originalName:text('original_name').notNull(),
+ mimeType:text('mime_type').notNull(),
+ sizeBytes:integer('size_bytes').notNull(),
+ contentHash:text('content_hash').notNull(),
+ createdAt:integer('created_at').notNull()
+});
+
+export const financeEvidenceFiles=sqliteTable('finance_evidence_files',{
+ id:text('id').primaryKey().references(():AnySQLiteColumn=>financeEvidenceIntents.id),
+ retainedAt:integer('retained_at').notNull()
+});
+
+export const refundCostAllocations=sqliteTable('refund_cost_allocations',{
+ refundId:text('refund_id').notNull().references(():AnySQLiteColumn=>refunds.id),
+ component:text('component').notNull(),
+ party:text('party').notNull(),
+ sellerId:text('seller_id').references(():AnySQLiteColumn=>sellerProfiles.id),
+ amountPaisa:integer('amount_paisa').notNull(),
+ policyVersion:text('policy_version').notNull(),
+ createdBy:text('created_by').notNull().references(():AnySQLiteColumn=>users.id),
+ createdAt:integer('created_at').notNull()
+},table=>[primaryKey({columns:[table.refundId,table.component]})]);
+
+export const refundVariantPricingEffects = sqliteTable(
+  'refund_variant_pricing_effects',
+  {
+    refundId: text('refund_id').notNull().primaryKey().references(() => refunds.id, { onDelete: 'restrict' }),
+    orderItemId: text('order_item_id').notNull().references(() => orderItemPricingSnapshots.orderItemId),
+    policyVersion: text('policy_version', { enum: ['saved_variant_return_v1'] }).notNull(),
+    quantity: integer('quantity').notNull(),
+    unitOrdinalsJson: text('unit_ordinals_json').notNull(),
+    grossItemPaisa: integer('gross_item_paisa').notNull(),
+    sellerPrincipalPaisa: integer('seller_principal_paisa').notNull(),
+    platformAdditionPaisa: integer('platform_addition_paisa').notNull(),
+    taxPaisa: integer('tax_paisa').notNull(),
+    unallocatedMerchandisePaisa: integer('unallocated_merchandise_paisa').notNull(),
+    savedDeliverySharePaisa: integer('saved_delivery_share_paisa').notNull(),
+    retainedOutboundPaisa: integer('retained_outbound_paisa').notNull(),
+    voluntaryPolicyVersion: text('voluntary_policy_version', { enum: ['disclosed_voluntary_delivery_v1'] }),
+    decisionEvidenceReference: text('decision_evidence_reference').notNull(),
+    correctSellerFulfillment: integer('correct_seller_fulfillment', { mode: 'boolean' }).notNull(),
+    approvedBy: text('approved_by').notNull().references(() => users.id),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [
+    index('refund_variant_pricing_effects_item').on(table.orderItemId, table.refundId),
+    check('priced_return_effect_policy_valid', sql`${table.policyVersion}='saved_variant_return_v1'`),
+    check('priced_return_effect_quantity_valid', sql`typeof(${table.quantity})='integer' AND ${table.quantity} BETWEEN 1 AND 9007199254740991`),
+    check('priced_return_effect_ordinals_valid', sql`json_valid(${table.unitOrdinalsJson}) AND json_type(${table.unitOrdinalsJson})='array'`),
+    check('priced_return_effect_gross_valid', sql`typeof(${table.grossItemPaisa})='integer' AND ${table.grossItemPaisa} BETWEEN 0 AND 9007199254740991`),
+    check('priced_return_effect_seller_valid', sql`typeof(${table.sellerPrincipalPaisa})='integer' AND ${table.sellerPrincipalPaisa} BETWEEN 0 AND ${table.grossItemPaisa}`),
+    check('priced_return_effect_addition_valid', sql`typeof(${table.platformAdditionPaisa})='integer' AND ${table.platformAdditionPaisa} BETWEEN 0 AND ${table.grossItemPaisa}`),
+    check('priced_return_effect_tax_valid', sql`typeof(${table.taxPaisa})='integer' AND ${table.taxPaisa} BETWEEN 0 AND ${table.grossItemPaisa}-${table.platformAdditionPaisa}`),
+    check('priced_return_effect_remainder_valid', sql`typeof(${table.unallocatedMerchandisePaisa})='integer' AND ${table.unallocatedMerchandisePaisa}=
+      CASE WHEN ${table.sellerPrincipalPaisa}>0 THEN ${table.grossItemPaisa}-${table.sellerPrincipalPaisa} ELSE 0 END`),
+    check('priced_return_effect_delivery_valid', sql`typeof(${table.savedDeliverySharePaisa})='integer' AND ${table.savedDeliverySharePaisa} BETWEEN 0 AND 9007199254740991`),
+    check('priced_return_effect_retention_valid', sql`typeof(${table.retainedOutboundPaisa})='integer' AND ${table.retainedOutboundPaisa} BETWEEN 0 AND ${table.savedDeliverySharePaisa}`),
+    check('priced_return_effect_voluntary_policy_valid', sql`${table.voluntaryPolicyVersion} IS NULL OR ${table.voluntaryPolicyVersion}='disclosed_voluntary_delivery_v1'`),
+    check('priced_return_effect_evidence_valid', sql`length(trim(${table.decisionEvidenceReference}))>0 AND length(${table.decisionEvidenceReference})<=191`),
+    check('priced_return_effect_fulfillment_valid', sql`typeof(${table.correctSellerFulfillment})='integer' AND ${table.correctSellerFulfillment} IN (0,1)`),
+    check('priced_return_effect_clock_valid', sql`typeof(${table.createdAt})='integer' AND ${table.createdAt} BETWEEN 0 AND 9007199254740991`),
+  ],
+);
+
+export const refundObligationDeadlines=sqliteTable('refund_obligation_deadlines',{
+ obligationId:text('obligation_id').primaryKey().references(():AnySQLiteColumn=>refundObligations.id),
+ revision:integer('revision').notNull().default(0),
+ initiationDueAt:integer('initiation_due_at'),
+ bindingDueAt:integer('binding_due_at'),
+ calendarVersion:text('calendar_version'),
+ policySnapshotJson:text('policy_snapshot_json').notNull(),
+ createdAt:integer('created_at').notNull()
+});
+
+export const orderCancellationEvents=sqliteTable('order_cancellation_events',{
+ id:text('id').primaryKey(),orderId:text('order_id').notNull().references(():AnySQLiteColumn=>orders.id),actorId:text('actor_id').references(():AnySQLiteColumn=>users.id),version:integer('version').notNull(),sellerIdsJson:text('seller_ids_json').notNull(),originalAllocationsJson:text('original_allocations_json').notNull(),previousJson:text('previous_json').notNull(),nextJson:text('next_json').notNull(),note:text('note').notNull(),walletRestoredPaisa:integer('wallet_restored_paisa').notNull(),discountRemovedPaisa:integer('discount_removed_paisa').notNull(),itemRemovedPaisa:integer('item_removed_paisa').notNull(),createdAt:integer('created_at').notNull()
+});
+
+export const cancellationRefundSources=sqliteTable('cancellation_refund_sources',{
+ id:text('id').primaryKey().references(():AnySQLiteColumn=>orderCancellationEvents.id),
+ orderId:text('order_id').notNull().references(():AnySQLiteColumn=>orders.id),
+ customerId:text('customer_id').references(():AnySQLiteColumn=>users.id),
+ cashPaisa:integer('cash_paisa').notNull(),
+ walletRestoredPaisa:integer('wallet_restored_paisa').notNull(),
+ revisedPayablePaisa:integer('revised_payable_paisa').notNull(),
+ actualCollectedPaisa:integer('actual_collected_paisa').notNull(),
+ sourceSnapshotJson:text('source_snapshot_json').notNull(),
+ state:text('state').notNull().default('authorized'),
+ authorizedAt:integer('authorized_at').notNull()
+});
+
+export const orderDeliveryAdjustments=sqliteTable('order_delivery_adjustments',{
+ eventId:text('event_id').notNull().references(():AnySQLiteColumn=>orderCancellationEvents.id),
+ orderItemId:text('order_item_id').notNull().references(():AnySQLiteColumn=>orderItems.id),
+ orderId:text('order_id').notNull().references(():AnySQLiteColumn=>orders.id),
+ sellerId:text('seller_id').notNull().references(():AnySQLiteColumn=>sellerProfiles.id),
+ amountPaisa:integer('amount_paisa').notNull(),
+ originalQuantity:integer('original_quantity').notNull(),
+ policyVersion:text('policy_version').notNull(),
+ createdAt:integer('created_at').notNull()
+},table=>[primaryKey({columns:[table.eventId,table.orderItemId]})]);
+
+export const sellerDispatchEvidence = sqliteTable(
+  'seller_dispatch_evidence',
+  {
+    id: text('id').notNull().primaryKey(),
+    orderId: text('order_id').notNull().references(() => orders.id),
+    orderItemId: text('order_item_id').notNull().references(() => orderItems.id),
+    sellerId: text('seller_id').notNull().references(() => sellerProfiles.id),
+    actorId: text('actor_id').notNull().references(() => users.id),
+    requestId: text('request_id').notNull(),
+    objectKey: text('object_key').notNull().unique(),
+    mimeType: text('mime_type', { enum: ['image/jpeg', 'image/png', 'image/webp'] }).notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    sha256: text('sha256').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [
+    unique().on(table.actorId, table.requestId),
+    index('seller_dispatch_evidence_item').on(table.orderItemId, table.createdAt, table.id),
+    check('seller_dispatch_evidence_request_valid', sql`length(${table.requestId}) BETWEEN 8 AND 150`),
+    check('seller_dispatch_evidence_key_valid', sql`${table.objectKey}='private/seller-dispatch-evidence/'||${table.id}`),
+    check('seller_dispatch_evidence_type_valid', sql`${table.mimeType} IN ('image/jpeg','image/png','image/webp')`),
+    check('seller_dispatch_evidence_size_valid', sql`typeof(${table.sizeBytes})='integer' AND ${table.sizeBytes} BETWEEN 1 AND 5242880`),
+    check('seller_dispatch_evidence_hash_valid', sql`length(${table.sha256})=64 AND ${table.sha256} NOT GLOB '*[^0-9a-f]*'`),
+    check('seller_dispatch_evidence_clock_valid', sql`typeof(${table.createdAt})='integer' AND ${table.createdAt} BETWEEN 1 AND 9007199254740991`),
+  ],
+);
+
+export const orderDeliveryShipmentAllocations = sqliteTable(
+  'order_delivery_shipment_allocations',
+  {
+    id: text('id').notNull().primaryKey(),
+    orderId: text('order_id').notNull().references(() => orders.id),
+    sellerId: text('seller_id').notNull().references(() => sellerProfiles.id),
+    shipmentOrdinal: integer('shipment_ordinal').notNull(),
+    amountPaisa: integer('amount_paisa').notNull(),
+    unitCount: integer('unit_count').notNull(),
+    policyVersion: text('policy_version', { enum: ['seller_shipment_equal_units_v2'] }).notNull(),
+    allocationSource: text('allocation_source').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('delivery_shipment_order_seller').on(table.orderId, table.sellerId),
+    uniqueIndex('delivery_shipment_order_ordinal').on(table.orderId, table.shipmentOrdinal),
+    check('delivery_shipment_ordinal_valid', sql`typeof(${table.shipmentOrdinal})='integer' AND ${table.shipmentOrdinal} BETWEEN 1 AND 9007199254740991`),
+    check('delivery_shipment_amount_valid', sql`typeof(${table.amountPaisa})='integer' AND ${table.amountPaisa} BETWEEN 0 AND 9007199254740991`),
+    check('delivery_shipment_count_valid', sql`typeof(${table.unitCount})='integer' AND ${table.unitCount} BETWEEN 1 AND 9007199254740991`),
+    check('delivery_shipment_policy_valid', sql`${table.policyVersion}='seller_shipment_equal_units_v2'`),
+    check('delivery_shipment_source_valid', sql`length(trim(${table.allocationSource}))>0 AND length(${table.allocationSource})<=191`),
+    check('delivery_shipment_clock_valid', sql`typeof(${table.createdAt})='integer' AND ${table.createdAt} BETWEEN 0 AND 9007199254740991`),
+  ],
+);
+
+export const orderDeliveryUnitAllocations = sqliteTable(
+  'order_delivery_unit_allocations',
+  {
+    shipmentId: text('shipment_id').notNull().references(() => orderDeliveryShipmentAllocations.id),
+    orderId: text('order_id').notNull().references(() => orders.id),
+    orderItemId: text('order_item_id').notNull().references(() => orderItems.id),
+    lineOrdinal: integer('line_ordinal').notNull(),
+    unitOrdinal: integer('unit_ordinal').notNull(),
+    shipmentUnitOrdinal: integer('shipment_unit_ordinal').notNull(),
+    amountPaisa: integer('amount_paisa').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.orderItemId, table.unitOrdinal] }),
+    uniqueIndex('delivery_unit_shipment_ordinal').on(table.shipmentId, table.shipmentUnitOrdinal),
+    index('delivery_unit_order_shipment').on(table.orderId, table.shipmentId, table.shipmentUnitOrdinal),
+    check('delivery_unit_line_ordinal_valid', sql`typeof(${table.lineOrdinal})='integer' AND ${table.lineOrdinal} BETWEEN 1 AND 9007199254740991`),
+    check('delivery_unit_ordinal_valid', sql`typeof(${table.unitOrdinal})='integer' AND ${table.unitOrdinal} BETWEEN 1 AND 9007199254740991`),
+    check('delivery_unit_shipment_ordinal_valid', sql`typeof(${table.shipmentUnitOrdinal})='integer' AND ${table.shipmentUnitOrdinal} BETWEEN 1 AND 9007199254740991`),
+    check('delivery_unit_amount_valid', sql`typeof(${table.amountPaisa})='integer' AND ${table.amountPaisa} BETWEEN 0 AND 9007199254740991`),
+  ],
+);
+
+export const orderDeliveryUnitClaims = sqliteTable(
+  'order_delivery_unit_claims',
+  {
+    orderItemId: text('order_item_id').notNull(),
+    unitOrdinal: integer('unit_ordinal').notNull(),
+    refundId: text('refund_id').references(() => refunds.id),
+    cancellationEventId: text('cancellation_event_id').references(() => orderCancellationEvents.id),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.orderItemId, table.unitOrdinal] }),
+    foreignKey({
+      columns: [table.orderItemId, table.unitOrdinal],
+      foreignColumns: [orderDeliveryUnitAllocations.orderItemId, orderDeliveryUnitAllocations.unitOrdinal],
+    }),
+    index('delivery_unit_claim_refund').on(table.refundId),
+    index('delivery_unit_claim_cancellation').on(table.cancellationEventId),
+    check('delivery_unit_claim_source_valid', sql`(${table.refundId} IS NULL)<>(${table.cancellationEventId} IS NULL)`),
+    check('delivery_unit_claim_clock_valid', sql`typeof(${table.createdAt})='integer' AND ${table.createdAt} BETWEEN 0 AND 9007199254740991`),
+  ],
+);
+
+export const orderDeliveryUnitParcels = sqliteTable(
+  'order_delivery_unit_parcels',
+  {
+    orderItemId: text('order_item_id').notNull(),
+    unitOrdinal: integer('unit_ordinal').notNull(),
+    shippingJobId: text('shipping_job_id').notNull().references(() => shippingJobs.id),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.orderItemId, table.unitOrdinal] }),
+    foreignKey({
+      columns: [table.orderItemId, table.unitOrdinal],
+      foreignColumns: [orderDeliveryUnitAllocations.orderItemId, orderDeliveryUnitAllocations.unitOrdinal],
+    }),
+    index('delivery_unit_parcel_job').on(table.shippingJobId),
+    check('delivery_unit_parcel_clock_valid', sql`typeof(${table.createdAt})='integer' AND ${table.createdAt} BETWEEN 0 AND 9007199254740991`),
+  ],
+);
+
+export const payoutTransferPackets=sqliteTable('payout_transfer_packets',{
+ id:text('id').primaryKey(),
+ payoutModel:text('payout_model').notNull(),
+ registeredPayoutId:text('registered_payout_id').references(():AnySQLiteColumn=>payouts.id),
+ managedPayoutId:text('managed_payout_id').references(():AnySQLiteColumn=>managedPayouts.id),
+ supplierPaymentId:text('supplier_payment_id'),
+ sellerId:text('seller_id').notNull().references(():AnySQLiteColumn=>sellerProfiles.id),
+ beneficiaryVersionId:text('beneficiary_version_id').notNull(),
+ identityRevision:integer('identity_revision').notNull(),
+ bankRevision:integer('bank_revision').notNull(),
+ sourceSnapshotJson:text('source_snapshot_json').notNull(),
+ accountVersionId:text('account_version_id').notNull().references(():AnySQLiteColumn=>companyPaymentAccountVersions.id),
+ fundingStatementId:text('funding_statement_id').notNull().references(():AnySQLiteColumn=>companyFundingStatements.id),
+ amountPaisa:integer('amount_paisa').notNull(),
+ state:text('state').notNull().default('prepared'),
+ revision:integer('revision').notNull().default(0),
+ preparedBy:text('prepared_by').notNull().references(():AnySQLiteColumn=>users.id),
+ preparedAt:integer('prepared_at').notNull(),
+ approvedBy:text('approved_by').references(():AnySQLiteColumn=>users.id),
+ approvedAt:integer('approved_at'),
+ startedBy:text('started_by').references(():AnySQLiteColumn=>users.id),
+ startedAt:integer('started_at'),
+ recordedBy:text('recorded_by').references(():AnySQLiteColumn=>users.id),
+ recordedAt:integer('recorded_at'),
+ bankAt:integer('bank_at'),
+ transactionIdentity:text('transaction_identity'),
+ transactionIdentityHash:text('transaction_identity_hash'),
+ evidenceReference:text('evidence_reference'),
+ failureBasis:text('failure_basis')
+});
+
+export const companyOutgoingBankIdentities=sqliteTable('company_outgoing_bank_identities',{
+ identityHash:text('identity_hash').primaryKey(),
+ packetKind:text('packet_kind').notNull(),
+ packetId:text('packet_id').notNull(),
+ accountVersionId:text('account_version_id').notNull().references(():AnySQLiteColumn=>companyPaymentAccountVersions.id),
+ transactionIdentity:text('transaction_identity').notNull(),
+ amountPaisa:integer('amount_paisa').notNull(),
+ bankAt:integer('bank_at').notNull(),
+ recordedAt:integer('recorded_at').notNull()
+});
+
+export const sellerRecoveryCases=sqliteTable('seller_recovery_cases',{
+ liabilityReducedPaisa:integer('liability_reduced_paisa').notNull().default(0),
+ restoredPaisa:integer('restored_paisa').notNull().default(0),
+ id:text('id').primaryKey(),
+ sourceKind:text('source_kind').notNull(),
+ sourceId:text('source_id').notNull(),
+ refundId:text('refund_id').references(():AnySQLiteColumn=>refunds.id),
+ supplierAdjustmentId:text('supplier_adjustment_id'),
+ sellerId:text('seller_id').notNull().references(():AnySQLiteColumn=>sellerProfiles.id),
+ payoutModel:text('payout_model').notNull(),
+ currency:text('currency').notNull().default('NPR'),
+ originalSourceJson:text('original_source_json').notNull(),
+ exposurePaisa:integer('exposure_paisa').notNull(),
+ confirmedPaisa:integer('confirmed_paisa').notNull().default(0),
+ approvedCapPaisa:integer('approved_cap_paisa').notNull().default(0),
+ absorbedPaisa:integer('absorbed_paisa').notNull().default(0),
+ disputedPaisa:integer('disputed_paisa').notNull().default(0),
+ historicalRecoveredPaisa:integer('historical_recovered_paisa').notNull().default(0),
+ state:text('state').notNull(),
+ blocker:text('blocker'),
+ approvedBy:text('approved_by').references(():AnySQLiteColumn=>users.id),
+ approvedAt:integer('approved_at'),
+ planJson:text('plan_json'),
+ ownerId:text('owner_id').notNull().references(():AnySQLiteColumn=>users.id),
+ backupId:text('backup_id').references(():AnySQLiteColumn=>users.id),
+ revision:integer('revision').notNull().default(0),
+ firstReviewDueAt:integer('first_review_due_at').notNull(),
+ nextActionAt:integer('next_action_at').notNull(),
+ createdBy:text('created_by').notNull().references(():AnySQLiteColumn=>users.id),
+ createdAt:integer('created_at').notNull(),
+ updatedAt:integer('updated_at').notNull()
+});
+
+export const sellerRecoveryEvents=sqliteTable('seller_recovery_events',{
+ id:text('id').primaryKey(),
+ caseId:text('case_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryCases.id),
+ revision:integer('revision').notNull(),
+ action:text('action').notNull(),
+ actorId:text('actor_id').notNull().references(():AnySQLiteColumn=>users.id),
+ reason:text('reason').notNull(),
+ detailsJson:text('details_json').notNull(),
+ requestId:text('request_id').notNull(),
+ createdAt:integer('created_at').notNull()
+});
+
+export const sellerRecoveryAllocations=sqliteTable('seller_recovery_allocations',{
+ managedDebitId:text('managed_debit_id'), // Native source FK targets the retained managed ledger.
+ fixedDebitId:text('fixed_debit_id').references(():AnySQLiteColumn=>managedSupplierRecoveryCredits.id),
+ fixedCreditId:text('fixed_credit_id').references(():AnySQLiteColumn=>managedSupplierRecoveryCredits.id),
+ registeredDebitId:text('registered_debit_id').references(():AnySQLiteColumn=>sellerLedgerEntries.id),
+ id:text('id').primaryKey(),
+ caseId:text('case_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryCases.id),
+ method:text('method').notNull(),
+ amountPaisa:integer('amount_paisa').notNull(),
+ receiptId:text('receipt_id').references(():AnySQLiteColumn=>companyMoneyReceipts.id),
+ registeredCreditId:text('registered_credit_id').references(():AnySQLiteColumn=>sellerLedgerEntries.id),
+ managedCreditId:text('managed_credit_id').references(():AnySQLiteColumn=>managedSettlementEntries.id),
+ evidenceReference:text('evidence_reference').notNull(),
+ reason:text('reason').notNull(),
+ actorId:text('actor_id').notNull().references(():AnySQLiteColumn=>users.id),
+ requestId:text('request_id').notNull(),
+ createdAt:integer('created_at').notNull()
+});
+
+export const sellerRecoveryReductions=sqliteTable('seller_recovery_reductions',{
+ fixedCreditId:text('fixed_credit_id').references(():AnySQLiteColumn=>managedSupplierRecoveryCredits.id),
+ id:text('id').primaryKey(),
+ caseId:text('case_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryCases.id),
+ amountPaisa:integer('amount_paisa').notNull(),
+ registeredCreditId:text('registered_credit_id').references(():AnySQLiteColumn=>sellerLedgerEntries.id),
+ managedCreditId:text('managed_credit_id').references(():AnySQLiteColumn=>managedSettlementEntries.id),
+ evidenceReference:text('evidence_reference').notNull(),
+ reason:text('reason').notNull(),
+ collectionAttempts:text('collection_attempts').notNull(),
+ approvedBy:text('approved_by').notNull().references(():AnySQLiteColumn=>users.id),
+ requestId:text('request_id').notNull(),
+ createdAt:integer('created_at').notNull()
+});
+
+export const sellerRecoveryProposals=sqliteTable('seller_recovery_proposals',{
+ id:text('id').primaryKey(),
+ caseId:text('case_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryCases.id),
+ caseRevision:integer('case_revision').notNull(),
+ sellerId:text('seller_id').notNull().references(():AnySQLiteColumn=>sellerProfiles.id),
+ payoutModel:text('payout_model').notNull(),
+ currency:text('currency').notNull(),
+ amountPaisa:integer('amount_paisa').notNull(),
+ identityRevision:integer('identity_revision').notNull(),
+ sourceJson:text('source_json').notNull(),
+ installmentsJson:text('installments_json').notNull(),
+ nettingAuthorized:integer('netting_authorized').notNull(),
+ acceptedTermsJson:text('accepted_terms_json').notNull(),
+ termsDigest:text('terms_digest').notNull(),
+ contactDetails:text('contact_details').notNull(),
+ nextReviewAt:integer('next_review_at').notNull(),
+ acceptedBy:text('accepted_by').notNull().references(():AnySQLiteColumn=>users.id),
+ acceptedAt:integer('accepted_at').notNull(),
+ requestId:text('request_id').notNull()
+});
+
+export const managedSupplierRecoveryCredits=sqliteTable('managed_supplier_recovery_credits',{
+ id:text('id').primaryKey(),
+ caseId:text('case_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryCases.id),
+ obligationId:text('obligation_id').notNull(),
+ kind:text('kind').notNull(),
+ amountPaisa:integer('amount_paisa').notNull(),
+ actorId:text('actor_id').notNull().references(():AnySQLiteColumn=>users.id),
+ requestId:text('request_id').notNull(),
+ createdAt:integer('created_at').notNull()
+});
+
+export const sellerRecoveryContacts=sqliteTable('seller_recovery_contacts',{
+ id:text('id').primaryKey(),
+ caseId:text('case_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryCases.id),
+ noticeRequestId:text('notice_request_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryEvents.requestId),
+ inboxMessageId:text('inbox_message_id').notNull().references(():AnySQLiteColumn=>notificationMessages.id),
+ emailMessageId:text('email_message_id').references(():AnySQLiteColumn=>notificationMessages.id),
+ method:text('method').notNull(),
+ actorId:text('actor_id').references(():AnySQLiteColumn=>users.id),
+ actualAt:integer('actual_at').notNull(),
+ evidenceReference:text('evidence_reference').notNull(),
+ reason:text('reason').notNull(),
+ requestId:text('request_id').notNull(),
+ recordedAt:integer('recorded_at').notNull()
+});
+
+export const sellerRecoveryContactWindows=sqliteTable('seller_recovery_contact_windows',{
+ caseId:text('case_id').primaryKey().references(():AnySQLiteColumn=>sellerRecoveryCases.id),
+ contactId:text('contact_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryContacts.id),
+ startedAt:integer('started_at').notNull(),
+ reminderAt:integer('reminder_at').notNull(),
+ responseDueAt:integer('response_due_at').notNull(),
+ reviewDueAt:integer('review_due_at').notNull(),
+ calendarVersion:text('calendar_version').notNull()
+});
+
+export const sellerRecoveryRepaymentClaims=sqliteTable('seller_recovery_repayment_claims',{
+ id:text('id').primaryKey(),
+ caseRevision:integer('case_revision'),
+ caseId:text('case_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryCases.id),
+ submittedBy:text('submitted_by').notNull().references(():AnySQLiteColumn=>users.id),
+ amountPaisa:integer('amount_paisa').notNull(),
+ paymentReference:text('payment_reference').notNull(),
+ claimedAt:integer('claimed_at').notNull(),
+ accountVersionId:text('account_version_id').references(():AnySQLiteColumn=>companyPaymentAccountVersions.id),
+ evidenceReference:text('evidence_reference'),
+ note:text('note').notNull(),
+ fingerprint:text('fingerprint').notNull(),
+ status:text('status').notNull(),
+ revision:integer('revision').notNull().default(0),
+ createdAt:integer('created_at').notNull(),
+ firstReviewDueAt:integer('first_review_due_at').notNull(),
+ nextReviewAt:integer('next_review_at'),
+ receiptId:text('receipt_id').references(():AnySQLiteColumn=>companyMoneyReceipts.id),
+ receiptRevision:integer('receipt_revision'),
+ publicMessage:text('public_message'),
+ reviewedBy:text('reviewed_by').references(():AnySQLiteColumn=>users.id),
+ reviewedAt:integer('reviewed_at'),
+ operationRequestId:text('operation_request_id').notNull()
+});
+
+export const sellerRecoveryClaimEvents=sqliteTable('seller_recovery_claim_events',{
+ id:text('id').primaryKey(),
+ caseRevision:integer('case_revision'),
+ claimId:text('claim_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryRepaymentClaims.id),
+ revision:integer('revision').notNull(),
+ action:text('action').notNull(),
+ actorId:text('actor_id').notNull().references(():AnySQLiteColumn=>users.id),
+ reason:text('reason').notNull(),
+ detailsJson:text('details_json').notNull(),
+ requestId:text('request_id').notNull(),
+ createdAt:integer('created_at').notNull()
+});
+
+export const sellerRecoveryLiabilityCorrections=sqliteTable('seller_recovery_liability_corrections',{
+ id:text('id').primaryKey(),
+ caseId:text('case_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryCases.id),
+ caseRevision:integer('case_revision').notNull(),
+ oldConfirmedPaisa:integer('old_confirmed_paisa').notNull(),
+ newConfirmedPaisa:integer('new_confirmed_paisa').notNull(),
+ oldAbsorbedPaisa:integer('old_absorbed_paisa').notNull(),
+ newAbsorbedPaisa:integer('new_absorbed_paisa').notNull(),
+ nativeCreditPaisa:integer('native_credit_paisa').notNull(),
+ restoredPaisa:integer('restored_paisa').notNull(),
+ registeredCreditId:text('registered_credit_id').references(():AnySQLiteColumn=>sellerLedgerEntries.id),
+ managedCreditId:text('managed_credit_id').references(():AnySQLiteColumn=>managedSettlementEntries.id),
+ fixedObligationId:text('fixed_obligation_id'),
+ evidenceReference:text('evidence_reference').notNull(),
+ reason:text('reason').notNull(),
+ publicMessage:text('public_message').notNull(),
+ actorId:text('actor_id').notNull().references(():AnySQLiteColumn=>users.id),
+ requestId:text('request_id').notNull(),
+ createdAt:integer('created_at').notNull(),
+ reviewDueAt:integer('review_due_at').notNull()
+});
+
+export const sellerRecoveryRestorations=sqliteTable('seller_recovery_restorations',{
+ id:text('id').primaryKey(),
+ correctionId:text('correction_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryLiabilityCorrections.id),
+ caseId:text('case_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryCases.id),
+ allocationId:text('allocation_id').references(():AnySQLiteColumn=>sellerRecoveryAllocations.id),
+ method:text('method').notNull(),
+ amountPaisa:integer('amount_paisa').notNull()
+});
+
+export const sellerRecoveryResponseWindows=sqliteTable('seller_recovery_response_windows',{
+ id:text('id').primaryKey(),
+ caseId:text('case_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryCases.id),
+ approvalEventId:text('approval_event_id').notNull().unique().references(():AnySQLiteColumn=>sellerRecoveryEvents.id),
+ contactId:text('contact_id').notNull().unique().references(():AnySQLiteColumn=>sellerRecoveryContacts.id),
+ startedAt:integer('started_at').notNull(),
+ reminderAt:integer('reminder_at').notNull(),
+ responseDueAt:integer('response_due_at').notNull(),
+ reviewDueAt:integer('review_due_at').notNull(),
+ calendarVersion:text('calendar_version').notNull()
+});
+
+export const sellerRecoveryHistoricalAttributions=sqliteTable('seller_recovery_historical_attributions',{
+ id:text('id').primaryKey(),
+ caseId:text('case_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryCases.id),
+ caseRevision:integer('case_revision').notNull(),
+ sellerId:text('seller_id').notNull().references(():AnySQLiteColumn=>sellerProfiles.id),
+ refundId:text('refund_id').notNull().references(():AnySQLiteColumn=>refunds.id),
+ kind:text('kind').notNull(),payoutId:text('payout_id').notNull(),scopeId:text('scope_id').notNull(),
+ nativeDeductionPaisa:integer('native_deduction_paisa').notNull(),amountPaisa:integer('amount_paisa').notNull(),
+ actorId:text('actor_id').notNull().references(():AnySQLiteColumn=>users.id),
+ requestId:text('request_id').notNull().unique(),createdAt:integer('created_at').notNull(),
+ evidenceReference:text('evidence_reference').notNull(),reason:text('reason').notNull(),publicMessage:text('public_message').notNull()
+});
+
+export const sellerRecoveryCompanyDeductions=sqliteTable('seller_recovery_company_deductions',{
+ id:text('id').primaryKey(),
+ caseId:text('case_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryCases.id),
+ caseRevision:integer('case_revision').notNull(),
+ sellerId:text('seller_id').notNull().references(():AnySQLiteColumn=>sellerProfiles.id),
+ refundId:text('refund_id').notNull().references(():AnySQLiteColumn=>refunds.id),
+ kind:text('kind').notNull(),payoutId:text('payout_id').notNull(),scopeId:text('scope_id').notNull(),
+ nativeDeductionPaisa:integer('native_deduction_paisa').notNull(),amountPaisa:integer('amount_paisa').notNull(),
+ actorId:text('actor_id').notNull().references(():AnySQLiteColumn=>users.id),
+ requestId:text('request_id').notNull().unique(),createdAt:integer('created_at').notNull(),
+ sourceJson:text('source_json').notNull(),
+ evidenceReference:text('evidence_reference').notNull(),reason:text('reason').notNull(),publicMessage:text('public_message').notNull()
+});
+
+export const sellerRecoveryOriginalUnpaidPools=sqliteTable('seller_recovery_original_unpaid_pools',{
+ payoutModel:text('payout_model').notNull(),sellerId:text('seller_id').notNull().references(()=>sellerProfiles.id),scopeId:text('scope_id').notNull(),usedPaisa:integer('used_paisa').notNull(),
+},table=>[primaryKey({columns:[table.payoutModel,table.sellerId,table.scopeId]})]);
+
+export const sellerRecoveryHistoricalPools=sqliteTable('seller_recovery_historical_pools',{
+ kind:text('kind').notNull(),payoutId:text('payout_id').notNull(),scopeId:text('scope_id').notNull(),
+ principalPaisa:integer('principal_paisa').notNull(),usedPaisa:integer('used_paisa').notNull()
+},t=>[primaryKey({columns:[t.kind,t.payoutId,t.scopeId]})]);
+
+export const sellerRecoverySourceReviews=sqliteTable('seller_recovery_source_reviews',{
+ id:text('id').primaryKey(),caseId:text('case_id').notNull().unique().references(():AnySQLiteColumn=>sellerRecoveryCases.id),
+ caseRevision:integer('case_revision').notNull(),kind:text('kind').notNull(),amountPaisa:integer('amount_paisa').notNull(),
+ registeredCreditId:text('registered_credit_id').unique().references(():AnySQLiteColumn=>sellerLedgerEntries.id),
+ managedCreditId:text('managed_credit_id').unique().references(():AnySQLiteColumn=>managedSettlementEntries.id),
+ sourceJson:text('source_json').notNull(),actorId:text('actor_id').notNull().references(():AnySQLiteColumn=>users.id),
+ requestId:text('request_id').notNull().unique(),createdAt:integer('created_at').notNull(),
+ evidenceReference:text('evidence_reference').notNull(),reason:text('reason').notNull(),publicMessage:text('public_message').notNull()
+});
+
+export const sellerRecoveryUnpaidSources=sqliteTable('seller_recovery_unpaid_sources',{
+ id:text('id').primaryKey(),caseId:text('case_id').notNull().unique().references(():AnySQLiteColumn=>sellerRecoveryCases.id),
+ caseRevision:integer('case_revision').notNull(),sellerId:text('seller_id').notNull().references(():AnySQLiteColumn=>sellerProfiles.id),
+ refundId:text('refund_id').notNull().unique().references(():AnySQLiteColumn=>refunds.id),orderItemId:text('order_item_id').notNull().references(():AnySQLiteColumn=>orderItems.id),
+ scopeId:text('scope_id').notNull(),basisPaisa:integer('basis_paisa').notNull(),amountPaisa:integer('amount_paisa').notNull(),remainingPaisa:integer('remaining_paisa').notNull(),
+ sourceJson:text('source_json').notNull(),actorId:text('actor_id').notNull().references(():AnySQLiteColumn=>users.id),
+ requestId:text('request_id').notNull().unique(),createdAt:integer('created_at').notNull(),
+ evidenceReference:text('evidence_reference').notNull(),reason:text('reason').notNull(),publicMessage:text('public_message').notNull()
+});
+
+export const sellerRecoveryPayoutRetirements=sqliteTable('seller_recovery_payout_retirements',{
+ id:text('id').primaryKey(),caseId:text('case_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryCases.id),caseRevision:integer('case_revision').notNull(),
+ sellerId:text('seller_id').notNull().references(():AnySQLiteColumn=>sellerProfiles.id),payoutModel:text('payout_model').notNull(),payoutId:text('payout_id').notNull(),
+ originalStatus:text('original_status').notNull(),originalAmountPaisa:integer('original_amount_paisa').notNull(),originalDestination:text('original_destination').notNull(),originalUpdatedAt:integer('original_updated_at').notNull(),
+ sourceJson:text('source_json').notNull(),actorId:text('actor_id').notNull().references(():AnySQLiteColumn=>users.id),requestId:text('request_id').notNull().unique(),createdAt:integer('created_at').notNull(),
+ evidenceReference:text('evidence_reference').notNull(),reason:text('reason').notNull(),publicMessage:text('public_message').notNull()
+},t=>[uniqueIndex('recovery_retirement_payout').on(t.payoutModel,t.payoutId)]);
+
+export const sellerRecoveryUnpaidCorrections=sqliteTable('seller_recovery_unpaid_corrections',{
+ id:text('id').primaryKey(),caseId:text('case_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryCases.id),caseRevision:integer('case_revision').notNull(),
+ originalChargePaisa:integer('original_charge_paisa').notNull(),previousRestoredPaisa:integer('previous_restored_paisa').notNull(),amountPaisa:integer('amount_paisa').notNull(),
+ registeredCreditId:text('registered_credit_id').unique().references(():AnySQLiteColumn=>sellerLedgerEntries.id),managedCreditId:text('managed_credit_id').unique().references(():AnySQLiteColumn=>managedSettlementEntries.id),
+ fixedObligationId:text('fixed_obligation_id'),sourceJson:text('source_json').notNull(),
+ actorId:text('actor_id').notNull().references(():AnySQLiteColumn=>users.id),requestId:text('request_id').notNull().unique(),createdAt:integer('created_at').notNull(),
+ evidenceReference:text('evidence_reference').notNull(),reason:text('reason').notNull(),publicMessage:text('public_message').notNull()
+});
+
+export const sellerRecoveryCarrierReviews=sqliteTable('seller_recovery_carrier_reviews',{
+ id:text('id').primaryKey(),caseId:text('case_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryCases.id),caseRevision:integer('case_revision').notNull(),
+ receiptId:text('receipt_id').notNull().references(():AnySQLiteColumn=>companyMoneyReceipts.id),receiptRevision:integer('receipt_revision').notNull(),allocationId:text('allocation_id').notNull().unique(),
+ amountPaisa:integer('amount_paisa').notNull(),restoredPaisa:integer('restored_paisa').notNull(),resolvedDisputedPaisa:integer('resolved_disputed_paisa').notNull(),sourceJson:text('source_json').notNull(),
+ actorId:text('actor_id').notNull().references(():AnySQLiteColumn=>users.id),requestId:text('request_id').notNull().unique(),createdAt:integer('created_at').notNull(),
+ evidenceReference:text('evidence_reference').notNull(),reason:text('reason').notNull(),publicMessage:text('public_message').notNull()
+});
+export const sellerRecoveryCarrierRestorations=sqliteTable('seller_recovery_carrier_restorations',{
+ id:text('id').primaryKey(),reviewId:text('review_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryCarrierReviews.id),caseId:text('case_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryCases.id),
+ allocationId:text('allocation_id').references(():AnySQLiteColumn=>sellerRecoveryAllocations.id),method:text('method').notNull(),amountPaisa:integer('amount_paisa').notNull()
+});
+
+
+export const sellerRecoveryPartialSources=sqliteTable('seller_recovery_partial_sources',{
+ id:text('id').primaryKey(),caseId:text('case_id').notNull().unique().references(():AnySQLiteColumn=>sellerRecoveryCases.id),
+ caseRevision:integer('case_revision').notNull(),sellerId:text('seller_id').notNull().references(():AnySQLiteColumn=>sellerProfiles.id),
+ refundId:text('refund_id').notNull().unique().references(():AnySQLiteColumn=>refunds.id),orderItemId:text('order_item_id').notNull().references(():AnySQLiteColumn=>orderItems.id),
+ scopeId:text('scope_id').notNull(),basisPaisa:integer('basis_paisa').notNull(),nativeChargePaisa:integer('native_charge_paisa').notNull(),
+ capacityPaisa:integer('capacity_paisa').notNull(),usedPaisa:integer('used_paisa').notNull(),amountPaisa:integer('amount_paisa').notNull(),
+ sourceJson:text('source_json').notNull(),actorId:text('actor_id').notNull().references(():AnySQLiteColumn=>users.id),
+ requestId:text('request_id').notNull().unique(),createdAt:integer('created_at').notNull(),
+ evidenceReference:text('evidence_reference').notNull(),reason:text('reason').notNull(),publicMessage:text('public_message').notNull()
+});
+
+
+export const sellerRecoveryCalculationReviews=sqliteTable('seller_recovery_calculation_reviews',{
+ id:text('id').primaryKey(),caseId:text('case_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryCases.id),caseRevision:integer('case_revision').notNull(),
+ submittedBy:text('submitted_by').notNull().references(():AnySQLiteColumn=>users.id),reason:text('reason').notNull(),evidenceReference:text('evidence_reference'),
+ sourceJson:text('source_json').notNull(),requestId:text('request_id').notNull().unique(),createdAt:integer('created_at').notNull(),dueAt:integer('due_at').notNull()
+});
+export const sellerRecoveryCalculationAnswers=sqliteTable('seller_recovery_calculation_answers',{
+ id:text('id').primaryKey(),reviewId:text('review_id').notNull().unique().references(():AnySQLiteColumn=>sellerRecoveryCalculationReviews.id),
+ caseId:text('case_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryCases.id),caseRevision:integer('case_revision').notNull(),
+ actorId:text('actor_id').notNull().references(():AnySQLiteColumn=>users.id),reason:text('reason').notNull(),publicMessage:text('public_message').notNull(),
+ sourceJson:text('source_json').notNull(),requestId:text('request_id').notNull().unique(),createdAt:integer('created_at').notNull()
+});
+
+
+export const sellerRecoveryPayoutReturnReviews=sqliteTable('seller_recovery_payout_return_reviews',{
+ id:text('id').primaryKey(),caseId:text('case_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryCases.id),caseRevision:integer('case_revision').notNull(),
+ payoutModel:text('payout_model').notNull(),payoutId:text('payout_id').notNull(),scopeId:text('scope_id').notNull(),originalPayoutPaisa:integer('original_payout_paisa').notNull(),scopePaisa:integer('scope_paisa').notNull(),
+ receiptId:text('receipt_id').notNull().references(():AnySQLiteColumn=>companyMoneyReceipts.id),receiptRevision:integer('receipt_revision').notNull(),allocationId:text('allocation_id').notNull().unique(),
+ amountPaisa:integer('amount_paisa').notNull(),restoredPaisa:integer('restored_paisa').notNull(),principalExcessPaisa:integer('principal_excess_paisa').notNull(),resolvedDisputedPaisa:integer('resolved_disputed_paisa').notNull(),
+ sourceJson:text('source_json').notNull(),actorId:text('actor_id').notNull().references(():AnySQLiteColumn=>users.id),requestId:text('request_id').notNull().unique(),createdAt:integer('created_at').notNull(),
+ evidenceReference:text('evidence_reference').notNull(),reason:text('reason').notNull(),publicMessage:text('public_message').notNull()
+});
+export const sellerRecoveryPayoutReturnPools=sqliteTable('seller_recovery_payout_return_pools',{
+ payoutModel:text('payout_model').notNull(),payoutId:text('payout_id').notNull(),scopeId:text('scope_id').notNull(),principalPaisa:integer('principal_paisa').notNull(),usedPaisa:integer('used_paisa').notNull()
+},table=>[primaryKey({columns:[table.payoutModel,table.payoutId,table.scopeId]})]);
+export const sellerRecoveryPayoutReturnRestorations=sqliteTable('seller_recovery_payout_return_restorations',{
+ id:text('id').primaryKey(),reviewId:text('review_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryPayoutReturnReviews.id),caseId:text('case_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryCases.id),
+ allocationId:text('allocation_id').references(():AnySQLiteColumn=>sellerRecoveryAllocations.id),method:text('method').notNull(),kind:text('kind').notNull(),amountPaisa:integer('amount_paisa').notNull()
+});
+
+
+export const sellerRecoveryCarrierUnpaidReviews=sqliteTable('seller_recovery_carrier_unpaid_reviews',{
+ id:text('id').primaryKey(),caseId:text('case_id').notNull().references(():AnySQLiteColumn=>sellerRecoveryCases.id),caseRevision:integer('case_revision').notNull(),
+ receiptId:text('receipt_id').notNull().references(():AnySQLiteColumn=>companyMoneyReceipts.id),receiptRevision:integer('receipt_revision').notNull(),allocationId:text('allocation_id').notNull().unique(),amountPaisa:integer('amount_paisa').notNull(),
+ sourceJson:text('source_json').notNull(),actorId:text('actor_id').notNull().references(():AnySQLiteColumn=>users.id),requestId:text('request_id').notNull().unique(),createdAt:integer('created_at').notNull(),evidenceReference:text('evidence_reference').notNull(),reason:text('reason').notNull(),publicMessage:text('public_message').notNull()
+});
+
+
+export const sellerRecoveryReceiptReversalReviews=sqliteTable('seller_recovery_receipt_reversal_reviews',{
+ id:text('id').primaryKey(),reversalId:text('reversal_id').notNull().unique().references(()=>companyReceiptReversals.id),receiptId:text('receipt_id').notNull().references(()=>companyMoneyReceipts.id),
+ receiptRevision:integer('receipt_revision').notNull(),state:text('state').notNull(),amountPaisa:integer('amount_paisa').notNull(),unallocatedPaisa:integer('unallocated_paisa').notNull(),
+ sourceJson:text('source_json').notNull(),planJson:text('plan_json').notNull(),actorId:text('actor_id').notNull().references(()=>users.id),requestId:text('request_id').notNull().unique(),
+ createdAt:integer('created_at').notNull(),completedAt:integer('completed_at'),evidenceReference:text('evidence_reference').notNull(),reason:text('reason').notNull(),publicMessage:text('public_message').notNull()
+});
+export const sellerRecoveryReceiptReversalParts=sqliteTable('seller_recovery_receipt_reversal_parts',{
+ id:text('id').primaryKey(),reviewId:text('review_id').notNull().references(()=>sellerRecoveryReceiptReversalReviews.id),caseId:text('case_id').notNull().references(()=>sellerRecoveryCases.id),caseRevision:integer('case_revision').notNull(),
+ allocationId:text('allocation_id').notNull().references(()=>sellerRecoveryAllocations.id),amountPaisa:integer('amount_paisa').notNull(),companyLossPaisa:integer('company_loss_paisa').notNull(),
+ registeredDebitId:text('registered_debit_id').unique().references(()=>sellerLedgerEntries.id),managedDebitId:text('managed_debit_id').unique().references(()=>managedSettlementEntries.id),fixedObligationId:text('fixed_obligation_id'),
+ registeredCompanyCreditId:text('registered_company_credit_id').unique().references(()=>sellerLedgerEntries.id),managedCompanyCreditId:text('managed_company_credit_id').unique().references(()=>managedSettlementEntries.id)
+},table=>[uniqueIndex('recovery_receipt_part_allocation').on(table.reviewId,table.allocationId)]);
+export const sellerRecoveryRestorationReclassifications=sqliteTable('seller_recovery_restoration_reclassifications',{
+ id:text('id').primaryKey(),partId:text('part_id').notNull().references(()=>sellerRecoveryReceiptReversalParts.id),restorationId:text('restoration_id').notNull(),amountPaisa:integer('amount_paisa').notNull()
+},table=>[uniqueIndex('recovery_restoration_reclassification').on(table.partId,table.restorationId)]);
+
+
+export const customerRefundReversals=sqliteTable('customer_refund_reversals',{
+ id:text('id').primaryKey(),packetId:text('packet_id').notNull().references(()=>outgoingPaymentPackets.id),obligationId:text('obligation_id').notNull().references(()=>refundObligations.id),receiptId:text('receipt_id').notNull().unique().references(()=>companyMoneyReceipts.id),
+ amountPaisa:integer('amount_paisa').notNull(),actorId:text('actor_id').notNull().references(()=>users.id),requestId:text('request_id').notNull().unique(),evidenceReference:text('evidence_reference').notNull(),reason:text('reason').notNull(),createdAt:integer('created_at').notNull()
+});
+export const customerRefundReversalDispositions=sqliteTable('customer_refund_reversal_dispositions',{
+ id:text('id').primaryKey(),reversalId:text('reversal_id').notNull().unique().references(()=>customerRefundReversals.id),caseId:text('case_id').notNull().references(()=>sellerRecoveryCases.id),caseRevision:integer('case_revision').notNull(),kind:text('kind').notNull(),
+ retryObligationId:text('retry_obligation_id').unique().references(()=>refundObligations.id),correctionId:text('correction_id').references(()=>sellerRecoveryLiabilityCorrections.id),actorId:text('actor_id').notNull().references(()=>users.id),requestId:text('request_id').notNull(),evidenceReference:text('evidence_reference').notNull(),reason:text('reason').notNull(),publicMessage:text('public_message').notNull(),createdAt:integer('created_at').notNull()
+});
+export const sellerRecoveryRepaymentAttributions=sqliteTable('seller_recovery_repayment_attributions',{
+ id:text('id').primaryKey(),caseId:text('case_id').notNull().references(()=>sellerRecoveryCases.id),caseRevision:integer('case_revision').notNull(),receiptId:text('receipt_id').notNull().unique().references(()=>companyMoneyReceipts.id),receiptRevision:integer('receipt_revision').notNull(),
+ payerUserId:text('payer_user_id').notNull().references(()=>users.id),ownerUserId:text('owner_user_id').notNull().references(()=>users.id),amountPaisa:integer('amount_paisa').notNull(),actorId:text('actor_id').notNull().references(()=>users.id),requestId:text('request_id').notNull().unique(),evidenceReference:text('evidence_reference').notNull(),reason:text('reason').notNull(),publicMessage:text('public_message').notNull(),createdAt:integer('created_at').notNull()
+});
+
+export const customerRefundReturnPools=sqliteTable('customer_refund_return_pools',{
+ packetId:text('packet_id').primaryKey().references(()=>outgoingPaymentPackets.id),usedPaisa:integer('used_paisa').notNull()
+});
+
+export const receiptReturnBankLosses=sqliteTable('receipt_return_bank_losses',{
+ id:text('id').primaryKey(),reviewId:text('review_id').notNull().references(()=>sellerRecoveryReceiptReversalReviews.id),reversalId:text('reversal_id').notNull().references(()=>companyReceiptReversals.id),receiptId:text('receipt_id').notNull().references(()=>companyMoneyReceipts.id),
+ receiptUseId:text('receipt_use_id').notNull().references(()=>manualReceiptUses.id),useRevision:integer('use_revision').notNull(),packetId:text('packet_id').notNull().references(()=>outgoingPaymentPackets.id),obligationId:text('obligation_id').notNull().references(()=>refundObligations.id),
+ amountPaisa:integer('amount_paisa').notNull(),actorId:text('actor_id').notNull().references(()=>users.id),requestId:text('request_id').notNull(),createdAt:integer('created_at').notNull()
+},table=>[uniqueIndex('receipt_return_bank_loss_review_use').on(table.reviewId,table.receiptUseId)]);
+export const receiptReturnBankLossPools=sqliteTable('receipt_return_bank_loss_pools',{
+ receiptUseId:text('receipt_use_id').primaryKey().references(()=>manualReceiptUses.id),usedPaisa:integer('used_paisa').notNull()
+});
+
+export const receiptReturnBankSatisfactions=sqliteTable('receipt_return_bank_satisfactions',{
+ id:text('id').primaryKey(),reviewId:text('review_id').notNull().references(()=>sellerRecoveryReceiptReversalReviews.id),reversalId:text('reversal_id').notNull().references(()=>companyReceiptReversals.id),receiptId:text('receipt_id').notNull().references(()=>companyMoneyReceipts.id),
+ receiptUseId:text('receipt_use_id').notNull().references(()=>manualReceiptUses.id),useRevision:integer('use_revision').notNull(),obligationId:text('obligation_id').notNull().references(()=>refundObligations.id),obligationRevision:integer('obligation_revision').notNull(),customerId:text('customer_id').notNull().references(()=>users.id),
+ amountPaisa:integer('amount_paisa').notNull(),originalPayerReturnedConfirmed:integer('original_payer_returned_confirmed').notNull(),actorId:text('actor_id').notNull().references(()=>users.id),requestId:text('request_id').notNull(),createdAt:integer('created_at').notNull()
+},table=>[uniqueIndex('receipt_return_bank_satisfaction_review_use').on(table.reviewId,table.receiptUseId)]);
+export const receiptReturnBankSatisfactionPools=sqliteTable('receipt_return_bank_satisfaction_pools',{
+ receiptUseId:text('receipt_use_id').primaryKey().references(()=>manualReceiptUses.id),usedPaisa:integer('used_paisa').notNull()
+});
+
+export const managedClearanceEvidenceIntents=sqliteTable('managed_clearance_evidence_intents',{
+ id:id(),sellerId:text('seller_id').notNull().references(()=>sellerProfiles.id),materialScopeDigest:text('material_scope_digest').notNull(),uploadedBy:text('uploaded_by').notNull().references(()=>users.id),objectKey:text('object_key').notNull().unique(),originalName:text('original_name').notNull(),mimeType:text('mime_type',{enum:['application/pdf','image/jpeg','image/png']}).notNull(),sizeBytes:integer('size_bytes').notNull(),contentHash:text('content_hash').notNull(),requestId:text('request_id').notNull(),createdAt:timestamp('created_at').notNull()
+},t=>[uniqueIndex('managed_clearance_evidence_request').on(t.uploadedBy,t.sellerId,t.requestId),check('managed_clearance_material_digest',sql`length(${t.materialScopeDigest})=64`),check('managed_clearance_content_hash',sql`length(${t.contentHash})=64`),check('managed_clearance_mime',sql`${t.mimeType} IN('application/pdf','image/jpeg','image/png')`),check('managed_clearance_size',sql`${t.sizeBytes}>0 AND ${t.sizeBytes}<=5242880`)]);
+export const managedClearanceEvidenceFiles=sqliteTable('managed_clearance_evidence_files',{
+ id:text('id').primaryKey().references(()=>managedClearanceEvidenceIntents.id),retainedAt:timestamp('retained_at').notNull()
+});
+export const managedLiveClearances=sqliteTable('managed_live_clearances',{
+ id:id(),sellerId:text('seller_id').notNull().references(()=>sellerProfiles.id),ownerId:text('owner_id').notNull().references(()=>users.id),model:text('model',{enum:['managed_sale_linked_percentage_v1']}).notNull(),materialScopeDigest:text('material_scope_digest').notNull(),companyScopeDigest:text('company_scope_digest').notNull(),financialScopeId:text('financial_scope_id').notNull(),issuerModel:text('issuer_model',{enum:['company_commercial_invoice_v1']}).notNull(),issuerScopeDigest:text('issuer_scope_digest').notNull(),scopeJson:text('scope_json').notNull(),evidenceIdsJson:text('evidence_ids_json').notNull(),issuer:text('issuer').notNull(),externalReference:text('external_reference').notNull(),issuedAt:timestamp('issued_at').notNull(),effectiveFrom:timestamp('effective_from').notNull(),validUntil:timestamp('valid_until'),reviewedBy:text('reviewed_by').notNull().references(()=>users.id),reviewedAt:timestamp('reviewed_at').notNull(),revision:integer('revision').notNull().default(0),state:text('state',{enum:['active','revoked']}).notNull().default('active'),requestId:text('request_id').notNull().unique(),reason:text('reason').notNull(),revokedBy:text('revoked_by').references(()=>users.id),revokedAt:timestamp('revoked_at'),revocationReason:text('revocation_reason')
+},t=>[index('managed_live_clearance_scope').on(t.sellerId,t.materialScopeDigest,t.state),check('managed_live_clearance_model',sql`${t.model}='managed_sale_linked_percentage_v1'`),check('managed_live_clearance_material_digest',sql`length(${t.materialScopeDigest})=64`),check('managed_live_clearance_company_digest',sql`length(${t.companyScopeDigest})=64`),check('managed_live_clearance_issuer_model',sql`${t.issuerModel}='company_commercial_invoice_v1'`),check('managed_live_clearance_issuer_digest',sql`length(${t.issuerScopeDigest})=64`),check('managed_live_clearance_scope_json',sql`json_valid(${t.scopeJson})`),check('managed_live_clearance_evidence_json',sql`json_valid(${t.evidenceIdsJson}) AND json_array_length(${t.evidenceIdsJson})>0`),check('managed_live_clearance_clock',sql`${t.issuedAt}>0 AND ${t.effectiveFrom}>=${t.issuedAt} AND ${t.reviewedAt}>=${t.effectiveFrom} AND (${t.validUntil} IS NULL OR ${t.validUntil}>${t.reviewedAt})`),check('managed_live_clearance_state',sql`${t.state} IN('active','revoked')`)]);
+export const managedLiveActivationDecisions=sqliteTable('managed_live_activation_decisions',{
+ id:id(),sellerId:text('seller_id').notNull().references(()=>sellerProfiles.id),ownerId:text('owner_id').notNull().references(()=>users.id),model:text('model',{enum:['managed_sale_linked_percentage_v1']}).notNull(),clearanceId:text('clearance_id').notNull().references(()=>managedLiveClearances.id),materialScopeDigest:text('material_scope_digest').notNull(),companyScopeDigest:text('company_scope_digest').notNull(),financialScopeId:text('financial_scope_id').notNull(),issuerModel:text('issuer_model',{enum:['company_commercial_invoice_v1']}).notNull(),issuerScopeDigest:text('issuer_scope_digest').notNull(),sourceJson:text('source_json').notNull(),revision:integer('revision').notNull(),previousDecisionId:text('previous_decision_id').references(():AnySQLiteColumn=>managedLiveActivationDecisions.id),actorId:text('actor_id').notNull().references(()=>users.id),createdAt:timestamp('created_at').notNull(),requestId:text('request_id').notNull().unique(),reason:text('reason').notNull()
+},t=>[uniqueIndex('managed_live_decision_revision').on(t.sellerId,t.revision),index('managed_live_decision_seller').on(t.sellerId,t.revision),check('managed_live_decision_model',sql`${t.model}='managed_sale_linked_percentage_v1'`),check('managed_live_decision_issuer_model',sql`${t.issuerModel}='company_commercial_invoice_v1'`),check('managed_live_decision_source_json',sql`json_valid(${t.sourceJson})`),check('managed_live_decision_revision',sql`${t.revision}>=1`)]);
+export const managedLiveFinancialScopes=sqliteTable('managed_live_financial_scopes',{
+ id:id(),companyEntityReference:text('company_entity_reference').notNull(),companyScopeDigest:text('company_scope_digest').notNull(),issuerModel:text('issuer_model',{enum:['company_commercial_invoice_v1']}).notNull(),issuerScopeDigest:text('issuer_scope_digest').notNull(),issuerSnapshotJson:text('issuer_snapshot_json').notNull(),seriesPrefix:text('series_prefix').notNull().unique(),seriesVersion:text('series_version').notNull(),openingNumber:integer('opening_number').notNull(),evidenceReference:text('evidence_reference').notNull(),reviewedBy:text('reviewed_by').notNull().references(()=>users.id),reviewedAt:timestamp('reviewed_at').notNull(),requestId:text('request_id').notNull().unique(),reason:text('reason').notNull()
+},t=>[check('managed_live_financial_issuer_model',sql`${t.issuerModel}='company_commercial_invoice_v1'`),check('managed_live_financial_issuer_json',sql`json_valid(${t.issuerSnapshotJson})`),check('managed_live_financial_opening',sql`${t.openingNumber}>0`)]);
+export const managedLiveInvoiceSeries=sqliteTable('managed_live_invoice_series',{
+ financialScopeId:text('financial_scope_id').primaryKey().references(()=>managedLiveFinancialScopes.id),nextNumber:integer('next_number').notNull(),revision:integer('revision').notNull().default(0)
+},t=>[check('managed_live_series_next',sql`${t.nextNumber}>0`)]);
+export const managedLiveInvoiceNumbers=sqliteTable('managed_live_invoice_numbers',{
+ id:id(),financialScopeId:text('financial_scope_id').notNull().references(()=>managedLiveFinancialScopes.id),invoiceGroupId:text('invoice_group_id').references(()=>managedInvoiceGroups.id),adjustmentId:text('adjustment_id').references(()=>managedInvoiceAdjustments.id),sequence:integer('sequence').notNull(),invoiceNumber:text('invoice_number').notNull().unique(),requestId:text('request_id').notNull().unique(),createdAt:timestamp('created_at').notNull()
+},t=>[uniqueIndex('managed_live_invoice_sequence').on(t.financialScopeId,t.sequence),uniqueIndex('managed_live_invoice_group').on(t.invoiceGroupId),uniqueIndex('managed_live_invoice_adjustment').on(t.adjustmentId),check('managed_live_invoice_sequence',sql`${t.sequence}>0`),check('managed_live_invoice_one_source',sql`(${t.invoiceGroupId} IS NULL)<>(${t.adjustmentId} IS NULL)`)]);
+export const managedLiveInvoiceAdjustmentSources=sqliteTable('managed_live_invoice_adjustment_sources',{
+ adjustmentId:text('adjustment_id').primaryKey().references(()=>managedInvoiceAdjustments.id),invoiceGroupId:text('invoice_group_id').notNull().references(()=>managedInvoiceGroups.id),sourceKind:text('source_kind',{enum:['refund','cancellation']}).notNull(),sourceId:text('source_id').notNull()
+},t=>[uniqueIndex('managed_live_invoice_adjustment_source').on(t.invoiceGroupId,t.sourceKind,t.sourceId),check('managed_live_invoice_adjustment_source_kind',sql`${t.sourceKind} IN('refund','cancellation')`)]);
+
+// T29 durable delivery and health schema; additive migrations0147/0148.
+export const emailDeliveryAttempts=sqliteTable('email_delivery_attempts',{
+ id:text('id').primaryKey().notNull(),
+ queueKind:text('queue_kind').notNull(),
+ queueId:text('queue_id').notNull(),
+ claimToken:text('claim_token').notNull().unique(),
+ attemptNumber:integer('attempt_number').notNull(),
+ phase:text('phase').notNull(),
+ messageId:text('message_id').notNull(),
+ startedAt:integer('started_at').notNull(),
+ transport:text('transport'),
+ transportKey:text('transport_key'),
+ providerReceipt:text('provider_receipt'),
+ failureCategory:text('failure_category'),
+ failureCode:text('failure_code'),
+ configFingerprint:text('config_fingerprint'),
+ recipientFingerprint:text('recipient_fingerprint'),
+ handoffAt:integer('handoff_at'),
+ completedAt:integer('completed_at'),
+ retryAt:integer('retry_at'),
+},t=>[
+ uniqueIndex('email_delivery_attempts_unique_0').on(t.queueKind,t.queueId,t.attemptNumber),
+ check('email_delivery_attempts_check_1',sql`${t.queueKind} IN('order','business')`),
+ check('email_delivery_attempts_check_2',sql`${t.attemptNumber}>0`),
+ check('email_delivery_attempts_check_3',sql`${t.phase} IN('claimed','handoff_started','accepted','captured','uncertain','not_accepted','cancelled')`),
+ check('email_delivery_attempts_check_4',sql`${t.failureCategory} IN('temporary','permanent_recipient','configuration','unknown')`),
+ index('email_delivery_attempt_queue').on(t.queueKind,t.queueId,t.startedAt),
+ index('email_delivery_attempt_fence').on(t.queueKind,t.queueId,t.phase)
+]);
+export const emailTransportBackoff=sqliteTable('email_transport_backoff',{
+ transportKey:text('transport_key').primaryKey().notNull(),
+ blockedUntil:integer('blocked_until').notNull(),
+ updatedAt:integer('updated_at').notNull(),
+ configFingerprint:text('config_fingerprint'),
+ failureCategory:text('failure_category'),
+ failureCode:text('failure_code'),
+},t=>[
+ check('email_transport_backoff_check_0',sql`${t.failureCategory} IN('temporary','permanent_recipient','configuration','unknown')`)
+]);
+export const operationalReminderCursors=sqliteTable('operational_reminder_cursors',{
+ family:text('family').primaryKey().notNull(),
+ cursor:text('cursor').notNull().default(''),
+ revision:integer('revision').notNull().default(0),
+ leaseToken:text('lease_token'),
+ leaseUntil:integer('lease_until'),
+});
+export const operationalNoticeStates=sqliteTable('operational_notice_states',{
+ family:text('family').notNull(),
+ sourceId:text('source_id').notNull(),
+ currentEventId:text('current_event_id').notNull(),
+ currentStatus:text('current_status').notNull(),
+ revision:integer('revision').notNull().default(0),
+},t=>[
+ primaryKey({columns:[t.family,t.sourceId]})
+]);
+export const operationalReminderMilestones=sqliteTable('operational_reminder_milestones',{
+ id:text('id').primaryKey().notNull(),
+ family:text('family').notNull(),
+ sourceId:text('source_id').notNull(),
+ milestone:text('milestone').notNull(),
+ sourceRevision:text('source_revision').notNull(),
+ dueAt:integer('due_at').notNull(),
+ createdAt:integer('created_at').notNull(),
+},t=>[
+ uniqueIndex('operational_reminder_milestones_unique_0').on(t.family,t.sourceId,t.milestone,t.sourceRevision,t.dueAt),
+ index('operational_reminder_milestone_due').on(t.family,t.dueAt,t.id)
+]);
+export const serviceHealthObservations=sqliteTable('service_health_observations',{
+ id:text('id').primaryKey().notNull(),
+ environment:text('environment').notNull(),
+ serviceKey:text('service_key').notNull(),
+ runKey:text('run_key').notNull(),
+ observedAt:integer('observed_at').notNull(),
+ successful:integer('successful').notNull(),
+ functionalSuccess:integer('functional_success').notNull().default(0),
+ eligibleBacklog:integer('eligible_backlog').notNull(),
+ oldestEligibleAt:integer('oldest_eligible_at'),
+ progressCount:integer('progress_count').notNull().default(0),
+ failureCategory:text('failure_category'),
+ sourceKind:text('source_kind').notNull(),
+ evidenceScope:text('evidence_scope'),
+},t=>[
+ uniqueIndex('service_health_observations_unique_0').on(t.environment,t.serviceKey,t.runKey),
+ check('service_health_observations_check_1',sql`${t.environment} IN('production','development','local_staging','test')`),
+ check('service_health_observations_check_2',sql`${t.successful} IN(0,1)`),
+ check('service_health_observations_functional',sql`${t.functionalSuccess} IN(0,1)`),
+ check('service_health_observations_check_3',sql`${t.eligibleBacklog}>=0`),
+ check('service_health_observations_check_4',sql`${t.progressCount}>=0`),
+ check('service_health_observations_check_5',sql`${t.failureCategory} IN('provider','recipient','configuration','unknown','worker')`),
+ check('service_health_observations_check_6',sql`${t.sourceKind} IN('sender','evaluator','watchdog')`),
+ index('service_health_observation_clock').on(t.environment,t.serviceKey,t.observedAt,t.id)
+]);
+export const serviceHealthIncidents=sqliteTable('service_health_incidents',{
+ id:text('id').primaryKey().notNull(),
+ environment:text('environment').notNull(),
+ serviceKey:text('service_key').notNull(),
+ episode:integer('episode').notNull(),
+ state:text('state').notNull(),
+ severity:text('severity').notNull().default('high'),
+ firstSeenAt:integer('first_seen_at').notNull(),
+ lastSeenAt:integer('last_seen_at').notNull(),
+ resolvedAt:integer('resolved_at'),
+ failureCategory:text('failure_category'),
+ revision:integer('revision').notNull().default(0),
+},t=>[
+ uniqueIndex('service_health_incidents_unique_0').on(t.environment,t.serviceKey,t.episode),
+ check('service_health_incidents_check_1',sql`${t.environment} IN('production','development','local_staging','test')`),
+ check('service_health_incidents_check_2',sql`${t.episode}>0`),
+ check('service_health_incidents_check_3',sql`${t.state} IN('detected','assigned','working','monitoring','resolved')`),
+ check('service_health_incidents_check_4',sql`${t.severity} IN('critical','high','routine')`),
+ check('service_health_incidents_check_5',sql`${t.failureCategory} IN('provider','recipient','configuration','unknown','worker')`),
+ uniqueIndex('service_health_one_open').on(t.environment,t.serviceKey).where(sql`${t.state}<>'resolved'`)
+]);
+export const serviceHealthGuards=sqliteTable('service_health_guards',{
+ id:text('id').primaryKey().notNull(),
+ valid:integer('valid').notNull(),
+},t=>[
+ check('service_health_guards_check_0',sql`${t.valid}=1`)
+]);
+
+// BEGIN T30 GOVERNANCE ORM
+export const staffInvitationGrants=sqliteTable("staff_invitation_grants",{
+ invitationId:text("invitation_id").primaryKey().notNull().references(()=>staffInvitations.id),
+ permissionsJson:text("permissions_json").notNull(),
+ grantVersion:integer("grant_version").notNull().default(1),
+ createdBy:text("created_by").notNull().references(()=>users.id),
+ createdAt:integer("created_at").notNull(),
+},_t=>[
+ check("staff_invitation_grants_check_0",sql.raw("json_valid(permissions_json) AND json_type(permissions_json)='array'")),
+ check("staff_invitation_grants_check_1",sql.raw("grant_version>0"))
+]);
+export const teamDuties=sqliteTable("team_duties",{
+ id:text("id").primaryKey().notNull(),
+ department:text("department").notNull(),
+ label:text("label").notNull(),
+ requiredPermission:text("required_permission").notNull(),
+ reservedSuperAdmin:integer("reserved_super_admin").notNull(),
+ primaryUserId:text("primary_user_id").references(()=>users.id),
+ revision:integer("revision").notNull().default(0),
+ updatedAt:integer("updated_at").notNull(),
+ updatedBy:text("updated_by").notNull().references(()=>users.id),
+},_t=>[
+ check("team_duties_check_0",sql.raw("reserved_super_admin IN (0,1)")),
+ check("team_duties_check_1",sql.raw("revision>=0"))
+]);
+export const teamDutyBackups=sqliteTable("team_duty_backups",{
+ dutyId:text("duty_id").notNull().references(()=>teamDuties.id),
+ userId:text("user_id").notNull().references(()=>users.id),
+ position:integer("position").notNull(),
+},t=>[
+ primaryKey({columns:[t.dutyId,t.userId]}),
+ uniqueIndex("team_duty_backups_unique_0").on(t.dutyId,t.position),
+ check("team_duty_backups_check_0",sql.raw("position>=0"))
+]);
+export const teamAvailability=sqliteTable("team_availability",{
+ id:text("id").primaryKey().notNull(),
+ userId:text("user_id").notNull().references(()=>users.id),
+ startsAt:integer("starts_at").notNull(),
+ endsAt:integer("ends_at").notNull(),
+ available:integer("available").notNull(),
+ reason:text("reason").notNull(),
+ revision:integer("revision").notNull().default(0),
+ actorId:text("actor_id").notNull().references(()=>users.id),
+ createdAt:integer("created_at").notNull(),
+},t=>[
+ uniqueIndex("team_availability_unique_0").on(t.userId,t.revision),
+ check("team_availability_check_0",sql.raw("available IN(0,1)")),
+ check("team_availability_check_1",sql.raw("ends_at>starts_at"))
+]);
+export const teamHandoffs=sqliteTable("team_handoffs",{
+ id:text("id").primaryKey().notNull(),
+ dutyId:text("duty_id").notNull().references(()=>teamDuties.id),
+ fromUserId:text("from_user_id").references(()=>users.id),
+ toUserId:text("to_user_id").notNull().references(()=>users.id),
+ startsAt:integer("starts_at").notNull(),
+ endsAt:integer("ends_at").notNull(),
+ state:text("state").notNull(),
+ revision:integer("revision").notNull().default(0),
+ actorId:text("actor_id").notNull().references(()=>users.id),
+ createdAt:integer("created_at").notNull(),
+ acceptedAt:integer("accepted_at"),
+},t=>[
+ index("team_handoffs_current").on(t.dutyId,t.state,t.startsAt,t.endsAt),
+ check("team_handoffs_check_0",sql.raw("state IN('pending','accepted','cancelled')")),
+ check("team_handoffs_check_1",sql.raw("ends_at>starts_at")),
+ check("team_handoffs_check_2",sql.raw("from_user_id IS NULL OR from_user_id<>to_user_id"))
+]);
+export const teamAccessReviews=sqliteTable("team_access_reviews",{
+ id:text("id").primaryKey().notNull(),
+ userId:text("user_id").notNull().references(()=>users.id),
+ grantVersion:integer("grant_version").notNull(),
+ completedAt:integer("completed_at").notNull(),
+ reviewerId:text("reviewer_id").notNull().references(()=>users.id),
+ reason:text("reason").notNull(),
+ requestId:text("request_id").notNull(),
+},t=>[
+ uniqueIndex("team_access_reviews_unique_0").on(t.reviewerId,t.requestId)
+]);
+export const teamCheckpoints=sqliteTable("team_checkpoints",{
+ id:text("id").primaryKey().notNull(),
+ dutyId:text("duty_id").notNull().references(()=>teamDuties.id),
+ nepalDate:text("nepal_date").notNull(),
+ kind:text("kind").notNull(),
+ dueAt:integer("due_at").notNull(),
+ completedAt:integer("completed_at"),
+ completedBy:text("completed_by").references(()=>users.id),
+ nextAction:text("next_action"),
+ revision:integer("revision").notNull().default(0),
+},t=>[
+ uniqueIndex("team_checkpoints_unique_0").on(t.nepalDate,t.kind),
+ check("team_checkpoints_check_0",sql.raw("kind IN('payout_queue','reconciliation')"))
+]);
+export const teamProcedures=sqliteTable("team_procedures",{
+ id:text("id").primaryKey().notNull(),
+ family:text("family").notNull(),
+ version:integer("version").notNull(),
+ title:text("title").notNull(),
+ body:text("body").notNull(),
+ ownerId:text("owner_id").references(()=>users.id),
+ publishedAt:integer("published_at").notNull(),
+ retiredAt:integer("retired_at"),
+ nativeSourceType:text("native_source_type"),
+ nativeSourceId:text("native_source_id").references(()=>auditLogs.id),
+ nativeSourceSha256:text("native_source_sha256"),
+},t=>[
+ uniqueIndex("team_procedures_unique_0").on(t.family,t.version),
+ check("team_procedures_check_0",sql.raw("version>0")),
+ check("team_procedures_check_1",sql.raw("native_source_type IS NULL OR native_source_type='internal_legal_procedure'")),
+ check("team_procedures_check_2",sql.raw("(native_source_type IS NULL AND native_source_id IS NULL AND native_source_sha256 IS NULL) OR (native_source_type='internal_legal_procedure' AND native_source_id IS NOT NULL AND native_source_sha256 IS NOT NULL AND length(native_source_sha256)=64 AND body='')"))
+]);
+export const teamProcedureAssignments=sqliteTable("team_procedure_assignments",{
+ procedureId:text("procedure_id").notNull().references(()=>teamProcedures.id),
+ userId:text("user_id").notNull().references(()=>users.id),
+ assignedAt:integer("assigned_at").notNull(),
+ acknowledgedAt:integer("acknowledged_at"),
+},t=>[
+ primaryKey({columns:[t.procedureId,t.userId]})
+]);
+export const teamGovernanceTasks=sqliteTable("team_governance_tasks",{
+ id:text("id").primaryKey().notNull(),
+ kind:text("kind").notNull(),
+ sourceId:text("source_id").notNull(),
+ dutyId:text("duty_id").references(()=>teamDuties.id),
+ subjectUserId:text("subject_user_id").references(()=>users.id),
+ createdAt:integer("created_at").notNull(),
+ dueAt:integer("due_at").notNull(),
+ state:text("state").notNull(),
+ revision:integer("revision").notNull().default(0),
+ completedAt:integer("completed_at"),
+ sourceReferenceJson:text("source_reference_json").notNull().default("{}"),
+},t=>[
+ index("team_governance_tasks_subject").on(t.kind,t.subjectUserId,t.state),
+ index("team_governance_tasks_scan").on(t.state,t.id),
+ uniqueIndex("team_governance_tasks_unique_2").on(t.kind,t.sourceId),
+ check("team_governance_tasks_check_0",sql.raw("state IN('open','completed','superseded')")),
+ check("team_governance_tasks_check_1",sql.raw("json_valid(source_reference_json)"))
+]);
+export const teamGovernanceEvents=sqliteTable("team_governance_events",{
+ id:text("id").primaryKey().notNull(),
+ sourceType:text("source_type").notNull(),
+ sourceId:text("source_id").notNull(),
+ action:text("action").notNull(),
+ actorId:text("actor_id").notNull().references(()=>users.id),
+ createdAt:integer("created_at").notNull(),
+ reason:text("reason").notNull(),
+ detailsJson:text("details_json").notNull(),
+ requestId:text("request_id").notNull(),
+},t=>[
+ uniqueIndex("team_governance_events_unique_0").on(t.actorId,t.requestId),
+ check("team_governance_events_check_0",sql.raw("json_valid(details_json)"))
+]);
+export const serviceIncidentGovernance=sqliteTable("service_incident_governance",{
+ incidentId:text("incident_id").primaryKey().notNull().references(()=>serviceHealthIncidents.id),
+ title:text("title").notNull().default("Service incident"),
+ impactClass:text("impact_class").notNull().default("ordinary"),
+ impactSummary:text("impact_summary").notNull().default("Impact not yet assessed"),
+ failureSignature:text("failure_signature").notNull(),
+ releaseReference:text("release_reference"),
+ configurationReference:text("configuration_reference"),
+ ownerId:text("owner_id").references(()=>users.id),
+ backupId:text("backup_id").references(()=>users.id),
+ acknowledgedAt:integer("acknowledged_at"),
+ acknowledgedBy:text("acknowledged_by").references(()=>users.id),
+ planText:text("plan_text"),
+ planAt:integer("plan_at"),
+ firstReviewAt:integer("first_review_at"),
+ nextAction:text("next_action"),
+ nextUpdateAt:integer("next_update_at"),
+ acknowledgeDueAt:integer("acknowledge_due_at").notNull(),
+ planDueAt:integer("plan_due_at").notNull(),
+ updateIntervalMs:integer("update_interval_ms").notNull(),
+ closureRequired:integer("closure_required").notNull().default(1),
+ closureAuthorizedRevision:integer("closure_authorized_revision"),
+ closedBy:text("closed_by").references(()=>users.id),
+ resolutionCause:text("resolution_cause"),
+ recoveryFirstObservationId:text("recovery_first_observation_id").references(()=>serviceHealthObservations.id),
+ recoveryLastObservationId:text("recovery_last_observation_id").references(()=>serviceHealthObservations.id),
+ mergedInto:text("merged_into").references(()=>serviceHealthIncidents.id),
+ legacyIncidentId:text("legacy_incident_id").references(()=>operationalIncidents.id),
+ priorIncidentId:text("prior_incident_id").references(()=>serviceHealthIncidents.id),
+ revision:integer("revision").notNull().default(0),
+ updatedAt:integer("updated_at").notNull(),
+},t=>[
+ index("service_incident_due").on(t.acknowledgeDueAt,t.nextUpdateAt,t.incidentId),
+ uniqueIndex("service_incident_governance_unique_1").on(t.legacyIncidentId),
+ check("service_incident_governance_check_0",sql.raw("impact_class IN('ordinary','privacy','security','financial_integrity')")),
+ check("service_incident_governance_check_1",sql.raw("update_interval_ms>0")),
+ check("service_incident_governance_check_2",sql.raw("closure_required IN(0,1)")),
+ check("service_incident_governance_check_3",sql.raw("owner_id IS NULL OR backup_id IS NULL OR owner_id<>backup_id"))
+]);
+export const serviceIncidentEvents=sqliteTable("service_incident_events",{
+ id:text("id").primaryKey().notNull(),
+ incidentId:text("incident_id").notNull().references(()=>serviceHealthIncidents.id),
+ requestId:text("request_id").notNull(),
+ actorId:text("actor_id").references(()=>users.id),
+ action:text("action").notNull(),
+ fromRevision:text("from_revision"),
+ toRevision:text("to_revision").notNull(),
+ governanceRevision:integer("governance_revision").notNull(),
+ factsJson:text("facts_json").notNull(),
+ occurredAt:integer("occurred_at").notNull(),
+},t=>[
+ index("service_incident_event_history").on(t.incidentId,t.occurredAt,t.id),
+ uniqueIndex("service_incident_events_unique_1").on(t.requestId)
+]);
+export const serviceIncidentLinks=sqliteTable("service_incident_links",{
+ incidentId:text("incident_id").notNull().references(()=>serviceHealthIncidents.id),
+ sourceType:text("source_type").notNull(),
+ sourceId:text("source_id").notNull(),
+ linkedBy:text("linked_by").notNull().references(()=>users.id),
+ linkedAt:integer("linked_at").notNull(),
+},t=>[
+ primaryKey({columns:[t.incidentId,t.sourceType,t.sourceId]}),
+ check("service_incident_links_check_0",sql.raw("source_type IN('order','seller','payment','refund','return_request','complaint','incident')"))
+]);
+export const serviceIncidentLegacyLinks=sqliteTable("service_incident_legacy_links",{
+ legacyIncidentId:text("legacy_incident_id").primaryKey().notNull().references(()=>operationalIncidents.id),
+ incidentId:text("incident_id").notNull().references(()=>serviceHealthIncidents.id),
+ mappedBy:text("mapped_by").notNull().references(()=>users.id),
+ mappedAt:integer("mapped_at").notNull(),
+ legacyStatus:text("legacy_status").notNull(),
+ legacyUpdatedAt:integer("legacy_updated_at").notNull(),
+});
+export const formHealthObservations=sqliteTable("form_health_observations",{
+ id:text("id").primaryKey().notNull(),
+ supportReference:text("support_reference").notNull(),
+ environment:text("environment").notNull(),
+ releaseId:text("release_id").notNull(),
+ formId:text("form_id").notNull(),
+ formVersion:integer("form_version"),
+ journey:text("journey").notNull(),
+ phase:text("phase").notNull(),
+ outcome:text("outcome").notNull(),
+ category:text("category"),
+ evidenceKind:text("evidence_kind").notNull(),
+ evidenceId:text("evidence_id"),
+ observedAt:integer("observed_at").notNull(),
+},t=>[
+ index("form_health_scope_clock").on(t.environment,t.releaseId,t.formId,t.observedAt,t.id),
+ uniqueIndex("form_health_observations_unique_1").on(t.evidenceKind,t.evidenceId),
+ uniqueIndex("form_health_observations_unique_2").on(t.supportReference),
+ check("form_health_observations_check_0",sql.raw("environment IN('production','development','local_staging','test','unknown')")),
+ check("form_health_observations_check_1",sql.raw("phase IN('load','save')")),
+ check("form_health_observations_check_2",sql.raw("outcome IN('compatible','fallback','blocked','saved')")),
+ check("form_health_observations_check_3",sql.raw("category IN('definition_unavailable','definition_invalid','read_unavailable','durable_submission')")),
+ check("form_health_observations_check_4",sql.raw("evidence_kind IN('runtime','form_answer_set','core_receipt','native_command')")),
+ check("form_health_observations_check_5",sql.raw("observed_at>=0")),
+ check("form_health_observations_check_6",sql.raw("(phase='load' AND outcome IN('compatible','fallback','blocked') AND evidence_kind='runtime' AND evidence_id IS NULL) OR (phase='save' AND outcome='saved' AND evidence_kind IN('form_answer_set','core_receipt','native_command') AND evidence_id IS NOT NULL)"))
+]);
+export const formHealthIncidentLinks=sqliteTable("form_health_incident_links",{
+ observationId:text("observation_id").notNull().references(()=>formHealthObservations.id),
+ incidentId:text("incident_id").notNull().references(()=>serviceHealthIncidents.id),
+ retainedAt:integer("retained_at").notNull(),
+},t=>[
+ primaryKey({columns:[t.observationId,t.incidentId]})
+]);
+export const fileHealthObservations=sqliteTable("file_health_observations",{
+ id:text("id").primaryKey().notNull(),
+ supportReference:text("support_reference").notNull(),
+ environment:text("environment").notNull(),
+ releaseId:text("release_id").notNull(),
+ accessKind:text("access_kind").notNull(),
+ outcome:text("outcome").notNull(),
+ category:text("category"),
+ observedAt:integer("observed_at").notNull(),
+},t=>[
+ index("file_health_scope_clock").on(t.environment,t.releaseId,t.accessKind,t.observedAt,t.id),
+ uniqueIndex("file_health_observations_unique_1").on(t.supportReference),
+ check("file_health_observations_check_0",sql.raw("environment IN('production','development','local_staging','test','unknown')")),
+ check("file_health_observations_check_1",sql.raw("access_kind IN('public','private')")),
+ check("file_health_observations_check_2",sql.raw("outcome IN('read','blocked')")),
+ check("file_health_observations_check_3",sql.raw("category='storage_read_failed'")),
+ check("file_health_observations_check_4",sql.raw("observed_at>=0"))
+]);
+export const fileHealthIncidentLinks=sqliteTable("file_health_incident_links",{
+ observationId:text("observation_id").notNull().references(()=>fileHealthObservations.id),
+ incidentId:text("incident_id").notNull().references(()=>serviceHealthIncidents.id),
+ retainedAt:integer("retained_at").notNull(),
+},t=>[
+ primaryKey({columns:[t.observationId,t.incidentId]})
+]);
+// END T30 GOVERNANCE ORM
+
+// Bounded complete0152 case shape for FK tooling; physical cross-permission FK remains in the authoritative raw source.
+const legacyProtectedCaseReference=sqliteTable('seller_protected_change_cases',{
+ id:text('id').primaryKey().notNull(),sellerId:text('seller_id').notNull().references(()=>sellerProfiles.id),kind:text('kind').notNull(),classification:text('classification').notNull(),status:text('status').notNull().default('open'),
+ sourceRequestId:text('source_request_id').unique().references(()=>sellerDocumentChangeRequests.id),sourceDocumentId:text('source_document_id').references(()=>sellerDocuments.id),originalIdentityRevision:integer('original_identity_revision').notNull(),originalBankReference:text('original_bank_reference'),
+ scopeJson:text('scope_json').notNull(),proposedJson:text('proposed_json'),replacementDocumentId:text('replacement_document_id').references(()=>sellerDocuments.id),invalidCurrent:integer('invalid_current').notNull().default(0),version:integer('version').notNull().default(0),
+ requestedBy:text('requested_by').references(()=>users.id),reason:text('reason').notNull(),requestedAt:integer('requested_at').notNull(),updatedAt:integer('updated_at').notNull(),reviewedBy:text('reviewed_by').references(()=>users.id),reviewedAt:integer('reviewed_at'),reviewReason:text('review_reason'),evidenceReference:text('evidence_reference'),operationRequestId:text('operation_request_id').notNull(),activePermissionId:text('active_permission_id'),
+},t=>[index('seller_protected_cases_seller').on(t.sellerId,t.status),check('protected_case_kind',sql.raw("kind IN('identity','bank')")),check('protected_case_classification',sql.raw("classification IN('unclassified','material','identity_evidence_only','bank')")),check('protected_case_status',sql.raw("status IN('open','verified','rejected','withdrawn','closed')")),check('protected_case_current_invalid',sql.raw('invalid_current IN(0,1)')),check('protected_case_source_identity',sql.raw('source_request_id IS NULL OR id=source_request_id'))]);
+export const completeVersionLegacyTransitions=sqliteTable('complete_version_legacy_transitions',{
+ sourceRequestId:text('source_request_id').primaryKey().notNull().references(()=>sellerDocumentChangeRequests.id),
+ caseId:text('case_id').notNull().unique().references(()=>legacyProtectedCaseReference.id),
+ cutoverKey:text('cutover_key').notNull(),transitionOperationId:text('transition_operation_id').notNull().unique(),
+ sourceFingerprint:text('source_fingerprint').notNull(),sourceSnapshotJson:text('source_snapshot_json').notNull(),originalOperationId:text('original_operation_id'),
+ historicalRequestIdentityRevision:integer('historical_request_identity_revision'),historicalRequestBankReference:text('historical_request_bank_reference'),baselineBasis:text('baseline_basis').notNull(),observedIdentityRevision:integer('observed_identity_revision').notNull(),observedBankReference:text('observed_bank_reference'),observedAt:integer('observed_at').notNull(),
+ originalRequestedAt:integer('original_requested_at').notNull(),reviewTaskId:text('review_task_id').notNull().references(()=>reviewTasks.id),existingTaskPreserved:integer('existing_task_preserved').notNull(),
+ deadlineStartedAt:integer('deadline_started_at').notNull(),firstReviewDueAt:integer('first_review_due_at').notNull(),cutoverAt:integer('cutover_at').notNull(),initiatedBy:text('initiated_by').notNull().references(()=>users.id),
+},_t=>[check('legacy_transition_fingerprint',sql.raw("length(source_fingerprint)=64 AND source_fingerprint NOT GLOB '*[^0-9a-f]*'")),check('legacy_transition_snapshot',sql.raw('json_valid(source_snapshot_json)')),check('legacy_transition_unknown_history',sql.raw('historical_request_identity_revision IS NULL AND historical_request_bank_reference IS NULL')),check('legacy_transition_observed_basis',sql.raw("hex(baseline_basis)=hex('cutover_observation') AND observed_identity_revision>=0 AND observed_at>=0 AND deadline_started_at>=0")),check('legacy_transition_original_clock',sql.raw('original_requested_at>=0')),check('legacy_transition_task_preservation',sql.raw('existing_task_preserved IN(0,1)')),check('legacy_transition_link_identity',sql.raw('hex(case_id)=hex(source_request_id)')),check('legacy_transition_cutover_clock',sql.raw('cutover_at>=0 AND (existing_task_preserved=1 OR first_review_due_at>=cutover_at)'))]);

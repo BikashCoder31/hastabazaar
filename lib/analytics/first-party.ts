@@ -95,7 +95,7 @@ export function pathIsExcluded(
   );
 }
 
-export const privateTrafficPathPrefixes = ['/orders', '/account', '/documents', '/admin', '/seller', '/rider', '/api', '/local-testing'] as const;
+export const privateTrafficPathPrefixes = ['/orders', '/account', '/documents', '/admin', '/seller', '/rider', '/api', '/local-testing', '/recover-account'] as const;
 
 export function isPrivateTrafficPath(path: string): boolean {
   return privateTrafficPathPrefixes.some(prefix => path === prefix || path.startsWith(`${prefix}/`));

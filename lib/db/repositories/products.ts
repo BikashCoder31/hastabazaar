@@ -1,9 +1,15 @@
+import {formAnswerSourceSql} from '../../forms/answer-proof';
+import {publicCatalogueQuery} from '@/lib/products/public-catalogue-query';
+import {attachPublicOfferRows,publicOfferQueryColumns,type PublicOfferProductFields,type PublicOfferQueryFields} from '@/lib/products/public-offers';
+import {currentProductMediaSql,currentProductMediaOrder} from '../../products/publication-media';
 import { publicProductDetails, publicProductName } from '@/lib/products/truthful-presentation';
+import {publicProfileFieldSql} from '@/lib/sellers/public-profile-sql';
 import { productClosurePredicate } from './product-closure';
 import { businessNotificationStatements } from '../../operations/business-notifications';
 import type { FeaturedProduct } from '@/lib/catalog/featured-products';
 import { createProductSku } from '@/lib/products/submission';
-import { publicProductEligibility } from '@/lib/products/eligibility';
+import { normalizeSellerSku, sellerSkuSql } from '../../products/stock-codes';
+import { publicProductEligibility, publicProductVisibility } from '@/lib/products/eligibility';
 import { publicSellingIdentityColumns, type PublicSellingIdentity } from '../../products/selling-identity';
 import { productTransitions } from '@/lib/marketplace/workflows';
 import type { ProductStatus } from '@/lib/marketplace/types';
@@ -18,6 +24,24 @@ import { staffMutationGuard } from './staff-mutation-guard';
 import { getManagedMakerAuthority, makerMutationGuards, ManagedMakerAuthorizationError } from '../../managed-commerce/maker-authority';
 
 type SellerProductFormLink = { requestId: string; versionId: string; answers: FormAnswerSnapshot; digest?: string };
+
+async function stockAnswers(database: D1Database, options: {productId: string; sellerId: string;
+  input: ProductSubmissionInput; form?: SellerProductFormLink}, revision = false): Promise<FormAnswerSnapshot | undefined> {
+  if (!options.form) {
+    if (options.input.sellerSku) throw new Error('Seller SKU requires a recorded product submission.');
+    return undefined;
+  }
+  const previous = revision && options.input.sellerSku === undefined
+    ? await database.prepare(`SELECT ${sellerSkuSql('products',database)} AS sellerSku FROM products WHERE id=? AND seller_id=?`)
+      .bind(options.productId, options.sellerId).first<{sellerSku: string | null}>() : null;
+  const count=await database.prepare(`SELECT COUNT(*) AS n FROM ${formAnswerSourceSql(database)} a JOIN seller_profiles owner
+    ON owner.id=? AND owner.user_id=a.actor_id WHERE a.form_id='seller.product-submission'
+    AND a.subject_type='product' AND a.subject_id=?`).bind(options.sellerId,options.productId).first<{n:number}>();
+  return {...options.form.answers, productIdentity: {
+    sellerSku: normalizeSellerSku(options.input.sellerSku === undefined ? previous?.sellerSku ?? null : options.input.sellerSku),
+    revision:(count?.n??0)+1,
+  }};
+}
 
 function makerProductGuards(db: D1Database, options: { sellerId: string; actorId: string; now: number;
   productId: string; input: ProductSubmissionInput }) {
@@ -167,6 +191,7 @@ async function insertProductSubmission(
   },
 ): Promise<void> {
   const { productId, sellerId, actorId, slug, input, images, now } = options;
+  const answers = await stockAnswers(database, options);
   const productStatus = options.intent === 'draft' ? 'draft' : 'submitted';
   if (options.workspaceMode === 'maker' && images.some(media => !media.objectKey.startsWith(`private/product-media/${sellerId}/${productId}/`)))
     throw new ManagedMakerAuthorizationError('Product media must belong to this maker and product.');
@@ -302,7 +327,7 @@ async function insertProductSubmission(
   if (productStatus === 'submitted') statements.push(...await businessNotificationStatements(database,{eventId:productId,sourceType:'product',sourceId:productId,status:'submitted',actorId,now,kind:'submitted'}));
   if (options.form) statements.push(buildFormAnswerInsert(database, {
     formId: 'seller.product-submission', requestId: options.form.requestId, versionId: options.form.versionId,
-    subjectType: 'product', subjectId: productId, actorId, answers: options.form.answers, now,
+    subjectType: 'product', subjectId: productId, actorId, answers: answers!, now,
   }));
   await database.batch(statements);
 }
@@ -311,6 +336,7 @@ export interface SellerProductRow {
   id: string;
   slug: string;
   sku: string;
+  sellerSku?: string | null;
   nameEn: string;
   nameNe: string | null;
   pricePaisa: number;
@@ -352,7 +378,7 @@ export async function listSellerProducts(
   }
   const result = await database
     .prepare(
-      `SELECT products.id, products.slug, products.sku,
+      `SELECT products.id, products.slug, products.sku, ${sellerSkuSql('products',database)} AS sellerSku,
         products.name_en AS nameEn, products.name_ne AS nameNe,
         products.price_paisa AS pricePaisa,
         products.inventory_quantity AS inventoryQuantity,
@@ -360,8 +386,8 @@ export async function listSellerProducts(
         categories.name_en AS categoryName,
         products.created_at AS createdAt, products.updated_at AS updatedAt,
         (SELECT product_media.id FROM product_media
-          WHERE product_media.product_id = products.id AND product_media.mime_type LIKE 'image/%'
-          ORDER BY product_media.sort_order ASC LIMIT 1) AS primaryMediaId
+          WHERE product_media.product_id = products.id AND ${currentProductMediaSql('product_media')} AND product_media.mime_type LIKE 'image/%'
+          ORDER BY ${currentProductMediaOrder('product_media')} ASC LIMIT 1) AS primaryMediaId
        FROM products
        INNER JOIN categories ON categories.id = products.category_id
        WHERE ${conditions.join(' AND ')}
@@ -376,6 +402,7 @@ export interface SellerProductRevision {
   id: string;
   categoryId: string;
   sku: string;
+  sellerSku?: string | null;
   nameEn: string;
   nameNe: string | null;
   descriptionEn: string;
@@ -432,7 +459,7 @@ export async function getSellerProductForRevision(
 ): Promise<SellerProductRevision | null> {
   const row = await database
     .prepare(
-      `SELECT products.id, products.category_id AS categoryId, products.sku,
+      `SELECT products.id, products.category_id AS categoryId, products.sku, ${sellerSkuSql('products',database)} AS sellerSku,
           products.name_en AS nameEn, products.name_ne AS nameNe,
           products.description_en AS descriptionEn,
           products.description_ne AS descriptionNe,
@@ -459,7 +486,7 @@ export async function getSellerProductForRevision(
           COUNT(CASE WHEN product_media.mime_type LIKE 'image/%' THEN 1 END) AS mediaCount,
           COUNT(CASE WHEN product_media.mime_type = 'video/mp4' THEN 1 END) AS videoCount
          FROM products
-         LEFT JOIN product_media ON product_media.product_id = products.id
+         LEFT JOIN product_media ON product_media.product_id = products.id AND ${currentProductMediaSql()}
          WHERE products.id = ? AND products.seller_id = ?
          GROUP BY products.id LIMIT 1`,
     )
@@ -469,8 +496,8 @@ export async function getSellerProductForRevision(
   const media = await database
     .prepare(
       `SELECT id, original_name AS originalName, mime_type AS mimeType,
-        sort_order AS sortOrder
-       FROM product_media WHERE product_id = ? ORDER BY sort_order ASC`,
+        ${currentProductMediaOrder()} AS sortOrder
+       FROM product_media WHERE product_id = ? AND ${currentProductMediaSql()} ORDER BY ${currentProductMediaOrder()} ASC`,
     )
     .bind(productId)
     .all<SellerProductMediaRow>();
@@ -498,7 +525,7 @@ export async function listSellerOwnedMediaForMutation(
        FROM product_media
        INNER JOIN products ON products.id = product_media.product_id
        WHERE product_media.product_id = ? AND products.seller_id = ?
-       ORDER BY product_media.sort_order ASC`,
+       ORDER BY ${currentProductMediaOrder('product_media')} ASC`,
     )
     .bind(productId, sellerId)
     .all<SellerOwnedMediaMutationRow>();
@@ -539,6 +566,9 @@ export async function reviseAndResubmitProduct(
   if (options.form && await formRequestReplay(database, { formId: 'seller.product-submission',
     requestId: options.form.requestId, actorId: options.actorId, action: 'product.resubmitted',
     digest: catalogDigest!, subjectId: options.productId })) return 'replayed';
+  if (await database.prepare('SELECT 1 FROM product_publication_links WHERE product_id=?').bind(options.productId).first())
+    throw new ProductRevisionConflictError('Use the complete product workspace to submit an exact version; legacy edits cannot rewrite its public row.');
+  const answers = await stockAnswers(database, options, true);
   const mutationId = crypto.randomUUID();
   const addedPhotos=options.images.filter(m=>m.mimeType.startsWith('image/')).length;
   const addedVideos=options.images.filter(m=>m.mimeType==='video/mp4').length;
@@ -743,8 +773,9 @@ export async function reviseAndResubmitProduct(
       THEN 1 ELSE json_extract('invalid', '$') END`).bind(options.productId, options.sellerId, mutationId),
     buildFormAnswerInsert(database, { formId: 'seller.product-submission', requestId: options.form.requestId,
       versionId: options.form.versionId, subjectType: 'product', subjectId: options.productId,
-      actorId: options.actorId, answers: options.form.answers, now: options.now }),
+      actorId: options.actorId, answers: answers!, now: options.now }),
   );
+  statements.push(...productActionGuard(database,'NOT EXISTS(SELECT 1 FROM product_publication_links WHERE product_id=?)',[options.productId]));
   let results;
   try { results = await database.batch(statements); }
   catch (error) {
@@ -821,6 +852,7 @@ export async function setProductInventory(
     form?: SellerProductFormLink;
   },
 ): Promise<void> {
+  if(await database.prepare('SELECT 1 FROM product_publication_links WHERE product_id=? UNION ALL SELECT 1 FROM product_offer_heads WHERE product_id=? AND inventory_mapped=1').bind(options.productId,options.productId).first())throw new InventoryConflictError('Use the private workspace offer availability controls for this product.');
   const catalogDigest = options.form ? await digestFormRequest({ productId: options.productId,
     sellerId: options.sellerId, quantity: options.quantity, reason: options.reason,
     versionId: options.form.versionId, answers: options.form.answers }) : null;
@@ -847,7 +879,7 @@ export async function setProductInventory(
     database
       .prepare(
         `UPDATE products SET inventory_quantity = ?, updated_at = ?, review_request_id = ?
-         WHERE id = ? AND seller_id = ? AND inventory_quantity = ?`,
+         WHERE id = ? AND seller_id = ? AND inventory_quantity = ? AND NOT EXISTS(SELECT 1 FROM product_publication_links WHERE product_id=products.id) AND NOT EXISTS(SELECT 1 FROM product_offer_heads WHERE product_id=products.id AND inventory_mapped=1)`,
       )
       .bind(
         options.quantity,
@@ -939,6 +971,7 @@ export async function listProductsForReview(
   database: D1Database,
   limit = 100,
   publishedOnly = false,
+  sellerId?:string,
 ): Promise<readonly ProductReviewQueueRow[]> {
   const result = await database
     .prepare(
@@ -957,9 +990,9 @@ export async function listProductsForReview(
         homepage_product_controls.updated_at AS homepageUpdatedAt,
         homepage_actor.display_name AS homepageUpdatedByName,
         (SELECT product_media.id FROM product_media
-          WHERE product_media.product_id = products.id
+          WHERE product_media.product_id = products.id AND ${currentProductMediaSql('product_media')}
             AND product_media.mime_type LIKE 'image/%'
-          ORDER BY product_media.sort_order ASC LIMIT 1) AS primaryMediaId
+          ORDER BY ${currentProductMediaOrder('product_media')} ASC LIMIT 1) AS primaryMediaId
        FROM products
        INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
        INNER JOIN categories ON categories.id = products.category_id
@@ -968,10 +1001,11 @@ export async function listProductsForReview(
        LEFT JOIN users homepage_actor
          ON homepage_actor.id = homepage_product_controls.updated_by
        WHERE ${publishedOnly ? "products.status = 'published'" : "products.status IN ('submitted', 'under_review', 'needs_changes', 'approved')"}
+       ${sellerId?'AND products.seller_id=?':''}
        ORDER BY products.created_at ASC
        LIMIT ?`,
     )
-    .bind(limit)
+    .bind(...(sellerId?[sellerId,limit]:[limit]))
     .all<ProductReviewQueueRow>();
   return result.results;
 }
@@ -997,6 +1031,9 @@ export interface ProductModerationEventRow {
 }
 
 export interface ProductReviewDetail extends ProductReviewQueueRow {
+  publiclyVisible: boolean;
+  purchasable: boolean;
+  sellerSku?: string | null;
   sellerId: string;
   sellerUserId: string;
   descriptionEn: string;
@@ -1040,7 +1077,9 @@ export async function getProductForReview(
   const product = await database
     .prepare(
       `SELECT products.id, products.seller_id AS sellerId,
-        seller_profiles.user_id AS sellerUserId, products.category_id AS categoryId, products.slug, products.sku,
+        CASE WHEN ${publicProductVisibility()} THEN 1 ELSE 0 END AS publiclyVisible,
+        CASE WHEN ${publicProductEligibility()} THEN 1 ELSE 0 END AS purchasable,
+        seller_profiles.user_id AS sellerUserId, products.category_id AS categoryId, products.slug, products.sku, ${sellerSkuSql('products',database)} AS sellerSku,
         products.name_en AS nameEn, products.name_ne AS nameNe,
         products.description_en AS descriptionEn,
         products.description_ne AS descriptionNe,
@@ -1077,9 +1116,9 @@ export async function getProductForReview(
         homepage_product_controls.updated_at AS homepageUpdatedAt,
         homepage_actor.display_name AS homepageUpdatedByName,
         (SELECT product_media.id FROM product_media
-          WHERE product_media.product_id = products.id
+          WHERE product_media.product_id = products.id AND ${currentProductMediaSql('product_media')}
             AND product_media.mime_type LIKE 'image/%'
-          ORDER BY product_media.sort_order ASC LIMIT 1) AS primaryMediaId
+          ORDER BY ${currentProductMediaOrder('product_media')} ASC LIMIT 1) AS primaryMediaId
        FROM products
        INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
        INNER JOIN categories ON categories.id = products.category_id
@@ -1097,8 +1136,8 @@ export async function getProductForReview(
     database
       .prepare(
         `SELECT id, original_name AS originalName, mime_type AS mimeType,
-          size_bytes AS sizeBytes, alt_en AS altEn, alt_ne AS altNe, sort_order AS sortOrder
-         FROM product_media WHERE product_id = ? ORDER BY sort_order ASC`,
+          size_bytes AS sizeBytes, alt_en AS altEn, alt_ne AS altNe, ${currentProductMediaOrder()} AS sortOrder
+         FROM product_media WHERE product_id = ? AND ${currentProductMediaSql()} ORDER BY ${currentProductMediaOrder()} ASC`,
       )
       .bind(productId)
       .all<ProductMediaRow>(),
@@ -1120,6 +1159,8 @@ export async function getProductForReview(
   ]);
   return {
     ...product,
+    publiclyVisible: Number(product.publiclyVisible) === 1,
+    purchasable: Number(product.purchasable) === 1,
     media: mediaResult.results,
     history: historyResult.results,
   };
@@ -1180,19 +1221,20 @@ async function productActionReplay(database: D1Database, input: {
   formId: 'staff.product-review' | 'staff.homepage-visibility'; requestId: string;
   actorId: string; action: string; productId: string; versionId: string; digest: string;
 }): Promise<boolean> {
+  const answerSource=input.formId==='staff.product-review'?formAnswerSourceSql(database):'form_answer_sets';
   const audit = await database.prepare(`SELECT actor_id AS actorId,action,subject_type AS subjectType,
       subject_id AS subjectId,next_json AS nextJson FROM audit_logs WHERE request_id=? LIMIT 1`)
     .bind(input.requestId).first<{ actorId: string; action: string; subjectType: string;
       subjectId: string; nextJson: string | null }>();
   if (!audit) {
-    const orphan = await database.prepare('SELECT 1 AS used FROM form_answer_sets WHERE request_id=? LIMIT 1')
+    const orphan = await database.prepare(`SELECT 1 AS used FROM ${answerSource} product_answer WHERE product_answer.request_id=? LIMIT 1`)
       .bind(input.requestId).first();
     if (orphan) throw new Error('Request reference is already used.');
     return false;
   }
-  const answer = await database.prepare(`SELECT 1 AS valid FROM form_answer_sets
-    WHERE form_id=? AND request_id=? AND config_version_id=? AND subject_type='product'
-      AND subject_id=? AND actor_id=? LIMIT 1`)
+  const answer = await database.prepare(`SELECT 1 AS valid FROM ${answerSource} product_answer
+    WHERE product_answer.form_id=? AND product_answer.request_id=? AND product_answer.config_version_id=? AND product_answer.subject_type='product'
+      AND product_answer.subject_id=? AND product_answer.actor_id=? LIMIT 1`)
     .bind(input.formId, input.requestId, input.versionId, input.productId, input.actorId).first();
   let recorded: unknown;
   try { recorded = audit.nextJson ? JSON.parse(audit.nextJson).catalogDigest : null; }
@@ -1215,6 +1257,8 @@ export async function reviewProduct(
     form?: { versionId: string; answers: FormAnswerSnapshot };
   },
 ): Promise<ProductStatus> {
+  if (await database.prepare('SELECT 1 FROM product_publication_links WHERE product_id=?').bind(options.productId).first())
+    throw new ProductReviewConflictError('Review the complete frozen product candidate in its workspace; legacy moderation cannot publish a different version.');
   const transition = reviewTransitions[options.action];
   if (!transition) throw new ProductReviewConflictError('Choose a supported review action.');
   const authority = options.form ? await staffMutationGuard(database, options.actorId,
@@ -1341,6 +1385,7 @@ export async function reviewProduct(
       answers: options.form.answers, now: options.now })] : []),
     ...(authority?.statements ?? []),
   ];
+  statements.push(...productActionGuard(database,'NOT EXISTS(SELECT 1 FROM product_publication_links WHERE product_id=?)',[options.productId]));
   let results;
   try { results = await database.batch(statements); }
   catch (error) {
@@ -1356,14 +1401,17 @@ export async function reviewProduct(
   return transition.to;
 }
 
-export interface PublicProductRow extends Partial<PublicSellingIdentity> {
+export interface PublicProductRow extends Partial<PublicSellingIdentity>,PublicOfferProductFields {
+  purchasable: boolean;
+  sku?: string;
+  sellerSku?: string | null;
   id: string;
   sellerId: string;
   slug: string;
   nameEn: string;
   nameNe: string | null;
   descriptionEn: string;
-  pricePaisa: number;
+  pricePaisa: number | null;
   compareAtPricePaisa: number | null;
   inventoryQuantity: number;
   producer: string;
@@ -1387,7 +1435,7 @@ export interface PublicProductRow extends Partial<PublicSellingIdentity> {
   preparationDays: number;
   manufacturedAt: number | null;
   expiresAt: number | null;
-  licenceReference: string | null;
+  licenceReference?: never;
   tradingName: string;
   categoryName: string;
   primaryMediaId: string | null;
@@ -1403,10 +1451,12 @@ export interface PublicCatalogueFilters {
   sort?: 'newest' | 'price-low' | 'price-high' | 'name';
 }
 
-interface HomepageProductQueryRow extends Partial<PublicSellingIdentity> {
+interface HomepageProductQueryRow extends Partial<PublicSellingIdentity>,PublicOfferQueryFields,PublicOfferProductFields {
+  id: string;
+  purchasable?: boolean | number;
   slug: string;
   name: string;
-  pricePaisa: number;
+  pricePaisa: number | null;
   compareAtPricePaisa: number | null;
   category: string;
   tradingName: string;
@@ -1451,7 +1501,7 @@ function homepageProduct(
   row: HomepageProductQueryRow,
   label: FeaturedProduct['label'],
 ): FeaturedProduct {
-  const pricePaisa = Number(row.pricePaisa);
+  const pricePaisa = row.pricePaisa===null?null:Number(row.pricePaisa);
   return {
     slug: row.slug,
     name: publicProductName(row.name),
@@ -1460,11 +1510,13 @@ function homepageProduct(
       row.compareAtPricePaisa === null
         ? null
         : Number(row.compareAtPricePaisa),
-    price: new Intl.NumberFormat('en-NP').format(pricePaisa / 100),
+    price: pricePaisa===null?'':new Intl.NumberFormat('en-NP').format(pricePaisa / 100),
+    priceFrom: row.priceFrom??false,maximumPricePaisa:row.maximumPricePaisa??pricePaisa,
     category: row.category,
     image: `/api/product-media/${row.mediaId}`,
     imageAlt: publicProductName(row.name),
     tradingName: row.tradingName,
+    purchasable: row.purchasable === undefined ? undefined : Number(row.purchasable) === 1,
     makerName: row.makerName, storeName: row.storeName, legalSellerName: row.legalSellerName, participationRoute: row.participationRoute,
     label,
   };
@@ -1482,10 +1534,11 @@ export async function listHomepagePromotedProducts(
   limit = 8,
 ): Promise<readonly FeaturedProduct[]> {
   homepageLimit(limit);
+  const catalogue=await publicCatalogueQuery(database,now);
   const result = await database
     .prepare(
-      `SELECT ${publicSellingIdentityColumns()}, products.slug, products.name_en AS name, products.price_paisa AS pricePaisa, products.compare_at_price_paisa AS compareAtPricePaisa,
-      categories.name_en AS category, seller_profiles.trading_name AS tradingName,
+      `${catalogue.withClause} SELECT ${publicSellingIdentityColumns(catalogue.now)}, ${publicOfferQueryColumns(catalogue)}, CASE WHEN ${catalogue.purchasable()} THEN 1 ELSE 0 END AS purchasable, products.id, products.slug, products.name_en AS name, ${catalogue.price()} AS pricePaisa, products.compare_at_price_paisa AS compareAtPricePaisa,
+      categories.name_en AS category, ${publicProfileFieldSql('publicName')} AS tradingName,
       homepage_media.id AS mediaId
      FROM promotions
      INNER JOIN promotion_products ON promotion_products.promotion_id = promotions.id
@@ -1494,14 +1547,14 @@ export async function listHomepagePromotedProducts(
      INNER JOIN categories ON categories.id = products.category_id
      INNER JOIN product_media homepage_media ON homepage_media.id = (
        SELECT candidate_media.id FROM product_media candidate_media
-       WHERE candidate_media.product_id = products.id
+       WHERE candidate_media.product_id = products.id AND ${currentProductMediaSql('candidate_media')}
          AND candidate_media.mime_type LIKE 'image/%'
-       ORDER BY candidate_media.sort_order ASC, candidate_media.id ASC LIMIT 1
+       ORDER BY ${currentProductMediaOrder('candidate_media')} ASC, candidate_media.id ASC LIMIT 1
      )
      WHERE promotions.status = 'active' AND promotions.placement = 'homepage'
        AND promotions.starts_at <= ? AND promotions.ends_at > ?
-       AND ${publicProductEligibility()}
-       AND categories.is_active = 1 AND products.inventory_quantity > 0
+       AND ${catalogue.purchasable()}
+       AND categories.is_active = 1 AND ${catalogue.stock()} > 0
        AND NOT EXISTS (
          SELECT 1 FROM homepage_product_controls
          WHERE homepage_product_controls.product_id = products.id
@@ -1513,7 +1566,7 @@ export async function listHomepagePromotedProducts(
     .bind(now, now, Math.min(limit * 3, 24))
     .all<HomepageProductQueryRow>();
   const unique = new Map<string, FeaturedProduct>();
-  for (const row of result.results) {
+  for (const row of await attachPublicOfferRows(database,result.results,catalogue.now)) {
     if (!unique.has(row.slug)) unique.set(row.slug, homepageProduct(row, 'Offer'));
   }
   return [...unique.values()].slice(0, limit);
@@ -1523,9 +1576,10 @@ export async function listActiveHomepagePromotions(
   database: D1Database,
   now = Date.now(),
 ): Promise<readonly HomepagePromotion[]> {
+  const catalogue=await publicCatalogueQuery(database,now);
   const result = await database
     .prepare(
-      `SELECT promotions.id, promotions.name_en AS nameEn,
+      `${catalogue.withClause} SELECT promotions.id, promotions.name_en AS nameEn,
         promotions.starts_at AS startsAt, promotions.ends_at AS endsAt,
         COUNT(DISTINCT products.id) AS productCount
        FROM promotions
@@ -1535,8 +1589,8 @@ export async function listActiveHomepagePromotions(
        INNER JOIN categories ON categories.id = products.category_id
        WHERE promotions.status = 'active' AND promotions.placement = 'homepage'
          AND promotions.starts_at <= ? AND promotions.ends_at > ?
-         AND ${publicProductEligibility()}
-         AND categories.is_active = 1 AND products.inventory_quantity > 0
+         AND ${catalogue.purchasable()}
+         AND categories.is_active = 1 AND ${catalogue.stock()} > 0
          AND NOT EXISTS (
            SELECT 1 FROM homepage_product_controls
            WHERE homepage_product_controls.product_id = products.id
@@ -1544,7 +1598,7 @@ export async function listActiveHomepagePromotions(
          )
          AND EXISTS (
            SELECT 1 FROM product_media offer_media
-           WHERE offer_media.product_id = products.id
+           WHERE offer_media.product_id = products.id AND ${currentProductMediaSql('offer_media')}
              AND offer_media.mime_type LIKE 'image/%'
          )
        GROUP BY promotions.id, promotions.name_en, promotions.starts_at, promotions.ends_at
@@ -1567,24 +1621,25 @@ export async function listHomepageLatestProducts(
   limit = 8,
 ): Promise<readonly FeaturedProduct[]> {
   homepageLimit(limit);
+  const catalogue=await publicCatalogueQuery(database);
   const result = await database
     .prepare(
-      `SELECT ${publicSellingIdentityColumns()}, products.slug, products.name_en AS name,
-        products.price_paisa AS pricePaisa,
+      `${catalogue.withClause} SELECT ${publicSellingIdentityColumns(catalogue.now)}, ${publicOfferQueryColumns(catalogue)}, CASE WHEN ${catalogue.purchasable()} THEN 1 ELSE 0 END AS purchasable, products.id, products.slug, products.name_en AS name,
+        ${catalogue.price()} AS pricePaisa,
         products.compare_at_price_paisa AS compareAtPricePaisa,
-        categories.name_en AS category, seller_profiles.trading_name AS tradingName,
+        categories.name_en AS category, ${publicProfileFieldSql('publicName')} AS tradingName,
         homepage_media.id AS mediaId
        FROM products
        INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
        INNER JOIN categories ON categories.id = products.category_id
        INNER JOIN product_media homepage_media ON homepage_media.id = (
          SELECT candidate_media.id FROM product_media candidate_media
-         WHERE candidate_media.product_id = products.id
+         WHERE candidate_media.product_id = products.id AND ${currentProductMediaSql('candidate_media')}
            AND candidate_media.mime_type LIKE 'image/%'
-         ORDER BY candidate_media.sort_order ASC, candidate_media.id ASC LIMIT 1
+         ORDER BY ${currentProductMediaOrder('candidate_media')} ASC, candidate_media.id ASC LIMIT 1
        )
-       WHERE ${publicProductEligibility()}
-         AND categories.is_active = 1 AND products.inventory_quantity > 0
+       WHERE ${publicProductVisibility()}
+         AND categories.is_active = 1 AND ${catalogue.stock()} > 0
          AND products.published_at IS NOT NULL
          AND NOT EXISTS (
            SELECT 1 FROM homepage_product_controls
@@ -1596,7 +1651,7 @@ export async function listHomepageLatestProducts(
     )
     .bind(limit)
     .all<HomepageProductQueryRow>();
-  return result.results.map((row) => homepageProduct(row, 'New'));
+  return (await attachPublicOfferRows(database,result.results,catalogue.now)).map(row=>homepageProduct(row,'New'));
 }
 
 export async function listHomepageTopProducts(
@@ -1609,12 +1664,13 @@ export async function listHomepageTopProducts(
   if (!Number.isInteger(windowDays) || windowDays < 1 || windowDays > 3650)
     throw new RangeError('Homepage sales window must be from 1 through 3650 days.');
   const since = now - windowDays * 86_400_000;
+  const catalogue=await publicCatalogueQuery(database,now);
   const result = await database
     .prepare(
-      `SELECT ${publicSellingIdentityColumns()}, products.slug, products.name_en AS name,
-        products.price_paisa AS pricePaisa,
+      `${catalogue.withClause} SELECT ${publicSellingIdentityColumns(catalogue.now)}, ${publicOfferQueryColumns(catalogue)}, CASE WHEN ${catalogue.purchasable()} THEN 1 ELSE 0 END AS purchasable, products.id, products.slug, products.name_en AS name,
+        ${catalogue.price()} AS pricePaisa,
         products.compare_at_price_paisa AS compareAtPricePaisa,
-        categories.name_en AS category, seller_profiles.trading_name AS tradingName,
+        categories.name_en AS category, ${publicProfileFieldSql('publicName')} AS tradingName,
         homepage_media.id AS mediaId, SUM(order_items.quantity) AS soldQuantity,
         COUNT(DISTINCT orders.id) AS deliveredOrderCount
        FROM order_items
@@ -1624,15 +1680,15 @@ export async function listHomepageTopProducts(
        INNER JOIN categories ON categories.id = products.category_id
        INNER JOIN product_media homepage_media ON homepage_media.id = (
          SELECT candidate_media.id FROM product_media candidate_media
-         WHERE candidate_media.product_id = products.id
+         WHERE candidate_media.product_id = products.id AND ${currentProductMediaSql('candidate_media')}
            AND candidate_media.mime_type LIKE 'image/%'
-         ORDER BY candidate_media.sort_order ASC, candidate_media.id ASC LIMIT 1
+         ORDER BY ${currentProductMediaOrder('candidate_media')} ASC, candidate_media.id ASC LIMIT 1
        )
        WHERE orders.status = 'delivered' AND orders.delivered_at IS NOT NULL
          AND orders.delivered_at >= ? AND orders.delivered_at <= ?
          AND order_items.fulfillment_status = 'delivered'
-         AND ${publicProductEligibility()}
-         AND categories.is_active = 1 AND products.inventory_quantity > 0
+         AND ${catalogue.purchasable()}
+         AND categories.is_active = 1 AND ${catalogue.stock()} > 0
          AND NOT EXISTS (
            SELECT 1 FROM homepage_product_controls
            WHERE homepage_product_controls.product_id = products.id
@@ -1650,7 +1706,7 @@ export async function listHomepageTopProducts(
       soldQuantity: number;
       deliveredOrderCount: number;
     }>();
-  return result.results.map((row) => homepageProduct(row, 'Popular'));
+  return (await attachPublicOfferRows(database,result.results,catalogue.now)).map(row=>homepageProduct(row,'Popular'));
 }
 
 function escapeLike(value: string): string {
@@ -1714,9 +1770,9 @@ export async function listHomepageProductControls(
           seller_profiles.trading_name AS tradingName,
           categories.name_en AS categoryName,
           (SELECT product_media.id FROM product_media
-            WHERE product_media.product_id = products.id
+            WHERE product_media.product_id = products.id AND ${currentProductMediaSql('product_media')}
               AND product_media.mime_type LIKE 'image/%'
-            ORDER BY product_media.sort_order ASC, product_media.id ASC LIMIT 1) AS primaryMediaId,
+            ORDER BY ${currentProductMediaOrder('product_media')} ASC, product_media.id ASC LIMIT 1) AS primaryMediaId,
           COALESCE(homepage_product_controls.is_hidden, 0) AS homepageHidden,
           COALESCE(homepage_product_controls.version, 0) AS homepageVersion,
           homepage_product_controls.reason AS homepageReason,
@@ -1907,6 +1963,7 @@ export async function listPublishedProducts(
   database: D1Database,
   filters: PublicCatalogueFilters = {},
 ): Promise<readonly PublicProductRow[]> {
+  const catalogue=await publicCatalogueQuery(database);
   const limit = filters.limit ?? 60;
   if (!Number.isInteger(limit) || limit < 1 || limit > 120) {
     throw new RangeError(
@@ -1919,20 +1976,20 @@ export async function listPublishedProducts(
   const sort = filters.sort ?? 'newest';
   const orderBy = {
     newest: 'products.published_at DESC, products.id ASC',
-    'price-low': 'products.price_paisa ASC, products.id ASC',
-    'price-high': 'products.price_paisa DESC, products.id ASC',
+    'price-low': `${catalogue.price()} IS NULL, ${catalogue.price()} ASC, products.id ASC`,
+    'price-high': `${catalogue.price()} DESC, products.id ASC`,
     name: 'products.name_en COLLATE NOCASE ASC, products.id ASC',
   }[sort];
   if (!orderBy) throw new RangeError('Catalogue sort is invalid.');
   const conditions = [
-    `${publicProductEligibility()}`,
+    `${publicProductVisibility()}`,
     `categories.is_active = 1`,
   ];
   const bindings: Array<string | number> = [];
   if (filters.minimumPricePaisa !== undefined) {
     if (!Number.isSafeInteger(filters.minimumPricePaisa) || filters.minimumPricePaisa < 0 || filters.minimumPricePaisa > 100_000_000_000)
       throw new RangeError('Minimum price must be valid integer paisa.');
-    conditions.push('products.price_paisa >= ?');
+    conditions.push(`${catalogue.price()} >= ?`);
     bindings.push(filters.minimumPricePaisa);
   }
   const query = filters.query?.trim().slice(0, 100);
@@ -1985,12 +2042,12 @@ export async function listPublishedProducts(
   if (sort === 'newest') bindings.push(Date.now(), Date.now());
   const result = await database
     .prepare(
-      `SELECT ${publicSellingIdentityColumns()}, products.id, products.slug, products.name_en AS nameEn,
+      `${catalogue.withClause} SELECT ${publicSellingIdentityColumns(catalogue.now)}, ${publicOfferQueryColumns(catalogue)}, CASE WHEN ${catalogue.purchasable()} THEN 1 ELSE 0 END AS purchasable, products.id, products.slug, products.name_en AS nameEn,
         products.seller_id AS sellerId,
         products.name_ne AS nameNe, products.description_en AS descriptionEn,
-        products.price_paisa AS pricePaisa,
+        ${catalogue.price()} AS pricePaisa,
         products.compare_at_price_paisa AS compareAtPricePaisa,
-        products.inventory_quantity AS inventoryQuantity,
+        ${catalogue.stock()} AS inventoryQuantity,
         products.producer, products.country_of_origin AS countryOfOrigin,
         products.origin_evidence_status AS originEvidenceStatus, products.origin_evidence_reference AS originEvidenceReference,
         products.materials, products.origin_story AS originStory, products.dimensions,
@@ -2003,12 +2060,11 @@ export async function listPublishedProducts(
         products.preparation_days AS preparationDays,
         products.manufactured_at AS manufacturedAt,
         products.expires_at AS expiresAt,
-        products.licence_reference AS licenceReference,
-        seller_profiles.trading_name AS tradingName,
+        ${publicProfileFieldSql('publicName')} AS tradingName,
         categories.name_en AS categoryName,
         (SELECT product_media.id FROM product_media
-          WHERE product_media.product_id = products.id
-          ORDER BY product_media.sort_order ASC LIMIT 1) AS primaryMediaId
+          WHERE product_media.product_id = products.id AND ${currentProductMediaSql('product_media')}
+          ORDER BY ${currentProductMediaOrder('product_media')} ASC LIMIT 1) AS primaryMediaId
        FROM products
        INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
        INNER JOIN categories ON categories.id = products.category_id
@@ -2016,23 +2072,24 @@ export async function listPublishedProducts(
        ORDER BY ${promotionOrder}${orderBy} LIMIT ? OFFSET ?`,
     )
     .bind(...bindings, limit, (page - 1) * limit)
-    .all<PublicProductRow>();
-  return result.results.map(publicProductDetails);
+    .all<PublicProductRow & PublicOfferQueryFields>();
+  return attachPublicOfferRows(database,result.results.map(product=>publicProductDetails(product)),catalogue.now);
 }
 
 export async function countPublishedProducts(
   database: D1Database,
   filters: Omit<PublicCatalogueFilters, 'limit' | 'page' | 'sort'> = {},
 ): Promise<number> {
+  const catalogue=await publicCatalogueQuery(database);
   const conditions = [
-    `${publicProductEligibility()}`,
+    `${publicProductVisibility()}`,
     `categories.is_active = 1`,
   ];
   const bindings: Array<string | number> = [];
   if (filters.minimumPricePaisa !== undefined) {
     if (!Number.isSafeInteger(filters.minimumPricePaisa) || filters.minimumPricePaisa < 0 || filters.minimumPricePaisa > 100_000_000_000)
       throw new RangeError('Minimum price must be valid integer paisa.');
-    conditions.push('products.price_paisa >= ?');
+    conditions.push(`${catalogue.price()} >= ?`);
     bindings.push(filters.minimumPricePaisa);
   }
   const query = filters.query?.trim().slice(0, 100);
@@ -2068,7 +2125,7 @@ export async function countPublishedProducts(
   }
   const row = await database
     .prepare(
-      `SELECT COUNT(*) AS count FROM products INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id INNER JOIN categories ON categories.id = products.category_id WHERE ${conditions.join(' AND ')}`,
+      `${catalogue.withClause} SELECT COUNT(*) AS count FROM products INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id INNER JOIN categories ON categories.id = products.category_id WHERE ${conditions.join(' AND ')}`,
     )
     .bind(...bindings)
     .first<{ count: number }>();
@@ -2078,15 +2135,16 @@ export async function countPublishedProducts(
 export async function getPublishedProductBySlug(
   database: D1Database,
   slug: string,
-): Promise<(PublicProductRow & PublicSellingIdentity & { media: readonly ProductMediaRow[] }) | null> {
+): Promise<(PublicProductRow & PublicSellingIdentity & { media: readonly Pick<ProductMediaRow,'id'|'altEn'|'mimeType'>[] }) | null> {
+  const catalogue=await publicCatalogueQuery(database);
   const product = await database
     .prepare(
-      `SELECT ${publicSellingIdentityColumns()}, products.id, products.slug, products.name_en AS nameEn,
+      `${catalogue.withClause} SELECT ${publicSellingIdentityColumns(catalogue.now)}, ${publicOfferQueryColumns(catalogue)}, CASE WHEN ${catalogue.purchasable()} THEN 1 ELSE 0 END AS purchasable, products.id, products.slug, products.sku, products.name_en AS nameEn,
         products.seller_id AS sellerId,
         products.name_ne AS nameNe, products.description_en AS descriptionEn,
-        products.price_paisa AS pricePaisa,
+        ${catalogue.price()} AS pricePaisa,
         products.compare_at_price_paisa AS compareAtPricePaisa,
-        products.inventory_quantity AS inventoryQuantity,
+        ${catalogue.stock()} AS inventoryQuantity,
         products.producer, products.country_of_origin AS countryOfOrigin,
         products.origin_evidence_status AS originEvidenceStatus, products.origin_evidence_reference AS originEvidenceReference,
         products.materials, products.origin_story AS originStory, products.dimensions,
@@ -2099,29 +2157,29 @@ export async function getPublishedProductBySlug(
         products.preparation_days AS preparationDays,
         products.manufactured_at AS manufacturedAt,
         products.expires_at AS expiresAt,
-        products.licence_reference AS licenceReference,
-        seller_profiles.trading_name AS tradingName,
+        ${publicProfileFieldSql('publicName')} AS tradingName,
         categories.name_en AS categoryName,
         (SELECT product_media.id FROM product_media
-          WHERE product_media.product_id = products.id
-          ORDER BY product_media.sort_order ASC LIMIT 1) AS primaryMediaId
+          WHERE product_media.product_id = products.id AND ${currentProductMediaSql('product_media')}
+          ORDER BY ${currentProductMediaOrder('product_media')} ASC LIMIT 1) AS primaryMediaId
        FROM products
        INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
        INNER JOIN categories ON categories.id = products.category_id
-       WHERE products.slug = ? AND ${publicProductEligibility()} LIMIT 1`,
+       WHERE products.slug = ? AND ${publicProductVisibility()} LIMIT 1`,
     )
     .bind(slug)
-    .first<PublicProductRow & PublicSellingIdentity>();
+    .first<PublicProductRow & PublicSellingIdentity & PublicOfferQueryFields>();
   if (!product) return null;
   const media = await database
     .prepare(
       `SELECT id, original_name AS originalName, mime_type AS mimeType,
-        size_bytes AS sizeBytes, alt_en AS altEn, alt_ne AS altNe, sort_order AS sortOrder
-       FROM product_media WHERE product_id = ? ORDER BY sort_order ASC`,
+        size_bytes AS sizeBytes, alt_en AS altEn, alt_ne AS altNe, ${currentProductMediaOrder()} AS sortOrder
+       FROM product_media WHERE product_id = ? AND ${currentProductMediaSql()} ORDER BY ${currentProductMediaOrder()} ASC`,
     )
     .bind(product.id)
     .all<ProductMediaRow>();
-  return { ...publicProductDetails(product), media: media.results.map(item => ({...item,altEn:publicProductName(item.altEn)})) };
+  const [current]=await attachPublicOfferRows(database,[publicProductDetails(product)],catalogue.now);
+  return current?{...current,media:media.results.map(item=>({id:item.id,mimeType:item.mimeType,altEn:publicProductName(item.altEn)}))}:null;
 }
 
 export async function getUnavailablePublishedProductBySlug(
@@ -2134,7 +2192,8 @@ export async function getUnavailablePublishedProductBySlug(
        FROM products
        WHERE products.slug=? AND products.status='published'
          AND NOT EXISTS(SELECT 1 FROM product_deletions d WHERE d.product_id=products.id)
-         AND NOT (${publicProductEligibility()})
+         AND (NOT EXISTS(SELECT 1 FROM product_publication_links WHERE product_id=products.id) OR EXISTS(SELECT 1 FROM product_publication_heads WHERE product_id=products.id AND current_version_id IS NOT NULL))
+         AND NOT (${publicProductVisibility()})
        LIMIT 1`,
     ).bind(slug).first<{ slug: string; nameEn: string }>()) ?? null
   );
@@ -2157,7 +2216,7 @@ export async function getProductMediaObject(
         `SELECT product_media.object_key AS objectKey,
           product_media.original_name AS originalName,
           product_media.mime_type AS mimeType,
-          CASE WHEN ${publicProductEligibility()} THEN 'published' ELSE 'archived' END AS productStatus, products.seller_id AS sellerId
+          CASE WHEN ${publicProductVisibility()} AND ${currentProductMediaSql()} THEN 'published' ELSE 'archived' END AS productStatus, products.seller_id AS sellerId
          FROM product_media
          INNER JOIN products ON products.id = product_media.product_id
          WHERE product_media.id = ? LIMIT 1`,
@@ -2179,11 +2238,12 @@ export async function archiveSellerProduct(
   database: D1Database,
   options: { productId: string; sellerId: string; actorId: string; now: number },
 ): Promise<void> {
+  if(await database.prepare('SELECT 1 FROM product_publication_links WHERE product_id=?').bind(options.productId).first())throw new ProductArchiveConflictError('Use the retained workspace availability controls to stop this listing immediately.');
   const mutationId = crypto.randomUUID();
   const results = await database.batch([
     database.prepare(
       `UPDATE products SET status = 'archived', updated_at = ?, review_request_id = ?
-       WHERE id = ? AND seller_id = ? AND status = 'published' AND ${productClosurePredicate}`,
+       WHERE id = ? AND seller_id = ? AND status = 'published' AND NOT EXISTS(SELECT 1 FROM product_publication_links WHERE product_id=products.id) AND ${productClosurePredicate}`,
     ).bind(options.now, mutationId, options.productId, options.sellerId),
     database.prepare(
       `INSERT INTO audit_logs (id, actor_id, action, subject_type, subject_id, reason,

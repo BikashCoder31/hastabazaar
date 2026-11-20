@@ -45,8 +45,8 @@ export async function SiteHeader() {
             <MobileNavigation />
             <Link
               href="/"
-              aria-label="HastaBazaar home"
-              title="HastaBazaar home"
+              aria-label="Hastabazaar home"
+              title="Hastabazaar home"
               className="site-header-brand flex min-h-11 min-w-0 items-center gap-2 rounded-lg sm:gap-3"
             >
               <Image
@@ -134,7 +134,7 @@ export async function SiteHeader() {
           </div>
         </div>
         <div className="border-t border-border/60 bg-secondary/25 lg:hidden">
-          <div className="shell flex min-h-11 items-center justify-between gap-3">
+          <div className="shell flex min-h-11 items-center justify-between gap-3 max-[299px]:flex-wrap max-[299px]:gap-y-0 max-[299px]:pt-1">
             <span className="text-xs text-muted-foreground">Bring your work to Hastabazaar</span>
             <Link
               href="/sell#seller-application"

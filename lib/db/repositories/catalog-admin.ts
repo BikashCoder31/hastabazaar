@@ -2,6 +2,7 @@ import { buildFormAnswerInsert } from './form-answers';
 import { staffMutationGuard } from './staff-mutation-guard';
 import { digestFormRequest } from '../../forms/submission';
 import type { FormAnswerSnapshot } from '../../forms/types';
+import {formAnswerSourceSql} from '../../forms/answer-proof';
 
 export class CatalogManagementConflictError extends Error {}
 
@@ -20,17 +21,20 @@ async function catalogReplay(database: D1Database, input: {
   versionId: string; digest: string;
 }): Promise<string | null> {
   const rows = await database.prepare(`SELECT actor_id AS actorId,action,subject_type AS subjectType,
-    subject_id AS subjectId,next_json AS nextJson FROM audit_logs WHERE request_id=? LIMIT 2`)
+    subject_id AS subjectId,next_json AS nextJson FROM audit_logs WHERE request_id=? LIMIT 3`)
     .bind(input.requestId).all<{ actorId: string; action: string; subjectType: string; subjectId: string; nextJson: string | null }>();
   if (!rows.results.length) return null;
-  const row = rows.results[0];
+  const receipts=rows.results.filter(row=>row.action!=='form.core_answers'),nativeAnswers=rows.results.filter(row=>row.action==='form.core_answers'),row=receipts[0];
+  if(!row||receipts.length!==1||nativeAnswers.length>1)throw new CatalogManagementConflictError('Request reference was already used for different catalogue details.');
+  for(const native of nativeAnswers){let proof:unknown;try{proof=JSON.parse(native.nextJson??'');}catch{/* Invalid original metadata fails closed below. */}
+    if(native.actorId!==input.actorId||native.subjectType!==input.subjectType||native.subjectId!==row.subjectId||!proof||typeof proof!=='object'||Array.isArray(proof)||!('formId'in proof)||proof.formId!==input.formId||!('requestId'in proof)||proof.requestId!==input.requestId||!('versionId'in proof)||proof.versionId!==input.versionId)throw new CatalogManagementConflictError('Request reference was already used for different catalogue details.');}
   const answer = await database.prepare(`SELECT actor_id AS actorId,subject_type AS subjectType,
-    subject_id AS subjectId,config_version_id AS versionId FROM form_answer_sets
+    subject_id AS subjectId,config_version_id AS versionId FROM ${formAnswerSourceSql(database)} catalog_answer
     WHERE form_id=? AND request_id=? LIMIT 1`).bind(input.formId, input.requestId)
     .first<{ actorId: string; subjectType: string; subjectId: string; versionId: string }>();
   let recorded: unknown;
   try { recorded = JSON.parse(row.nextJson ?? ''); } catch { /* Invalid audit cannot replay. */ }
-  if (rows.results.length !== 1 || row.actorId !== input.actorId || row.action !== input.action ||
+  if (row.actorId !== input.actorId || row.action !== input.action ||
     row.subjectType !== input.subjectType || input.subjectId && row.subjectId !== input.subjectId ||
     answer?.actorId !== input.actorId || answer.subjectType !== input.subjectType ||
     answer.subjectId !== row.subjectId || answer.versionId !== input.versionId ||
@@ -42,6 +46,7 @@ async function catalogReplay(database: D1Database, input: {
 
 export interface ManagedTaxonomyRow {
   id: string;
+  parentId?: string | null;
   slug: string;
   nameEn: string;
   nameNe: string | null;
@@ -58,7 +63,7 @@ export async function listManagedTaxonomy(database: D1Database): Promise<{
   const [categories, occasions] = await Promise.all([
     database
       .prepare(
-        `SELECT categories.id, categories.slug, categories.name_en AS nameEn, categories.name_ne AS nameNe,
+        `SELECT categories.id,categories.parent_id AS parentId, categories.slug, categories.name_en AS nameEn, categories.name_ne AS nameNe,
         categories.is_active AS isActive, categories.sort_order AS sortOrder, COUNT(products.id) AS usageCount,
         category_image_assignments.media_id AS imageId
        FROM categories LEFT JOIN products ON products.category_id = categories.id
@@ -124,6 +129,8 @@ export async function saveTaxonomy(
       sortOrder: number;
       imageId?: string | null;
       expectedImageId?: string | null;
+      parentId?: string | null;
+      expectedParentId?: string | null;
     };
     requestId: string;
     now: number;
@@ -155,6 +162,10 @@ export async function saveTaxonomy(
     throw new CatalogManagementConflictError('Request reference was already used.');
   }
   const input = cleanTaxonomy(options.input);
+  const parentChange=options.input.parentId!==undefined;
+  if(parentChange&&(options.kind!=='category'||options.input.expectedParentId===undefined))throw new CatalogManagementConflictError('A category parent change requires its exact previous parent.');
+  const parentAuthority=parentChange?await staffMutationGuard(database,options.actorId,'catalog.manage',CatalogManagementConflictError,'super_admin'):null;
+  for(const parent of [options.input.parentId,options.input.expectedParentId])if(parent!==null&&parent!==undefined&&(typeof parent!=='string'||!/^[A-Za-z0-9_-]{1,160}$/.test(parent)))throw new CatalogManagementConflictError('Choose a supported category parent.');
   const imageChange = options.input.imageId !== undefined;
   if (imageChange && (options.kind !== 'category' || !options.form || options.input.expectedImageId === undefined))
     throw new CatalogManagementConflictError('Category image changes require a validated catalogue form and current image baseline.');
@@ -174,6 +185,19 @@ export async function saveTaxonomy(
     throw new CatalogManagementConflictError(
       `${options.kind === 'category' ? 'Category' : 'Occasion'} not found.`,
     );
+  if(existing){const previous=await database.prepare(`SELECT slug FROM ${table} WHERE id=?`).bind(id).first<{slug:string}>();if(previous?.slug!==input.slug)throw new CatalogManagementConflictError('Existing category and occasion URLs are retained. Rename the display label without changing its URL slug.');}
+  const parentGuards:D1PreparedStatement[]=[];
+  if(parentChange){
+    const previous=existing?(await database.prepare('SELECT parent_id AS parentId FROM categories WHERE id=?').bind(id).first<{parentId:string|null}>())?.parentId??null:null;
+    if(previous!==options.input.expectedParentId)throw new CatalogManagementConflictError('The category parent changed. Refresh before moving it.');
+    if(existing)parentGuards.push(...catalogBatchGuard(database,"COALESCE((SELECT parent_id FROM categories WHERE id=?),'')=?",[id,previous??'']));
+    const seen=new Set<string>([id]);let cursor=options.input.parentId??null;
+    while(cursor){
+      if(seen.has(cursor)||seen.size>100)throw new CatalogManagementConflictError('A category cannot contain itself or form a parent cycle.');seen.add(cursor);
+      const ancestor=await database.prepare('SELECT parent_id AS parentId FROM categories WHERE id=?').bind(cursor).first<{parentId:string|null}>();if(!ancestor)throw new CatalogManagementConflictError('The selected parent category is unavailable.');
+      parentGuards.push(...catalogBatchGuard(database,"EXISTS(SELECT 1 FROM categories WHERE id=? AND COALESCE(parent_id,'')=?)",[cursor,ancestor.parentId??'']));cursor=ancestor.parentId;
+    }
+  }
   let previousImageId: string | null = null;
   if (imageChange) {
     previousImageId = (await database.prepare('SELECT media_id AS imageId FROM category_image_assignments WHERE category_id=?')
@@ -195,6 +219,7 @@ export async function saveTaxonomy(
   try {
     await database.batch([
       ...(authority?.statements ?? []),
+      ...(parentAuthority?.statements??[]),...parentGuards,
       ...(options.form && existing ? catalogBatchGuard(database,
         `EXISTS(SELECT 1 FROM ${table} WHERE id=?)`, [id]) : []),
       ...(imageChange ? catalogBatchGuard(database,
@@ -206,7 +231,7 @@ export async function saveTaxonomy(
       existing
         ? database
             .prepare(
-              `UPDATE ${table} SET slug = ?, name_en = ?, name_ne = ?, is_active = ?, sort_order = ?, updated_at = ? WHERE id = ?`,
+              `UPDATE ${table} SET slug = ?, name_en = ?, name_ne = ?, is_active = ?, sort_order = ?, updated_at = ?${parentChange?',parent_id=?':''} WHERE id = ?`,
             )
             .bind(
               input.slug,
@@ -215,15 +240,17 @@ export async function saveTaxonomy(
               input.isActive,
               input.sortOrder,
               options.now,
+              ...(parentChange?[options.input.parentId!]:[]),
               id,
             )
         : options.kind === 'category'
           ? database
               .prepare(
-                `INSERT INTO categories (id, parent_id, slug, name_en, name_ne, is_active, sort_order, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
+                `INSERT INTO categories (id, parent_id, slug, name_en, name_ne, is_active, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               )
               .bind(
                 id,
+                options.input.parentId??null,
                 input.slug,
                 input.nameEn,
                 input.nameNe,
@@ -263,7 +290,7 @@ export async function saveTaxonomy(
           options.kind,
           id,
           imageChange && existing ? JSON.stringify({ imageId: previousImageId }) : null,
-          JSON.stringify(options.form ? { ...input, ...(imageChange ? { imageId: options.input.imageId } : {}), catalogDigest } : input),
+          JSON.stringify({...input,...(parentChange?{parentId:options.input.parentId}:{}),...(options.form?{...(imageChange?{imageId:options.input.imageId}:{}),catalogDigest}:{})}),
           options.requestId,
           options.now,
         ),
@@ -294,6 +321,7 @@ export async function classifyProduct(
     form?: StaffCatalogForm;
   },
 ): Promise<void> {
+  if(await database.prepare('SELECT 1 FROM product_publication_links WHERE product_id=?').bind(options.productId).first())throw new CatalogManagementConflictError('Propose classification changes in the retained workspace for an exact candidate review.');
   if (options.form && options.form.requestId !== options.requestId)
     throw new CatalogManagementConflictError('Form request reference does not match classification.');
   const authority = options.form
@@ -341,6 +369,7 @@ export async function classifyProduct(
       'Product, category or occasion selection is invalid.',
     );
   const statements: D1PreparedStatement[] = [
+    ...catalogBatchGuard(database,'NOT EXISTS(SELECT 1 FROM product_publication_links WHERE product_id=?)',[options.productId]),
     ...(authority?.statements ?? []),
     ...(options.form ? catalogBatchGuard(database,
       `EXISTS(SELECT 1 FROM products WHERE id=?)

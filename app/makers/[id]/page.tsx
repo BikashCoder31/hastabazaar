@@ -17,8 +17,10 @@ import {
   mediaSizes,
 } from '@/lib/media/responsive-media';
 import { managedMakerDisplayName } from '@/lib/sellers/participation';
+import {getReviewedPublicProfileExtras} from '@/lib/sellers/public-profile-media';
 
-function money(paisa: number) {
+function money(paisa: number | null) {
+  if(paisa===null)return 'Price unavailable';
   return new Intl.NumberFormat('en-NP', {
     style: 'currency',
     currency: 'NPR',
@@ -37,6 +39,7 @@ export default async function MakerPage({
     listPublishedProductsByMaker(database, id),
   ]);
   if (!maker) notFound();
+  const extras=await getReviewedPublicProfileExtras(database,id);
   const displayName =
     maker.participationRoute === 'managed_maker'
       ? managedMakerDisplayName(maker.tradingName)
@@ -65,6 +68,10 @@ export default async function MakerPage({
                 {maker.businessDescription}
               </p>
             ) : null}
+            {extras?.specialties?<p className="mt-4 max-w-3xl whitespace-pre-wrap">{extras.specialties}</p>:null}
+            {extras?.craftExperience.length?<ul className="mt-4 space-y-2">{extras.craftExperience.map((entry,index)=><li key={index}>{entry.craft} · {({beginner:'Beginner',less_than_one_year:'Less than one year',one_to_three_years:'1–3 years',four_to_ten_years:'4–10 years',more_than_ten_years:'More than ten years'})[entry.band]}</li>)}</ul>:null}
+            {extras?<div className="mt-4 flex flex-wrap gap-4">{Object.entries(extras.socialLinks).filter(([,url])=>url&&/^https:\/\//i.test(url)).map(([network,url])=><a key={network} href={url} target="_blank" rel="noopener noreferrer" className="capitalize underline">{network}</a>)}</div>:null}
+            {extras?.media.length?<div className="mt-6 grid max-w-3xl gap-5 sm:grid-cols-2">{extras.media.map(file=><figure key={file.id}>{file.kind==='profile_image'?<Image data-media-mode="cover" src={`/api/profile-media/${file.id}`} alt={file.caption||`Profile photo from ${displayName}`} width={600} height={600} unoptimized className="aspect-square w-full rounded-xl object-cover"/>:<a href={`/api/profile-media/${file.id}`} target="_blank" rel="noopener noreferrer" className="block rounded-xl border p-4 underline">View original maker video</a>}{file.caption?<figcaption className="mt-2 text-sm">{file.caption}</figcaption>:null}</figure>)}</div>:null}
           </div>
         </section>
         <section className="shell py-12">
@@ -110,8 +117,9 @@ export default async function MakerPage({
                   ) : null}
                 </div>
                 <h3 className="mt-4 font-semibold">{product.nameEn}</h3>
+                {product.purchasable === false ? <p className="mt-1 text-sm text-muted-foreground">Not available to order yet</p> : null}
                 <p className="mt-1 font-heading text-xl">
-                  {money(product.pricePaisa)}
+                  {product.priceFrom?'From ':''}{money(product.pricePaisa)}
                 </p>
               </Link>
             ))}

@@ -50,7 +50,7 @@ void test('sale-linked actions require current Super Admin authority and exact p
   } finally { f.dispose(); }
 });
 
-void test('sale-linked payment action stores private history and rejects a foreign maker route', async () => {
+void test('legacy completion is refused while unpaid cancellation stores private history and exact replay', async () => {
   const f = await fixture();
   try {
     const { POST } = await import('../app/api/admin/managed-program/[id]/route');
@@ -63,12 +63,33 @@ void test('sale-linked payment action stores private history and rejects a forei
     const payment = { action: 'record_sale_linked_payment', payoutId: body.payoutId, expectedStatus: 'approved',
       requestId: 'private-payment-paid', formVersion: 1, customAnswers: [], reason: 'Record the reviewed simulated payment receipt.', providerReference: 'SIM-HTTP-PAID' };
     assert.equal((await POST(request(payment), { params: Promise.resolve({ id: 'another-maker' }) })).status, 404);
-    assert.equal((await POST(request(payment), target)).status, 200);
-    assert.equal((await POST(request(payment), target)).status, 200);
+    const state=()=>JSON.stringify(['managed_payouts','managed_payout_allocations','managed_entitlements','managed_settlement_entries','form_answer_sets','audit_logs']
+      .map(table=>[table,f.sqlite.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
+    const before=state();
+    for(let retry=0;retry<2;retry++){
+      const refused = await POST(request(payment), target);
+      assert.equal(refused.status,409);
+      assert.match((await refused.json() as {error:string}).error,/original verified execution packet/);
+      assert.equal(state(),before,'A legacy reference-only completion cannot save payment or form history');
+    }
+    const cancel={action:'cancel_sale_linked_payout',payoutId:body.payoutId,expectedStatus:'approved',requestId:'private-payment-cancel',
+      formVersion:1,customAnswers:[],reason:'Cancel the unchanged unpaid simulated reservation after reviewing original history.'};
+    assert.equal((await POST(request(cancel), {params:Promise.resolve({id:'another-maker'})})).status,404);
+    const cancelled=await POST(request(cancel),target);
+    assert.equal(cancelled.status,200,await cancelled.clone().text());
+    const receipt=await cancelled.json(),saved=state();
+    const replayed=await POST(request(cancel),target);
+    assert.equal(replayed.status,200);assert.deepEqual(await replayed.json(),receipt);assert.equal(state(),saved);
+    assert.equal((await POST(request({...cancel,reason:'Changed contents must not reuse the original cancellation reference.'}),target)).status,409);
+    assert.equal(state(),saved);
     const history = await listStaffFormHistory(f.db, { id: 'reviewer', role: 'super_admin' }, 'managed-payout-action', { subjectId: body.payoutId });
     assert.equal(history.items.length, 1);
+    assert.deepEqual(history.items.map(({formId,subjectType,subjectId,actorId,requestId})=>({formId,subjectType,subjectId,actorId,requestId})),
+      [{formId:'staff.managed-payout-action',subjectType:'managed_payout',subjectId:body.payoutId,actorId:'reviewer',requestId:cancel.requestId}]);
+    assert.equal((await listStaffFormHistory(f.db,{id:'reviewer',role:'super_admin'},'managed-payout-action',{subjectId:'another-payout'})).items.length,0);
     assert.equal((await listStaffFormHistory(f.db, { id: f.actorId, role: 'customer' }, 'managed-payout-action', { subjectId: body.payoutId })).items.length, 0);
-    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM managed_payout_allocations WHERE disposition=?').get('paid')?.n, 1);
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM managed_payout_allocations WHERE disposition=?').get('released')?.n, 1);
+    assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM managed_payout_allocations WHERE disposition=?').get('paid')?.n, 0);
   } finally { f.dispose(); }
 });
 

@@ -1,4 +1,5 @@
 import { getFormAnswerById, type StoredFormAnswer } from '../db/repositories/form-answers';
+import { formAnswerSourceSql } from './answer-proof';
 
 export class FormPrivacyError extends Error {
   constructor(message: string) { super(message); this.name = 'FormPrivacyError'; }
@@ -113,7 +114,7 @@ export async function collectFormAnswersForPrivacy(db: D1Database, userId: strin
   let cursor: { createdAt: number; id: string } | null = null;
   while (true) {
     const rows: { results: { id: string; createdAt: number }[] } = await db.prepare(`SELECT id,created_at AS createdAt
-      FROM form_answer_sets WHERE ${owned}
+      FROM ${formAnswerSourceSql(db)} form_answer_sets WHERE ${owned}
         AND (? IS NULL OR created_at>? OR (created_at=? AND id>?))
       ORDER BY created_at,id LIMIT 100`)
       .bind(...ownerBindings(userId), cursor?.createdAt ?? null,

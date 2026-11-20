@@ -1,4 +1,5 @@
-import { publicProductEligibility } from '@/lib/products/eligibility';
+import { publicProductVisibility } from '@/lib/products/eligibility';
+import {publicProfileFieldSql} from '@/lib/sellers/public-profile-sql';
 import { publicSellingIdentityColumns, type PublicSellingIdentity } from '../../products/selling-identity';
 export interface PublicProductRow extends Partial<PublicSellingIdentity> {
   id: string;
@@ -37,7 +38,7 @@ export async function listPublishedProducts(
         products.description_ne AS descriptionNe,
         products.price_paisa AS pricePaisa,
         products.inventory_quantity AS inventoryQuantity,
-        seller_profiles.trading_name AS sellerName,
+        ${publicProfileFieldSql('publicName')} AS sellerName,
         categories.slug AS categorySlug,
         categories.name_en AS categoryNameEn,
         categories.name_ne AS categoryNameNe,
@@ -45,7 +46,7 @@ export async function listPublishedProducts(
       FROM products
       INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
       INNER JOIN categories ON categories.id = products.category_id
-      WHERE products.status = ? AND ${publicProductEligibility()}
+      WHERE products.status = ? AND ${publicProductVisibility()}
         AND categories.is_active = 1
       ORDER BY products.published_at DESC, products.id ASC
       LIMIT ?`,

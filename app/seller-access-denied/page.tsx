@@ -35,10 +35,16 @@ export default async function SellerAccessDeniedPage() {
         </h1>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
           {user
-            ? `${user.email} is signed in, but it is not linked to an approved HastaBazaar seller.`
+            ? `${user.email} is signed in, but it is not linked to an approved Hastabazaar seller.`
             : 'Sign in with the same email used on your approved seller application.'}
         </p>
+        {user ? <p className="mt-3 text-sm leading-6 text-muted-foreground">
+          If you have submitted an application with this account, you can update it and prepare private product drafts while awaiting approval. If you have not applied, start registration below.
+        </p> : null}
         <div className="mt-7 flex flex-wrap justify-center gap-3">
+          {user ? <Link href="/sell/application" className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
+            View application and product drafts
+          </Link> : null}
           {user ? (
             <form data-form-id="identity.logout" method="POST" action={signOutPath('/seller-access-denied')} target="_top">
             <button

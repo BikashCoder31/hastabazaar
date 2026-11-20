@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {emailQueueStatusLabels} from '../lib/admin/queue-filters';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
@@ -28,7 +29,7 @@ function config(formId: string) {
     label:'Edited '+key,helpText:'Help '+key,placeholder:'Hint '+key,required:formId==='commerce.order-tracking',order,status:'active',
     ...(key==='sort'?{choices:[{value:'newest',label:'Newest'},{value:'price-low',label:'Price: low to high'},
       {value:'price-high',label:'Price: high to low'},{value:'name',label:'Name'}]}:
-      key==='status'?{choices: [{value:'all',label:'All statuses'},...(formId==='staff.order-email-filter'?['ready','needs_review','queued','sending','retry','sent','skipped','expired']:formId==='staff.seller-registry-filter'?['draft','submitted','under_review','needs_changes','approved','rejected','suspended','awaiting_review']:['pending_payment','awaiting_cod_confirmation','confirmed','packing','ready_for_pickup','dispatched','delivered','cancelled','return_requested','return_in_transit','returned','refund_processing','refunded']).map(value=>({value,label:formId==='staff.order-email-filter'?({ready:'Ready to send',needs_review:'Needs review',queued:'Queued',sending:'Sending',retry:'Waiting to retry',sent:'Mail server accepted',skipped:'Skipped',expired:'Expired'} as Record<string,string>)[value]:value.replaceAll('_',' ')}))]}:
+      key==='status'?{choices: [{value:'all',label:'All statuses'},...(formId==='staff.order-email-filter'?['ready','needs_review','queued','sending','retry','sent','sent_record','captured','uncertain','intervention','skipped','expired']:formId==='staff.seller-registry-filter'?['draft','submitted','under_review','needs_changes','approved','rejected','suspended','awaiting_review']:['pending_payment','awaiting_cod_confirmation','confirmed','packing','ready_for_pickup','dispatched','delivered','cancelled','return_requested','return_in_transit','returned','refund_processing','refunded']).map(value=>({value,label:formId==='staff.order-email-filter'?emailQueueStatusLabels[value]:value.replaceAll('_',' ')}))]}:
       key==='visibility'?{choices:[{value:'all',label:'All products'},{value:'visible',label:'Homepage eligible'},
         {value:'hidden',label:'Hidden from homepage'}]}:{})}))};
 }

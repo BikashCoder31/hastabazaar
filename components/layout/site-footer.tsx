@@ -4,6 +4,7 @@ import {
   ArrowUpRight,
   Banknote,
   Mail,
+  MessageCircle,
   MapPin,
   ShieldCheck,
   ShoppingBag,
@@ -11,7 +12,7 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { companyDetails, companyPanDisplay } from '@/lib/content/company-details';
+import { companyDetails, companyPanDisplay, companyPublicContacts } from '@/lib/content/company-details';
 
 import styles from '@/components/layout/site-footer.module.css';
 
@@ -105,11 +106,15 @@ export async function SiteFooter({ compact = false }: { compact?: boolean } = {}
               you choose.
             </p>
             <a
-              href="mailto:support@hastabazaar.com"
+              href={`mailto:${companyDetails.supportEmail}`}
               className="site-footer-email"
             >
               <Mail className="size-4" aria-hidden="true" />
-              support@hastabazaar.com
+              {companyDetails.supportEmail}
+            </a>
+            <a href={companyPublicContacts.whatsappUrl} target="_blank" rel="noopener noreferrer" className="site-footer-email">
+              <MessageCircle className="size-4" aria-hidden="true" />
+              WhatsApp · {companyPublicContacts.supportPhone}
             </a>
             <nav
               aria-label="Official Hastabazaar social media"
@@ -186,7 +191,7 @@ export async function SiteFooter({ compact = false }: { compact?: boolean } = {}
         </div>
 
         <div className="site-footer-bottom">
-          <p>© {new Date().getFullYear()} HastaBazaar. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} Hastabazaar. All rights reserved.</p>
           <div>
             <span>
               <MapPin className="size-4" aria-hidden="true" />

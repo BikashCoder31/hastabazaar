@@ -9,7 +9,11 @@ const fixtures = { configs: {} as Record<string, PublishedFormConfig>, failed: n
   productQueries: [] as unknown[] };
 (globalThis as unknown as { React: typeof React; queryFixtures: typeof fixtures }).React = React;
 (globalThis as unknown as { queryFixtures: typeof fixtures }).queryFixtures = fixtures;
+const shopQueryUrl = new URL('../lib/catalog/shop-query.ts', import.meta.url).href;
 registerHooks({ resolve(specifier, context, nextResolve) {
+  if (specifier === '../forms/runtime' && context.parentURL !== shopQueryUrl) {
+    return nextResolve(specifier, context);
+  }
   const mocks: Record<string, string> = {
     './site-header.module.css': 'export default {}',
     './rewards-shortcut.module.css': 'export default {}',
@@ -17,13 +21,14 @@ registerHooks({ resolve(specifier, context, nextResolve) {
       if(globalThis.queryFixtures.failed.has(id))throw Error('Configuration read failed');
       return globalThis.queryFixtures.configs[id]?{found:1}:null;
     }}}}}}}`,
-    '@/app/auth': 'export async function getAuthenticatedUser(){return null};export function signInPath(path){return "/login?next="+path}',
+    '@/app/auth': 'export async function requireAuthenticatedUser(){throw Error("Unexpected provider authentication")};export async function getAuthenticatedUser(){return null};export function signInPath(path){return "/login?next="+path}',
     '@/lib/auth/staff': 'export async function requireStaffPage(){return {id:"staff",role:"super_admin",permissions:[]}}',
+    '@/lib/auth/seller-center': 'export async function requireSellerCenterPage(){return {sellerId:"seller",id:"owner",approvedSeller:true}}',
     '@/lib/auth/seller': 'export async function requireSellerPage(){return {sellerId:"seller",id:"owner"}}',
     '../forms/runtime': `export async function resolvePublishedForm(db,id){return globalThis.queryFixtures.configs[id]}`,
     'next/link': 'export default function Link({href,children,...props}){return globalThis.React.createElement("a",{href,...props},children)}',
     'next/image': 'export default function Image(){return null}',
-    'next/navigation': 'export function notFound(){throw Error("Not found")};export function useRouter(){return {refresh(){}}};export function usePathname(){return "/"}',
+    'next/navigation': 'export function redirect(){throw Error("Unexpected redirect")};export function notFound(){throw Error("Not found")};export function useRouter(){return {refresh(){}}};export function usePathname(){return "/"}',
     '@/components/layout/mobile-navigation': 'export function MobileNavigation(){return null}',
     '@/components/layout/mobile-product-search': 'export function MobileProductSearch({children}){return children}',
     '@/components/layout/site-header': 'export function SiteHeader(){return globalThis.React.createElement("header",null,"Navigation remains")}',
