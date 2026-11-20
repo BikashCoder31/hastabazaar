@@ -17,7 +17,7 @@ const areaRoutes: readonly [AdminArea, readonly string[]][] = [
   ['Sellers', ['/admin/sellers']],
   ['Products & storefront', ['/admin/products/publications', '/admin/products', '/admin/catalog', '/admin/homepage', '/admin/reviews']],
   ['Orders & customer care', ['/admin/orders', '/admin/orders/dispatch', '/admin/shipping', '/admin/cases', '/admin/privacy', '/admin/riders', '/admin/feedback', '/admin/delivery-rates']],
-  ['Finance & payments', ['/admin/payments', '/admin/payouts', '/admin/accounting']],
+  ['Finance & payments', ['/admin/payments', '/admin/payouts', '/admin/payments/refunds', '/admin/payments/recoveries', '/admin/accounting']],
   ['Fees, programs & promotions', ['/admin/fees', '/admin/referrals', '/admin/promo-codes', '/admin/fee-waivers', '/admin/loyalty', '/admin/commission', '/admin/programs', '/admin/gift-cards']],
   ['Team & business policies', ['/security', '/admin/team', '/admin/business-settings', '/admin/legal-policies', '/admin/legal-policies/active', '/admin/not-in-use']],
   ['System health & records', ['/admin/system-health', '/admin/backup-transfer', '/admin/forms', '/admin/business-emails', '/admin/order-emails', '/admin/activity', '/admin/governance', '/admin/staff-form-history', '/admin/form-submissions']],
@@ -239,6 +239,8 @@ const destinations: readonly {
     permission: 'product.review',
   },
   {href:'/admin/payments',label:'Courier cash',icon:'payouts',permission:'payment.receipt.verify'},
+  { href: '/admin/payments/refunds', label: 'Refunds & recoveries', icon: 'payouts', permission: 'refund.approve.standard' },
+  { href: '/admin/payments/recoveries', label: 'Recoveries', icon: 'payouts', permission: 'payout.prepare' },
   {
     href: '/admin/payouts',
     label: 'Payouts',
@@ -484,6 +486,8 @@ const taskGuides: Readonly<
       'Save an explained change and review its effective status.',
     ],
   ],
+  '/admin/payments/refunds': ['Review customer refunds and their recorded funding.', ['Check the original refund and destination.', 'Review the available funds.', 'Record the confirmed outcome.']],
+  '/admin/payments/recoveries': ['Review money owed back from sellers and couriers.', ['Check the existing obligation and its evidence.', 'Review the amount still open.', 'Record the verified outcome.']],
   '/admin/payments': ['Match actual company receipts to orders and review exceptions.', ['Review the original order and company instructions.','Record independently verified credit and its exact allocations.','Resolve outstanding ownership, balances and fulfillment holds.']],
   '/admin/payouts': [
     'Review seller payout requests and eligible balances; approval and payment are separate.',
@@ -635,6 +639,8 @@ const taskOrder: readonly string[] = [
   '/admin/cases',
   '/admin/payments',
   '/admin/payouts',
+  '/admin/payments/refunds',
+  '/admin/payments/recoveries',
   '/admin/notifications',
   '/admin/exceptions',
   '/admin/order-emails',
@@ -711,11 +717,10 @@ export function adminTaskGuide(
   role: string,
   permissions?: readonly Permission[],
 ) {
-  const destination = adminNavigation(role, permissions).find(
-    (item) =>
-      pathname === item.href ||
-      (item.href !== '/admin' && pathname.startsWith(item.href + '/')),
-  );
+  const destination = adminNavigation(role, permissions)
+    .filter((item) => pathname === item.href ||
+      (item.href !== '/admin' && pathname.startsWith(item.href + '/')))
+    .sort((left, right) => right.href.length - left.href.length)[0];
   if (!destination) return null;
   if(destination.href==='/admin/team'&&role==='admin')return {...destination,steps:['Review your current access and assigned responsibilities.','Check the current owner and coverage contacts.','Open the original task or acknowledge the applicable procedure.']};
   const guide = taskGuides[destination.href];

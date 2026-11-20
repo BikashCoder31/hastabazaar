@@ -3,5 +3,14 @@ import {requireStaffPage} from '@/lib/auth/staff';
 import {requireDatabase} from '@/lib/db/d1';
 import {getRecoveryFinanceWorkspace} from '@/lib/payments/recovery-workspace';
 import {SellerRecoveryReview} from '@/components/admin/seller-recovery-review';
+import {can} from '@/lib/marketplace/permissions';
+import {safeAdminReturnTo} from '@/lib/admin/return-context';
 export const dynamic='force-dynamic';
-export default async function RecoveryQueuePage(){const actor=await requireStaffPage('/admin/payments/recoveries','payout.prepare');return <SellerRecoveryReview actorId={actor.id} workspace={await getRecoveryFinanceWorkspace(requireDatabase(env as unknown as {DB?:D1Database}),actor.id)}/>;}
+export default async function RecoveryQueuePage({searchParams}:{searchParams?:Promise<{returnTo?:string}>}={}){
+ const actor=await requireStaffPage('/admin/payments/recoveries','payout.prepare');
+ const query=await searchParams;
+ return <SellerRecoveryReview actorId={actor.id} workspace={await getRecoveryFinanceWorkspace(requireDatabase(env as unknown as {DB?:D1Database}),actor.id)}
+  returnTo={query?.returnTo===undefined?undefined:safeAdminReturnTo(query.returnTo)}
+  canReviewRefunds={can(actor,'refund.approve.standard')} canOpenOrder={can(actor,'order.manage')}
+  canVerifyIncoming={can(actor,'payment.receipt.verify')}/>;
+}

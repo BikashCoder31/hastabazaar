@@ -59,13 +59,15 @@ const definitions = [
   ] },
   { id: 'money', label: 'Money', tabs: [
     { href: '/admin/payments', label: 'Courier cash' },
-    { href: '/admin/payouts', label: 'Payouts', routes: ['/admin/payments/payouts', '/admin/payments/recoveries'] },
+    { href: '/admin/payouts', label: 'Payouts', routes: ['/admin/payments/payouts'] },
+    { href: '/admin/payments/refunds', label: 'Refunds & recoveries', fallback: '/admin/payments/recoveries',
+      routes: ['/admin/payments/recoveries'] },
     { href: '/admin/accounting', label: 'Books' },
     { href: '/admin/commission', label: 'Commission' },
     { href: '/admin/fees', label: 'Fees & waivers',
       related: [{ href: '/admin/fee-waivers', label: 'Manage marketplace fee waivers' }] },
     { href: '/admin/notifications?view=money-notices', label: 'Money notices', access: '/admin/notifications',
-      routes: ['/admin/financial-notices', '/admin/payments/refunds'], anyPermission: moneyNoticePermissions },
+      routes: ['/admin/financial-notices'], anyPermission: moneyNoticePermissions },
   ] },
   { id: 'growth', label: 'Growth', tabs: [
     { href: '/admin/promo-codes', label: 'Promo codes' },
