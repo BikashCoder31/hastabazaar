@@ -63,10 +63,10 @@ function ProductPublicationReviewBody({caseId,initial=null,blocked=false,onRecor
    </div>
    {view.categoryChanged&&<p className="text-sm text-[#A8232E]">The category policy changed after approval. Ask the seller to review the current guidance and resubmit.</p>}
    {!proofsReady&&<p className="text-sm text-[#A8232E]">The recorded original-price evidence needs review.</p>}
-   {approved&&<form className="space-y-3.5" onSubmit={event=>{event.preventDefault();if(!disabled&&reason.trim().length>=10&&proofsReady&&!view.categoryChanged)void decide('publish_approved');}}>
+   {approved&&<div className="space-y-3.5">
     <label className="grid gap-2 text-sm font-semibold">Review note<textarea rows={2} className={field+' border-[#D3C5AD] bg-white font-normal'} value={reason} minLength={10} maxLength={1000} required disabled={disabled} onChange={event=>setReason(event.target.value)} placeholder="Explain the publication decision."/></label>
-    <button type="submit" className={primaryButton} disabled={disabled||reason.trim().length<10||!proofsReady||view.categoryChanged}>Publish now</button>
-   </form>}
+    <button type="button" className={primaryButton} disabled={disabled||reason.trim().length<10||!proofsReady||view.categoryChanged} onClick={()=>void decide('publish_approved')}>Publish now</button>
+   </div>}
    <details className="rounded-xl border border-[#E4DACA] px-3.5">
     <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold">Preview approved details</summary>
     <div className="min-w-0 pb-3.5"><ProductPublicationFacts title="Approved product details" snapshot={view.candidate.snapshot} uploads={view.uploads} caseId={caseId} priceReferences={view.priceReferences}/></div>

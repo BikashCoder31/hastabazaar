@@ -14,6 +14,9 @@ function source(id:string,audience:FormAudience,mode:FormMode,route:string,
 }
 
 export const NATIVE_FORM_SOURCES:readonly NativeSource[] = Object.freeze([
+  source('staff.customer-directory-search','staff','query','/admin/customers',
+    'q view page customer','lib/admin/customers.ts',
+    'Read-only staff directory search with existing permissions. No customer record or answer is written.'),
   source('staff.system-records-filter','staff','query','/admin/system-health/records',
     'reference type actor from to status action returnTo','lib/operations/system-records.ts',
     'Read-only scoped search of existing records; current source permissions and environment remain enforced.'),

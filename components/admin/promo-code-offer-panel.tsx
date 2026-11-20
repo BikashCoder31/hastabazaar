@@ -113,7 +113,7 @@ export function PromoCodeOfferPanel({
   }
 
   return (
-    <form onSubmit={continueToDraft} className="grid min-w-0 gap-3">
+    <form data-form-id="staff.promo-code" onSubmit={continueToDraft} className="grid min-w-0 gap-3">
       <div className="grid min-w-0 gap-2">
         <Label htmlFor="new-offer-code">Code customers type</Label>
         <Input

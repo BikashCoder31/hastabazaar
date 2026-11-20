@@ -303,6 +303,7 @@ export default async function CustomersPage({
           <div className="space-y-2.5 p-3.5 sm:px-4">
             <search aria-label="Customer search">
               <form
+                data-form-id="staff.customer-directory-search"
                 method="get"
                 action={pathname}
                 className="flex min-w-0 items-center rounded-[10px] border border-[#D3C5AD] focus-within:ring-2 focus-within:ring-[#46536F]"

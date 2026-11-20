@@ -112,8 +112,15 @@ export function CommandSearch({ actorId }: { actorId: string }) {
     setResponse(null);
   }
 
-  function move(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.nativeEvent.isComposing || !results.length) return;
+  function handleSearchKey(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.nativeEvent.isComposing) return;
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      if (selected >= 0) navigate(results[selected]);
+      else if (!data && term) openOnResponse.current = term;
+      return;
+    }
+    if (!results.length) return;
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
     event.preventDefault();
     const direction = event.key === 'ArrowDown' ? 1 : -1;
@@ -138,14 +145,7 @@ export function CommandSearch({ actorId }: { actorId: string }) {
       onClose={dismiss}
       className="inset-x-0 top-20 bottom-auto mx-auto max-h-[calc(100dvh-6rem)] w-[calc(100%-2rem)] max-w-[40rem] flex-col overflow-hidden rounded-2xl bg-white p-0 font-['Instrument_Sans',sans-serif] text-[#14213D] shadow-[0_30px_70px_-30px_#14213D99] open:flex backdrop:bg-[#14213D]/40"
     >
-      <form
-        className="flex shrink-0 items-center gap-2 border-b border-[#E4DACA] px-[18px]"
-        onSubmit={event => {
-          event.preventDefault();
-          if (selected >= 0) navigate(results[selected]);
-          else if (!data && term) openOnResponse.current = term;
-        }}
-      >
+      <search className="flex shrink-0 items-center gap-2 border-b border-[#E4DACA] px-[18px]">
         <Search className="size-4 shrink-0 text-[#675B4E]" aria-hidden="true" />
         <input
           ref={input}
@@ -160,7 +160,7 @@ export function CommandSearch({ actorId }: { actorId: string }) {
           maxLength={120}
           placeholder="Order, seller, customer, phone or setting"
           value={query}
-          onKeyDown={move}
+          onKeyDown={handleSearchKey}
           onChange={event => {
             openOnResponse.current = null;
             if (event.currentTarget.value.trim() !== term) {
@@ -174,7 +174,7 @@ export function CommandSearch({ actorId }: { actorId: string }) {
         <button type="button" className="-mr-1 grid size-11 shrink-0 place-items-center rounded-lg focus-visible:outline-2 focus-visible:outline-[#A8232E]" aria-label="Close search" onClick={() => dialog.current?.close()}>
           <kbd className={keyClass + ' text-[#675B4E]'}>esc</kbd>
         </button>
-      </form>
+      </search>
       <div className="max-h-[460px] min-h-0 overflow-y-auto overscroll-contain pb-2">
         <div id={listId} role="listbox" aria-label="Search results" aria-busy={!data}>
           {[...groups].map(([group, rows]) => (
