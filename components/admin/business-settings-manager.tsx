@@ -599,7 +599,7 @@ function BusinessSettingsManagerScope({
           {parkedHref ? (
             <Link href={parkedHref} aria-label="Not in use yet" className="mx-1 flex min-h-11 gap-2 rounded-xl border border-dashed border-[#D3C5AD] p-3 text-[13px] text-[#46536F]">
               <LockKeyhole className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              <span><strong className="block text-[#14213D]">Rider settings are switched off</strong>Cash hand-in and cash limit live in Not in use yet.</span>
+              <span><strong className="block text-[#14213D]">Delivery features are switched off</strong>Cash hand-in and cash limit live in Not in use yet.</span>
             </Link>
           ) : null}
           {showExtra ? <details open={currentIsExtra} className="border-t border-[#E4DACA]">

@@ -294,7 +294,7 @@ export default async function AdminDashboardPage({ searchParams }: {
       )}
       <details className="rounded-2xl border bg-card p-5">
         <summary className="min-h-7 cursor-pointer font-semibold focus-visible:outline-2 focus-visible:outline-primary">All workspace tasks</summary>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{tasks.map(task => <Link key={task.href} href={task.href} className="flex min-h-11 flex-col gap-1 rounded-xl border p-4 hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary"><span className="font-semibold">{task.label}</span><span className="text-xs leading-5 text-muted-foreground">{task.description}</span></Link>)}</div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{tasks.filter(task => task.href !== '/admin/riders').map(task => <Link key={task.href} href={task.href} className="flex min-h-11 flex-col gap-1 rounded-xl border p-4 hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary"><span className="font-semibold">{task.label}</span><span className="text-xs leading-5 text-muted-foreground">{task.description}</span></Link>)}</div>
       </details>
       <Card>
         <CardHeader>

@@ -67,7 +67,7 @@ export const STAFF_ACCESS_RIGHTS: readonly StaffAccessRight[] = [
     permission: 'order.manage',
     label: 'Manage orders and shipping',
     description:
-      'Manage orders, cancellations, shipping and delivery claims; retry order emails and follow up on order and delivery problems. Rider controls still require a Super Admin.',
+      'Manage orders, cancellations, shipping and delivery claims. Retry order emails and follow up on order and delivery problems. Archived delivery controls require a Super Admin.',
   },
   {
     permission: 'support.manage',
@@ -107,7 +107,7 @@ export const BUILT_IN_STAFF_ACCESS_TEMPLATES: readonly StaffAccessTemplate[] = [
     id: 'orders-assistant',
     name: 'Orders assistant',
     description:
-      'Manage orders, shipping, cancellations and delivery claims; retry order emails and follow up on order and delivery problems. Rider controls require a Super Admin.',
+      'Manage orders, shipping, cancellations and delivery claims. Retry order emails and follow up on order and delivery problems. Archived delivery controls require a Super Admin.',
     permissions: ['order.manage'],
     source: 'built-in',
   },

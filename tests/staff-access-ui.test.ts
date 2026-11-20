@@ -8,7 +8,7 @@ import type { Page } from 'playwright';
 import { stubFixtureLink } from './helpers/browser-fixture-link';
 
 const fixture = `
-import React from 'react'; import {createRoot} from 'react-dom/client';
+import React from 'react'; import {createRoot} from 'react-dom/client'; import {flushSync} from 'react-dom';
 import {StaffPermissionManager} from './components/admin/staff-permission-manager';
 const members=[
  {userId:'maya',displayName:'Maya Rai',email:'maya@example.test',permissions:['order.manage'],version:3,updatedAt:0,updatedBy:'owner'},
@@ -20,7 +20,8 @@ const base={actorId:'owner',members,presets:[
  {id:'reserved',name:'Reserved template',permissionsJson:'["admin.invite"]'}],
  staffNames:{owner:'Asha Sharma',maya:'Maya Rai',nima:'Nima Sherpa'},requests:[],history:[]};
 const root=createRoot(document.getElementById('root'));
-window.renderStaff=(patch={})=>root.render(<StaffPermissionManager {...base} {...patch}/>);
+// The test checks the DOM immediately after applying these new server props.
+window.renderStaff=(patch={})=>flushSync(()=>root.render(<StaffPermissionManager {...base} {...patch}/>));
 window.fixtureMembers=members;
 window.renderStaff();
 `;

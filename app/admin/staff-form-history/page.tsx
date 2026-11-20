@@ -39,6 +39,8 @@ export default async function StaffFormHistoryPage({ searchParams }: { searchPar
   const selected = kind ? kinds.find((item) => item.kind === kind) : null;
   if (kind && !selected) notFound();
   if (answerId && (!kind || !id)) notFound();
+  const archivedDelivery = selected?.kind.startsWith('rider-') ?? false;
+  const visibleKinds = kinds.filter(item => item.kind.startsWith('rider-') === archivedDelivery);
   let history: Awaited<ReturnType<typeof listStaffFormHistory>> | null = null;
   let answer: Awaited<ReturnType<typeof readStaffFormHistoryAnswer>> = null;
   try {
@@ -51,18 +53,18 @@ export default async function StaffFormHistoryPage({ searchParams }: { searchPar
   return <main className="min-w-0 space-y-6">
     <ReviewBackLink returnTo={returnTo} actorId={staff.id}/>
     <header>
-      <AdminPageTitle><h1 className="section-title">Staff form history</h1></AdminPageTitle>
+      <AdminPageTitle><h1 className="section-title">{archivedDelivery ? 'Archived own-delivery form history' : 'Staff form history'}</h1></AdminPageTitle>
       <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">
         Context submitted with recorded staff actions. Current record access is checked again whenever an answer is opened.
       </p>
     </header>
     <nav aria-label="Staff history kinds" className="flex flex-wrap gap-2">
-      {kinds.map((item) => <Link key={item.kind} href={historyHref(item.kind,undefined,undefined,undefined,returnTo)}
+      {visibleKinds.map((item) => <Link key={item.kind} href={historyHref(item.kind,undefined,undefined,undefined,returnTo)}
         className="section-link underline">
         {item.label}
       </Link>)}
     </nav>
-    {!kinds.length ? <p className="rounded-xl border p-4 text-sm">No staff answer history is available for your current permissions.</p> : null}
+    {!visibleKinds.length ? <p className="rounded-xl border p-4 text-sm">No staff answer history is available in this view.</p> : null}
     {selected ? <section className="space-y-3 rounded-xl border p-4 sm:p-6">
       <h2 className="font-heading text-xl">{selected.label}</h2>
       {id ? <p className="break-all text-sm text-muted-foreground">Record: {id}</p> : null}

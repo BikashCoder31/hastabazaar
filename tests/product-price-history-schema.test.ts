@@ -7,6 +7,7 @@ import test from 'node:test';
 import {getTableConfig} from 'drizzle-orm/sqlite-core';
 import * as schema from '../db/schema';
 import {readReleaseAssets} from '../scripts/release-schema-assets.mjs';
+import {readHistoricalMariaDbSchema} from './helpers/historical-mariadb-schema';
 
 const root=resolve(import.meta.dirname,'..');
 const artifacts=resolve(root,'.test-artifacts/t35/price-history-schema-astra-20261104');
@@ -29,7 +30,7 @@ void test('typed observation/review metadata agrees with the new immutable SQLit
 });
 
 void test('155 native append keeps all V8 schema bytes and old artifacts, with an exact guarded ALTER',async()=>{
- const retainedPaths=['drizzle/0091_product_price_references.sql','deployment/babal/mariadb-private-price-guidance.sql','deployment/babal/mariadb-schema.sql','deployment/babal/mariadb-reset-empty-import.sql','.test-artifacts/t33/native-public-feedback-candidate-v8/mariadb-schema.sql'];
+ const retainedPaths=['drizzle/0091_product_price_references.sql','deployment/babal/mariadb-private-price-guidance.sql','deployment/babal/mariadb-schema.sql','deployment/babal/mariadb-reset-empty-import.sql'];
  const retained=Object.fromEntries(await Promise.all(retainedPaths.map(async path=>[path,hash(await read(path))])));
  const append=await read('deployment/babal/mariadb-product-orderable-price-history.sql');
  const native156=await read('deployment/babal/mariadb-native-form-health.sql');
@@ -49,22 +50,18 @@ void test('155 native append keeps all V8 schema bytes and old artifacts, with a
  assert.equal((append.match(/FOREIGN KEY\(/g)??[]).length,7);
  const directory=resolve(artifacts,'source-'+randomUUID());
  execFileSync(process.execPath,['scripts/generate-mariadb-schema.mjs','--output-directory='+directory],{cwd:root,stdio:'pipe'});
- const candidate=await readFile(resolve(directory,'mariadb-schema.sql'));
- const baseline=await readFile(resolve(root,retainedPaths.at(-1)!));
- assert.equal(hash(baseline),'7827e2ab78c852a53d9fffa76aa7e91ca4530b88a0ea82378d9a3153a255be6e');
- const footer=Buffer.from('SET FOREIGN_KEY_CHECKS = 1;\n');
- assert.deepEqual(baseline.subarray(-footer.length),footer);
- assert.deepEqual(candidate.subarray(0,baseline.length-footer.length),baseline.subarray(0,-footer.length));
+ const {candidate,v8:baseline,reset156}=await readHistoricalMariaDbSchema(directory);
+ const footer='SET FOREIGN_KEY_CHECKS = 1;\n';
+ const appendOffset=baseline.length-footer.length;
  const bootstrap=await read('deployment/babal/mariadb-bootstrap-prerequisites.sql');
  const completionTail='\n'+await read('deployment/babal/mariadb-bootstrap-completion.sql')+'\n'+await read('deployment/babal/mariadb-fresh-bootstrap-defaults.sql');
  const parityTail='\n'+await read('deployment/babal/mariadb-check-parity.sql')+'\n'+await read('deployment/babal/mariadb-text-length-parity.sql')+'\n'+await read('deployment/babal/mariadb-native-order-stock-governance.sql');
- assert.equal(candidate.subarray(baseline.length-footer.length).toString(),append.trim().replaceAll('\r\n','\n')+'\n'+native156.trim().replaceAll('\r\n','\n')+'\n'+footer.toString()+'\n'+bootstrap+completionTail+parityTail.replaceAll('\r\n','\n'));
- const recovery=await readFile(resolve(directory,'mariadb-reset-empty-import.sql'),'utf8');
- assert.equal(recovery,await read('.test-artifacts/t35/native-health-schema-astra-20261104/candidate-v3/mariadb-reset-empty-import.sql'),'Historical156 reset remains exact and distinct from the completed bootstrap schema.');
+ assert.equal(new TextDecoder().decode(candidate.subarray(appendOffset)),append.trim().replaceAll('\r\n','\n')+'\n'+native156.trim().replaceAll('\r\n','\n')+'\n'+footer+'\n'+bootstrap+completionTail+parityTail.replaceAll('\r\n','\n'));
+ const recovery=new TextDecoder().decode(reset156);
  assert.ok(recovery.indexOf('DROP TABLE IF EXISTS `product_orderable_price_observations`')<recovery.indexOf('DROP TABLE IF EXISTS `product_offer_versions`'));
  for(const[path,expected]of Object.entries(retained))assert.equal(hash(await read(path)),expected,path);
  await mkdir(artifacts,{recursive:true});
- await writeFile(resolve(directory,'source-proof.json'),JSON.stringify({databaseOpened:false,nativeEngineProof:false,schemaSha256:hash(candidate),appendSha256:hash(append),retained},null,2)+'\n');
+ await writeFile(resolve(directory,'source-proof.json'),JSON.stringify({databaseOpened:false,nativeEngineProof:false,schemaSha256:hash(candidate),appendSha256:hash(append),historicalV8Sha256:hash(baseline),retained},null,2)+'\n');
 });
 
 void test('the exact selected155 schema and forward companion travel with truthful required-column inventory',async()=>{

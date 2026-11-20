@@ -65,7 +65,12 @@ window.__blockProductStorage=()=>{const descriptor=Object.getOwnPropertyDescript
      return route.fulfill({contentType:'text/html',body:'<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+css+'</style><div id="root"></div><script>window.__BOOT__='+JSON.stringify(initial).replaceAll('<','\\u003c')+'</script><script src="/bundle.js"></script>'});
     });
     await page.goto(origin+'/fixture');
-    return{page,context,errors,release,rejectOriginalRetry:()=>{rejectNext=true;},malformOriginalReply:()=>{nullNext=true;},malformDenial:()=>{malformedDenial=true;},isCommitted:()=>committed,posts:()=>posts,statuses:()=>[...statuses]};
+    async function switchScope(scope:Awaited<ReturnType<typeof boot>>){
+     await page.evaluate((next:Awaited<ReturnType<typeof boot>>)=>window.__switchProduct(next),scope);
+     // Both scopes render the same field labels. Wait for the new scope before filling them.
+     await page.waitForFunction((identity:string)=>document.querySelector('main')?.getAttribute('data-fixture-scope')===identity,JSON.stringify([scope.initial.actorId,scope.caseId]));
+    }
+    return{page,context,errors,release,switchScope,rejectOriginalRetry:()=>{rejectNext=true;},malformOriginalReply:()=>{nullNext=true;},malformDenial:()=>{malformedDenial=true;},isCommitted:()=>committed,posts:()=>posts,statuses:()=>[...statuses]};
    }
    await t.test('a failed opaque recovery write cannot send a private Product command without its durable reference',async()=>{
     const h=await harness(storageSource.caseId,'hook');try{
@@ -96,7 +101,7 @@ window.__blockProductStorage=()=>{const descriptor=Object.getOwnPropertyDescript
    await t.test('a retired prewrite403 cannot curtain or refresh the new actor and source parent',async()=>{
     const h=await harness(storageSource.caseId,'component',true,false,true);try{
      await h.page.getByLabel('Review note').fill('PRIVATE-OLD delayed denied request');globalThis.productScopeActor='delegate';await h.page.getByRole('button',{name:'Ask for changes',exact:true}).click();await assertEventually(()=>h.statuses().includes(403));assert.equal(await h.page.evaluate(()=>sessionStorage.length),1);
-     await h.page.evaluate((next:Awaited<ReturnType<typeof boot>>)=>window.__switchProduct(next),await boot(second.caseId,'component','delegate'));await h.page.getByLabel('Outer private Product evidence').fill('PRIVATE-NEW-OWNER evidence remains');h.release();await h.page.waitForFunction(()=>sessionStorage.length===0);
+     await h.switchScope(await boot(second.caseId,'component','delegate'));await h.page.getByLabel('Outer private Product evidence').fill('PRIVATE-NEW-OWNER evidence remains');h.release();await h.page.waitForFunction(()=>sessionStorage.length===0);
      assert.equal(await h.page.getByLabel('Outer private Product evidence').inputValue(),'PRIVATE-NEW-OWNER evidence remains');assert.equal(await h.page.getByRole('heading',{name:'Product workspace access changed'}).count(),0);assert.equal(await h.page.evaluate(()=>window.__currentViewRefreshes??0),0,'The retired denial refreshed the new protected source');assert.deepEqual(h.errors,[]);
     }finally{globalThis.productScopeActor='reviewer';h.release();await h.context.close();}
    });
@@ -104,16 +109,12 @@ window.__blockProductStorage=()=>{const descriptor=Object.getOwnPropertyDescript
     const h=await harness(f.sent.caseId,'component');try{
      const rationale=h.page.getByLabel('Review note');await rationale.fill('PRIVATE-OLD-ACTOR review reason');
      await h.page.getByLabel('The details and offers describe the same product.').check();
-     const switchScope=async(scope:Awaited<ReturnType<typeof boot>>)=>{
-      await h.page.evaluate((next:Awaited<ReturnType<typeof boot>>)=>window.__switchProduct(next),scope);
-      await h.page.waitForFunction((identity:string)=>document.querySelector('main')?.getAttribute('data-fixture-scope')===identity,JSON.stringify([scope.initial.actorId,scope.caseId]));
-     };
-     await switchScope(await boot(second.caseId));
+     await h.switchScope(await boot(second.caseId));
      assert.equal(await rationale.inputValue(),'','Private entry followed a different native product source');
      assert.equal(await h.page.getByLabel('The details and offers describe the same product.').isChecked(),false);
      assert.ok((await h.page.locator('main').textContent())?.includes('Fictional second cup'));
      await rationale.fill('PRIVATE-REVIEWER second-source reason');globalThis.productScopeActor='delegate';
-     await switchScope(await boot(second.caseId,'component','delegate'));
+     await h.switchScope(await boot(second.caseId,'component','delegate'));
      assert.equal(await rationale.inputValue(),'','Another actor inherited the prior private entry');assert.deepEqual(h.errors,[]);
      await h.page.setViewportSize({width:390,height:844});await h.page.screenshot({path:'.test-artifacts/t31/product-scoped-controls-mobile.png',fullPage:true});assert.equal(await h.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     }finally{globalThis.productScopeActor='reviewer';h.release();await h.context.close();}
@@ -121,7 +122,7 @@ window.__blockProductStorage=()=>{const descriptor=Object.getOwnPropertyDescript
    await t.test('a committed old POST response never refreshes or clears the new scope draft',async()=>{
     const h=await harness(f.sent.caseId,'hook',true);try{
      await h.page.getByLabel('Owned private draft').fill('PRIVATE-ORIGINAL intended correction reason');await h.page.getByRole('button',{name:'Send original scoped action'}).click();await assertEventually(h.isCommitted);
-     await h.page.evaluate((next:Awaited<ReturnType<typeof boot>>)=>window.__switchProduct(next),await boot(second.caseId,'hook'));await h.page.getByLabel('Owned private draft').fill('NEW-SOURCE privately retained draft');h.release();await h.page.waitForFunction((id:string)=>window.__completions.includes(id),f.sent.caseId);
+     await h.switchScope(await boot(second.caseId,'hook'));await h.page.getByLabel('Owned private draft').fill('NEW-SOURCE privately retained draft');h.release();await h.page.waitForFunction((id:string)=>window.__completions.includes(id),f.sent.caseId);
      assert.deepEqual(await h.page.evaluate(()=>window.__productScopeRefreshes),[],'The old request called the new source callback');assert.equal(await h.page.getByLabel('Owned private draft').inputValue(),'NEW-SOURCE privately retained draft');assert.deepEqual(h.errors,[]);
     }finally{h.release();await h.context.close();}
    });

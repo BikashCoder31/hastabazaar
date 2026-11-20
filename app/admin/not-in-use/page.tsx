@@ -3,6 +3,7 @@ import { ChevronDown, Eye, LockKeyhole, Smartphone, Truck } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { AdminPageTitle } from '@/components/admin/page-help';
+import { withAdminReturnTo } from '@/lib/admin/return-context';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import { getBusinessSettingForManagement } from '@/lib/db/repositories/business-settings';
@@ -10,6 +11,7 @@ import { getBusinessSettingForManagement } from '@/lib/db/repositories/business-
 export const dynamic = 'force-dynamic';
 
 const recordsHref = '/admin/riders?view=records';
+const staffHistoryHref = withAdminReturnTo('/admin/staff-form-history?kind=rider-control', '/admin/not-in-use');
 const npr = new Intl.NumberFormat('en-NP', { style: 'currency', currency: 'NPR', minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const beforeTurningOn = [
   'Hire riders and have each one register a Hastabazaar account.',
@@ -33,7 +35,7 @@ export default async function NotInUsePage() {
     ? policy.cashExposureLimitPaisa : null;
   const parked = [
     { title: 'Rider applications & reports', detail: 'Sign-ups, reports and code checks', href: recordsHref, source: '/admin/riders' },
-    { title: 'Rider form history', detail: 'Past rider form answers', href: '/admin/riders/form-history?kind=report', source: '/admin/riders/form-history' },
+    { title: 'Rider form history', detail: <>Past rider form answers · <Link href={staffHistoryHref} className="inline-flex min-h-11 items-center underline underline-offset-2">Staff review history</Link></>, href: '/admin/riders/form-history?kind=report', source: '/admin/riders/form-history' },
     { title: 'Rider app', detail: 'The page riders use on their phone', href: '/rider', source: '/rider' },
     { title: 'Live map tracking', detail: 'Rider location on a customer’s order', source: 'Delivery assignments' },
     { title: 'Rider cash hand-in', detail: typeof days === 'number'
