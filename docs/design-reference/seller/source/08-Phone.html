@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seller Studio · Phone</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/39ae600ed082352c03509106609818ff">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&amp;family=Instrument+Sans:wght@400..700&amp;family=JetBrains+Mono:wght@500&amp;display=swap">
+<style>
+body{margin:0;background:#F7F3EC}
+a{color:#14213D}a:hover{color:#A8232E}
+.helpbtn{all:unset;cursor:pointer;width:28px;height:28px;border-radius:50%;border:1px solid #D3C5AD;display:inline-flex;align-items:center;justify-content:center;color:#46536F;transition:background-color 160ms ease,color 160ms ease,transform 160ms ease}
+.helpbtn:hover{background:#fff;color:#14213D}.helpbtn:active{transform:scale(.95)}
+.pop{position:absolute;z-index:20;background:#fff;border:1px solid #E4DACA;border-radius:14px;box-shadow:0 18px 40px -18px rgba(20,33,61,.35);animation:popin 180ms cubic-bezier(.23,1,.32,1);transform-origin:top left}
+@keyframes popin{from{opacity:0;transform:translateY(-4px) scale(.98)}}
+.search{display:flex;align-items:center;gap:8px;height:40px;padding:0 12px;border:1px solid #D3C5AD;border-radius:10px;background:#fff;color:#675B4E}
+.search input{all:unset;flex:1;font-size:14.5px;color:#14213D}
+.search:focus-within{border-color:#14213D;box-shadow:0 0 0 4px rgba(20,33,61,.08)}
+.who{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:999px;font-size:12.5px;font-weight:650;white-space:nowrap}
+.who .ic{width:14px;height:14px}
+.who.you{background:#14213D;color:#fff}
+.who.late{background:#A8232E;color:#fff}
+.who.hb{background:#E3E9F4;color:#2A4A88}
+.who.ok{background:#E1EEE5;color:#2C6A4A}
+.who.mute{background:#EDE4D3;color:#46536F}
+.task{all:unset;box-sizing:border-box;cursor:pointer;display:flex;gap:14px;align-items:center;width:100%;padding:16px 22px;border-top:1px solid #E4DACA;transition:background-color 160ms ease}
+.task:hover{background:#FFFCF7}
+.task:active .btn{transform:scale(.97)}
+.tico{width:40px;height:40px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.tico.red{background:#F8E1DE;color:#A8232E}.tico.amber{background:#F7E9C9;color:#8A5A0B}.tico.blue{background:#E3E9F4;color:#2A4A88}.tico.green{background:#E1EEE5;color:#2C6A4A}
+.step{padding:10px 12px;border-radius:12px;font-size:13px;display:flex;flex-direction:column;gap:2px}
+.step b{display:flex;gap:6px;align-items:center;font-size:13.5px}
+.step.done{background:#E1EEE5}.step.done b{color:#2C6A4A}
+.step.now{background:#fff;box-shadow:inset 0 0 0 2px #14213D}
+.step.hb{background:#fff;box-shadow:inset 0 0 0 2px #2A4A88}.step.hb b{color:#2A4A88}
+.step.todo{background:#EDE4D3;color:#675B4E}.step.todo b{color:#46536F}
+.steps{display:grid;gap:8px}
+.stepper{display:inline-flex;align-items:center;border:1px solid #D3C5AD;border-radius:9px;background:#fff;overflow:hidden;height:34px}
+.stepper button{all:unset;cursor:pointer;width:30px;height:34px;display:inline-flex;align-items:center;justify-content:center;color:#46536F;transition:background-color 140ms ease}
+.stepper button:hover{background:#EDE4D3;color:#14213D}.stepper button:active{background:#E4D8C3}
+.stepper b{min-width:34px;text-align:center;font-size:14px;font-variant-numeric:tabular-nums}
+.choice{all:unset;box-sizing:border-box;cursor:pointer;display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:12px;border:1px solid #E4DACA;background:#fff;transition:border-color 160ms ease,box-shadow 160ms ease}
+.choice:hover{border-color:#B9AC96}
+.choice.on{border-color:#14213D;box-shadow:0 0 0 1px #14213D}
+.radio{width:18px;height:18px;border-radius:50%;border:2px solid #B9AC96;flex:none;margin-top:2px;display:inline-flex;align-items:center;justify-content:center}
+.choice.on .radio{border-color:#14213D}.choice.on .radio::after{content:"";width:8px;height:8px;border-radius:50%;background:#14213D}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:50;display:flex;gap:12px;align-items:center;max-width:560px;padding:14px 18px;border-radius:14px;background:#14213D;color:#fff;font-size:14.5px;box-shadow:0 20px 40px -20px rgba(20,33,61,.6);animation:toastin 260ms cubic-bezier(.23,1,.32,1)}
+.toast span{color:#C9D3E6}
+@keyframes toastin{from{opacity:0;transform:translate(-50%,10px)}}
+.tabbtn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:8px;height:50px;padding:0 12px;font-size:14.5px;white-space:nowrap;transition:color 160ms ease,box-shadow 200ms ease}
+.helpbtn:focus-visible,.task:focus-visible,.choice:focus-visible,.tabbtn:focus-visible,.stepper button:focus-visible,.ocard:focus-visible{outline:2px solid #A8232E;outline-offset:2px}
+.ocard{all:unset;box-sizing:border-box;cursor:pointer;display:flex;gap:16px;align-items:center;padding:16px;border-radius:14px;background:#fff;border:1px solid #E4DACA;transition:border-color 160ms ease,transform 160ms ease}
+.ocard:hover{border-color:#B9AC96}
+.ocard:active{transform:scale(.995)}
+.ocard.on{border-color:#14213D;box-shadow:0 0 0 1px #14213D}
+.btn{transition:transform 160ms ease-out,background-color 160ms ease,border-color 160ms ease}
+.btn:active{transform:scale(.97)}
+.btn.off{opacity:.45;cursor:not-allowed}
+.btn.off:active{transform:none}
+.nextbox{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:12px;background:#E3E9F4;color:#1E3566;font-size:14px}
+.nextbox b{color:#14213D}
+@media (prefers-reduced-motion:reduce){.pop,.toast{animation:none}.btn:active,.ocard:active{transform:none}}
+
+.phone{width:390px;height:844px;border-radius:28px;overflow:hidden;position:relative;background:#F7F3EC;box-shadow:0 0 0 1px #E4DACA,0 30px 60px -30px rgba(20,33,61,.35);display:flex;flex-direction:column;font-family:'Instrument Sans',sans-serif;color:#14213D}
+.phone .scroll{flex:1;overflow:hidden;padding:16px;display:flex;flex-direction:column;gap:14px}
+.phone .scroll>*{flex-shrink:0}
+.mrow{display:flex;gap:12px;align-items:center;padding:13px 14px;border-top:1px solid #E4DACA;min-height:48px;box-sizing:border-box}
+.tabbar{height:78px;background:#FFFCF7;border-top:1px solid #E4DACA;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));align-items:center;padding:0 4px 10px;font-size:11.5px;font-weight:600}
+.tabbar a{display:flex;flex-direction:column;align-items:center;gap:4px;color:#46536F;min-height:48px;justify-content:center;position:relative}
+.cap{font-size:13px;font-weight:650;color:#46536F;margin-bottom:10px;display:flex;gap:8px;align-items:center}
+
+/*RESP-START*/
+.mbar,.mtab{display:none}
+.mbar{position:sticky;top:0;z-index:30;height:56px;align-items:center;gap:10px;padding:0 12px 0 16px;border-bottom:1px solid #E4DACA;background:#FFFCF7}
+.mbar.dark{background:#14213D;color:#fff;border-bottom:0}
+.mbar .mlogo{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
+.mbar .mlogo img{width:30px;height:30px;border-radius:7px;background:#FFFCF7}
+.mbar .mlogo b{font-size:15px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mbar .mlogo span{display:block;font-size:11.5px;font-weight:600;color:#A8232E}
+.mbar.dark .mlogo span{color:#E2B65C}
+.mbar .mbtn{all:unset;cursor:pointer;width:44px;height:44px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;position:relative}
+.mbar .mbtn:focus-visible{outline:2px solid #A8232E;outline-offset:2px}
+.mmenu{position:relative}
+.mmenu summary{list-style:none}.mmenu summary::-webkit-details-marker{display:none}
+.mmenu[open] summary{background:rgba(20,33,61,.08)}
+.mbar.dark .mmenu[open] summary{background:rgba(255,255,255,.12)}
+.mmenu .mpanel{position:fixed;left:0;right:0;top:56px;bottom:0;overflow:auto;padding:12px 12px 100px;background:#FFFCF7;border-top:1px solid #E4DACA;animation:mdrop 200ms cubic-bezier(.23,1,.32,1)}
+.mbar.dark .mmenu .mpanel{background:#14213D;border-top-color:rgba(255,255,255,.1)}
+.mmenu .mpanel a{min-height:48px}
+@keyframes mdrop{from{opacity:0;transform:translateY(-6px)}}
+.mtab{position:fixed;left:0;right:0;bottom:0;z-index:30;height:72px;padding:0 4px 8px;background:#FFFCF7;border-top:1px solid #E4DACA;grid-template-columns:repeat(5,minmax(0,1fr));align-items:center;font-size:11.5px;font-weight:600}
+.mtab a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:52px;color:#46536F;position:relative}
+.mtab a.on{color:#A8232E}
+.mtab a.add{justify-self:center;width:52px;height:52px;min-height:0;border-radius:16px;background:#A8232E;color:#fff;margin-top:-16px;box-shadow:0 10px 20px -10px rgba(168,35,46,.7)}
+.mtab .count{position:absolute;top:2px;right:calc(50% - 22px)}
+@media (max-width:1023px){
+  .hb.shell{flex-direction:column;flex-wrap:nowrap}
+  .hb.shell>aside.side{display:none!important}
+  .mbar{display:flex}
+  .hb.shell>.main{flex:1 1 auto;width:100%}
+  .cmdk{display:none!important}
+  .hb.shell>.main>div:first-of-type:not(.mbar){height:auto!important;min-height:60px;flex-wrap:wrap;row-gap:8px;padding-top:10px!important;padding-bottom:10px!important}
+}
+@media (max-width:767px){
+  .hb.shell{padding-bottom:var(--mtab-pad,0px)}
+  .mtab.on-phone{display:grid}
+  .hide-m,.hide-phone{display:none!important}
+  .hb.shell>.main>div:first-of-type:not(.mbar){padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main main,.hb.shell>.main>div>main,.hb.shell>.main section,.hb.shell>.main aside{max-width:100%!important}
+  .hb.shell>.main main{padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main [style*="padding: 0 32px"],.hb.shell>.main [style*="padding: 0 32px;"]{padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main [style*="grid-template-columns"]:not(dl):not(.keep2):not(.steps):not(.stepper){grid-template-columns:minmax(0,1fr)!important}
+  .hb.shell>.main ol.steps[style],.hb.shell>.main .steps{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .hb.shell>.main .keep2{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .hb.shell>.main dl[style*="grid-template-columns"]{grid-template-columns:auto minmax(0,1fr)!important;column-gap:16px}
+  .hb.shell>.main [style*="flex: 999 1"],.hb.shell>.main [style*="flex: 1 1 4"],.hb.shell>.main [style*="flex: 1 1 3"],.hb.shell>.main [style*="flex: 1 1 6"],.hb.shell>.main [style*="flex: 0 0 3"]{flex:1 1 100%!important;max-width:100%!important;border-left:0!important;border-right:0!important;padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main [style*="border-left: 1px solid #E4DACA"]:not(td):not(th){border-left:0!important}
+  .hb.shell>.main ol.num>li,.hb.shell>.main .num>div{padding-left:0!important;padding-right:0!important}
+  .tbl-box{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  [role=tablist],.subtabs,nav.subtabs{flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none}
+  [role=tablist]::-webkit-scrollbar,.subtabs::-webkit-scrollbar{display:none}
+  [role=tablist]>*,.subtabs>*{flex-shrink:0}
+  h1.serif{font-size:26px!important}
+  h2.serif{font-size:24px!important}
+  .btn{min-height:44px}
+  .btn-xs{min-height:36px}
+  .pop{position:fixed!important;left:16px!important;right:16px!important;width:auto!important;top:70px!important}
+  .toast{left:16px;right:16px;transform:none;max-width:none;bottom:calc(var(--mtab-pad,0px) + 16px)}
+  @keyframes toastin{from{opacity:0;transform:translateY(10px)}}
+
+  .task{display:grid!important;grid-template-columns:40px minmax(0,1fr) auto;gap:6px 14px;align-items:center;padding:14px 16px!important}
+  .task>:nth-child(2){grid-column:2/4}
+  .task.t4>:nth-child(1){grid-row:1/3;align-self:start}
+  .task.t4>:nth-child(3){grid-column:2;justify-self:start}
+  .task.t4>:nth-child(4){grid-column:3;grid-row:2}
+  .task:not(.t4)>:nth-child(2){grid-column:2}
+  .hb.shell>.main [style*="gap: 0"]{row-gap:18px!important}
+  .tbl.cards thead{display:none}
+  .tbl.cards,.tbl.cards tbody{display:block}
+  .tbl.cards tr{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px 12px;align-items:center;padding:14px 16px;border-top:1px solid #E4DACA}
+  .tbl.cards tr:first-child{border-top:0}
+  .tbl.cards td{display:block;padding:0!important;border:0!important;max-width:none!important;text-align:left}
+  .tbl.cards td.full{grid-column:1/-1}
+  .tbl.cards td.r{text-align:right}
+  .tbl.cards td.hide{display:none}
+  .tbl.cards td.pr{grid-column:3;grid-row:1}
+}
+@media (prefers-reduced-motion:reduce){.mmenu .mpanel{animation:none}}
+/*RESP-END*/
+</style>
+</helmet>
+
+<div class="hb" style="padding: 28px 30px 36px; display: flex; gap: 40px; align-items: flex-start; background: #EFE8DC; min-height: 100vh; box-sizing: border-box">
+  <div>
+    <div class="cap"><span class="ic s16 i-home"></span>Today, on a phone</div>
+    <div class="phone">
+      <header style="background: #FFFCF7; border-bottom: 1px solid #E4DACA; height: 58px; display: flex; align-items: center; gap: 10px; padding: 0 8px 0 16px; flex: none">
+        <img src="/_blob/6cc7d3d03f2b0dcca7c60337e8a9dc73" alt="" style="width: 32px; height: 32px; border-radius: 8px; object-fit: cover">
+        <span style="flex: 1; line-height: 1.2"><b style="font-size: 15px; display: block">Hand Creation</b><span style="font-size: 12px; color: #2C6A4A; font-weight: 600">Shop is live</span></span>
+        <button class="btn btn-quiet btn-sm btn-icon" aria-label="Search" style="width: 44px; height: 44px"><span class="ic i-search"></span></button>
+        <button class="btn btn-quiet btn-sm btn-icon" aria-label="Notifications, 2 new" style="width: 44px; height: 44px; position: relative"><span class="ic i-bell"></span><span style="position: absolute; top: 10px; right: 11px; width: 8px; height: 8px; border-radius: 50%; background: #A8232E"></span></button>
+      </header>
+      <div class="scroll">
+        <div><h1 class="serif" style="font-size: 28px; line-height: 1.08">Good evening</h1><p style="color: #46536F; font-size: 14px; margin-top: 4px">5 things need you · 4 with Hastabazaar</p></div>
+        <a href="#" style="display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: 14px; background: #14213D; color: #fff">
+          <span style="display: flex; gap: 8px; align-items: center"><span class="who late"><span class="ic i-clock"></span>2 h late</span><span style="font-size: 12.5px; color: #C9D3E6">Do this first</span></span>
+          <b style="font-size: 17px">Get HB-24811 ready for pickup</b>
+          <span style="font-size: 13.5px; color: #C9D3E6">Red flower drop earrings · Priya M.</span>
+        </a>
+        <section class="panel" style="overflow: hidden">
+          <h2 style="font-size: 15px; font-weight: 650; padding: 14px 14px 10px; display: flex; gap: 8px; align-items: center"><span class="who you">Your turn</span>Next</h2>
+          <a href="#" class="mrow"><span class="tico amber" style="width: 34px; height: 34px"><span class="ic s18 i-package"></span></span><span style="flex: 1; font-size: 14px"><b style="display: block">Start preparing HB-24809</b><span style="color: #46536F; font-size: 12.5px">Ready by Thu 20 Nov</span></span><span class="ic s18 i-right" style="color: #675B4E"></span></a>
+          <a href="#" class="mrow"><span class="tico amber" style="width: 34px; height: 34px"><span class="ic s18 i-package"></span></span><span style="flex: 1; font-size: 14px"><b style="display: block">Mark HB-24816 ready</b><span style="color: #46536F; font-size: 12.5px">Ready by Fri 21 Nov</span></span><span class="ic s18 i-right" style="color: #675B4E"></span></a>
+          <a href="#" class="mrow"><span class="tico red" style="width: 34px; height: 34px"><span class="ic s18 i-return"></span></span><span style="flex: 1; font-size: 14px"><b style="display: block">Reply to a return</b><span style="color: #A8232E; font-size: 12.5px; font-weight: 600">HB-24788 · reply by Fri 21 Nov</span></span><span class="ic s18 i-right" style="color: #675B4E"></span></a>
+          <a href="#" class="mrow"><span class="tico blue" style="width: 34px; height: 34px"><span class="ic s18 i-edit"></span></span><span style="flex: 1; font-size: 14px"><b style="display: block">Fix Crochet rose earrings</b><span style="color: #46536F; font-size: 12.5px">Add the country of origin</span></span><span class="ic s18 i-right" style="color: #675B4E"></span></a>
+        </section>
+        <a href="#" class="panel" style="display: flex; gap: 12px; align-items: center; padding: 14px"><span class="who hb">With Hastabazaar</span><span style="flex: 1; font-size: 14px; color: #46536F">4 things. Nothing to do.</span><span class="ic s18 i-right" style="color: #675B4E"></span></a>
+        <section class="panel" style="padding: 14px; display: flex; flex-direction: column; gap: 4px">
+          <span style="font-size: 13px; color: #46536F">Payout PO-0143</span>
+          <span style="display: flex; justify-content: space-between; align-items: center"><b class="serif num" style="font-size: 26px; font-weight: 500">NPR 12,480</b><span class="who hb">Being approved</span></span>
+        </section>
+      </div>
+      <nav class="tabbar" aria-label="Seller Studio">
+        <a href="#" aria-current="page" style="color: #A8232E"><span class="ic i-home"></span>Today</a>
+        <a href="#"><span class="ic i-receipt"></span>Orders<span class="count" style="position: absolute; top: -2px; right: 12px">3</span></a>
+        <a href="#" aria-label="Add product" style="justify-self: center; width: 54px; height: 54px; border-radius: 16px; background: #A8232E; color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 20px -10px rgba(168,35,46,.7); margin-top: -18px"><span class="ic s24 i-plus"></span></a>
+        <a href="#"><span class="ic i-package"></span>Products</a>
+        <a href="#"><span class="ic i-wallet"></span>Earnings</a>
+      </nav>
+    </div>
+  </div>
+
+  <div>
+    <div class="cap"><span class="ic s16 i-receipt"></span>An order, on a phone</div>
+    <div class="phone">
+      <header style="background: #FFFCF7; border-bottom: 1px solid #E4DACA; height: 58px; display: flex; align-items: center; gap: 6px; padding: 0 12px 0 4px; flex: none">
+        <button class="btn btn-quiet btn-sm btn-icon" aria-label="Back to orders" style="width: 44px; height: 44px"><span class="ic i-left"></span></button>
+        <b class="mono" style="flex: 1; font-size: 14px">HB-24811</b>
+        <span class="{{whoCls}}">{{who}}</span>
+      </header>
+      <div class="scroll">
+        <div style="display: flex; gap: 12px; align-items: center"><img src="/_blob/eef4ef68f82a1e98e267463ef9651908" alt="" style="width: 64px; height: 64px; border-radius: 12px; object-fit: contain; background: #fff; border: 1px solid #EDE4D3"><span><b class="serif" style="font-size: 21px; line-height: 1.1; display: block">Red flower drop earrings</b><span style="font-size: 13.5px; color: #46536F">Priya M. · Baneshwor, Kathmandu</span></span></div>
+        <div style="padding: 14px; border-radius: 12px; background: {{nextBg}}; font-size: 14px; color: #46536F; display: flex; gap: 10px"><span class="{{nextIcon}}" style="flex: none; margin-top: 1px; color: #14213D"></span><span><b style="display: block; color: #14213D">{{nextTitle}}</b>{{nextText}}</span></div>
+        <dl class="num" style="margin: 0; display: grid; grid-template-columns: 110px 1fr; row-gap: 8px; font-size: 14px">
+          <dt style="color: #46536F">Payment</dt><dd style="margin: 0">Cash on delivery · NPR 485</dd>
+          <dt style="color: #46536F">You receive</dt><dd style="margin: 0; font-weight: 650; color: #2C6A4A">NPR 427</dd>
+          <dt style="color: #46536F">Ready by</dt><dd style="margin: 0; color: #A8232E; font-weight: 600">Today 4 pm · 2 h late</dd>
+        </dl>
+        <ol style="list-style: none; margin: 0; padding: 12px 0 0; border-top: 1px solid #E4DACA; display: flex; flex-direction: column; gap: 10px; font-size: 14px">
+          <sc-for list="{{steps}}" as="s" hint-placeholder-count="5"><li style="display: flex; gap: 10px; align-items: center"><span style="width: 12px; height: 12px; border-radius: 50%; background: {{s.dot}}; border: 2px solid {{s.ring}}; box-sizing: border-box; flex: none"></span><b style="flex: 1; color: {{s.fg}}">{{s.label}}</b><span style="font-size: 12.5px; color: #675B4E">{{s.by}}</span></li></sc-for>
+        </ol>
+      </div>
+      <div style="flex: none; padding: 12px 16px 22px; background: #FFFCF7; border-top: 1px solid #E4DACA; display: flex; flex-direction: column; gap: 6px">
+        <sc-if value="{{canAct}}" hint-placeholder-val="{{ true }}"><button class="btn btn-primary" style="width: 100%; height: 50px" onClick="{{advance}}">{{cta}}</button><button class="btn btn-quiet btn-sm" style="align-self: center; min-height: 44px">Running late or can't make it?</button></sc-if>
+        <sc-if value="{{waiting}}" hint-placeholder-val="{{ false }}"><p style="text-align: center; font-size: 14px; color: #2A4A88; font-weight: 600; min-height: 44px; display: flex; align-items: center; justify-content: center">Hastabazaar is booking the courier</p></sc-if>
+      </div>
+    </div>
+  </div>
+</div>
+<sc-if value="{{hasToast}}" hint-placeholder-val="{{ false }}"><div class="toast" role="status"><span class="ic s18 i-check" style="color: #9FD3B4"></span><p><b style="display: block">{{toast.a}}</b><span>{{toast.b}}</span></p></div></sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":880,"height":960}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { at: 0, toast: null }; }
+
+  flash(a, b) { clearTimeout(this._t); this.setState({ toast: { a, b } }); this._t = setTimeout(() => this.setState({ toast: null }), 4200); }
+  helpVals(help) { const s = this.state; return { help, helpOpen: !!s.helpOpen, toggleHelp: () => this.setState({ helpOpen: !s.helpOpen }), hasToast: !!s.toast, toast: s.toast || { a: '', b: '' } }; }
+  componentDidMount() { this._k = (e) => { if (e.key === 'Escape' && this.state.helpOpen) this.setState({ helpOpen: false }); }; window.addEventListener('keydown', this._k); }
+  componentWillUnmount() { window.removeEventListener('keydown', this._k); clearTimeout(this._t); }
+
+  renderVals() {
+    const s = this.state;
+    const L = [['Order placed', 'Customer'], ['Start preparing', 'You'], ['Ready for pickup', 'You'], ['Picked up', 'Courier'], ['Delivered', 'Courier']];
+    const steps = L.map(([label, by], i) => { const done = i <= s.at; const cur = i === s.at + 1; return { label, by, dot: done ? '#2C6A4A' : '#fff', ring: done ? '#2C6A4A' : cur ? '#A8232E' : '#D3C5AD', fg: done || cur ? '#14213D' : '#675B4E' }; });
+    const N = [
+      ['#14213D0D', 'ic s18 i-arrow', 'Your turn: start preparing', ' Tap when you begin making or packing it.'],
+      ['#14213D0D', 'ic s18 i-arrow', 'Your turn: mark it ready', ' Only when it’s packed and labelled.'],
+      ['#E3E9F4', 'ic s18 i-truck', 'With Hastabazaar', ' We’re booking the courier. We’ll tell you the pickup time.']
+    ][s.at];
+    const advance = () => { const at = s.at + 1; this.setState({ at }); this.flash(at === 1 ? 'Moved to Preparing' : 'Ready for pickup', at === 1 ? 'Hastabazaar can see you’ve started.' : 'Hastabazaar will book the courier.'); };
+    return { steps, nextBg: N[0], nextIcon: N[1], nextTitle: N[2], nextText: N[3], canAct: s.at < 2, waiting: s.at >= 2, cta: s.at === 0 ? 'Start preparing' : 'Mark ready for pickup', advance,
+      who: s.at < 2 ? 'Your turn' : 'With Hastabazaar', whoCls: s.at < 2 ? 'who you' : 'who hb', ...this.helpVals({ title: '', a: '', b: '' }) };
+  }
+}
+</script>
+</body>
+</html>

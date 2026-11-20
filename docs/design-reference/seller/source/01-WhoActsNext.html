@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seller ↔ Super Admin handoffs</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/39ae600ed082352c03509106609818ff">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&amp;family=Instrument+Sans:wght@400..700&amp;family=JetBrains+Mono:wght@500&amp;display=swap">
+<style>
+body{margin:0;background:#F7F3EC}
+a{color:#14213D}a:hover{color:#A8232E}
+.helpbtn{all:unset;cursor:pointer;width:28px;height:28px;border-radius:50%;border:1px solid #D3C5AD;display:inline-flex;align-items:center;justify-content:center;color:#46536F;transition:background-color 160ms ease,color 160ms ease,transform 160ms ease}
+.helpbtn:hover{background:#fff;color:#14213D}.helpbtn:active{transform:scale(.95)}
+.pop{position:absolute;z-index:20;background:#fff;border:1px solid #E4DACA;border-radius:14px;box-shadow:0 18px 40px -18px rgba(20,33,61,.35);animation:popin 180ms cubic-bezier(.23,1,.32,1);transform-origin:top left}
+@keyframes popin{from{opacity:0;transform:translateY(-4px) scale(.98)}}
+.search{display:flex;align-items:center;gap:8px;height:40px;padding:0 12px;border:1px solid #D3C5AD;border-radius:10px;background:#fff;color:#675B4E}
+.search input{all:unset;flex:1;font-size:14.5px;color:#14213D}
+.search:focus-within{border-color:#14213D;box-shadow:0 0 0 4px rgba(20,33,61,.08)}
+.who{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:999px;font-size:12.5px;font-weight:650;white-space:nowrap}
+.who .ic{width:14px;height:14px}
+.who.you{background:#14213D;color:#fff}
+.who.late{background:#A8232E;color:#fff}
+.who.hb{background:#E3E9F4;color:#2A4A88}
+.who.ok{background:#E1EEE5;color:#2C6A4A}
+.who.mute{background:#EDE4D3;color:#46536F}
+.task{all:unset;box-sizing:border-box;cursor:pointer;display:flex;gap:14px;align-items:center;width:100%;padding:16px 22px;border-top:1px solid #E4DACA;transition:background-color 160ms ease}
+.task:hover{background:#FFFCF7}
+.task:active .btn{transform:scale(.97)}
+.tico{width:40px;height:40px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.tico.red{background:#F8E1DE;color:#A8232E}.tico.amber{background:#F7E9C9;color:#8A5A0B}.tico.blue{background:#E3E9F4;color:#2A4A88}.tico.green{background:#E1EEE5;color:#2C6A4A}
+.step{padding:10px 12px;border-radius:12px;font-size:13px;display:flex;flex-direction:column;gap:2px}
+.step b{display:flex;gap:6px;align-items:center;font-size:13.5px}
+.step.done{background:#E1EEE5}.step.done b{color:#2C6A4A}
+.step.now{background:#fff;box-shadow:inset 0 0 0 2px #14213D}
+.step.hb{background:#fff;box-shadow:inset 0 0 0 2px #2A4A88}.step.hb b{color:#2A4A88}
+.step.todo{background:#EDE4D3;color:#675B4E}.step.todo b{color:#46536F}
+.steps{display:grid;gap:8px}
+.stepper{display:inline-flex;align-items:center;border:1px solid #D3C5AD;border-radius:9px;background:#fff;overflow:hidden;height:34px}
+.stepper button{all:unset;cursor:pointer;width:30px;height:34px;display:inline-flex;align-items:center;justify-content:center;color:#46536F;transition:background-color 140ms ease}
+.stepper button:hover{background:#EDE4D3;color:#14213D}.stepper button:active{background:#E4D8C3}
+.stepper b{min-width:34px;text-align:center;font-size:14px;font-variant-numeric:tabular-nums}
+.choice{all:unset;box-sizing:border-box;cursor:pointer;display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:12px;border:1px solid #E4DACA;background:#fff;transition:border-color 160ms ease,box-shadow 160ms ease}
+.choice:hover{border-color:#B9AC96}
+.choice.on{border-color:#14213D;box-shadow:0 0 0 1px #14213D}
+.radio{width:18px;height:18px;border-radius:50%;border:2px solid #B9AC96;flex:none;margin-top:2px;display:inline-flex;align-items:center;justify-content:center}
+.choice.on .radio{border-color:#14213D}.choice.on .radio::after{content:"";width:8px;height:8px;border-radius:50%;background:#14213D}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:50;display:flex;gap:12px;align-items:center;max-width:560px;padding:14px 18px;border-radius:14px;background:#14213D;color:#fff;font-size:14.5px;box-shadow:0 20px 40px -20px rgba(20,33,61,.6);animation:toastin 260ms cubic-bezier(.23,1,.32,1)}
+.toast span{color:#C9D3E6}
+@keyframes toastin{from{opacity:0;transform:translate(-50%,10px)}}
+.tabbtn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:8px;height:50px;padding:0 12px;font-size:14.5px;white-space:nowrap;transition:color 160ms ease,box-shadow 200ms ease}
+.helpbtn:focus-visible,.task:focus-visible,.choice:focus-visible,.tabbtn:focus-visible,.stepper button:focus-visible,.ocard:focus-visible{outline:2px solid #A8232E;outline-offset:2px}
+.ocard{all:unset;box-sizing:border-box;cursor:pointer;display:flex;gap:16px;align-items:center;padding:16px;border-radius:14px;background:#fff;border:1px solid #E4DACA;transition:border-color 160ms ease,transform 160ms ease}
+.ocard:hover{border-color:#B9AC96}
+.ocard:active{transform:scale(.995)}
+.ocard.on{border-color:#14213D;box-shadow:0 0 0 1px #14213D}
+.btn{transition:transform 160ms ease-out,background-color 160ms ease,border-color 160ms ease}
+.btn:active{transform:scale(.97)}
+.btn.off{opacity:.45;cursor:not-allowed}
+.btn.off:active{transform:none}
+.nextbox{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:12px;background:#E3E9F4;color:#1E3566;font-size:14px}
+.nextbox b{color:#14213D}
+@media (prefers-reduced-motion:reduce){.pop,.toast{animation:none}.btn:active,.ocard:active{transform:none}}
+
+.flow{display:grid;grid-template-columns:minmax(0,1fr) 28px minmax(0,1.25fr) 28px minmax(0,1fr);align-items:stretch;padding:16px 0;border-top:1px solid #E4DACA}
+.arrow{display:flex;align-items:center;justify-content:center;color:#B9AC96}
+.card2{border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;font-size:14px}
+.sel{background:#fff;border:1px solid #E4DACA}
+.adm{background:#14213D;color:#fff}
+.adm .hub{font-size:12px;color:#9FB0D0;font-weight:600;display:flex;gap:6px;align-items:center}
+.adm .ctx{font-size:13px;color:#C9D3E6}
+.after{background:#E1EEE5;color:#1F5138}
+.lab{font-size:12px;font-weight:650;color:#675B4E;letter-spacing:.01em}
+.rules{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:40px}
+.rule{display:flex;gap:12px;align-items:flex-start;font-size:14.5px;padding:12px 0;border-top:1px solid #E4DACA}
+.rule:nth-child(-n+2){border-top:0}
+.rn{width:26px;height:26px;border-radius:50%;background:#14213D;color:#fff;font-size:13px;font-weight:650;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.ob{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+.ob div{padding:14px;min-height:84px;border-radius:12px;font-size:13.5px;display:flex;flex-direction:column;gap:6px}
+
+/*RESP-START*/
+.mbar,.mtab{display:none}
+.mbar{position:sticky;top:0;z-index:30;height:56px;align-items:center;gap:10px;padding:0 12px 0 16px;border-bottom:1px solid #E4DACA;background:#FFFCF7}
+.mbar.dark{background:#14213D;color:#fff;border-bottom:0}
+.mbar .mlogo{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
+.mbar .mlogo img{width:30px;height:30px;border-radius:7px;background:#FFFCF7}
+.mbar .mlogo b{font-size:15px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mbar .mlogo span{display:block;font-size:11.5px;font-weight:600;color:#A8232E}
+.mbar.dark .mlogo span{color:#E2B65C}
+.mbar .mbtn{all:unset;cursor:pointer;width:44px;height:44px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;position:relative}
+.mbar .mbtn:focus-visible{outline:2px solid #A8232E;outline-offset:2px}
+.mmenu{position:relative}
+.mmenu summary{list-style:none}.mmenu summary::-webkit-details-marker{display:none}
+.mmenu[open] summary{background:rgba(20,33,61,.08)}
+.mbar.dark .mmenu[open] summary{background:rgba(255,255,255,.12)}
+.mmenu .mpanel{position:fixed;left:0;right:0;top:56px;bottom:0;overflow:auto;padding:12px 12px 100px;background:#FFFCF7;border-top:1px solid #E4DACA;animation:mdrop 200ms cubic-bezier(.23,1,.32,1)}
+.mbar.dark .mmenu .mpanel{background:#14213D;border-top-color:rgba(255,255,255,.1)}
+.mmenu .mpanel a{min-height:48px}
+@keyframes mdrop{from{opacity:0;transform:translateY(-6px)}}
+.mtab{position:fixed;left:0;right:0;bottom:0;z-index:30;height:72px;padding:0 4px 8px;background:#FFFCF7;border-top:1px solid #E4DACA;grid-template-columns:repeat(5,minmax(0,1fr));align-items:center;font-size:11.5px;font-weight:600}
+.mtab a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:52px;color:#46536F;position:relative}
+.mtab a.on{color:#A8232E}
+.mtab a.add{justify-self:center;width:52px;height:52px;min-height:0;border-radius:16px;background:#A8232E;color:#fff;margin-top:-16px;box-shadow:0 10px 20px -10px rgba(168,35,46,.7)}
+.mtab .count{position:absolute;top:2px;right:calc(50% - 22px)}
+@media (max-width:1023px){
+  .hb.shell{flex-direction:column;flex-wrap:nowrap}
+  .hb.shell>aside.side{display:none!important}
+  .mbar{display:flex}
+  .hb.shell>.main{flex:1 1 auto;width:100%}
+  .cmdk{display:none!important}
+  .hb.shell>.main>div:first-of-type:not(.mbar){height:auto!important;min-height:60px;flex-wrap:wrap;row-gap:8px;padding-top:10px!important;padding-bottom:10px!important}
+}
+@media (max-width:767px){
+  .hb.shell{padding-bottom:var(--mtab-pad,0px)}
+  .mtab.on-phone{display:grid}
+  .hide-m,.hide-phone{display:none!important}
+  .hb.shell>.main>div:first-of-type:not(.mbar){padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main main,.hb.shell>.main>div>main,.hb.shell>.main section,.hb.shell>.main aside{max-width:100%!important}
+  .hb.shell>.main main{padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main [style*="padding: 0 32px"],.hb.shell>.main [style*="padding: 0 32px;"]{padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main [style*="grid-template-columns"]:not(dl):not(.keep2):not(.steps):not(.stepper){grid-template-columns:minmax(0,1fr)!important}
+  .hb.shell>.main ol.steps[style],.hb.shell>.main .steps{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .hb.shell>.main .keep2{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .hb.shell>.main dl[style*="grid-template-columns"]{grid-template-columns:auto minmax(0,1fr)!important;column-gap:16px}
+  .hb.shell>.main [style*="flex: 999 1"],.hb.shell>.main [style*="flex: 1 1 4"],.hb.shell>.main [style*="flex: 1 1 3"],.hb.shell>.main [style*="flex: 1 1 6"],.hb.shell>.main [style*="flex: 0 0 3"]{flex:1 1 100%!important;max-width:100%!important;border-left:0!important;border-right:0!important;padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main [style*="border-left: 1px solid #E4DACA"]:not(td):not(th){border-left:0!important}
+  .hb.shell>.main ol.num>li,.hb.shell>.main .num>div{padding-left:0!important;padding-right:0!important}
+  .tbl-box{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  [role=tablist],.subtabs,nav.subtabs{flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none}
+  [role=tablist]::-webkit-scrollbar,.subtabs::-webkit-scrollbar{display:none}
+  [role=tablist]>*,.subtabs>*{flex-shrink:0}
+  h1.serif{font-size:26px!important}
+  h2.serif{font-size:24px!important}
+  .btn{min-height:44px}
+  .btn-xs{min-height:36px}
+  .pop{position:fixed!important;left:16px!important;right:16px!important;width:auto!important;top:70px!important}
+  .toast{left:16px;right:16px;transform:none;max-width:none;bottom:calc(var(--mtab-pad,0px) + 16px)}
+  @keyframes toastin{from{opacity:0;transform:translateY(10px)}}
+
+  .task{display:grid!important;grid-template-columns:40px minmax(0,1fr) auto;gap:6px 14px;align-items:center;padding:14px 16px!important}
+  .task>:nth-child(2){grid-column:2/4}
+  .task.t4>:nth-child(1){grid-row:1/3;align-self:start}
+  .task.t4>:nth-child(3){grid-column:2;justify-self:start}
+  .task.t4>:nth-child(4){grid-column:3;grid-row:2}
+  .task:not(.t4)>:nth-child(2){grid-column:2}
+  .hb.shell>.main [style*="gap: 0"]{row-gap:18px!important}
+  .tbl.cards thead{display:none}
+  .tbl.cards,.tbl.cards tbody{display:block}
+  .tbl.cards tr{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px 12px;align-items:center;padding:14px 16px;border-top:1px solid #E4DACA}
+  .tbl.cards tr:first-child{border-top:0}
+  .tbl.cards td{display:block;padding:0!important;border:0!important;max-width:none!important;text-align:left}
+  .tbl.cards td.full{grid-column:1/-1}
+  .tbl.cards td.r{text-align:right}
+  .tbl.cards td.hide{display:none}
+  .tbl.cards td.pr{grid-column:3;grid-row:1}
+}
+@media (prefers-reduced-motion:reduce){.mmenu .mpanel{animation:none}}
+/*RESP-END*/
+</style>
+</helmet>
+
+<div class="hb" style="padding: 40px 48px 56px; background: #F7F3EC; min-height: 100vh; box-sizing: border-box; display: flex; flex-direction: column; gap: 28px; font-family: 'Instrument Sans', sans-serif; color: #14213D">
+  <header style="display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap">
+    <div style="max-width: 760px">
+      <h1 class="serif" style="font-size: 40px; line-height: 1.05">Who acts next: Seller ↔ Super Admin</h1>
+      <p style="font-size: 16px; color: #46536F; margin-top: 10px">Every seller action lands as one clear task in the Super Admin's Today list. Every Super Admin decision shows up on the seller's screen. Nobody has to guess whose turn it is.</p>
+    </div>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap"><span class="who you">Your turn</span><span class="who hb">With Hastabazaar</span><span class="who late">Late</span><span class="who ok">Done</span></div>
+  </header>
+
+  <section class="panel" style="padding: 8px 24px 8px" aria-label="Handoffs">
+    <div style="display: grid; grid-template-columns: minmax(0,1fr) 28px minmax(0,1.25fr) 28px minmax(0,1fr); padding: 14px 0 6px; font-size: 13px; font-weight: 650; color: #46536F">
+      <span>In Seller Studio</span><span></span><span>Appears in Super Admin › Today</span><span></span><span>What the seller sees after</span>
+    </div>
+    <div class="flow"><div class="card2 sel"><span class="lab">SELLER DOES</span><b style="font-size: 15px; display: flex; gap: 8px; align-items: center"><span class="ic s18 i-package" style="color: #A8232E"></span>Marks an order ready for pickup</b><span style="font-size: 13px; color: #46536F">Orders · HB-24790</span><span class="who hb" style="align-self: flex-start; margin-top: 2px">Now: With Hastabazaar</span></div><div class="arrow"><span class="ic s18 i-right"></span></div><div class="card2 adm"><span class="hub"><span class="ic s16 i-flag"></span>Super Admin · Today · Orders · Pickup</span><b style="font-size: 15px">Book pickup for HB-24790</b><span class="ctx">Hand Creation · Dharan · ready since 18 Nov</span><span style="align-self: flex-start; margin-top: 4px; height: 30px; padding: 0 12px; border-radius: 8px; background: #fff; color: #14213D; font-size: 13px; font-weight: 650; display: inline-flex; align-items: center">Book courier</span></div><div class="arrow"><span class="ic s18 i-right"></span></div><div class="card2 after"><span class="lab" style="color: #2C6A4A">THEN THE SELLER</span><span style="color: #14213D">Sees “Courier booked: Nepal Can Move, tomorrow 9–11 am” on the order, and gets a notification.</span><span style="font-size: 13px; display: flex; gap: 6px; align-items: center"><span class="ic s16 i-bell"></span>Notification sent</span></div></div>
+<div class="flow"><div class="card2 sel"><span class="lab">SELLER DOES</span><b style="font-size: 15px; display: flex; gap: 8px; align-items: center"><span class="ic s18 i-calendar" style="color: #A8232E"></span>Gives a new ready date</b><span style="font-size: 13px; color: #46536F">Orders · HB-24809 · “Running late?”</span><span class="who hb" style="align-self: flex-start; margin-top: 2px">Now: With Hastabazaar</span></div><div class="arrow"><span class="ic s18 i-right"></span></div><div class="card2 adm"><span class="hub"><span class="ic s16 i-flag"></span>Super Admin · Today · Orders · Delays</span><b style="font-size: 15px">New ready date for HB-24809: Sat 22 Nov</b><span class="ctx">Hand Creation · was Thu 20 Nov · reason: still making it</span><span style="align-self: flex-start; margin-top: 4px; height: 30px; padding: 0 12px; border-radius: 8px; background: #fff; color: #14213D; font-size: 13px; font-weight: 650; display: inline-flex; align-items: center">Tell customer</span></div><div class="arrow"><span class="ic s18 i-right"></span></div><div class="card2 after"><span class="lab" style="color: #2C6A4A">THEN THE SELLER</span><span style="color: #14213D">Sees “Hastabazaar has told the customer” and the new date on the order.</span><span style="font-size: 13px; display: flex; gap: 6px; align-items: center"><span class="ic s16 i-bell"></span>Notification sent</span></div></div>
+<div class="flow"><div class="card2 sel"><span class="lab">SELLER DOES</span><b style="font-size: 15px; display: flex; gap: 8px; align-items: center"><span class="ic s18 i-clock" style="color: #A8232E"></span>Misses a ready-by time (nothing pressed)</b><span style="font-size: 13px; color: #46536F">Happens on its own</span><span class="who late" style="align-self: flex-start; margin-top: 2px">Still your turn · late</span></div><div class="arrow"><span class="ic s18 i-right"></span></div><div class="card2 adm"><span class="hub"><span class="ic s16 i-flag"></span>Super Admin · Today · Orders · Packing</span><b style="font-size: 15px">HB-24811 is 2 hours late to pack</b><span class="ctx">Hand Creation · Priya M., Baneshwor · NPR 485</span><span style="align-self: flex-start; margin-top: 4px; height: 30px; padding: 0 12px; border-radius: 8px; background: #fff; color: #14213D; font-size: 13px; font-weight: 650; display: inline-flex; align-items: center">Open order</span></div><div class="arrow"><span class="ic s18 i-right"></span></div><div class="card2 after"><span class="lab" style="color: #2C6A4A">THEN THE SELLER</span><span style="color: #14213D">Already sees it as the red “Do this first” card on Today. Staff may call.</span><span style="font-size: 13px; display: flex; gap: 6px; align-items: center"><span class="ic s16 i-bell"></span>Notification sent</span></div></div>
+<div class="flow"><div class="card2 sel"><span class="lab">SELLER DOES</span><b style="font-size: 15px; display: flex; gap: 8px; align-items: center"><span class="ic s18 i-return" style="color: #A8232E"></span>Replies to a return</b><span style="font-size: 13px; color: #46536F">Returns · HB-24770</span><span class="who hb" style="align-self: flex-start; margin-top: 2px">Now: With Hastabazaar</span></div><div class="arrow"><span class="ic s18 i-right"></span></div><div class="card2 adm"><span class="hub"><span class="ic s16 i-flag"></span>Super Admin · Today · Care · Returns</span><b style="font-size: 15px">Escalated return on HB-24770</b><span class="ctx">Customer says colour differs from photo · seller disputes</span><span style="align-self: flex-start; margin-top: 4px; height: 30px; padding: 0 12px; border-radius: 8px; background: #fff; color: #14213D; font-size: 13px; font-weight: 650; display: inline-flex; align-items: center">Open case</span></div><div class="arrow"><span class="ic s18 i-right"></span></div><div class="card2 after"><span class="lab" style="color: #2C6A4A">THEN THE SELLER</span><span style="color: #14213D">Sees the decision on the case, and what it means for that order’s money.</span><span style="font-size: 13px; display: flex; gap: 6px; align-items: center"><span class="ic s16 i-bell"></span>Notification sent</span></div></div>
+<div class="flow"><div class="card2 sel"><span class="lab">SELLER DOES</span><b style="font-size: 15px; display: flex; gap: 8px; align-items: center"><span class="ic s18 i-eye" style="color: #A8232E"></span>Sends a product for review</b><span style="font-size: 13px; color: #46536F">Products · Edit product</span><span class="who hb" style="align-self: flex-start; margin-top: 2px">Now: With Hastabazaar</span></div><div class="arrow"><span class="ic s18 i-right"></span></div><div class="card2 adm"><span class="hub"><span class="ic s16 i-flag"></span>Super Admin · Today · Catalog · Review</span><b style="font-size: 15px">Review product: Beaded butterfly danglers</b><span class="ctx">Hand Creation · sent 19 Nov, 9:14 am · first review</span><span style="align-self: flex-start; margin-top: 4px; height: 30px; padding: 0 12px; border-radius: 8px; background: #fff; color: #14213D; font-size: 13px; font-weight: 650; display: inline-flex; align-items: center">Review</span></div><div class="arrow"><span class="ic s18 i-right"></span></div><div class="card2 after"><span class="lab" style="color: #2C6A4A">THEN THE SELLER</span><span style="color: #14213D">Approved: the product shows “Live”. Changes needed: it shows “Your turn” with the exact note.</span><span style="font-size: 13px; display: flex; gap: 6px; align-items: center"><span class="ic s16 i-bell"></span>Notification sent</span></div></div>
+<div class="flow"><div class="card2 sel"><span class="lab">SELLER DOES</span><b style="font-size: 15px; display: flex; gap: 8px; align-items: center"><span class="ic s18 i-wallet" style="color: #A8232E"></span>Asks for a payout</b><span style="font-size: 13px; color: #46536F">Earnings · Ask for a payout</span><span class="who hb" style="align-self: flex-start; margin-top: 2px">Now: With Hastabazaar</span></div><div class="arrow"><span class="ic s18 i-right"></span></div><div class="card2 adm"><span class="hub"><span class="ic s16 i-flag"></span>Super Admin · Today · Money · Payouts</span><b style="font-size: 15px">Approve payout PO-0143</b><span class="ctx">Hand Creation · NPR 12,480 · asked 18 Nov</span><span style="align-self: flex-start; margin-top: 4px; height: 30px; padding: 0 12px; border-radius: 8px; background: #fff; color: #14213D; font-size: 13px; font-weight: 650; display: inline-flex; align-items: center">Review</span></div><div class="arrow"><span class="ic s18 i-right"></span></div><div class="card2 after"><span class="lab" style="color: #2C6A4A">THEN THE SELLER</span><span style="color: #14213D">The payout tracker moves: Approved, then Sent to your bank, then Paid.</span><span style="font-size: 13px; display: flex; gap: 6px; align-items: center"><span class="ic s16 i-bell"></span>Notification sent</span></div></div>
+<div class="flow"><div class="card2 sel"><span class="lab">SELLER DOES</span><b style="font-size: 15px; display: flex; gap: 8px; align-items: center"><span class="ic s18 i-shield" style="color: #A8232E"></span>Changes the bank account</b><span style="font-size: 13px; color: #46536F">Earnings · Bank account</span><span class="who hb" style="align-self: flex-start; margin-top: 2px">Now: With Hastabazaar</span></div><div class="arrow"><span class="ic s18 i-right"></span></div><div class="card2 adm"><span class="hub"><span class="ic s16 i-flag"></span>Super Admin · Today · Sellers · Bank change</span><b style="font-size: 15px">Bank account change for Hand Creation</b><span class="ctx">Call the seller back to confirm before approving</span><span style="align-self: flex-start; margin-top: 4px; height: 30px; padding: 0 12px; border-radius: 8px; background: #fff; color: #14213D; font-size: 13px; font-weight: 650; display: inline-flex; align-items: center">View</span></div><div class="arrow"><span class="ic s18 i-right"></span></div><div class="card2 after"><span class="lab" style="color: #2C6A4A">THEN THE SELLER</span><span style="color: #14213D">Sees “Verified” on the new account. Until then, payouts go to the old one.</span><span style="font-size: 13px; display: flex; gap: 6px; align-items: center"><span class="ic s16 i-bell"></span>Notification sent</span></div></div>
+  </section>
+
+  <div style="display: flex; flex-direction: column-reverse; gap: 24px">
+    <section class="panel" style="padding: 22px 24px" aria-labelledby="rl">
+      <h2 id="rl" style="font-size: 18px; font-weight: 650; margin-bottom: 8px">Six rules both sides follow</h2>
+      <div class="rule"><span class="rn">1</span><span>Every item says whose turn it is: <b>Your turn</b> (dark) or <b>With Hastabazaar</b> (blue). A status never appears without an owner.</span></div><div class="rule"><span class="rn">2</span><span>The same reference on both sides: HB-24811, PO-0143, the product name. Search finds it in Seller Studio and in Super Admin.</span></div><div class="rule"><span class="rn">3</span><span>One seller action creates one task in Super Admin <b>Today</b>, starting with a verb and naming the seller and the reference.</span></div><div class="rule"><span class="rn">4</span><span>Every Super Admin decision changes the seller’s screen and sends a notification at the same moment.</span></div><div class="rule"><span class="rn">5</span><span>Deadlines use the same clock on both sides. Late shows red on both.</span></div><div class="rule"><span class="rn">6</span><span>Sellers never see staff names or private notes. Super Admin sees the seller’s reply word for word.</span></div>
+    </section>
+    <section class="panel" style="padding: 22px 24px; display: flex; flex-direction: column; gap: 14px" aria-labelledby="ns">
+      <h2 id="ns" style="font-size: 18px; font-weight: 650">New seller setup: who acts at each step</h2>
+      <p style="font-size: 14.5px; color: #46536F">Shown to the seller as a checklist on Today until all steps are done. The Super Admin sees the same steps on the seller's record.</p>
+      <div class="ob"><div style="background: #fff; border: 1px solid #E4DACA"><span class="who you" style="align-self: flex-start">Seller</span><b>Sends registration</b></div><div style="background: #E3E9F4"><span class="who hb" style="align-self: flex-start">Super Admin</span><b>Approves application</b></div><div style="background: #fff; border: 1px solid #E4DACA"><span class="who you" style="align-self: flex-start">Seller</span><b>Sends first product</b></div><div style="background: #E3E9F4"><span class="who hb" style="align-self: flex-start">Super Admin</span><b>Approves product</b></div><div style="background: #E1EEE5"><span class="who ok" style="align-self: flex-start">Automatic</span><b>Product goes live</b></div><div style="background: #fff; border: 1px solid #E4DACA"><span class="who you" style="align-self: flex-start">Seller</span><b>Adds bank account</b></div><div style="background: #E3E9F4"><span class="who hb" style="align-self: flex-start">Super Admin</span><b>Verifies bank</b></div></div>
+      <p style="font-size: 13.5px; color: #46536F">A seller can add products while the application is being reviewed. Payouts need a verified bank account.</p>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2180}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

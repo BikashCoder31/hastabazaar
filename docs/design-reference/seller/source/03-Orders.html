@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seller Studio · Orders</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/39ae600ed082352c03509106609818ff">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&amp;family=Instrument+Sans:wght@400..700&amp;family=JetBrains+Mono:wght@500&amp;display=swap">
+<style>
+body{margin:0;background:#F7F3EC}
+a{color:#14213D}a:hover{color:#A8232E}
+.helpbtn{all:unset;cursor:pointer;width:28px;height:28px;border-radius:50%;border:1px solid #D3C5AD;display:inline-flex;align-items:center;justify-content:center;color:#46536F;transition:background-color 160ms ease,color 160ms ease,transform 160ms ease}
+.helpbtn:hover{background:#fff;color:#14213D}.helpbtn:active{transform:scale(.95)}
+.pop{position:absolute;z-index:20;background:#fff;border:1px solid #E4DACA;border-radius:14px;box-shadow:0 18px 40px -18px rgba(20,33,61,.35);animation:popin 180ms cubic-bezier(.23,1,.32,1);transform-origin:top left}
+@keyframes popin{from{opacity:0;transform:translateY(-4px) scale(.98)}}
+.search{display:flex;align-items:center;gap:8px;height:40px;padding:0 12px;border:1px solid #D3C5AD;border-radius:10px;background:#fff;color:#675B4E}
+.search input{all:unset;flex:1;font-size:14.5px;color:#14213D}
+.search:focus-within{border-color:#14213D;box-shadow:0 0 0 4px rgba(20,33,61,.08)}
+.who{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:999px;font-size:12.5px;font-weight:650;white-space:nowrap}
+.who .ic{width:14px;height:14px}
+.who.you{background:#14213D;color:#fff}
+.who.late{background:#A8232E;color:#fff}
+.who.hb{background:#E3E9F4;color:#2A4A88}
+.who.ok{background:#E1EEE5;color:#2C6A4A}
+.who.mute{background:#EDE4D3;color:#46536F}
+.task{all:unset;box-sizing:border-box;cursor:pointer;display:flex;gap:14px;align-items:center;width:100%;padding:16px 22px;border-top:1px solid #E4DACA;transition:background-color 160ms ease}
+.task:hover{background:#FFFCF7}
+.task:active .btn{transform:scale(.97)}
+.tico{width:40px;height:40px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.tico.red{background:#F8E1DE;color:#A8232E}.tico.amber{background:#F7E9C9;color:#8A5A0B}.tico.blue{background:#E3E9F4;color:#2A4A88}.tico.green{background:#E1EEE5;color:#2C6A4A}
+.step{padding:10px 12px;border-radius:12px;font-size:13px;display:flex;flex-direction:column;gap:2px}
+.step b{display:flex;gap:6px;align-items:center;font-size:13.5px}
+.step.done{background:#E1EEE5}.step.done b{color:#2C6A4A}
+.step.now{background:#fff;box-shadow:inset 0 0 0 2px #14213D}
+.step.hb{background:#fff;box-shadow:inset 0 0 0 2px #2A4A88}.step.hb b{color:#2A4A88}
+.step.todo{background:#EDE4D3;color:#675B4E}.step.todo b{color:#46536F}
+.steps{display:grid;gap:8px}
+.stepper{display:inline-flex;align-items:center;border:1px solid #D3C5AD;border-radius:9px;background:#fff;overflow:hidden;height:34px}
+.stepper button{all:unset;cursor:pointer;width:30px;height:34px;display:inline-flex;align-items:center;justify-content:center;color:#46536F;transition:background-color 140ms ease}
+.stepper button:hover{background:#EDE4D3;color:#14213D}.stepper button:active{background:#E4D8C3}
+.stepper b{min-width:34px;text-align:center;font-size:14px;font-variant-numeric:tabular-nums}
+.choice{all:unset;box-sizing:border-box;cursor:pointer;display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:12px;border:1px solid #E4DACA;background:#fff;transition:border-color 160ms ease,box-shadow 160ms ease}
+.choice:hover{border-color:#B9AC96}
+.choice.on{border-color:#14213D;box-shadow:0 0 0 1px #14213D}
+.radio{width:18px;height:18px;border-radius:50%;border:2px solid #B9AC96;flex:none;margin-top:2px;display:inline-flex;align-items:center;justify-content:center}
+.choice.on .radio{border-color:#14213D}.choice.on .radio::after{content:"";width:8px;height:8px;border-radius:50%;background:#14213D}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:50;display:flex;gap:12px;align-items:center;max-width:560px;padding:14px 18px;border-radius:14px;background:#14213D;color:#fff;font-size:14.5px;box-shadow:0 20px 40px -20px rgba(20,33,61,.6);animation:toastin 260ms cubic-bezier(.23,1,.32,1)}
+.toast span{color:#C9D3E6}
+@keyframes toastin{from{opacity:0;transform:translate(-50%,10px)}}
+.tabbtn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:8px;height:50px;padding:0 12px;font-size:14.5px;white-space:nowrap;transition:color 160ms ease,box-shadow 200ms ease}
+.helpbtn:focus-visible,.task:focus-visible,.choice:focus-visible,.tabbtn:focus-visible,.stepper button:focus-visible,.ocard:focus-visible{outline:2px solid #A8232E;outline-offset:2px}
+.ocard{all:unset;box-sizing:border-box;cursor:pointer;display:flex;gap:16px;align-items:center;padding:16px;border-radius:14px;background:#fff;border:1px solid #E4DACA;transition:border-color 160ms ease,transform 160ms ease}
+.ocard:hover{border-color:#B9AC96}
+.ocard:active{transform:scale(.995)}
+.ocard.on{border-color:#14213D;box-shadow:0 0 0 1px #14213D}
+.btn{transition:transform 160ms ease-out,background-color 160ms ease,border-color 160ms ease}
+.btn:active{transform:scale(.97)}
+.btn.off{opacity:.45;cursor:not-allowed}
+.btn.off:active{transform:none}
+.nextbox{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:12px;background:#E3E9F4;color:#1E3566;font-size:14px}
+.nextbox b{color:#14213D}
+@media (prefers-reduced-motion:reduce){.pop,.toast{animation:none}.btn:active,.ocard:active{transform:none}}
+
+.chipb{all:unset;cursor:pointer;display:inline-flex;align-items:center;height:34px;padding:0 12px;border-radius:999px;border:1px solid #D3C5AD;background:#fff;font-size:13.5px;font-weight:600;color:#46536F;transition:border-color 140ms ease,background-color 140ms ease}
+.chipb:hover{border-color:#14213D}.chipb.on{background:#14213D;border-color:#14213D;color:#fff}
+.chipb:focus-visible{outline:2px solid #A8232E;outline-offset:2px}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*RESP-START*/
+.mbar,.mtab{display:none}
+.mbar{position:sticky;top:0;z-index:1000;height:56px;align-items:center;gap:10px;padding:0 12px 0 16px;border-bottom:1px solid #E4DACA;background:#FFFCF7}
+.mbar.dark{background:#14213D;color:#fff;border-bottom:0}
+.mbar .mlogo{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
+.mbar .mlogo img{width:30px;height:30px;border-radius:7px;background:#FFFCF7}
+.mbar .mlogo b{font-size:15px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mbar .mlogo span{display:block;font-size:11.5px;font-weight:600;color:#A8232E}
+.mbar.dark .mlogo span{color:#E2B65C}
+.mbar .mbtn{all:unset;cursor:pointer;width:44px;height:44px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;position:relative}
+.mbar .mbtn:focus-visible{outline:2px solid #A8232E;outline-offset:2px}
+.mmenu{position:relative}
+.mmenu summary{list-style:none}.mmenu summary::-webkit-details-marker{display:none}
+.mmenu[open] summary{background:rgba(20,33,61,.08)}
+.mbar.dark .mmenu[open] summary{background:rgba(255,255,255,.12)}
+.mmenu .mpanel{position:fixed;z-index:1001;left:0;right:0;top:56px;bottom:0;overflow:auto;padding:12px 12px 100px;background:#FFFCF7;border-top:1px solid #E4DACA;animation:mdrop 200ms cubic-bezier(.23,1,.32,1)}
+.mbar.dark .mmenu .mpanel{background:#14213D;border-top-color:rgba(255,255,255,.1)}
+.mmenu .mpanel a{min-height:48px}
+@keyframes mdrop{from{opacity:0;transform:translateY(-6px)}}
+.mtab{position:fixed;left:0;right:0;bottom:0;z-index:999;height:72px;padding:0 4px 8px;background:#FFFCF7;border-top:1px solid #E4DACA;grid-template-columns:repeat(5,minmax(0,1fr));align-items:center;font-size:11.5px;font-weight:600}
+.mtab a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:52px;color:#46536F;position:relative}
+.mtab a.on{color:#A8232E}
+.mtab a.add{justify-self:center;width:52px;height:52px;min-height:0;border-radius:16px;background:#A8232E;color:#fff;margin-top:-16px;box-shadow:0 10px 20px -10px rgba(168,35,46,.7)}
+.mtab .count{position:absolute;top:2px;right:calc(50% - 22px)}
+
+.mtab.admin{background:#14213D;border-top-color:rgba(255,255,255,.08)}
+.mtab.admin a,.mtab.admin summary{color:#C9D0DD}
+.mtab.admin a.on,.mtab.admin .mmore.on summary{color:#E2B65C}
+.mtab .mmore summary{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:52px;cursor:pointer;list-style:none}
+.mtab .mmore .mpanel{top:56px;bottom:72px}
+.mpanel.dark{background:#14213D!important}
+@media (max-width:1023px){
+  .hb.shell{flex-direction:column;flex-wrap:nowrap}
+  .hb.shell>aside.side{display:none!important}
+  .mbar{display:flex}
+  .hb.shell>.main{flex:1 1 auto;width:100%}
+  .cmdk{display:none!important}
+  .hb.shell>.main [style*="grid-template-columns: minmax(0, 1."],.hb.shell>.main [style*="minmax(0, 1fr) minmax(0, 1."],.hb.shell>.main [style*="minmax(0, 1fr) 360px"]{grid-template-columns:minmax(0,1fr)!important}
+  .hb.shell>.main [style*="grid-template-columns"][style*="repeat(5"]{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  .hb.shell>.main [style*="flex-wrap: wrap"],.hb.shell>.main [style*="display: grid"]{align-content:flex-start}
+  .hb.shell>.main .sheet{grid-template-columns:minmax(0,1fr)!important}
+  .hb.shell>.main .sheet>aside[style*="sticky"]{position:static!important}
+  .hb.shell>.main [style*="position: sticky; bottom: 0"]{bottom:var(--mtab-pad,0px)!important}
+  .hb.shell>.main>div:first-of-type:not(.mbar){height:auto!important;min-height:60px;flex-wrap:wrap;row-gap:8px;padding-top:10px!important;padding-bottom:10px!important}
+}
+@media (max-width:1023px){
+  .hb.shell{padding-bottom:var(--mtab-pad,0px)}
+  .mtab.on-phone{display:grid}
+  .hide-m,.hide-phone{display:none!important}
+  .hb.shell>.main>div:first-of-type:not(.mbar){padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main main,.hb.shell>.main>div>main,.hb.shell>.main section,.hb.shell>.main aside{max-width:100%!important}
+  .hb.shell>.main main{padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main>div[style*="32px"]:not(:first-of-type):not(.mbar){padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main>div[style*="32px"]>main,.hb.shell>.main>div[style*="32px"]>aside{padding-left:0!important;padding-right:0!important}
+  .hb.shell>.main .sheet{align-content:start;flex:none}
+  .row{flex-wrap:wrap;row-gap:8px}
+  .row>span[style*="flex: 1"]{flex:1 1 55%!important}
+  .hb.shell>.main [style*="padding: 0 32px"],.hb.shell>.main [style*="padding: 0 32px;"]{padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main [style*="grid-template-columns"]:not(dl):not(.keep2):not(.steps):not(.stepper):not([style*="1fr auto"]):not([style*="repeat(5"]){grid-template-columns:minmax(0,1fr)!important}
+  .hb.shell>.main [style*="grid-template-columns"][style*="repeat(5"]{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  .hb.shell>.main [style*="grid-template-columns"]:not([style*="gap"]){row-gap:16px}
+  .hb.shell>.main ol.steps[style],.hb.shell>.main .steps{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .hb.shell>.main .keep2{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .hb.shell>.main dl dd{min-width:0;overflow-wrap:anywhere}
+  .hb.shell>.main [style*="flex: 999 1"],.hb.shell>.main [style*="flex: 1 1 4"],.hb.shell>.main [style*="flex: 1 1 3"],.hb.shell>.main [style*="flex: 1 1 6"],.hb.shell>.main [style*="flex: 0 0 3"]{flex:1 1 100%!important;max-width:100%!important;border-left:0!important;border-right:0!important;padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main [style*="border-left: 1px solid #E4DACA"]:not(td):not(th){border-left:0!important}
+  .hb.shell>.main ol.num>li,.hb.shell>.main .num>div{padding-left:0!important;padding-right:0!important}
+  .tbl-box{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  [role=tablist],.subtabs,nav.subtabs{flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none}
+  [role=tablist]::-webkit-scrollbar,.subtabs::-webkit-scrollbar{display:none}
+  [role=tablist]>*,.subtabs>*{flex-shrink:0}
+  h1.serif{font-size:26px!important}
+  h2.serif{font-size:24px!important}
+  .btn{min-height:44px}
+  .hb.shell>.main .btn{flex-wrap:nowrap;max-width:100%;height:auto;padding-top:8px;padding-bottom:8px;text-align:center;white-space:normal}
+  .btn-xs{min-height:36px}
+  .pop{position:fixed!important;left:16px!important;right:16px!important;width:auto!important;top:70px!important}
+  .toast{left:16px;right:16px;transform:none;max-width:none;bottom:calc(var(--mtab-pad,0px) + 16px)}
+  @keyframes toastin{from{opacity:0;transform:translateY(10px)}}
+
+  .task{display:grid!important;grid-template-columns:40px minmax(0,1fr) auto;gap:6px 14px;align-items:center;padding:14px 16px!important}
+  .task>:nth-child(2){grid-column:2/4}
+  .task.t4>:nth-child(1){grid-row:1/3;align-self:start}
+  .task.t4>:nth-child(3){grid-column:2;justify-self:start}
+  .task.t4>:nth-child(4){grid-column:3;grid-row:2}
+  .task:not(.t4)>:nth-child(2){grid-column:2}
+  .hb.shell>.main [style*="gap: 0"]{row-gap:18px!important}
+
+  .hb.shell>.main [style*="flex-wrap: wrap"],.hb.shell>.main [style*="display: grid"]{align-content:flex-start}
+  .hb.shell>.main [style*="justify-content: space-between"]{flex-wrap:wrap;row-gap:8px}
+  .hb.shell>.main>div:first-of-type:not(.mbar)>div{flex-wrap:wrap}
+  [role=alert]{flex-wrap:wrap}
+  [role=alert]>span[style*="flex: 1"]{flex:1 1 220px!important}
+  .stages{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .stg::after{display:none!important}
+  .parked{grid-template-columns:1fr!important;gap:2px!important}
+  .feat-h{flex-wrap:wrap}
+  .feat-h>span:nth-child(2){flex:1 1 calc(100% - 64px)!important}
+  .seg{flex-wrap:nowrap!important;overflow-x:auto;max-width:100%}
+  .seg button{white-space:nowrap;flex-shrink:0}
+  .qrow{grid-template-columns:22px 40px minmax(0,1fr)!important;gap:8px 12px!important;padding:14px 16px!important}
+  .qrow>a.btn{grid-column:3;justify-self:start}
+  .qrow b{white-space:normal!important}
+  ol.stepper{grid-template-columns:1fr!important}
+  ol.stepper li{flex-direction:row!important;flex-wrap:wrap;align-items:baseline;gap:4px 10px!important;padding:0 0 16px 30px!important}
+  ol.stepper li::before{top:16px!important;bottom:0;left:6px!important;right:auto!important;width:3px!important;height:auto!important}
+  ol.stepper li:last-child::before{display:none}
+  ol.stepper .dot{top:1px!important}
+  .hb.shell>.main [style*="position: absolute"][style*="bottom: 24px"]{position:sticky!important;left:auto!important;right:auto!important;bottom:12px!important;flex-wrap:wrap;margin:16px 0 0}
+  .hb.shell>.main [style*="position: absolute"][style*="bottom: 24px"]>span{flex:1 1 100%!important}
+  .hb.shell>.main div:has(>div>h2.serif){flex-wrap:wrap}
+  .hb.shell>.main div:has(>h2.serif){flex:1 1 200px!important;min-width:0}
+  .hb.shell>.main [style*="grid-template-columns"]:has(>.kpi){grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .kpi{padding:12px 14px!important}.kpi b{font-size:22px!important}
+  .tbl.cards thead{display:none}
+  .tbl.cards,.tbl.cards tbody{display:block}
+  .tbl.cards tr{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px 12px;align-items:center;padding:14px 16px;border-top:1px solid #E4DACA}
+  .tbl.cards tr:first-child{border-top:0}
+  .tbl.cards td{display:block;padding:0!important;border:0!important;max-width:none!important;text-align:left}
+  .tbl.cards td.full{grid-column:1/-1}
+  .tbl.cards td.r{text-align:right}
+  .tbl.cards td.hide{display:none}
+  .tbl.cards td.pr{grid-column:3;grid-row:1}
+}
+
+@media (max-width:767px){
+  .hb>div[style*="height: 64px"]{height:auto!important;flex-wrap:wrap;row-gap:8px;padding:10px 16px!important}
+  .hb>div[style*="height: 64px"] [role=tablist]{display:none!important}
+  .hb>div[style*="height: 64px"]>span[style*="width: 1px"]{display:none}
+  .hb aside[aria-label="Sections"]{max-width:none!important;flex:1 1 100%!important;border-right:0!important}
+  .hb main[aria-label="Preview"]{padding:16px!important}
+  .hb main[aria-label="Preview"] [style*="grid-template-columns: 1fr 1fr"]{grid-template-columns:1fr!important}
+  .hb [style*="flex-wrap: wrap"]{align-content:flex-start}
+}
+
+@media (min-width:768px) and (max-width:1023px){
+  .hb.shell{padding-bottom:0!important}
+  .mtab.on-phone{display:none!important}
+  .hide-phone{display:revert!important}
+  .hb.shell>.main [style*="grid-template-columns"][style*="repeat(4"],.hb.shell>.main [style*="grid-template-columns"][style*="repeat(3"]:not([style*="repeat(3, minmax(0, 1fr)) "]){grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .hb.shell>.main [style*="grid-template-columns: 1fr 1fr"]{grid-template-columns:1fr 1fr!important}
+  .hb.shell>.main ol.steps[style],.hb.shell>.main .steps{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+  .stages{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+  .toast{bottom:16px}
+  h1.serif{font-size:30px!important}
+  .tbl.cards thead{display:table-header-group}
+  .tbl.cards{display:table}.tbl.cards tbody{display:table-row-group}
+  .tbl.cards tr{display:table-row}
+  .tbl.cards td{display:table-cell;padding:12px 14px!important;border-top:1px solid #E4DACA!important}
+  .tbl.cards td.hide{display:table-cell}
+  .tbl.cards td.pr{grid-column:auto;grid-row:auto}
+}
+@media (prefers-reduced-motion:reduce){.mmenu .mpanel{animation:none}}
+/*RESP-END*/
+</style>
+</helmet>
+<div class="hb shell" style="--mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; background: #F7F3EC; min-height: 100vh">
+<!--RESP-START--><header class="mbar"><a href="Seller-Home.dc.html" class="mlogo"><img src="/_blob/65b39bff773bb375aa5d23ab420967a3" alt=""><span style="display: flex; flex-direction: column; color: inherit"><b style="color: #14213D">Hand Creation</b><span>Seller Studio</span></span></a><button class="mbtn" aria-label="Notifications, 2 new"><span class="ic i-bell"></span><span style="position: absolute; top: 11px; right: 11px; width: 8px; height: 8px; border-radius: 50%; background: #A8232E"></span></button><details class="mmenu"><summary class="mbtn" aria-label="Menu"><span class="ic i-menu"></span></summary><div class="mpanel"><nav class="nav" aria-label="Seller Studio">
+<a href="Seller-Home.dc.html"><span class="ic s18 i-home"></span><span style="flex: 1">Today</span></a>
+<a href="Seller-Orders.dc.html" class="on" aria-current="page"><span class="ic s18 i-receipt"></span><span style="flex: 1">Orders</span><span class="count">3</span></a>
+<a href="Seller-Returns.dc.html"><span class="ic s18 i-return"></span><span style="flex: 1">Returns</span><span class="badge warn" style="height: 20px; font-size: 11.5px">1</span></a>
+<a href="Seller-Products.dc.html"><span class="ic s18 i-package"></span><span style="flex: 1">Products</span></a>
+<a href="Seller-Earnings.dc.html"><span class="ic s18 i-wallet"></span><span style="flex: 1">Earnings</span></a>
+<div class="nav-h">Your shop</div>
+<a href="#"><span class="ic s18 i-store"></span>Shop profile</a>
+<a href="#"><span class="ic s18 i-star"></span>Reviews</a>
+<a href="#"><span class="ic s18 i-file"></span>Documents &amp; agreement</a>
+<a href="#"><span class="ic s18 i-truck"></span>Shipping</a>
+<a href="#"><span class="ic s18 i-help"></span>Requests &amp; help</a>
+</nav></div></details></header><nav class="mtab on-phone" aria-label="Seller Studio shortcuts"><a href="Seller-Home.dc.html"><span class="ic i-home"></span>Today</a><a href="Seller-Orders.dc.html" class="on" aria-current="page"><span class="ic i-receipt"></span>Orders<span class="count">3</span></a><a href="Seller-AddProduct.dc.html" class="add" aria-label="Add product"><span class="ic s24 i-plus"></span></a><a href="Seller-Products.dc.html"><span class="ic i-package"></span>Products</a><a href="Seller-Earnings.dc.html"><span class="ic i-wallet"></span>Earnings</a></nav><!--RESP-END-->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<aside class="side" style="background: #FFFCF7; border-right: 1px solid #E4DACA; padding: 20px 14px; display: flex; flex-direction: column; gap: 18px; max-width: 256px">
+<a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px; padding: 0 6px"><img src="/_blob/65b39bff773bb375aa5d23ab420967a3" alt="" style="width: 36px; height: 36px"><span style="display: flex; flex-direction: column; line-height: 1.1"><span class="serif" style="font-size: 20px; font-weight: 600">Hastabazaar</span><span style="font-size: 12px; font-weight: 600; color: #A8232E">Seller Studio</span></span></a>
+<div style="display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid #E4DACA; border-radius: 12px; background: #fff"><img src="/_blob/6cc7d3d03f2b0dcca7c60337e8a9dc73" alt="" style="width: 34px; height: 34px; border-radius: 8px; object-fit: cover"><span style="flex: 1; line-height: 1.25"><b style="font-size: 14.5px; display: block">Hand Creation</b><span style="font-size: 12.5px; color: #2C6A4A; display: inline-flex; align-items: center; gap: 5px"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2C6A4A"></span>Shop is live</span></span></div>
+<nav class="nav" aria-label="Seller Studio">
+<a href="Seller-Home.dc.html"><span class="ic s18 i-home"></span><span style="flex: 1">Today</span></a>
+<a href="Seller-Orders.dc.html" class="on" aria-current="page"><span class="ic s18 i-receipt"></span><span style="flex: 1">Orders</span><span class="count">3</span></a>
+<a href="Seller-Returns.dc.html"><span class="ic s18 i-return"></span><span style="flex: 1">Returns</span><span class="badge warn" style="height: 20px; font-size: 11.5px">1</span></a>
+<a href="Seller-Products.dc.html"><span class="ic s18 i-package"></span><span style="flex: 1">Products</span></a>
+<a href="Seller-Earnings.dc.html"><span class="ic s18 i-wallet"></span><span style="flex: 1">Earnings</span></a>
+<div class="nav-h">Your shop</div>
+<a href="#"><span class="ic s18 i-store"></span>Shop profile</a>
+<a href="#"><span class="ic s18 i-star"></span>Reviews</a>
+<a href="#"><span class="ic s18 i-file"></span>Documents &amp; agreement</a>
+<a href="#"><span class="ic s18 i-truck"></span>Shipping</a>
+<a href="#"><span class="ic s18 i-help"></span>Requests &amp; help</a>
+</nav>
+<div style="margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 12px; background: #EDE4D3"><b style="font-size: 14px">Stuck on something?</b><span style="font-size: 13px; color: #46536F">Ask the seller team. Replies come to Requests &amp; help.</span><a href="#" class="tlink" style="font-size: 13.5px">Ask for help</a></div>
+</aside>
+<div class="main" style="display: flex; flex-direction: column; min-width: 0">
+<div style="height: 68px; display: flex; align-items: center; gap: 16px; padding: 0 32px; border-bottom: 1px solid #E4DACA; background: #F7F3EC; position: relative"><div style="display: flex; align-items: center; gap: 10px; position: relative"><h1 class="serif" style="font-size: 28px; line-height: 1.05">Orders</h1><button class="helpbtn" aria-label="How orders move" aria-expanded="{{helpOpen}}" onClick="{{toggleHelp}}"><span class="ic s16 i-help"></span></button><sc-if value="{{helpOpen}}" hint-placeholder-val="{{ false }}"><div onClick="{{toggleHelp}}" aria-hidden="true" style="position: fixed; inset: 0; z-index: 19"></div><div class="pop" role="dialog" aria-label="How orders move" style="left: 0; top: calc(100% + 10px); width: 340px; padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: #46536F"><b style="color: #14213D; font-size: 15px">{{help.title}}</b><p>{{help.a}}</p><p>{{help.b}}</p><a href="#" class="tlink" style="font-size: 13.5px">Seller guide</a></div></sc-if></div><div style="margin-left: auto; display: flex; align-items: center; gap: 8px"><a href="Main.dc.html" class="btn btn-quiet btn-sm hide-phone"><span class="ic s18 i-eye"></span>View shop</a><button class="btn btn-quiet btn-sm btn-icon hide-phone" aria-label="Notifications, 2 new" style="position: relative"><span class="ic i-bell"></span><span style="position: absolute; top: 7px; right: 8px; width: 8px; height: 8px; border-radius: 50%; background: #A8232E; border: 2px solid #F7F3EC"></span></button><a href="Seller-AddProduct.dc.html" class="btn btn-primary btn-sm hide-phone"><span class="ic s18 i-plus"></span>Add product</a></div></div>
+
+<div style="padding: 0 32px; border-bottom: 1px solid #E4DACA; display: flex; gap: 2px; overflow-x: auto; align-items: center" role="tablist" aria-label="Order stage">
+  <sc-for list="{{tabs}}" as="t" hint-placeholder-count="6">
+    <button class="tabbtn" role="tab" aria-selected="{{t.sel}}" onClick="{{t.pick}}" style="font-weight: {{t.weight}}; color: {{t.color}}; box-shadow: inset 0 -2px 0 {{t.line}}">{{t.label}}<span class="num" style="font-size: 12.5px; padding: 1px 7px; border-radius: 999px; background: {{t.pill}}; color: {{t.pillFg}}">{{t.n}}</span></button>
+  </sc-for>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; flex: 1; align-items: stretch">
+  <section style="flex: 999 1 520px; min-width: 0; padding: 20px 24px 32px 32px; display: flex; flex-direction: column; gap: 14px" aria-label="Orders">
+    <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap">
+      <label class="search" style="flex: 1 1 260px; max-width: 380px"><span class="ic s18 i-search"></span><input placeholder="Order number, product or customer" value="{{q}}" onChange="{{setQ}}" aria-label="Search orders"></label>
+      <span class="{{tabWho.cls}}" style="margin-left: auto">{{tabWho.text}}</span>
+    </div>
+    <p style="font-size: 14px; color: #46536F">{{tabHint}}</p>
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <sc-for list="{{rows}}" as="o" hint-placeholder-count="2">
+        <button class="{{o.cls}}" onClick="{{o.pick}}" aria-pressed="{{o.sel}}">
+          <img src="{{o.img}}" alt="" style="width: 60px; height: 60px; border-radius: 10px; object-fit: contain; background: #fff; border: 1px solid #EDE4D3">
+          <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px">
+            <b class="mono" style="font-size: 13.5px; color: #46536F">{{o.id}}</b>
+            <span style="font-size: 15px; font-weight: 650">{{o.item}}</span>
+            <span style="font-size: 13.5px; color: #46536F">{{o.customer}} · {{o.place}}</span>
+          </span>
+          <span style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px">
+            <b class="num" style="font-size: 15.5px">NPR {{o.amount}}</b>
+            <span class="{{o.dueCls}}">{{o.due}}</span>
+          </span>
+        </button>
+      </sc-for>
+      <sc-if value="{{empty}}" hint-placeholder-val="{{ false }}">
+        <div style="padding: 36px 20px; border: 1.5px dashed #D3C5AD; border-radius: 14px; text-align: center; display: flex; flex-direction: column; gap: 6px; align-items: center; color: #46536F">
+          <span class="ic i-check" style="color: #2C6A4A"></span><b style="color: #14213D">{{emptyTitle}}</b><span style="font-size: 14px">{{emptyText}}</span>
+        </div>
+      </sc-if>
+    </div>
+  </section>
+
+  <aside style="flex: 1 1 420px; max-width: 480px; border-left: 1px solid #E4DACA; background: #FFFCF7; padding: 24px 28px 32px; display: flex; flex-direction: column; gap: 18px" aria-label="Order details">
+    <sc-if value="{{hasD}}" hint-placeholder-val="{{ true }}">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px">
+        <div><span class="mono" style="font-size: 14px; color: #46536F">{{d.id}}</span><h2 class="serif" style="font-size: 26px; line-height: 1.1; margin-top: 4px">{{d.item}}</h2></div>
+        <span class="{{d.who.cls}}">{{d.who.text}}</span>
+      </div>
+      <div class="{{d.next.cls}}" style="padding: 14px 16px; border-radius: 12px; display: flex; gap: 12px; align-items: flex-start; font-size: 14.5px; background: {{d.next.bg}}; color: {{d.next.fg}}">
+        <span class="{{d.next.icon}}" style="margin-top: 1px; flex: none"></span>
+        <span><b style="display: block; color: #14213D">{{d.next.title}}</b>{{d.next.text}}</span>
+      </div>
+      <sc-if value="{{d.canAct}}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
+          <button class="btn btn-primary" style="flex: 1 1 200px" onClick="{{advance}}">{{d.cta}}</button>
+          <button class="btn btn-ghost" style="flex: 0 1 auto" onClick="{{openLate}}"><span class="ic s18 i-calendar"></span>Running late?</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{lateOpen}}" hint-placeholder-val="{{ false }}">
+        <section aria-label="Running late" style="padding: 16px; border-radius: 14px; background: #fff; border: 1px solid #E4DACA; display: flex; flex-direction: column; gap: 12px">
+          <b style="font-size: 15px">Running late or can't make it?</b>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap"><sc-for list="{{kinds}}" as="k" hint-placeholder-count="2"><button class="{{k.cls}}" onClick="{{k.pick}}" aria-pressed="{{k.sel}}">{{k.label}}</button></sc-for></div>
+          <sc-if value="{{needDate}}" hint-placeholder-val="{{ true }}">
+            <span style="font-size: 13.5px; color: #46536F">New ready date</span>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap"><sc-for list="{{dates}}" as="k" hint-placeholder-count="3"><button class="{{k.cls}}" onClick="{{k.pick}}" aria-pressed="{{k.sel}}">{{k.label}}</button></sc-for></div>
+          </sc-if>
+          <sc-if value="{{cantDo}}" hint-placeholder-val="{{ false }}">
+            <p style="font-size: 13.5px; color: #6E1219; background: #F8E1DE; padding: 10px 12px; border-radius: 10px">Hastabazaar will contact the customer and cancel the order. Cancelling often can affect your shop's standing.</p>
+          </sc-if>
+          <textarea class="input" rows="2" placeholder="A short reason for Hastabazaar (optional)" style="resize: vertical"></textarea>
+          <div style="display: flex; gap: 8px"><button class="btn btn-ink btn-sm" style="flex: 1" onClick="{{sendLate}}">{{lateCta}}</button><button class="btn btn-quiet btn-sm" onClick="{{closeLate}}">Cancel</button></div>
+        </section>
+      </sc-if>
+      <sc-if value="{{d.hasLate}}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; gap: 10px; align-items: center; padding: 10px 14px; border-radius: 10px; background: #F7E9C9; color: #6B4508; font-size: 14px"><span class="ic s16 i-calendar"></span><span>New ready date sent: <b>{{d.late}}</b>. Hastabazaar has told the customer.</span></div>
+      </sc-if>
+      <dl class="num" style="margin: 0; display: grid; grid-template-columns: 120px 1fr; row-gap: 10px; font-size: 14.5px">
+        <dt style="color: #46536F">Customer</dt><dd style="margin: 0; font-weight: 600">{{d.customer}}</dd>
+        <dt style="color: #46536F">Deliver to</dt><dd style="margin: 0">{{d.place}}</dd>
+        <dt style="color: #46536F">Payment</dt><dd style="margin: 0">Cash on delivery · NPR {{d.amount}}</dd>
+        <dt style="color: #46536F">You receive</dt><dd style="margin: 0; font-weight: 650; color: #2C6A4A">NPR {{d.net}} <span style="font-weight: 400; color: #46536F">after 12% commission</span></dd>
+      </dl>
+      <ol style="list-style: none; margin: 0; padding: 16px 0 0; border-top: 1px solid #E4DACA; display: flex; flex-direction: column">
+        <sc-for list="{{d.steps}}" as="s" hint-placeholder-count="5">
+          <li style="display: flex; gap: 12px; min-height: 42px">
+            <span style="display: flex; flex-direction: column; align-items: center">
+              <span style="width: 14px; height: 14px; border-radius: 50%; background: {{s.dot}}; border: 2px solid {{s.ring}}; margin-top: 3px; flex: none; box-sizing: border-box"></span>
+              <span style="flex: 1; width: 2px; background: {{s.line}}; margin: 2px 0"></span>
+            </span>
+            <span style="font-size: 14px; padding-bottom: 12px; flex: 1; display: flex; justify-content: space-between; gap: 8px"><span><b style="color: {{s.fg}}">{{s.label}}</b> <span style="color: #675B4E">{{s.when}}</span></span><span style="font-size: 12.5px; color: #675B4E; white-space: nowrap">{{s.by}}</span></span>
+          </li>
+        </sc-for>
+      </ol>
+
+
+      <div style="display: flex; gap: 8px; margin-top: auto; padding-top: 8px"><button class="btn btn-ghost btn-sm" style="flex: 1"><span class="ic s18 i-file"></span>Packing slip</button><button class="btn btn-ghost btn-sm" style="flex: 1"><span class="ic s18 i-message"></span>Ask Hastabazaar</button></div>
+    </sc-if>
+  </aside>
+</div>
+
+</div>
+</div>
+<sc-if value="{{hasToast}}" hint-placeholder-val="{{ false }}"><div class="toast" role="status"><span class="ic s18 i-check" style="color: #9FD3B4"></span><p><b style="display: block">{{toast.a}}</b><span>{{toast.b}}</span></p></div></sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tab: 'prepare', sel: 'HB-24811', q: '', lateOpen: false, kind: 'time', date: 'Fri 21 Nov', late: {}, at: {}, helpOpen: false, toast: null };
+  }
+
+  flash(a, b) { clearTimeout(this._t); this.setState({ toast: { a, b } }); this._t = setTimeout(() => this.setState({ toast: null }), 4200); }
+  helpVals(help) { const s = this.state; return { help, helpOpen: !!s.helpOpen, toggleHelp: () => this.setState({ helpOpen: !s.helpOpen }), hasToast: !!s.toast, toast: s.toast || { a: '', b: '' } }; }
+  componentDidMount() { this._k = (e) => { if (e.key === 'Escape' && this.state.helpOpen) this.setState({ helpOpen: false }); }; window.addEventListener('keydown', this._k); }
+  componentWillUnmount() { window.removeEventListener('keydown', this._k); clearTimeout(this._t); }
+
+  renderVals() {
+    const s = this.state;
+    const base = [
+      { id: 'HB-24811', st: 'prepare', item: 'Red flower drop earrings', customer: 'Priya M.', place: 'Baneshwor, Kathmandu', amount: '485', net: '427', due: '2 h late', dueCls: 'who late', img: '/_blob/eef4ef68f82a1e98e267463ef9651908', placed: '18 Nov, 4:12 pm', readyBy: 'today 4 pm' },
+      { id: 'HB-24809', st: 'prepare', item: 'Blue dhokra round earrings', customer: 'Rojina T.', place: 'Bharatpur, Chitwan', amount: '540', net: '475', due: 'Ready by Thu 20 Nov', dueCls: 'who mute', img: '/_blob/add8c879261efdff84ab7f129d35afc9', placed: '19 Nov, 9:40 am', readyBy: 'Thu 20 Nov' },
+      { id: 'HB-24816', st: 'packing', item: 'Chandbali jhumka earrings', customer: 'Sita S.', place: 'Jhamsikhel, Lalitpur', amount: '468', net: '412', due: 'Ready by Fri 21 Nov', dueCls: 'who mute', img: '/_blob/90ba431b236d9eb432e8946a4b72fc18', placed: '18 Nov, 11:05 am', readyBy: 'Fri 21 Nov' },
+      { id: 'HB-24790', st: 'ready', item: 'Silk-thread chand bali', customer: 'Bikram R.', place: 'Dharan, Sunsari', amount: '620', net: '546', due: 'Pickup tomorrow, 9–11 am', dueCls: 'who hb', img: '/_blob/11ea8befef618538b0ed4b6ff25cdfd7', placed: '16 Nov, 2:30 pm', readyBy: '18 Nov' },
+      { id: 'HB-24771', st: 'courier', item: 'Hand-painted fabric earrings, set of 3', customer: 'Kabita G.', place: 'Butwal, Rupandehi', amount: '720', net: '634', due: 'Arrives today', dueCls: 'who ok', img: '/_blob/1f65342633fcf406e157ed15a27f292e', placed: '14 Nov, 6:20 pm', readyBy: '16 Nov' },
+      { id: 'HB-24702', st: 'done', item: 'Chandbali jhumka earrings', customer: 'Asmita P.', place: 'Patan, Lalitpur', amount: '468', net: '412', due: 'Delivered 12 Nov', dueCls: 'who ok', img: '/_blob/90ba431b236d9eb432e8946a4b72fc18', placed: '9 Nov, 1:10 pm', readyBy: '10 Nov' }
+    ];
+    const all = base.map((o) => ({ ...o, st: s.at[o.id] || o.st, late: s.late[o.id] || '' }));
+    const T = [
+      ['prepare', 'To prepare', ['who you', 'Your turn'], 'Start preparing when you begin making or packing the order. Hastabazaar can see each order’s ready-by time.'],
+      ['packing', 'Preparing', ['who you', 'Your turn'], 'When it’s packed and labelled, mark it ready. That tells Hastabazaar to book the courier.'],
+      ['ready', 'Ready for pickup', ['who hb', 'Hastabazaar books the courier'], 'Keep these parcels at your pickup address. We’ll tell you the pickup time.'],
+      ['courier', 'With courier', ['who hb', 'Courier is delivering'], 'The courier collects cash from the customer on delivery.'],
+      ['done', 'Delivered', ['who ok', 'Complete'], 'Money from these moves to Earnings 7 days after delivery, if nothing is returned.'],
+      ['cancelled', 'Cancelled', ['who mute', 'Closed'], 'Orders that were cancelled before delivery.']
+    ];
+    const tabs = T.map(([k, label]) => {
+      const n = all.filter((o) => o.st === k).length; const on = s.tab === k;
+      return { label, n, sel: on ? 'true' : 'false', weight: on ? 650 : 500, color: on ? '#14213D' : '#46536F', line: on ? '#A8232E' : 'transparent', pill: on ? '#14213D' : '#EDE4D3', pillFg: on ? '#fff' : '#46536F',
+        pick: () => { const first = all.find((o) => o.st === k); this.setState({ tab: k, sel: first ? first.id : null, lateOpen: false }); } };
+    });
+    const q = s.q.trim().toLowerCase();
+    const inTab = all.filter((o) => o.st === s.tab);
+    const rows = inTab.filter((o) => !q || (o.id + o.item + o.customer + o.place).toLowerCase().includes(q))
+      .map((o) => ({ ...o, due: o.late ? 'New date: ' + o.late : o.due, dueCls: o.late ? 'who mute' : o.dueCls, sel: o.id === s.sel ? 'true' : 'false', cls: o.id === s.sel ? 'ocard on' : 'ocard', pick: () => { this.setState({ sel: o.id, lateOpen: false }); if (window.innerWidth < 1024) setTimeout(() => { const el = document.querySelector('[aria-label="Order details"]'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60); } }));
+    const tdef = T.find((t) => t[0] === s.tab);
+    const d0 = all.find((o) => o.id === s.sel && o.st === s.tab) || rows[0] || null;
+    const order = ['prepare', 'packing', 'ready', 'courier', 'done'];
+    let d = {};
+    if (d0) {
+      const at = order.indexOf(d0.st);
+      const L = [['Order placed', d0.placed, 'Customer'], ['Start preparing', '', 'You'], ['Ready for pickup', 'by ' + (d0.late || d0.readyBy), 'You'], ['Picked up by courier', '', 'Courier'], ['Delivered, cash collected', '', 'Courier']];
+      const steps = L.map(([label, when, by], i) => {
+        const done = i <= at; const cur = i === at + 1;
+        return { label, by, when: done || cur ? when : '', dot: done ? '#2C6A4A' : '#fff', ring: done ? '#2C6A4A' : cur ? '#A8232E' : '#D3C5AD', line: i === L.length - 1 ? 'transparent' : done ? '#2C6A4A' : '#E4DACA', fg: done || cur ? '#14213D' : '#675B4E' };
+      });
+      const N = {
+        prepare: { cls: '', bg: '#14213D0D', fg: '#46536F', icon: 'ic s18 i-arrow', title: 'Your turn: start preparing', text: ' Tap the button when you begin making or packing it. Ready by ' + (d0.late || d0.readyBy) + '.' },
+        packing: { cls: '', bg: '#14213D0D', fg: '#46536F', icon: 'ic s18 i-arrow', title: 'Your turn: mark it ready for pickup', text: ' Only when it’s packed and labelled. Hastabazaar then books the courier.' },
+        ready: { cls: '', bg: '#E3E9F4', fg: '#1E3566', icon: 'ic s18 i-truck', title: 'With Hastabazaar: courier booked', text: ' Nepal Can Move picks up tomorrow, 9–11 am, from your pickup address in Kalimati. Nothing else to do.' },
+        courier: { cls: '', bg: '#E3E9F4', fg: '#1E3566', icon: 'ic s18 i-truck', title: 'With the courier', text: ' Arrives today. The courier collects NPR ' + d0.amount + ' in cash.' },
+        done: { cls: '', bg: '#E1EEE5', fg: '#1F5138', icon: 'ic s18 i-check', title: 'Delivered', text: ' NPR ' + d0.net + ' moves to Earnings on 19 Nov, after the 7-day return window.' }
+      }[d0.st];
+      const W = { prepare: ['who you', 'Your turn'], packing: ['who you', 'Your turn'], ready: ['who hb', 'With Hastabazaar'], courier: ['who hb', 'With courier'], done: ['who ok', 'Delivered'] }[d0.st];
+      d = { ...d0, steps, next: N, who: { cls: W[0], text: W[1] }, hasLate: !!d0.late, canAct: d0.st === 'prepare' || d0.st === 'packing', cta: d0.st === 'prepare' ? 'Start preparing' : 'Mark ready for pickup' };
+    }
+    const advance = () => {
+      if (!d0) return;
+      const to = d0.st === 'prepare' ? 'packing' : 'ready';
+      this.setState({ at: { ...s.at, [d0.id]: to }, tab: to, sel: d0.id, lateOpen: false });
+      if (to === 'packing') this.flash(d0.id + ' moved to Preparing', 'Hastabazaar can see you’ve started. Mark it ready when it’s packed.');
+      else this.flash(d0.id + ' is ready for pickup', 'Hastabazaar has it in Orders and will book the courier. You’ll get the pickup time.');
+    };
+    const K = [['time', 'I need more time'], ['cant', 'I can’t fulfil it']];
+    const kinds = K.map(([k, label]) => ({ label, sel: s.kind === k ? 'true' : 'false', cls: s.kind === k ? 'chipb on' : 'chipb', pick: () => this.setState({ kind: k }) }));
+    const dates = ['Tomorrow', 'Fri 21 Nov', 'Sat 22 Nov'].map((label) => ({ label, sel: s.date === label ? 'true' : 'false', cls: s.date === label ? 'chipb on' : 'chipb', pick: () => this.setState({ date: label }) }));
+    const sendLate = () => {
+      if (!d0) return;
+      if (s.kind === 'cant') { this.setState({ at: { ...s.at, [d0.id]: 'cancelled' }, lateOpen: false, tab: 'cancelled', sel: d0.id }); this.flash('Sent to Hastabazaar', 'We’ll contact ' + d0.customer + ' and cancel ' + d0.id + '.'); return; }
+      this.setState({ late: { ...s.late, [d0.id]: s.date }, lateOpen: false });
+      this.flash('New ready date sent: ' + s.date, 'Hastabazaar sees it on ' + d0.id + ' and tells the customer.');
+    };
+    return {
+      tabs, rows, q: s.q, setQ: (e) => this.setState({ q: e.target.value }),
+      tabHint: tdef[3], tabWho: { cls: tdef[2][0], text: tdef[2][1] },
+      empty: rows.length === 0, emptyTitle: q ? 'No orders match “' + s.q + '”' : 'Nothing here', emptyText: q ? 'Try the order number, like HB-24811.' : 'Orders show up here when they reach this step.',
+      hasD: !!d0, d, advance,
+      lateOpen: s.lateOpen, openLate: () => this.setState({ lateOpen: true }), closeLate: () => this.setState({ lateOpen: false }),
+      kinds, dates, needDate: s.kind === 'time', cantDo: s.kind === 'cant', sendLate, lateCta: s.kind === 'time' ? 'Send new date' : 'Ask Hastabazaar to cancel',
+      ...this.helpVals({ title: 'How orders move', a: 'You do two steps: Start preparing, then Mark ready for pickup. Hastabazaar books the courier, and the courier delivers and collects the cash.', b: 'Running late? Give a new ready date before the deadline. We tell the customer for you.' })
+    };
+  }
+}
+</script>
+</body>
+</html>

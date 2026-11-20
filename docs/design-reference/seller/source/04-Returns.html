@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seller Studio · Returns</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/39ae600ed082352c03509106609818ff">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&amp;family=Instrument+Sans:wght@400..700&amp;family=JetBrains+Mono:wght@500&amp;display=swap">
+<style>
+body{margin:0;background:#F7F3EC}
+a{color:#14213D}a:hover{color:#A8232E}
+.helpbtn{all:unset;cursor:pointer;width:28px;height:28px;border-radius:50%;border:1px solid #D3C5AD;display:inline-flex;align-items:center;justify-content:center;color:#46536F;transition:background-color 160ms ease,color 160ms ease,transform 160ms ease}
+.helpbtn:hover{background:#fff;color:#14213D}.helpbtn:active{transform:scale(.95)}
+.pop{position:absolute;z-index:20;background:#fff;border:1px solid #E4DACA;border-radius:14px;box-shadow:0 18px 40px -18px rgba(20,33,61,.35);animation:popin 180ms cubic-bezier(.23,1,.32,1);transform-origin:top left}
+@keyframes popin{from{opacity:0;transform:translateY(-4px) scale(.98)}}
+.search{display:flex;align-items:center;gap:8px;height:40px;padding:0 12px;border:1px solid #D3C5AD;border-radius:10px;background:#fff;color:#675B4E}
+.search input{all:unset;flex:1;font-size:14.5px;color:#14213D}
+.search:focus-within{border-color:#14213D;box-shadow:0 0 0 4px rgba(20,33,61,.08)}
+.who{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:999px;font-size:12.5px;font-weight:650;white-space:nowrap}
+.who .ic{width:14px;height:14px}
+.who.you{background:#14213D;color:#fff}
+.who.late{background:#A8232E;color:#fff}
+.who.hb{background:#E3E9F4;color:#2A4A88}
+.who.ok{background:#E1EEE5;color:#2C6A4A}
+.who.mute{background:#EDE4D3;color:#46536F}
+.task{all:unset;box-sizing:border-box;cursor:pointer;display:flex;gap:14px;align-items:center;width:100%;padding:16px 22px;border-top:1px solid #E4DACA;transition:background-color 160ms ease}
+.task:hover{background:#FFFCF7}
+.task:active .btn{transform:scale(.97)}
+.tico{width:40px;height:40px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.tico.red{background:#F8E1DE;color:#A8232E}.tico.amber{background:#F7E9C9;color:#8A5A0B}.tico.blue{background:#E3E9F4;color:#2A4A88}.tico.green{background:#E1EEE5;color:#2C6A4A}
+.step{padding:10px 12px;border-radius:12px;font-size:13px;display:flex;flex-direction:column;gap:2px}
+.step b{display:flex;gap:6px;align-items:center;font-size:13.5px}
+.step.done{background:#E1EEE5}.step.done b{color:#2C6A4A}
+.step.now{background:#fff;box-shadow:inset 0 0 0 2px #14213D}
+.step.hb{background:#fff;box-shadow:inset 0 0 0 2px #2A4A88}.step.hb b{color:#2A4A88}
+.step.todo{background:#EDE4D3;color:#675B4E}.step.todo b{color:#46536F}
+.steps{display:grid;gap:8px}
+.stepper{display:inline-flex;align-items:center;border:1px solid #D3C5AD;border-radius:9px;background:#fff;overflow:hidden;height:34px}
+.stepper button{all:unset;cursor:pointer;width:30px;height:34px;display:inline-flex;align-items:center;justify-content:center;color:#46536F;transition:background-color 140ms ease}
+.stepper button:hover{background:#EDE4D3;color:#14213D}.stepper button:active{background:#E4D8C3}
+.stepper b{min-width:34px;text-align:center;font-size:14px;font-variant-numeric:tabular-nums}
+.choice{all:unset;box-sizing:border-box;cursor:pointer;display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:12px;border:1px solid #E4DACA;background:#fff;transition:border-color 160ms ease,box-shadow 160ms ease}
+.choice:hover{border-color:#B9AC96}
+.choice.on{border-color:#14213D;box-shadow:0 0 0 1px #14213D}
+.radio{width:18px;height:18px;border-radius:50%;border:2px solid #B9AC96;flex:none;margin-top:2px;display:inline-flex;align-items:center;justify-content:center}
+.choice.on .radio{border-color:#14213D}.choice.on .radio::after{content:"";width:8px;height:8px;border-radius:50%;background:#14213D}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:50;display:flex;gap:12px;align-items:center;max-width:560px;padding:14px 18px;border-radius:14px;background:#14213D;color:#fff;font-size:14.5px;box-shadow:0 20px 40px -20px rgba(20,33,61,.6);animation:toastin 260ms cubic-bezier(.23,1,.32,1)}
+.toast span{color:#C9D3E6}
+@keyframes toastin{from{opacity:0;transform:translate(-50%,10px)}}
+.tabbtn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:8px;height:50px;padding:0 12px;font-size:14.5px;white-space:nowrap;transition:color 160ms ease,box-shadow 200ms ease}
+.helpbtn:focus-visible,.task:focus-visible,.choice:focus-visible,.tabbtn:focus-visible,.stepper button:focus-visible,.ocard:focus-visible{outline:2px solid #A8232E;outline-offset:2px}
+.ocard{all:unset;box-sizing:border-box;cursor:pointer;display:flex;gap:16px;align-items:center;padding:16px;border-radius:14px;background:#fff;border:1px solid #E4DACA;transition:border-color 160ms ease,transform 160ms ease}
+.ocard:hover{border-color:#B9AC96}
+.ocard:active{transform:scale(.995)}
+.ocard.on{border-color:#14213D;box-shadow:0 0 0 1px #14213D}
+.btn{transition:transform 160ms ease-out,background-color 160ms ease,border-color 160ms ease}
+.btn:active{transform:scale(.97)}
+.btn.off{opacity:.45;cursor:not-allowed}
+.btn.off:active{transform:none}
+.nextbox{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:12px;background:#E3E9F4;color:#1E3566;font-size:14px}
+.nextbox b{color:#14213D}
+@media (prefers-reduced-motion:reduce){.pop,.toast{animation:none}.btn:active,.ocard:active{transform:none}}
+
+.ev{position:relative;border-radius:14px;overflow:hidden;background:#fff;border:1px solid #E4DACA;aspect-ratio:16/8}
+.ev img{width:100%;height:100%;object-fit:contain;transition:transform 300ms cubic-bezier(.23,1,.32,1)}
+.ev:hover img{transform:scale(1.03)}
+.ev .tag{position:absolute;left:10px;top:10px;height:24px;padding:0 9px;border-radius:999px;background:rgba(20,33,61,.86);color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center}
+.ccard{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;gap:6px;padding:14px;border-radius:12px;background:#FFFCF7;border:1px solid #E4DACA;transition:border-color 160ms ease,background-color 160ms ease}
+.ccard:hover{border-color:#B9AC96;background:#fff}
+.ccard.on{background:#fff;border-color:#14213D;box-shadow:0 0 0 1px #14213D}
+.ccard:focus-visible{outline:2px solid #A8232E;outline-offset:2px}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*RESP-START*/
+.mbar,.mtab{display:none}
+.mbar{position:sticky;top:0;z-index:1000;height:56px;align-items:center;gap:10px;padding:0 12px 0 16px;border-bottom:1px solid #E4DACA;background:#FFFCF7}
+.mbar.dark{background:#14213D;color:#fff;border-bottom:0}
+.mbar .mlogo{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
+.mbar .mlogo img{width:30px;height:30px;border-radius:7px;background:#FFFCF7}
+.mbar .mlogo b{font-size:15px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mbar .mlogo span{display:block;font-size:11.5px;font-weight:600;color:#A8232E}
+.mbar.dark .mlogo span{color:#E2B65C}
+.mbar .mbtn{all:unset;cursor:pointer;width:44px;height:44px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;position:relative}
+.mbar .mbtn:focus-visible{outline:2px solid #A8232E;outline-offset:2px}
+.mmenu{position:relative}
+.mmenu summary{list-style:none}.mmenu summary::-webkit-details-marker{display:none}
+.mmenu[open] summary{background:rgba(20,33,61,.08)}
+.mbar.dark .mmenu[open] summary{background:rgba(255,255,255,.12)}
+.mmenu .mpanel{position:fixed;z-index:1001;left:0;right:0;top:56px;bottom:0;overflow:auto;padding:12px 12px 100px;background:#FFFCF7;border-top:1px solid #E4DACA;animation:mdrop 200ms cubic-bezier(.23,1,.32,1)}
+.mbar.dark .mmenu .mpanel{background:#14213D;border-top-color:rgba(255,255,255,.1)}
+.mmenu .mpanel a{min-height:48px}
+@keyframes mdrop{from{opacity:0;transform:translateY(-6px)}}
+.mtab{position:fixed;left:0;right:0;bottom:0;z-index:999;height:72px;padding:0 4px 8px;background:#FFFCF7;border-top:1px solid #E4DACA;grid-template-columns:repeat(5,minmax(0,1fr));align-items:center;font-size:11.5px;font-weight:600}
+.mtab a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:52px;color:#46536F;position:relative}
+.mtab a.on{color:#A8232E}
+.mtab a.add{justify-self:center;width:52px;height:52px;min-height:0;border-radius:16px;background:#A8232E;color:#fff;margin-top:-16px;box-shadow:0 10px 20px -10px rgba(168,35,46,.7)}
+.mtab .count{position:absolute;top:2px;right:calc(50% - 22px)}
+
+.mtab.admin{background:#14213D;border-top-color:rgba(255,255,255,.08)}
+.mtab.admin a,.mtab.admin summary{color:#C9D0DD}
+.mtab.admin a.on,.mtab.admin .mmore.on summary{color:#E2B65C}
+.mtab .mmore summary{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:52px;cursor:pointer;list-style:none}
+.mtab .mmore .mpanel{top:56px;bottom:72px}
+.mpanel.dark{background:#14213D!important}
+@media (max-width:1023px){
+  .hb.shell{flex-direction:column;flex-wrap:nowrap}
+  .hb.shell>aside.side{display:none!important}
+  .mbar{display:flex}
+  .hb.shell>.main{flex:1 1 auto;width:100%}
+  .cmdk{display:none!important}
+  .hb.shell>.main [style*="grid-template-columns: minmax(0, 1."],.hb.shell>.main [style*="minmax(0, 1fr) minmax(0, 1."],.hb.shell>.main [style*="minmax(0, 1fr) 360px"]{grid-template-columns:minmax(0,1fr)!important}
+  .hb.shell>.main [style*="grid-template-columns"][style*="repeat(5"]{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  .hb.shell>.main [style*="flex-wrap: wrap"],.hb.shell>.main [style*="display: grid"]{align-content:flex-start}
+  .hb.shell>.main .sheet{grid-template-columns:minmax(0,1fr)!important}
+  .hb.shell>.main .sheet>aside[style*="sticky"]{position:static!important}
+  .hb.shell>.main [style*="position: sticky; bottom: 0"]{bottom:var(--mtab-pad,0px)!important}
+  .hb.shell>.main>div:first-of-type:not(.mbar){height:auto!important;min-height:60px;flex-wrap:wrap;row-gap:8px;padding-top:10px!important;padding-bottom:10px!important}
+}
+@media (max-width:1023px){
+  .hb.shell{padding-bottom:var(--mtab-pad,0px)}
+  .mtab.on-phone{display:grid}
+  .hide-m,.hide-phone{display:none!important}
+  .hb.shell>.main>div:first-of-type:not(.mbar){padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main main,.hb.shell>.main>div>main,.hb.shell>.main section,.hb.shell>.main aside{max-width:100%!important}
+  .hb.shell>.main main{padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main>div[style*="32px"]:not(:first-of-type):not(.mbar){padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main>div[style*="32px"]>main,.hb.shell>.main>div[style*="32px"]>aside{padding-left:0!important;padding-right:0!important}
+  .hb.shell>.main .sheet{align-content:start;flex:none}
+  .row{flex-wrap:wrap;row-gap:8px}
+  .row>span[style*="flex: 1"]{flex:1 1 55%!important}
+  .hb.shell>.main [style*="padding: 0 32px"],.hb.shell>.main [style*="padding: 0 32px;"]{padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main [style*="grid-template-columns"]:not(dl):not(.keep2):not(.steps):not(.stepper):not([style*="1fr auto"]):not([style*="repeat(5"]){grid-template-columns:minmax(0,1fr)!important}
+  .hb.shell>.main [style*="grid-template-columns"][style*="repeat(5"]{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  .hb.shell>.main [style*="grid-template-columns"]:not([style*="gap"]){row-gap:16px}
+  .hb.shell>.main ol.steps[style],.hb.shell>.main .steps{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .hb.shell>.main .keep2{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .hb.shell>.main dl dd{min-width:0;overflow-wrap:anywhere}
+  .hb.shell>.main [style*="flex: 999 1"],.hb.shell>.main [style*="flex: 1 1 4"],.hb.shell>.main [style*="flex: 1 1 3"],.hb.shell>.main [style*="flex: 1 1 6"],.hb.shell>.main [style*="flex: 0 0 3"]{flex:1 1 100%!important;max-width:100%!important;border-left:0!important;border-right:0!important;padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main [style*="border-left: 1px solid #E4DACA"]:not(td):not(th){border-left:0!important}
+  .hb.shell>.main ol.num>li,.hb.shell>.main .num>div{padding-left:0!important;padding-right:0!important}
+  .tbl-box{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  [role=tablist],.subtabs,nav.subtabs{flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none}
+  [role=tablist]::-webkit-scrollbar,.subtabs::-webkit-scrollbar{display:none}
+  [role=tablist]>*,.subtabs>*{flex-shrink:0}
+  h1.serif{font-size:26px!important}
+  h2.serif{font-size:24px!important}
+  .btn{min-height:44px}
+  .hb.shell>.main .btn{flex-wrap:nowrap;max-width:100%;height:auto;padding-top:8px;padding-bottom:8px;text-align:center;white-space:normal}
+  .btn-xs{min-height:36px}
+  .pop{position:fixed!important;left:16px!important;right:16px!important;width:auto!important;top:70px!important}
+  .toast{left:16px;right:16px;transform:none;max-width:none;bottom:calc(var(--mtab-pad,0px) + 16px)}
+  @keyframes toastin{from{opacity:0;transform:translateY(10px)}}
+
+  .task{display:grid!important;grid-template-columns:40px minmax(0,1fr) auto;gap:6px 14px;align-items:center;padding:14px 16px!important}
+  .task>:nth-child(2){grid-column:2/4}
+  .task.t4>:nth-child(1){grid-row:1/3;align-self:start}
+  .task.t4>:nth-child(3){grid-column:2;justify-self:start}
+  .task.t4>:nth-child(4){grid-column:3;grid-row:2}
+  .task:not(.t4)>:nth-child(2){grid-column:2}
+  .hb.shell>.main [style*="gap: 0"]{row-gap:18px!important}
+
+  .hb.shell>.main [style*="flex-wrap: wrap"],.hb.shell>.main [style*="display: grid"]{align-content:flex-start}
+  .hb.shell>.main [style*="justify-content: space-between"]{flex-wrap:wrap;row-gap:8px}
+  .hb.shell>.main>div:first-of-type:not(.mbar)>div{flex-wrap:wrap}
+  [role=alert]{flex-wrap:wrap}
+  [role=alert]>span[style*="flex: 1"]{flex:1 1 220px!important}
+  .stages{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .stg::after{display:none!important}
+  .parked{grid-template-columns:1fr!important;gap:2px!important}
+  .feat-h{flex-wrap:wrap}
+  .feat-h>span:nth-child(2){flex:1 1 calc(100% - 64px)!important}
+  .seg{flex-wrap:nowrap!important;overflow-x:auto;max-width:100%}
+  .seg button{white-space:nowrap;flex-shrink:0}
+  .qrow{grid-template-columns:22px 40px minmax(0,1fr)!important;gap:8px 12px!important;padding:14px 16px!important}
+  .qrow>a.btn{grid-column:3;justify-self:start}
+  .qrow b{white-space:normal!important}
+  ol.stepper{grid-template-columns:1fr!important}
+  ol.stepper li{flex-direction:row!important;flex-wrap:wrap;align-items:baseline;gap:4px 10px!important;padding:0 0 16px 30px!important}
+  ol.stepper li::before{top:16px!important;bottom:0;left:6px!important;right:auto!important;width:3px!important;height:auto!important}
+  ol.stepper li:last-child::before{display:none}
+  ol.stepper .dot{top:1px!important}
+  .hb.shell>.main [style*="position: absolute"][style*="bottom: 24px"]{position:sticky!important;left:auto!important;right:auto!important;bottom:12px!important;flex-wrap:wrap;margin:16px 0 0}
+  .hb.shell>.main [style*="position: absolute"][style*="bottom: 24px"]>span{flex:1 1 100%!important}
+  .hb.shell>.main div:has(>div>h2.serif){flex-wrap:wrap}
+  .hb.shell>.main div:has(>h2.serif){flex:1 1 200px!important;min-width:0}
+  .hb.shell>.main [style*="grid-template-columns"]:has(>.kpi){grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .kpi{padding:12px 14px!important}.kpi b{font-size:22px!important}
+  .tbl.cards thead{display:none}
+  .tbl.cards,.tbl.cards tbody{display:block}
+  .tbl.cards tr{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px 12px;align-items:center;padding:14px 16px;border-top:1px solid #E4DACA}
+  .tbl.cards tr:first-child{border-top:0}
+  .tbl.cards td{display:block;padding:0!important;border:0!important;max-width:none!important;text-align:left}
+  .tbl.cards td.full{grid-column:1/-1}
+  .tbl.cards td.r{text-align:right}
+  .tbl.cards td.hide{display:none}
+  .tbl.cards td.pr{grid-column:3;grid-row:1}
+}
+
+@media (max-width:767px){
+  .hb>div[style*="height: 64px"]{height:auto!important;flex-wrap:wrap;row-gap:8px;padding:10px 16px!important}
+  .hb>div[style*="height: 64px"] [role=tablist]{display:none!important}
+  .hb>div[style*="height: 64px"]>span[style*="width: 1px"]{display:none}
+  .hb aside[aria-label="Sections"]{max-width:none!important;flex:1 1 100%!important;border-right:0!important}
+  .hb main[aria-label="Preview"]{padding:16px!important}
+  .hb main[aria-label="Preview"] [style*="grid-template-columns: 1fr 1fr"]{grid-template-columns:1fr!important}
+  .hb [style*="flex-wrap: wrap"]{align-content:flex-start}
+}
+
+@media (min-width:768px) and (max-width:1023px){
+  .hb.shell{padding-bottom:0!important}
+  .mtab.on-phone{display:none!important}
+  .hide-phone{display:revert!important}
+  .hb.shell>.main [style*="grid-template-columns"][style*="repeat(4"],.hb.shell>.main [style*="grid-template-columns"][style*="repeat(3"]:not([style*="repeat(3, minmax(0, 1fr)) "]){grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .hb.shell>.main [style*="grid-template-columns: 1fr 1fr"]{grid-template-columns:1fr 1fr!important}
+  .hb.shell>.main ol.steps[style],.hb.shell>.main .steps{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+  .stages{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+  .toast{bottom:16px}
+  h1.serif{font-size:30px!important}
+  .tbl.cards thead{display:table-header-group}
+  .tbl.cards{display:table}.tbl.cards tbody{display:table-row-group}
+  .tbl.cards tr{display:table-row}
+  .tbl.cards td{display:table-cell;padding:12px 14px!important;border-top:1px solid #E4DACA!important}
+  .tbl.cards td.hide{display:table-cell}
+  .tbl.cards td.pr{grid-column:auto;grid-row:auto}
+}
+@media (prefers-reduced-motion:reduce){.mmenu .mpanel{animation:none}}
+/*RESP-END*/
+</style>
+</helmet>
+<div class="hb shell" style="--mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; background: #F7F3EC; min-height: 100vh">
+<!--RESP-START--><header class="mbar"><a href="Seller-Home.dc.html" class="mlogo"><img src="/_blob/65b39bff773bb375aa5d23ab420967a3" alt=""><span style="display: flex; flex-direction: column; color: inherit"><b style="color: #14213D">Hand Creation</b><span>Seller Studio</span></span></a><button class="mbtn" aria-label="Notifications, 2 new"><span class="ic i-bell"></span><span style="position: absolute; top: 11px; right: 11px; width: 8px; height: 8px; border-radius: 50%; background: #A8232E"></span></button><details class="mmenu"><summary class="mbtn" aria-label="Menu"><span class="ic i-menu"></span></summary><div class="mpanel"><nav class="nav" aria-label="Seller Studio">
+<a href="Seller-Home.dc.html"><span class="ic s18 i-home"></span><span style="flex: 1">Today</span></a>
+<a href="Seller-Orders.dc.html"><span class="ic s18 i-receipt"></span><span style="flex: 1">Orders</span><span class="count">3</span></a>
+<a href="Seller-Returns.dc.html" class="on" aria-current="page"><span class="ic s18 i-return"></span><span style="flex: 1">Returns</span><span class="badge warn" style="height: 20px; font-size: 11.5px">1</span></a>
+<a href="Seller-Products.dc.html"><span class="ic s18 i-package"></span><span style="flex: 1">Products</span></a>
+<a href="Seller-Earnings.dc.html"><span class="ic s18 i-wallet"></span><span style="flex: 1">Earnings</span></a>
+<div class="nav-h">Your shop</div>
+<a href="#"><span class="ic s18 i-store"></span>Shop profile</a>
+<a href="#"><span class="ic s18 i-star"></span>Reviews</a>
+<a href="#"><span class="ic s18 i-file"></span>Documents &amp; agreement</a>
+<a href="#"><span class="ic s18 i-truck"></span>Shipping</a>
+<a href="#"><span class="ic s18 i-help"></span>Requests &amp; help</a>
+</nav></div></details></header><nav class="mtab on-phone" aria-label="Seller Studio shortcuts"><a href="Seller-Home.dc.html"><span class="ic i-home"></span>Today</a><a href="Seller-Orders.dc.html"><span class="ic i-receipt"></span>Orders<span class="count">3</span></a><a href="Seller-AddProduct.dc.html" class="add" aria-label="Add product"><span class="ic s24 i-plus"></span></a><a href="Seller-Products.dc.html"><span class="ic i-package"></span>Products</a><a href="Seller-Earnings.dc.html"><span class="ic i-wallet"></span>Earnings</a></nav><!--RESP-END-->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<aside class="side" style="background: #FFFCF7; border-right: 1px solid #E4DACA; padding: 20px 14px; display: flex; flex-direction: column; gap: 18px; max-width: 256px">
+<a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px; padding: 0 6px"><img src="/_blob/65b39bff773bb375aa5d23ab420967a3" alt="" style="width: 36px; height: 36px"><span style="display: flex; flex-direction: column; line-height: 1.1"><span class="serif" style="font-size: 20px; font-weight: 600">Hastabazaar</span><span style="font-size: 12px; font-weight: 600; color: #A8232E">Seller Studio</span></span></a>
+<div style="display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid #E4DACA; border-radius: 12px; background: #fff"><img src="/_blob/6cc7d3d03f2b0dcca7c60337e8a9dc73" alt="" style="width: 34px; height: 34px; border-radius: 8px; object-fit: cover"><span style="flex: 1; line-height: 1.25"><b style="font-size: 14.5px; display: block">Hand Creation</b><span style="font-size: 12.5px; color: #2C6A4A; display: inline-flex; align-items: center; gap: 5px"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2C6A4A"></span>Shop is live</span></span></div>
+<nav class="nav" aria-label="Seller Studio">
+<a href="Seller-Home.dc.html"><span class="ic s18 i-home"></span><span style="flex: 1">Today</span></a>
+<a href="Seller-Orders.dc.html"><span class="ic s18 i-receipt"></span><span style="flex: 1">Orders</span><span class="count">3</span></a>
+<a href="Seller-Returns.dc.html" class="on" aria-current="page"><span class="ic s18 i-return"></span><span style="flex: 1">Returns</span><span class="badge warn" style="height: 20px; font-size: 11.5px">1</span></a>
+<a href="Seller-Products.dc.html"><span class="ic s18 i-package"></span><span style="flex: 1">Products</span></a>
+<a href="Seller-Earnings.dc.html"><span class="ic s18 i-wallet"></span><span style="flex: 1">Earnings</span></a>
+<div class="nav-h">Your shop</div>
+<a href="#"><span class="ic s18 i-store"></span>Shop profile</a>
+<a href="#"><span class="ic s18 i-star"></span>Reviews</a>
+<a href="#"><span class="ic s18 i-file"></span>Documents &amp; agreement</a>
+<a href="#"><span class="ic s18 i-truck"></span>Shipping</a>
+<a href="#"><span class="ic s18 i-help"></span>Requests &amp; help</a>
+</nav>
+<div style="margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 12px; background: #EDE4D3"><b style="font-size: 14px">Stuck on something?</b><span style="font-size: 13px; color: #46536F">Ask the seller team. Replies come to Requests &amp; help.</span><a href="#" class="tlink" style="font-size: 13.5px">Ask for help</a></div>
+</aside>
+<div class="main" style="display: flex; flex-direction: column; min-width: 0">
+<div style="height: 68px; display: flex; align-items: center; gap: 16px; padding: 0 32px; border-bottom: 1px solid #E4DACA; background: #F7F3EC; position: relative"><div style="display: flex; align-items: center; gap: 10px; position: relative"><h1 class="serif" style="font-size: 28px; line-height: 1.05">Returns</h1><button class="helpbtn" aria-label="How returns work" aria-expanded="{{helpOpen}}" onClick="{{toggleHelp}}"><span class="ic s16 i-help"></span></button><sc-if value="{{helpOpen}}" hint-placeholder-val="{{ false }}"><div onClick="{{toggleHelp}}" aria-hidden="true" style="position: fixed; inset: 0; z-index: 19"></div><div class="pop" role="dialog" aria-label="How returns work" style="left: 0; top: calc(100% + 10px); width: 340px; padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: #46536F"><b style="color: #14213D; font-size: 15px">{{help.title}}</b><p>{{help.a}}</p><p>{{help.b}}</p><a href="#" class="tlink" style="font-size: 13.5px">Seller guide</a></div></sc-if></div><div style="margin-left: auto; display: flex; align-items: center; gap: 8px"><a href="Main.dc.html" class="btn btn-quiet btn-sm hide-phone"><span class="ic s18 i-eye"></span>View shop</a><button class="btn btn-quiet btn-sm btn-icon hide-phone" aria-label="Notifications, 2 new" style="position: relative"><span class="ic i-bell"></span><span style="position: absolute; top: 7px; right: 8px; width: 8px; height: 8px; border-radius: 50%; background: #A8232E; border: 2px solid #F7F3EC"></span></button><a href="Seller-AddProduct.dc.html" class="btn btn-primary btn-sm hide-phone"><span class="ic s18 i-plus"></span>Add product</a></div></div>
+
+<div style="display: flex; flex: 1; align-items: stretch; flex-wrap: wrap">
+  <aside style="flex: 0 0 320px; padding: 22px 20px 32px 32px; display: flex; flex-direction: column; gap: 10px; border-right: 1px solid #E4DACA" aria-label="Return cases">
+    <sc-for list="{{cases}}" as="c" hint-placeholder-count="3">
+      <button class="{{c.cls}}" onClick="{{c.pick}}" aria-pressed="{{c.sel}}">
+        <span style="display: flex; justify-content: space-between; align-items: center; gap: 8px"><b class="mono" style="font-size: 13px; color: #46536F">{{c.id}}</b><span class="{{c.whoCls}}">{{c.who}}</span></span>
+        <b style="font-size: 15px">{{c.title}}</b>
+        <span style="font-size: 13.5px; color: #46536F">{{c.sub}}</span>
+      </button>
+    </sc-for>
+    <p style="font-size: 13px; color: #675B4E; margin-top: 6px">Customers can return items within 7 days of delivery.</p>
+  </aside>
+
+  <main style="flex: 1 1 640px; min-width: 0; padding: 24px 32px 40px; display: flex; flex-direction: column; gap: 20px; max-width: 980px">
+    <div style="display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; flex-wrap: wrap">
+      <div><span class="mono" style="font-size: 14px; color: #46536F">{{c.id}} · {{c.item}}</span><h2 class="serif" style="font-size: 30px; line-height: 1.1; margin-top: 4px">{{c.title}}</h2><p style="color: #46536F; margin-top: 6px">{{c.customer}} · delivered {{c.delivered}} · asked {{c.asked}}</p></div>
+      <span class="{{c.whoCls}}" style="height: 28px; font-size: 13.5px">{{c.who}}</span>
+    </div>
+
+    <ol class="steps" style="grid-template-columns: repeat(4, minmax(0, 1fr)); list-style: none; margin: 0; padding: 0" aria-label="Case progress">
+      <sc-for list="{{c.track}}" as="t" hint-placeholder-count="4">
+        <li class="{{t.cls}}"><b><span class="{{t.icon}}"></span>{{t.label}}</b><span>{{t.sub}}</span></li>
+      </sc-for>
+    </ol>
+
+    <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px">
+      <figure class="ev" style="margin: 0"><img src="{{c.photo}}" alt="Your listing photo"><span class="tag">Your listing photo</span></figure>
+      <figure class="ev" style="margin: 0"><img src="{{c.photo}}" alt="Customer's photo" style="filter: {{c.filter}}"><span class="tag">Customer's photo</span></figure>
+    </div>
+    <blockquote style="margin: 0; padding: 14px 16px; border-radius: 12px; background: #fff; border: 1px solid #E4DACA; font-size: 15px; display: flex; flex-direction: column; gap: 4px">
+      <span style="font-size: 13px; color: #46536F">The customer wrote</span><span>“{{c.quote}}”</span>
+    </blockquote>
+
+    <sc-if value="{{c.canReply}}" hint-placeholder-val="{{ true }}">
+      <section class="panel" style="padding: 22px; display: flex; flex-direction: column; gap: 16px" aria-labelledby="rp">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap">
+          <h3 id="rp" style="font-size: 17px; font-weight: 650">Your reply</h3>
+          <span class="who you">Reply by {{c.replyBy}}</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px" role="radiogroup" aria-label="What do you think should happen?">
+          <sc-for list="{{opts}}" as="o" hint-placeholder-count="3">
+            <button class="{{o.cls}}" role="radio" aria-checked="{{o.sel}}" onClick="{{o.pick}}"><span class="radio"></span><span style="display: flex; flex-direction: column; gap: 3px"><b style="font-size: 14.5px">{{o.label}}</b><span style="font-size: 13px; color: #46536F">{{o.hint}}</span></span></button>
+          </sc-for>
+        </div>
+        <div class="field">
+          <label class="label" for="msg">Explain what you know</label>
+          <textarea id="msg" class="input" rows="4" placeholder="{{msgHint}}" value="{{msg}}" onChange="{{setMsg}}" style="resize: vertical"></textarea>
+          <span class="hint" style="display: flex; justify-content: space-between"><span>Facts about the item and how you packed it. Hastabazaar reads this word for word.</span><span class="num" style="color: {{countColor}}">{{count}} / 20 min</span></span>
+        </div>
+        <button class="btn btn-ghost btn-sm" style="align-self: flex-start"><span class="ic s18 i-image"></span>Add photos of how you packed it</button>
+        <div class="nextbox"><span class="ic s18 i-shield" style="margin-top: 1px"></span><span><b>Hastabazaar makes the final decision.</b> A seller can't block a return, but your reply helps decide it. If the item was damaged or wrong, the customer pays nothing to return it. NPR {{c.net}} from this order is held until the case closes.</span></div>
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
+          <sc-if value="{{ready}}" hint-placeholder-val="{{ false }}"><button class="btn btn-primary" onClick="{{send}}">Send reply to Hastabazaar</button></sc-if>
+          <sc-if value="{{notReady}}" hint-placeholder-val="{{ true }}"><button class="btn btn-primary off" aria-disabled="true">Send reply to Hastabazaar</button><span style="font-size: 13.5px; color: #46536F">{{why}}</span></sc-if>
+        </div>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{c.replied}}" hint-placeholder-val="{{ false }}">
+      <section class="panel" style="padding: 22px; display: flex; flex-direction: column; gap: 12px">
+        <h3 style="font-size: 17px; font-weight: 650">What you sent</h3>
+        <p style="font-size: 14.5px"><span class="who mute" style="margin-right: 8px">{{c.choice}}</span>{{c.sent}}</p>
+        <div class="nextbox"><span class="ic s18 i-clock" style="margin-top: 1px"></span><span><b>With Hastabazaar now.</b> {{c.nextText}}</span></div>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{c.closed}}" hint-placeholder-val="{{ false }}">
+      <div style="padding: 16px 18px; border-radius: 12px; background: #E1EEE5; color: #1F5138; display: flex; gap: 12px; font-size: 14.5px"><span class="ic s18 i-check" style="margin-top: 1px"></span><span><b style="color: #14213D; display: block">{{c.result}}</b>{{c.resultText}}</span></div>
+    </sc-if>
+  </main>
+</div>
+
+</div>
+</div>
+<sc-if value="{{hasToast}}" hint-placeholder-val="{{ false }}"><div class="toast" role="status"><span class="ic s18 i-check" style="color: #9FD3B4"></span><p><b style="display: block">{{toast.a}}</b><span>{{toast.b}}</span></p></div></sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1240}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { sel: 'HB-24788', opt: '', msg: '', sent: {}, helpOpen: false, toast: null }; }
+
+  flash(a, b) { clearTimeout(this._t); this.setState({ toast: { a, b } }); this._t = setTimeout(() => this.setState({ toast: null }), 4200); }
+  helpVals(help) { const s = this.state; return { help, helpOpen: !!s.helpOpen, toggleHelp: () => this.setState({ helpOpen: !s.helpOpen }), hasToast: !!s.toast, toast: s.toast || { a: '', b: '' } }; }
+  componentDidMount() { this._k = (e) => { if (e.key === 'Escape' && this.state.helpOpen) this.setState({ helpOpen: false }); }; window.addEventListener('keydown', this._k); }
+  componentWillUnmount() { window.removeEventListener('keydown', this._k); clearTimeout(this._t); }
+
+  renderVals() {
+    const s = this.state;
+    const D = (cls, icon, label, sub) => ({ cls: 'step ' + cls, icon: 'ic s16 ' + icon, label, sub });
+    const raw = [
+      { id: 'HB-24788', item: 'Blue dhokra round earrings', title: 'One hook arrived bent', customer: 'Anita K., Lakeside, Pokhara', delivered: '17 Nov', asked: '19 Nov', replyBy: 'Fri 21 Nov', net: '475', photo: '/_blob/add8c879261efdff84ab7f129d35afc9', filter: 'saturate(.8)', quote: 'One of the two earrings has a bent hook, so I can’t wear it. The other one is fine.', state: 'open' },
+      { id: 'HB-24770', item: 'Red flower drop earrings', title: 'Colour looks different', customer: 'Rekha T., Kalanki, Kathmandu', delivered: '13 Nov', asked: '16 Nov', replyBy: '18 Nov', net: '427', photo: '/_blob/eef4ef68f82a1e98e267463ef9651908', filter: 'hue-rotate(14deg) saturate(1.2) brightness(1.05)', quote: 'The red looks orange in person. It’s not the colour in the photo.', state: 'replied', choice: 'Disagree', sent: 'Each pair is hand-dyed, so the shade varies a little, and the listing says so. I’ve attached a daylight photo of the same batch.' },
+      { id: 'HB-24655', item: 'Hand-painted boho earrings', title: 'Ordered by mistake', customer: 'Sunita B., Lalitpur', delivered: '2 Nov', asked: '4 Nov', replyBy: '6 Nov', net: '361', photo: '/_blob/dcb1ea04796929f7673abe8a37ed1fe4', filter: 'none', quote: 'I ordered the wrong design by mistake.', state: 'closed' }
+    ];
+    const cases = raw.map((c) => {
+      const st = s.sent[c.id] ? 'replied' : c.state;
+      const who = st === 'open' ? ['who you', 'Your turn'] : st === 'replied' ? ['who hb', 'Hastabazaar deciding'] : ['who ok', 'Closed'];
+      const sub = st === 'open' ? c.item + ' · reply by ' + c.replyBy : st === 'replied' ? 'You replied · decision pending' : 'Customer kept the item';
+      return { ...c, st, who: who[1], whoCls: who[0], sub, sel: s.sel === c.id ? 'true' : 'false', cls: s.sel === c.id ? 'ccard on' : 'ccard', pick: () => { this.setState({ sel: c.id, opt: '', msg: '' }); if (window.innerWidth < 1024) setTimeout(() => { const el = document.querySelector('main h2'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60); } };
+    });
+    const c0 = cases.find((c) => c.id === s.sel);
+    const sentObj = s.sent[c0.id];
+    const track = c0.st === 'open'
+      ? [D('done', 'i-check', 'Customer asked', c0.asked), D('now', 'i-arrow', 'You reply', 'by ' + c0.replyBy), D('todo', 'i-clock', 'Hastabazaar decides', 'after checking the item'), D('todo', 'i-clock', 'Result', 'you’re notified')]
+      : c0.st === 'replied'
+        ? [D('done', 'i-check', 'Customer asked', c0.asked), D('done', 'i-check', 'You replied', sentObj ? 'today' : c0.replyBy), D('hb', 'i-clock', 'Hastabazaar decides', 'within 3 working days of getting the item back'), D('todo', 'i-clock', 'Result', 'you’re notified')]
+        : [D('done', 'i-check', 'Customer asked', c0.asked), D('done', 'i-check', 'You replied', '5 Nov'), D('done', 'i-check', 'Customer withdrew', '6 Nov'), D('done', 'i-check', 'Closed', 'nothing deducted')];
+    const O = [['accept', 'Accept the return', 'The item can come back.'], ['contest', 'Disagree', 'Explain why, with photos if you have them.'], ['info', 'Ask a question', 'You need more detail from the customer.']];
+    const opts = O.map(([k, label, hint]) => ({ label, hint, sel: s.opt === k ? 'true' : 'false', cls: s.opt === k ? 'choice on' : 'choice', pick: () => this.setState({ opt: k }) }));
+    const n = s.msg.trim().length;
+    const ready = !!s.opt && n >= 20;
+    const send = () => {
+      const label = O.find((o) => o[0] === s.opt)[1];
+      this.setState({ sent: { ...s.sent, [c0.id]: { choice: label, text: s.msg.trim() } }, opt: '', msg: '' });
+      this.flash('Reply sent to Hastabazaar', c0.id + ' is now with our care team. We’ll notify you of the decision.');
+    };
+    const c = { ...c0, track, canReply: c0.st === 'open', replied: c0.st === 'replied', closed: c0.st === 'closed',
+      choice: sentObj ? sentObj.choice : c0.choice, sent: sentObj ? sentObj.text : c0.sent,
+      nextText: 'Once the item is back, the care team checks it within 3 working days and decides. You’ll get a notification, and the decision shows here.',
+      result: 'Closed 6 Nov: return refused', resultText: ' Change of mind isn’t covered for this item. The customer kept it and nothing was deducted from your earnings.' };
+    return {
+      cases, c, opts, msg: s.msg, setMsg: (e) => this.setState({ msg: e.target.value }), count: n, countColor: n >= 20 ? '#2C6A4A' : '#675B4E',
+      msgHint: s.opt === 'accept' ? 'For example: Happy to take it back. I can send a replacement pair.' : s.opt === 'info' ? 'What do you need to know from the customer?' : 'For example: I checked both hooks before packing and used a padded box.',
+      ready, notReady: !ready, why: !s.opt ? 'Choose what you think should happen.' : 'Write at least 20 characters.', send,
+      ...this.helpVals({ title: 'How returns work', a: 'When a customer asks to return something, reply by the date shown. Pick what you think should happen and explain.', b: 'Hastabazaar makes the final decision after checking the item. Your money for that order is held until the case closes.' })
+    };
+  }
+}
+</script>
+</body>
+</html>
