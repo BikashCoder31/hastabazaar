@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import { MessageSquareWarning, RotateCcw } from 'lucide-react';
@@ -16,10 +17,11 @@ export default async function AdminCasesPage() {
   ]);
   return (
     <div>
-      <p className="eyebrow">Customer care</p>
-      <h1 className="mt-2 font-heading text-4xl tracking-tight">
-        Returns and complaints
-      </h1>
+      <AdminPageTitle>
+        <h1 className="font-heading text-4xl tracking-tight">
+          Returns and complaints
+        </h1>
+      </AdminPageTitle>
       <Link href="/admin/cases/intake" className="mt-3 inline-block underline">Record an earlier email or support request</Link>
       <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
         Investigate item-level cases, preserve seller boundaries, and record

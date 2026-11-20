@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { env } from 'cloudflare:workers';
 import { PrivacyActions } from '@/components/admin/privacy-actions';
 import { AnswerDetails } from '@/components/forms/answer-details';
@@ -22,8 +23,7 @@ export default async function AdminPrivacyPage() {
   return (
     <div className="space-y-6">
       <div>
-        <p className="eyebrow">Compliance operations</p>
-        <h1 className="section-title">Data-rights requests</h1>
+        <AdminPageTitle><h1 className="section-title">Data-rights requests</h1></AdminPageTitle>
         <p className="mt-2 text-sm text-muted-foreground">
           Admins investigate and assign. A Super Admin must approve, reject, or
           complete every request.

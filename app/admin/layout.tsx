@@ -56,8 +56,7 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
             id="main-content"
             className="admin-workspace min-w-0"
           >
-            <AdminTaskContext {...access} />
-            {children}
+            <AdminTaskContext {...access}>{children}</AdminTaskContext>
           </main>
         </div>
       </AdminWorkspaceReady>

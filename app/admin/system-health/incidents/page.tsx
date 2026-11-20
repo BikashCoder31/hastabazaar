@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import Link from 'next/link';
 import { env } from 'cloudflare:workers';
 import { requireStaffPage } from '@/lib/auth/staff';
@@ -21,7 +22,7 @@ export default async function IncidentsPage({
     return (
       <main className="space-y-4">
         <Link className="text-sm underline" href={returnTo}>Back to results</Link>
-        <h1 className="text-2xl font-semibold">Incidents</h1>
+        <AdminPageTitle><h1 className="text-2xl font-semibold">Incidents</h1></AdminPageTitle>
         <p>
           Current runtime scope is unavailable. Protected incident actions are
           paused.
@@ -38,7 +39,7 @@ export default async function IncidentsPage({
             System health &amp; records
           </Link>
         )}
-        <h1 className="mt-2 text-2xl font-semibold">Incidents</h1>
+        <AdminPageTitle><h1 className="mt-2 text-2xl font-semibold">Incidents</h1></AdminPageTitle>
         <p className="text-sm text-muted-foreground">
           Environment: {evidence.environment}. Ownership, acknowledgment and
           recovery evidence are recorded separately.

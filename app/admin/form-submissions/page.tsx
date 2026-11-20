@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -26,7 +27,7 @@ export default async function RestrictedFormSubmissionsPage({ searchParams }: {
   if (allowed.some((value) => !value)) notFound();
   return <main className="space-y-5">
     <p><Link href="/admin/forms" className="underline">← Form Management</Link></p>
-    <h1 className="text-2xl font-semibold">Restricted identity request history</h1>
+    <AdminPageTitle><h1 className="text-2xl font-semibold">Restricted identity request history</h1></AdminPageTitle>
     <p className="text-sm text-muted-foreground">Accepted code requests are unlinked from account ownership. Handle these answers as restricted records.</p>
     {history.answers.length ? history.answers.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)
       : <p>No saved identity request answers.</p>}

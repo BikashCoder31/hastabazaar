@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import { CommonFeePolicy } from '@/components/admin/common-fee-policy';
@@ -51,8 +52,7 @@ export default async function CommissionPage({
   return (
     <div className="space-y-7">
       <div>
-        <p className="eyebrow">Marketplace earnings</p>
-        <h1 className="section-title">Commission</h1>
+        <AdminPageTitle><h1 className="section-title">Commission</h1></AdminPageTitle>
         <p className="mt-3 max-w-3xl leading-7 text-muted-foreground">
           Track your earnings, inspect each order, and manage commission rates
           in one place.

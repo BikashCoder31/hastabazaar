@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { env } from 'cloudflare:workers';
 import { redirect,notFound } from 'next/navigation';
 import Link from 'next/link';
@@ -33,8 +34,7 @@ export default async function FeeWaiversPage({searchParams}:{searchParams?:Promi
     <div className="grid min-w-0 gap-6">
       <Link href={returnTo} className="underline">Back to previous view</Link>
       <div>
-        <p className="eyebrow">Super Admin · Controls</p>
-        <h1 className="section-title">Customer service fee waivers</h1>
+        <AdminPageTitle><h1 className="section-title">Customer service fee waivers</h1></AdminPageTitle>
         <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">
           Automatically waive the whole positive customer service fee once per order
           during a published campaign. Overlapping campaigns do not stack. Seller

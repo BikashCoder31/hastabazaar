@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import Link from 'next/link';
 import { ExternalLink, LockKeyhole } from 'lucide-react';
 
@@ -20,16 +21,17 @@ export default async function AdminLegalPoliciesPage() {
   let workspace, control;
   try { [workspace, control] = await Promise.all([getLegalDraftWorkspace(db), getCurrentLegalProcedureControl(db)]); }
   catch (error) {
-    if (error instanceof LegalDraftStoreError) return <div role="alert" className="rounded-2xl border p-6"><h1 className="font-heading text-3xl">Legal procedures unavailable</h1><p className="mt-3">The saved draft or its history could not be verified. No content has been replaced. Please try again after the stored record is reviewed.</p></div>;
+    if (error instanceof LegalDraftStoreError) return <div role="alert" className="rounded-2xl border p-6"><AdminPageTitle><h1 className="font-heading text-3xl">Legal procedures unavailable</h1></AdminPageTitle><p className="mt-3">The saved draft or its history could not be verified. No content has been replaced. Please try again after the stored record is reviewed.</p></div>;
     throw error;
   }
   return (
     <div className="space-y-6">
       <header>
-        <p className="eyebrow">Controls · Super Admin</p>
-        <h1 className="mt-2 font-heading text-4xl">
-          Legal compliance & incident procedure
-        </h1>
+        <AdminPageTitle>
+          <h1 className="font-heading text-4xl">
+            Legal compliance & incident procedure
+          </h1>
+        </AdminPageTitle>
         <p className="mt-3 max-w-3xl leading-7 text-muted-foreground">
           Internal operating instructions for complaints, evidence preservation,
           regulator contact, incidents and policy-version control.

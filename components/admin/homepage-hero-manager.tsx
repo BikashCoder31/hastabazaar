@@ -1,4 +1,5 @@
 'use client';
+import { AdminPageTitle } from '@/components/admin/page-help';
 
 import { FormGuide } from '@/components/forms/form-guide';
 import { useMemo, useRef, useState } from 'react';
@@ -190,8 +191,7 @@ function HomepageHeroManagerScope({actorId,
 
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="eyebrow">Customer homepage</p>
-          <h1 className="mt-2 font-heading text-4xl tracking-tight">Hero slides</h1>
+          <AdminPageTitle><h1 className="font-heading text-4xl tracking-tight">Hero slides</h1></AdminPageTitle>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
             Edit, order, preview, schedule, and restore the homepage story. All
             slides—including the first—use the same controls. Draft changes stay

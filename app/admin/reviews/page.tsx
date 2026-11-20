@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { StaffFormHistoryLinks } from '@/components/admin/staff-form-history-links';
 import { env } from 'cloudflare:workers';
 import { ReviewModerationActions } from '@/components/admin/review-moderation-actions';
@@ -26,8 +27,7 @@ export default async function AdminReviewsPage() {
       .filter((answer) => answer !== null)));
   return (
     <div>
-      <p className="eyebrow">Trust and quality</p>
-      <h1 className="mt-2 font-heading text-4xl">Product reviews</h1>
+      <AdminPageTitle><h1 className="font-heading text-4xl">Product reviews</h1></AdminPageTitle>
       <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
         Review customer text and every photo before publishing. Approve honest
         positive and negative experiences equally. Remove private information,

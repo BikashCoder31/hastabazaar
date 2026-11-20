@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import {can} from '@/lib/marketplace/permissions';
@@ -15,8 +16,7 @@ export default async function GovernancePage() {
   return (
     <div className="space-y-6">
       <div>
-        <p className="eyebrow">Marketplace governance</p>
-        <h1 className="section-title">Marketplace controls</h1>
+        <AdminPageTitle><h1 className="section-title">Marketplace controls</h1></AdminPageTitle>
       </div>
       <p className="max-w-3xl leading-7 text-muted-foreground">
         Manage listing rules and proposed placements. Sensitive account and

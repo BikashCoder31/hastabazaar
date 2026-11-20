@@ -1,9 +1,12 @@
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import type { FinancialNoticeDestination } from '@/lib/operations/financial-notice-destination';
 export function FinancialNoticeRecord({
   record,
+  heading,
 }: {
   record: FinancialNoticeDestination;
+  heading?: ReactNode;
 }) {
   const money = (value: number) =>
     new Intl.NumberFormat('en-NP', {
@@ -12,7 +15,7 @@ export function FinancialNoticeRecord({
     }).format(value / 100);
   return (
     <main className="mx-auto max-w-3xl space-y-5 px-5 py-8">
-      <h1 className="font-heading text-3xl">{record.title}</h1>
+      {heading ?? <h1 className="font-heading text-3xl">{record.title}</h1>}
       <p className="leading-7">{record.explanation}</p>
       <dl className="grid gap-4 rounded-xl border p-5 sm:grid-cols-2">
         <div>

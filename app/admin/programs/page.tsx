@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { env } from 'cloudflare:workers';
 import { redirect } from 'next/navigation';
 
@@ -55,8 +56,7 @@ export default async function ProgramsPage({searchParams = Promise.resolve({})}:
   return (
     <div className="space-y-6">
       <div>
-        <p className="eyebrow">Super Admin · Program controls</p>
-        <h1 className="section-title">Program Management</h1>
+        <AdminPageTitle><h1 className="section-title">Program Management</h1></AdminPageTitle>
         <p className="mt-3 max-w-3xl leading-7 text-muted-foreground">
           See what applicants can do now, what each commercial model still
           requires, and whether program, maker, and product activation conditions

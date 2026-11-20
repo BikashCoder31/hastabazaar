@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { env } from 'cloudflare:workers';
 import { redirect,notFound } from 'next/navigation';
 import Link from 'next/link';
@@ -57,8 +58,7 @@ export default async function PromoCodesPage({
     <div className="grid min-w-0 gap-6">
       <Link href={safeAdminReturnTo(params.returnTo,'/admin/fees?view=discounts')} className="underline">Back to previous view</Link>
       <div>
-        <p className="eyebrow">Super Admin · Controls</p>
-        <h1 className="section-title">Promo codes</h1>
+        <AdminPageTitle><h1 className="section-title">Promo codes</h1></AdminPageTitle>
         <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">
           Plan customer discounts, review their cost and inspect order-wise
           usage. Campaign controls, activity and change history stay here.

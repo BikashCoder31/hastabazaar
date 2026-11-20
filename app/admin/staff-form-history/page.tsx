@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -50,8 +51,7 @@ export default async function StaffFormHistoryPage({ searchParams }: { searchPar
   return <main className="min-w-0 space-y-6">
     <ReviewBackLink returnTo={returnTo} actorId={staff.id}/>
     <header>
-      <p className="eyebrow">Staff · Recorded context</p>
-      <h1 className="section-title">Staff form history</h1>
+      <AdminPageTitle><h1 className="section-title">Staff form history</h1></AdminPageTitle>
       <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">
         Context submitted with recorded staff actions. Current record access is checked again whenever an answer is opened.
       </p>

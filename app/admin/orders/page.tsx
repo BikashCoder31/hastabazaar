@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { withFirstCodPresentation } from '@/lib/orders/first-cod-review';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
@@ -58,7 +59,7 @@ export default async function AdminOrdersPage({
     const riderHistory = adminNavigation(staff.role, staff.permissions).some(link => link.href === '/admin/riders');
     return (
       <div className="space-y-5">
-        <h1 className="section-title">Seller &amp; rider answers</h1>
+        <AdminPageTitle><h1 className="section-title">Seller &amp; rider answers</h1></AdminPageTitle>
         {riderHistory ? <Link href="/admin/riders/form-history?kind=report" className="section-link">Rider form history</Link> : null}
         <SharedReviewQueue tasks={tasks?.filter(task => task.sourceType === 'order_response') ?? []}
           actorId={staff.id} unavailable={tasks === null} />
@@ -86,8 +87,7 @@ export default async function AdminOrdersPage({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <p className="eyebrow">Order operations</p>
-        <h1 className="mt-2 font-heading text-4xl tracking-tight">Orders</h1>
+        <AdminPageTitle><h1 className="font-heading text-4xl tracking-tight">Orders</h1></AdminPageTitle>
         <p className="mt-3 max-w-3xl leading-7 text-muted-foreground">
           Find an order, check confirmation and seller readiness, then manage
           fulfillment from its details.

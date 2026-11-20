@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { env } from 'cloudflare:workers';
 import { ShippingConsole } from '@/components/shipping-console';
 import { AnswerDetails } from '@/components/forms/answer-details';
@@ -52,10 +53,11 @@ export default async function AdminShippingPage({ searchParams }: {
   return (
     <div className="space-y-6">
       <div>
-        <p className="eyebrow">Carrier operations</p>
-        <h1 className="section-title">
-          Labels, pickups, claims & reconciliation
-        </h1>
+        <AdminPageTitle>
+          <h1 className="section-title">
+            Labels, pickups, claims & reconciliation
+          </h1>
+        </AdminPageTitle>
         <p className="mt-2 text-sm text-muted-foreground">
           Each record is isolated by order and seller. References are recorded
           manually; no carrier API behavior is assumed.

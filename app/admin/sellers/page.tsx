@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import {SharedReviewQueue} from '@/components/admin/shared-review-queue';
 import {listReviewTasks} from '@/lib/workflows/review-tasks';
 import {getSellerReadiness} from '@/lib/sellers/readiness';
@@ -96,10 +97,11 @@ export default async function SellerRegistryPage({
   return (
     <div className="space-y-7">
       <div>
-        <p className="eyebrow">Seller controls</p>
-        <h1 className="mt-2 font-heading text-4xl tracking-tight">
-          Seller management
-        </h1>
+        <AdminPageTitle>
+          <h1 className="font-heading text-4xl tracking-tight">
+            Seller management
+          </h1>
+        </AdminPageTitle>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
           Review every seller profile, including approved, rejected and
           suspended accounts. Open a seller to review registration, documents and

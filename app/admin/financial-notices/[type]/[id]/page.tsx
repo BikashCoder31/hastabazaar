@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { notFound } from 'next/navigation';
 import { requireDatabase } from '@/lib/db/d1';
 import { requireStaffPage } from '@/lib/auth/staff';
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { FinancialNoticeRecord } from '@/components/commerce/financial-notice-record';
 import {
   readFinancialNoticeDestination,
@@ -31,5 +32,7 @@ export default async function FinancialNoticePage({
     if (error instanceof FinancialNoticeAccessError) notFound();
     throw error;
   }
-  return <FinancialNoticeRecord record={record} />;
+  return <FinancialNoticeRecord record={record} heading={
+    <AdminPageTitle><h1 className="font-heading text-3xl">{record.title}</h1></AdminPageTitle>
+  } />;
 }

@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { StaffFormHistoryLinks } from '@/components/admin/staff-form-history-links';
 import {CompanyBankAccounts} from '@/components/admin/company-bank-accounts';
 import {getCompanyAccountWorkspace} from '@/lib/payments/company-accounts';
@@ -49,8 +50,7 @@ export default async function BusinessSettingsPage({searchParams}: {searchParams
     <div className="space-y-6">
       {backHref?<Link className="section-link" href={backHref}>Back to review queue</Link>:null}
       <div>
-        <p className="eyebrow">Super Admin · Business configuration</p>
-        <h1 className="section-title">Business Settings</h1>
+        <AdminPageTitle><h1 className="section-title">Business Settings</h1></AdminPageTitle>
         <p className="mt-3 max-w-3xl leading-7 text-muted-foreground">
           Review, preview, schedule, and audit routine business configuration
           without editing code. Save changes directly or schedule a future

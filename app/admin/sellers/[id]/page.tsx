@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import {registrationEvidenceKinds} from '@/lib/sellers/document-policy';
 import { AcceptedAgreementSnapshot } from '@/components/admin/accepted-agreement-snapshot';
 import { AccountRecoveryAssistance } from '@/components/admin/account-recovery-assistance';
@@ -121,7 +122,7 @@ export default async function SellerApplicationPage({
     const summary=await database.prepare('SELECT p.display_name AS name,s.application_reference AS reference FROM seller_profiles s JOIN seller_public_profile_states p ON p.seller_id=s.id WHERE s.id=?').bind(id).first<{name:string;reference:string|null}>();
     if(!summary)notFound();
     const publicWorkspace=await getPublicProfileWorkspace(database,id,staff.id,'staff',observedAt);
-    return <div className="space-y-6"><ReviewBackLink actorId={staff.id} returnTo={backHref}/><header><p className="eyebrow">{summary.reference}</p><h1 className="section-title">{summary.name||'Seller workspace'}</h1><p>Operational summary. Government identity, protected evidence and full bank comparison require their authorized reviewer.</p></header><SellerReadinessSummary readiness={readiness} audience="staff"/><SharedReviewQueue tasks={reviewTasks??[]} actorId={staff.id} unavailable={reviewTasks===null} sellerDirectoryAvailable/><PublicProfileReview actorId={staff.id} sellerId={id} workspace={publicWorkspace} canReview={false}/></div>;
+    return <div className="space-y-6"><ReviewBackLink actorId={staff.id} returnTo={backHref}/><header><AdminPageTitle><h1 className="section-title">{summary.name||'Seller workspace'}</h1></AdminPageTitle><p className="mt-2 text-sm text-muted-foreground">{summary.reference}</p><p>Operational summary. Government identity, protected evidence and full bank comparison require their authorized reviewer.</p></header><SellerReadinessSummary readiness={readiness} audience="staff"/><SharedReviewQueue tasks={reviewTasks??[]} actorId={staff.id} unavailable={reviewTasks===null} sellerDirectoryAvailable/><PublicProfileReview actorId={staff.id} sellerId={id} workspace={publicWorkspace} canReview={false}/></div>;
   }
   if(evidence.kind==='missing')notFound();
   const {application,publicProfile,bank}=evidence;
@@ -154,10 +155,12 @@ export default async function SellerApplicationPage({
 
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <p className="eyebrow">{application.applicationReference}</p>
-          <h1 className="mt-2 font-heading text-4xl tracking-tight">
-            {application.tradingName}
-          </h1>
+          <AdminPageTitle>
+            <h1 className="font-heading text-4xl tracking-tight">
+              {application.tradingName}
+            </h1>
+          </AdminPageTitle>
+          <p className="mt-2 text-sm text-muted-foreground">{application.applicationReference}</p>
           <p className="mt-2 text-sm text-muted-foreground">
             Legal name: {application.legalName}
           </p>

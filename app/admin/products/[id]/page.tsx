@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import {ProductAvailabilityPanel} from '@/components/products/product-availability-panel';
 import { StaffFormHistoryLinks } from '@/components/admin/staff-form-history-links';
 import {ReviewBackLink} from '@/components/admin/review-back-link';
@@ -93,7 +94,7 @@ export default async function ProductReviewPage({
   await database.batch([...reader.statements,...parties,...offerGuard(database,'EXISTS(SELECT 1 FROM products WHERE id=? AND seller_id=? AND updated_at=?)',[id,product.sellerId,product.updatedAt])]);
   staff={...staff,role:reader.role,permissions:reader.permissions};
   if(retained?.caseId)redirect(withAdminReturnTo('/admin/products/intakes/'+encodeURIComponent(retained.caseId),backHref));
-  if(retained)return <div className="space-y-5"><h1 className="font-heading text-3xl">{product.nameEn}</h1><p>The owner has a retained private workspace. Review becomes available when they explicitly share a candidate or request help.</p><ReviewBackLink returnTo={backHref} actorId={staff.id}/>{staff.role==='super_admin'&&<ProductAvailabilityPanel key={`${staff.id}:${id}`} actorId={staff.id} productId={id} scope="admin"/>}</div>;
+  if(retained)return <div className="space-y-5"><AdminPageTitle><h1 className="font-heading text-3xl">{product.nameEn}</h1></AdminPageTitle><p>The owner has a retained private workspace. Review becomes available when they explicitly share a candidate or request help.</p><ReviewBackLink returnTo={backHref} actorId={staff.id}/>{staff.role==='super_admin'&&<ProductAvailabilityPanel key={`${staff.id}:${id}`} actorId={staff.id} productId={id} scope="admin"/>}</div>;
   return (
     <div className="space-y-7">
       <StaffFormHistoryLinks returnTo={currentHref} entries={[{kind:'product-review',subjectId:id,label:'Product decision answers'},
@@ -101,11 +102,13 @@ export default async function ProductReviewPage({
       <ReviewBackLink returnTo={backHref} actorId={staff.id}/>
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <p className="eyebrow break-all">Platform SKU: {product.sku}</p>
-          <p className="mt-1 break-all text-sm">Seller SKU: {product.sellerSku || '—'}</p>
-          <h1 className="mt-2 font-heading text-4xl tracking-tight">
-            {product.nameEn}
-          </h1>
+          <AdminPageTitle>
+            <h1 className="font-heading text-4xl tracking-tight">
+              {product.nameEn}
+            </h1>
+          </AdminPageTitle>
+          <p className="mt-2 break-all text-sm text-muted-foreground">Platform SKU: {product.sku}</p>
+          <p className="mt-1 break-all text-sm text-muted-foreground">Seller SKU: {product.sellerSku || '—'}</p>
         </div>
         <StatusBadge status={product.status} />
       </div>

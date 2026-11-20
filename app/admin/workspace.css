@@ -311,3 +311,80 @@
   .admin-account summary { padding: 0.55rem; background: #26324c; }
   .admin-account-panel { inset: auto 0 100%; width: 100%; margin-bottom: 0.35rem; }
 }
+
+.admin-page-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.admin-page-title h1 { min-width: 0; }
+
+.admin-page-help-trigger {
+  display: inline-grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 100%;
+  color: #14213d;
+}
+
+.admin-page-help-trigger span {
+  display: grid;
+  width: 1.875rem;
+  height: 1.875rem;
+  place-items: center;
+  border: 1px solid #cdbfa9;
+  border-radius: 100%;
+  font: 600 0.875rem / 1 'Instrument Sans', sans-serif;
+}
+
+.admin-page-help-trigger:hover span,
+.admin-page-help-trigger[aria-expanded='true'] span { background: #eee5d5; }
+.admin-page-help-trigger:focus-visible { outline: 2px solid #a8232e; outline-offset: 2px; }
+
+.admin-page-help-positioner { z-index: 60; }
+
+.admin-page-help-popup {
+  display: grid;
+  box-sizing: border-box;
+  width: min(25rem, calc(100vw - 1.5rem));
+  max-height: min(var(--available-height, 90dvh), 90dvh);
+  gap: 0.45rem;
+  overflow: auto;
+  border: 1px solid #e3d8c7;
+  border-radius: 0.75rem;
+  padding: 1rem 1.125rem;
+  background: #fffdfa;
+  color: #2c3b5c;
+  box-shadow: 0 12px 28px #14213d25;
+  font: 400 0.875rem / 1.5 'Instrument Sans', 'Segoe UI', sans-serif;
+}
+
+.admin-page-help-popup[data-open] {
+  animation: admin-page-help-enter 180ms ease-out both;
+}
+
+.admin-page-help-heading { color: #14213d; font-size: 0.9375rem; font-weight: 700; }
+.admin-page-help-link {
+  display: inline-flex;
+  min-height: 2.5rem;
+  width: fit-content;
+  align-items: center;
+  color: #a8232e;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.admin-page-help-link:focus-visible { outline: 2px solid #a8232e; outline-offset: 2px; }
+
+@keyframes admin-page-help-enter {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-page-help-popup[data-open] { animation: none; }
+}

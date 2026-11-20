@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import Link from 'next/link';
 import { requireLegalProcedureReaderPage } from '@/lib/legal-procedures/access';
 import { getCurrentLegalProcedureControl } from '@/lib/legal-procedures/lifecycle';
@@ -11,12 +12,12 @@ export default async function ActiveStaffProcedurePage() {
   let control;
   try { control = await getCurrentLegalProcedureControl(db); }
   catch (error) {
-    if (error instanceof LegalDraftStoreError) return <div role="alert" className="rounded-2xl border p-6"><h1 className="font-heading text-3xl">Active procedure unavailable</h1><p className="mt-3">The recorded approval could not be verified. No working version has been substituted. Ask Super Admin to review its history.</p></div>;
+    if (error instanceof LegalDraftStoreError) return <div role="alert" className="rounded-2xl border p-6"><AdminPageTitle><h1 className="font-heading text-3xl">Active procedure unavailable</h1></AdminPageTitle><p className="mt-3">The recorded approval could not be verified. No working version has been substituted. Ask Super Admin to review its history.</p></div>;
     throw error;
   }
   const active = control.active;
   return <div className="flex min-w-0 flex-col gap-6">
-    <header><p className="eyebrow">Internal · Authorized staff</p><h1 className="mt-2 font-heading text-4xl">Active operating procedure</h1>
+    <header><AdminPageTitle><h1 className="font-heading text-4xl">Active operating procedure</h1></AdminPageTitle>
       <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">Use the active instructions with each order&apos;s recorded terms and existing public customer policies. This page does not change agreements, permissions or money.</p></header>
     <div className="flex flex-wrap gap-4 text-sm font-semibold text-primary">
       <Link href="/admin/cases" className="min-h-11 py-2 underline">Returns and complaints</Link>

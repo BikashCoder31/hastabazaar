@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import {StaffReviewAccessBoundary} from '@/components/admin/staff-review-access-boundary';
 import {ReviewBackLink} from '@/components/admin/review-back-link';
 import {safeAdminReturnTo,withAdminReturnTo} from '@/lib/admin/return-context';
@@ -186,10 +187,11 @@ export default async function AdminOrderPage({
       <ReviewBackLink returnTo={returnTo} actorId={staff.id}/>
       <div className="mt-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="eyebrow">Order fulfilment</p>
-          <h1 className="mt-2 font-heading text-4xl tracking-tight">
-            {order.orderNumber}
-          </h1>
+          <AdminPageTitle>
+            <h1 className="font-heading text-4xl tracking-tight">
+              {order.orderNumber}
+            </h1>
+          </AdminPageTitle>
           <p className="mt-2 text-sm text-muted-foreground">
             Placed {new Date(order.placedAt).toLocaleString('en-NP')}
           </p>

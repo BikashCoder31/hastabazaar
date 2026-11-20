@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { NATIVE_TASK_FORM_IDS } from '@/lib/forms/catalog-policy';
 import { nativeFormDestination } from '@/lib/forms/native-destinations';
 import { withAdminReturnTo } from '@/lib/admin/return-context';
@@ -43,7 +44,7 @@ export default async function FormCatalogPage() {
       draftVersion: stored?.draftVersion ?? 0, lastChangedAt: stored?.lastChangedAt, lastEditor: stored?.lastEditor, availability, availabilityReason };
   });
   return <div className="grid min-w-0 gap-6">
-    <div><p className="eyebrow">Super Admin · Controls</p><h1 className="section-title">Form Management</h1>
+    <div><AdminPageTitle><h1 className="section-title">Form Management</h1></AdminPageTitle>
       <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">Find a form, check what it asks, and make changes. Save a draft, preview it, then publish when it is ready.</p>
     </div>
     <FormCatalogList rows={rows} />

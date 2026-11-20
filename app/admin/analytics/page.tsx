@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { env } from 'cloudflare:workers';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
@@ -56,8 +57,7 @@ export default async function AdminAnalyticsPage() {
   return (
     <div className="space-y-7">
       <div>
-        <p className="eyebrow">Marketplace reporting</p>
-        <h1 className="section-title">Commerce & financial analytics</h1>
+        <AdminPageTitle><h1 className="section-title">Commerce & financial analytics</h1></AdminPageTitle>
         <p className="mt-2 text-sm text-muted-foreground">
           Values use integer paisa and live operational records.
         </p>

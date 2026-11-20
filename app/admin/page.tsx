@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import {SharedReviewQueue} from '@/components/admin/shared-review-queue';
 import {OverviewWorkSummaries} from '@/components/admin/overview-work-summaries';
 import {OverviewHealth} from '@/components/admin/overview-health';
@@ -118,17 +119,18 @@ export default async function AdminDashboardPage({ searchParams }: {
   await database.batch(reader.statements);
   const reviewQueue = <SharedReviewQueue tasks={workItems} actorId={staff.id} unavailable={reviewTasks===null&&!workItems.length} observedAt={now} partialSources={partialSources} sellerDirectoryAvailable={can(staff,'seller.application.review')}/>;
   if (params?.workspace === 'reviews') {
-    return <div className="space-y-5"><h1 className="section-title">Review tasks</h1>{reviewQueue}</div>;
+    return <div className="space-y-5"><AdminPageTitle><h1 className="section-title">Review tasks</h1></AdminPageTitle>{reviewQueue}</div>;
   }
   return (
     <div className="space-y-8">
       <section className="overflow-hidden rounded-3xl border bg-card p-6 sm:p-8">
         <div className="flex flex-wrap items-start justify-between gap-5">
           <div>
-            <p className="eyebrow">Operations overview</p>
-            <h1 className="mt-3 font-heading text-3xl tracking-tight sm:text-4xl">
-              Overview
-            </h1>
+            <AdminPageTitle>
+              <h1 className="font-heading text-3xl tracking-tight sm:text-4xl">
+                Overview
+              </h1>
+            </AdminPageTitle>
             <p className="mt-3 max-w-2xl leading-7 text-muted-foreground">
               Welcome back, {staff.displayName}. Review your next action, owner and current source before recording a decision.
             </p>

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState, type SubmitEvent } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type SubmitEvent } from 'react';
 
 type Inventory = { tables: number; rows: number; files: number; bytes: number };
 type Readiness = {
@@ -175,7 +175,7 @@ function inspectionData(value: Record<string, unknown>): Inspection {
   return value as unknown as Inspection;
 }
 
-export function BackupTransferWorkspace() {
+export function BackupTransferWorkspace({ heading }: { heading?: ReactNode } = {}) {
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -340,8 +340,7 @@ export function BackupTransferWorkspace() {
   return (
     <div className="grid min-w-0 gap-6">
       <header>
-        <p className="eyebrow">Super Admin · Data protection</p>
-        <h1 className="section-title">Backup &amp; Transfer</h1>
+        {heading ?? <><p className="eyebrow">Super Admin · Data protection</p><h1 className="section-title">Backup &amp; Transfer</h1></>}
         <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">
           Prepare an encrypted copy of your records and uploads, protect the
           matching security keys separately, and check a saved package before a

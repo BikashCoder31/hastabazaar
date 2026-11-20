@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import Link from 'next/link';
 import type { DeliveryMailService } from '@/lib/email/delivery-attempts';
 import { env } from 'cloudflare:workers';
@@ -19,7 +20,7 @@ export default async function BusinessEmails() {
   });
   return (
     <div className="space-y-6">
-      <h1 className="font-heading text-3xl">Email delivery</h1>
+      <AdminPageTitle><h1 className="font-heading text-3xl">Email delivery</h1></AdminPageTitle>
       <p>
         Automatic sending and due reminders use the shared saved notification
         work. Delivery failures do not undo completed business actions.

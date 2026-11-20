@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -38,7 +39,7 @@ export default async function RidersPage() {
   const reports = await listRiderReports(db);
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-semibold">Rider operations</h1>
+      <AdminPageTitle><h1 className="text-3xl font-semibold">Rider operations</h1></AdminPageTitle>
       <p>
         Only Super Admin can review rider identity, assignments and evidence.
         Rider applications and self-service are currently on hold. Delivery,

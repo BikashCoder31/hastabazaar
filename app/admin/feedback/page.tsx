@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { env } from 'cloudflare:workers';
 import { AnswerDetails } from '@/components/forms/answer-details';
 import { requireStaffPage } from '@/lib/auth/staff';
@@ -53,8 +54,7 @@ export default async function AdminFeedbackPage({ searchParams }: {
 
   return <div className="space-y-6">
     <div>
-      <p className="eyebrow">Support intake</p>
-      <h1 className="section-title">Contact and feedback submissions</h1>
+      <AdminPageTitle><h1 className="section-title">Contact and feedback submissions</h1></AdminPageTitle>
       <p className="mt-2 text-sm text-muted-foreground">All saved feedback jobs appear here, including work still pending or retryable. Status is a snapshot and can change during a delivery attempt. Custom answers stay in this restricted view and are not included in outbound email.</p>
       <p className="mt-2 text-sm text-muted-foreground">For uncertain delivery, check the support mailbox and transport records using the request ID, source, time and message details. Do not resend or mark sent without independent evidence. Ask the customer to start a new message only after explaining that a duplicate may result.</p>
     </div>

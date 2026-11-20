@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -58,10 +59,12 @@ export default async function PayoutDetailPage({
       </Link>
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <p className="eyebrow">{payout.payoutNumber}</p>
-          <h1 className="mt-2 font-heading text-4xl tracking-tight">
-            {payout.tradingName}
-          </h1>
+          <AdminPageTitle>
+            <h1 className="font-heading text-4xl tracking-tight">
+              {payout.tradingName}
+            </h1>
+          </AdminPageTitle>
+          <p className="mt-2 text-sm text-muted-foreground">{payout.payoutNumber}</p>
           <p className="mt-2 text-sm text-muted-foreground">
             Prepared by {payout.preparedByName} · {date(payout.createdAt)}
           </p>

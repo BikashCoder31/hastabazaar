@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import Link from 'next/link';
 import {withAdminReturnTo,safeAdminReturnTo} from '@/lib/admin/return-context';
 import type {FeeProgramWorkspace,FeeProgramView} from '@/lib/admin/fee-program-workspace';
@@ -9,7 +10,7 @@ export function FeeProgramWorkspaceView({workspace,view='overview',status='all',
  const href=(v:FeeProgramView,s:FeeProgramStatus)=>withAdminReturnTo('/admin/fees?'+new URLSearchParams({view:v,...(s==='all'?{}:{status:s}),...(cohortAfter?{cohortAfter}:{})}),returnTo);
  const current=href(view,status),rows=workspace.sources.filter(row=>(view==='overview'||view==='history'||row.view===view)&&(status==='all'||row.status===status));
  const date=(at:number)=>new Intl.DateTimeFormat('en-NP',{timeZone:'Asia/Kathmandu',dateStyle:'medium',timeStyle:'short'}).format(at);
- return <div className="min-w-0 space-y-6"><Link href={safeAdminReturnTo(returnTo)} className="underline">Back to previous view</Link><header><h1 className="section-title">Fees, programs & promotions</h1><p className="mt-3 max-w-3xl">Review the original current and upcoming sources. Each editor keeps its own permission, publication and activation checks. This overview does not change a policy or balance.</p><p className="mt-2 text-sm">Observed {date(workspace.observedAt)} Nepal time.</p></header>
+ return <div className="min-w-0 space-y-6"><Link href={safeAdminReturnTo(returnTo)} className="underline">Back to previous view</Link><header><AdminPageTitle><h1 className="section-title">Fees, programs & promotions</h1></AdminPageTitle><p className="mt-3 max-w-3xl">Review the original current and upcoming sources. Each editor keeps its own permission, publication and activation checks. This overview does not change a policy or balance.</p><p className="mt-2 text-sm">Observed {date(workspace.observedAt)} Nepal time.</p></header>
  <nav aria-label="Fees workspace views" className="flex flex-wrap gap-2">{workspace.views.map(v=><Link key={v.id} href={href(v.id,status)} aria-current={view===v.id?'page':undefined} className="rounded border px-3 py-2">{v.label}</Link>)}</nav>
  <nav aria-label="Source status" className="flex flex-wrap gap-2">{statuses.map(s=><Link key={s} href={href(view,s)} aria-current={status===s?'page':undefined} className="rounded border px-3 py-2">{s==='source'?'Original source':s[0].toUpperCase()+s.slice(1)}</Link>)}</nav>
  {workspace.partial?<output className="block rounded border p-3" aria-live="polite">Some sources are unavailable or the bounded source list has more records. This view does not claim complete totals. Open the native workspace for its full history and continuation.</output>:null}

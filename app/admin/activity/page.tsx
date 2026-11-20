@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import {RecordedDateRangeFields} from '@/components/admin/recorded-date-range-fields';
 import {RecordedTime} from '@/components/admin/recorded-time';
 import {dateCalendar} from '@/lib/dates/nepal-calendar';
@@ -22,7 +23,7 @@ export default async function BusinessActivityPage({searchParams}:{searchParams:
  const work=await getAdminWorkSummary(db,staff.role);
  const presentation=await presentationPromise;
  const queues=[['Seller applications awaiting review',work.sellers,'/admin/sellers'],['Products awaiting review',work.products,'/admin/products'],['Orders with items ready for pickup',work.readyOrders,'/admin/orders'],['Active returns',work.returns,'/admin/cases'],['Active complaints',work.complaints,'/admin/cases'],['Seller payout requests awaiting preparation',work.payoutRequests,'/admin/payouts'],['Payouts awaiting Super Admin decision',work.approvals?.payouts??0,'/admin/payouts'],['Returns awaiting high-value decision',work.approvals?.highValueRefunds??0,'/admin/cases']] as const;
- return <div className="space-y-6"><header><p className="eyebrow">Super Admin</p><h1 className="mt-2 font-heading text-4xl">Business activity</h1><p className="mt-3 text-muted-foreground">Current work and recorded business actions. Counts below describe records in their current state; they are not counts of completed approvals or staff performance.</p></header>
+ return <div className="space-y-6"><header><AdminPageTitle><h1 className="font-heading text-4xl">Business activity</h1></AdminPageTitle><p className="mt-3 text-muted-foreground">Current work and recorded business actions. Counts below describe records in their current state; they are not counts of completed approvals or staff performance.</p></header>
  <section aria-label="Current work" className="grid gap-3 sm:grid-cols-2">{queues.map(([label,count,href])=><Link key={label} href={href} className="rounded-xl border p-4"><strong className="text-2xl">{count}</strong><span className="block mt-2">{label}</span><span className="mt-2 block text-sm underline">Open review queue</span></Link>)}</section>
  <RecordedProgressSection db={db} staff={staff} filters={filters}/>
  <section className="rounded-xl border p-4"><h2 className="font-semibold">Recorded actions</h2><p className="mt-2 text-sm text-muted-foreground">Latest 100 matching audit records. Older actions appear only if the application recorded them at the time. Parcel history recorded before audit coverage remains in its original event records. An audit action records a business event, not proof that every related obligation is complete. Private notes and raw before/after data are excluded.</p>

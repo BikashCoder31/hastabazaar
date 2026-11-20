@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -94,7 +95,7 @@ const sourceViews = [
 export function AccountingFilterError({ message }: { message: string }) {
   return (
     <div className="space-y-4">
-      <h1 className="section-title">Accounting</h1>
+      <AdminPageTitle><h1 className="section-title">Accounting</h1></AdminPageTitle>
       <p role="alert">{message}</p>
       <Link prefetch={false} className={linkClass} href="/admin/accounting">
         Start a new report
@@ -115,8 +116,7 @@ export function AccountingWorkspaceView({
   return (
     <div className="min-w-0 space-y-6">
       <header className="space-y-3">
-        <p className="eyebrow">Super Admin · Financial records</p>
-        <h1 className="section-title">Accounting</h1>
+        <AdminPageTitle><h1 className="section-title">Accounting</h1></AdminPageTitle>
         <p className="max-w-3xl leading-7 text-muted-foreground">
           Read-only operational records. Company books and bank balances are not
           connected.

@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import {env} from 'cloudflare:workers';
 import {requireStaffPage} from '@/lib/auth/staff';
 import {requireDatabase} from '@/lib/db/d1';
@@ -15,5 +16,5 @@ export default async function StaffNotificationsPage({searchParams}: {searchPara
    : view==='money-notices' ? visible.filter(item=>item.relatedType && Object.hasOwn(financialNoticeTypes,item.relatedType))
      : visible;
  const title=view==='reminders' ? 'Reminders' : view==='money-notices' ? 'Money notices' : 'Your work notifications';
- return <div className="space-y-5"><h1 className="font-heading text-4xl">{title}</h1><p className="text-muted-foreground">Updates addressed to you for work you currently have permission to view. Opening a record does not approve or change it.</p><NotificationList workspace="staff" accountId={staff.id} initial={filtered}/></div>;
+ return <div className="space-y-5"><AdminPageTitle><h1 className="font-heading text-4xl">{title}</h1></AdminPageTitle><p className="text-muted-foreground">Updates addressed to you for work you currently have permission to view. Opening a record does not approve or change it.</p><NotificationList workspace="staff" accountId={staff.id} initial={filtered}/></div>;
 }

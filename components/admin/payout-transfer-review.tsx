@@ -1,4 +1,5 @@
 'use client';
+import { AdminPageTitle } from '@/components/admin/page-help';
 import {formText} from '@/lib/http/bounded-body';
 import {useRef,type SubmitEvent} from 'react';
 import Link from 'next/link';
@@ -29,7 +30,7 @@ function PrivateBeneficiary({row}:{row:{privateBeneficiary?:PayoutPacketSummary[
 const models={registered:'Registered seller earnings',managed:'Managed maker settlement',fixed:'Accepted supplier goods'};
 export function PayoutTransferReview({workspace,actorId,returnTo='/admin'}:{workspace:PayoutFinanceWorkspace;actorId:string;returnTo?:string}){
  const verifiedFunding=workspace.funding.filter(source=>source.statementId&&source.availablePaisa!==null);
- return <div className="space-y-7"><h1 className="font-heading text-4xl">Payout transfers</h1><Link className="underline" href={safeAdminReturnTo(returnTo)}>Back to previous view</Link>
+ return <div className="space-y-7"><AdminPageTitle><h1 className="font-heading text-4xl">Payout transfers</h1></AdminPageTitle><Link className="underline" href={safeAdminReturnTo(returnTo)}>Back to previous view</Link>
   <p>Review the original earned amount, verified beneficiary and available company funds before recording one manual bank instruction. Beginning an instruction does not send money.</p>
   <nav className="flex flex-wrap gap-4"><Link className="underline" href="/admin/payouts">Original earnings and payout requests</Link>{workspace.superAdmin?<><Link className="underline" href="/admin/payments/refunds">Verify company funds and review refunds</Link><Link className="underline" href="/admin/payments">Owned Finance exceptions</Link></>:null}</nav>
   <section className="space-y-3"><h2 className="text-2xl">Shared available company funds</h2><p>Refunds and payouts use the same verified available funds. Customer money, unrelated restrictions and reserved instructions are excluded.</p>

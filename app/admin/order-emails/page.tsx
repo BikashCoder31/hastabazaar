@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import type { DeliveryMailService } from '@/lib/email/delivery-attempts';
 import Link from 'next/link';
 import { env } from 'cloudflare:workers';
@@ -158,10 +159,11 @@ export default async function OrderEmails({
   return (
     <div className="flex min-w-0 flex-col gap-5">
       <header>
-        <p className="eyebrow">Customer communication</p>
-        <h1 className="mt-2 font-heading text-4xl tracking-tight">
-          Order emails
-        </h1>
+        <AdminPageTitle>
+          <h1 className="font-heading text-4xl tracking-tight">
+            Order emails
+          </h1>
+        </AdminPageTitle>
         <p className="mt-3 max-w-3xl leading-7 text-muted-foreground">
           Check queued customer updates and their outcomes. Unsent updates
           expire after {orderEmailExpiryHours} hours; earlier order statuses are

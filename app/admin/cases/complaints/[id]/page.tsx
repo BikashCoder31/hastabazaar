@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import {ReviewBackLink} from '@/components/admin/review-back-link';
 import {safeAdminReturnTo,withAdminReturnTo} from '@/lib/admin/return-context';
 import {AftercareFollowupActions} from '@/components/admin/aftercare-followup-actions';
@@ -45,8 +46,8 @@ export default async function AdminComplaintPage({
       <ReviewBackLink returnTo={returnTo} actorId={staff.id}/>
       <div className="mt-6 flex flex-wrap justify-between gap-4">
         <div>
-          <p className="eyebrow">{item.referenceNumber}</p>
-          <h1 className="mt-2 font-heading text-4xl">{item.subject}</h1>
+          <AdminPageTitle><h1 className="font-heading text-4xl">{item.subject}</h1></AdminPageTitle>
+          <p className="mt-2 text-sm text-muted-foreground">{item.referenceNumber}</p>
           <p className="mt-2 text-sm text-muted-foreground">
             Order {item.orderNumber} · {item.category} · {item.priority}{' '}
             priority

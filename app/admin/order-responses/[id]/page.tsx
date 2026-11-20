@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import {safeAdminReturnTo} from '@/lib/admin/return-context';
 import {requireStaffPage} from '@/lib/auth/staff';
 import {env} from 'cloudflare:workers';
@@ -12,5 +13,5 @@ export default async function PreparationPage({params,searchParams}:{params:Prom
  const {id}=await params,viewer=await requireStaffPage(`/admin/order-responses/${id}`,'order.manage');if(!viewer)notFound();
  const workspace=await readPreparationWorkspace(requireDatabase(env as unknown as {DB?:D1Database}),viewer.id,id,'staff',{actorAuthSubject:viewer.authSubject});if(!workspace)notFound();
  const returnTo=safeAdminReturnTo((await searchParams)?.returnTo,`/admin/orders/${encodeURIComponent(workspace.orderId)}`);
- return <main className="mx-auto max-w-4xl space-y-5 p-6"><ReviewBackLink returnTo={returnTo} actorId={viewer.id}/><StaffReviewAccessBoundary actorId={viewer.id} sourceId={workspace.orderId}><OrderPreparationWorkspace workspace={workspace}/></StaffReviewAccessBoundary></main>;
+ return <main className="mx-auto max-w-4xl space-y-5 p-6"><ReviewBackLink returnTo={returnTo} actorId={viewer.id}/><StaffReviewAccessBoundary actorId={viewer.id} sourceId={workspace.orderId}><div className="space-y-5"><AdminPageTitle><h1 className="section-title">Order preparation</h1></AdminPageTitle><OrderPreparationWorkspace workspace={workspace}/></div></StaffReviewAccessBoundary></main>;
 }

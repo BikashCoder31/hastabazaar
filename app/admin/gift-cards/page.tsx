@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import {formatPaisaExact} from '@/lib/marketplace/money-display';
 import { env } from 'cloudflare:workers';
 import { requireStaffPage } from '@/lib/auth/staff';
@@ -53,7 +54,7 @@ export default async function GiftCardsPage({ searchParams }: {
   await assertGiftCardViewScope(db,scope,selectedGift?{id:selectedGift.id,owner:'issued_by'}:undefined);
   return (
     <div className="space-y-6">
-      <h1 className="section-title">Gift cards</h1>
+      <AdminPageTitle><h1 className="section-title">Gift cards</h1></AdminPageTitle>
       <GiftCardForm actorId={staff.id} issue />
       {selectedRecord?<section id={'gift-record-'+selectedRecord.id} className="rounded-3xl border bg-card p-6"><h2 className="font-heading text-2xl">Original gift card record</h2><p className="mt-3 break-all">{selectedRecord.id}</p><p>{formatPaisaExact(selectedRecord.amountPaisa)} · {selectedRecord.redeemedAt?'Redemption recorded':'No redemption recorded'}</p><p className="text-sm text-muted-foreground">Issued {new Date(selectedRecord.issuedAt).toLocaleDateString('en-NP')}. Secret codes and the redeeming customer are not available from this record.</p></section>:query?.giftId?<output className="block">The requested gift card record is unavailable.</output>:null}
       <section className="space-y-4 rounded-3xl border bg-card p-6" aria-label="Your gift card issuance answers">

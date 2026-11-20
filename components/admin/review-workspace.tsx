@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
@@ -10,7 +11,8 @@ export function ReviewWorkspace({ record, summary, current, proposed, evidence, 
   return <div className="space-y-7">
     <header className="sticky top-0 z-20 space-y-2 rounded-xl border bg-card p-4 xl:top-24">
       <Link className="section-link" href={record.backHref}>← Back to results</Link>
-      <p className="eyebrow">{record.type} · {record.reference}</p><h1 className="section-title">{record.name}</h1>
+      <AdminPageTitle><h1 className="section-title">{record.name}</h1></AdminPageTitle>
+      <p className="mt-2 text-sm text-muted-foreground">{record.type} · {record.reference}</p>
       <p>{record.status} · Version {record.version} · {record.owner ? `Owner: ${record.owner}` : 'Unassigned'}</p>
       <nav className="flex flex-wrap gap-4 text-sm" aria-label="Review sections">{['summary','comparison','evidence','dependencies','decision','history'].map(id =>
         <a key={id} className="underline capitalize" href={`#review-${id}`}>{id}</a>)}</nav>

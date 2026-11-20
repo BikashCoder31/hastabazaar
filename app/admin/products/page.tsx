@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { env } from 'cloudflare:workers';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -39,10 +40,11 @@ export default async function ProductReviewQueuePage({
   return (
     <div className="space-y-7">
       <div>
-        <p className="eyebrow">Catalogue controls</p>
-        <h1 className="mt-2 font-heading text-4xl tracking-tight">
-          {publishedOnly ? 'Published products' : 'Product review queue'}
-        </h1>
+        <AdminPageTitle>
+          <h1 className="font-heading text-4xl tracking-tight">
+            {publishedOnly ? 'Published products' : 'Product review queue'}
+          </h1>
+        </AdminPageTitle>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           Review product facts and photos before approval. Approved products
           require a separate publish action.

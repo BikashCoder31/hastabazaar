@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import { requireStaffPage } from '@/lib/auth/staff';
@@ -58,10 +59,11 @@ export default async function ReferralAdmin({
   return (
     <div className="min-w-0 space-y-5">
       <header>
-        <p className="eyebrow">Super Admin · Customer referrals</p>
-        <h1 className="mt-2 font-heading text-3xl sm:text-4xl">
-          Referrals & shopping credit
-        </h1>
+        <AdminPageTitle>
+          <h1 className="font-heading text-3xl sm:text-4xl">
+            Referrals & shopping credit
+          </h1>
+        </AdminPageTitle>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
           Track referral discounts and shopping-credit rewards. Hastabazaar
           funds both; seller earnings are unchanged.
