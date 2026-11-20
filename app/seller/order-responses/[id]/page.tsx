@@ -9,5 +9,5 @@ export const dynamic='force-dynamic';
 export default async function PreparationPage({params}:{params:Promise<{id:string}>}){
  const {id}=await params,viewer=await requireSellerCenterPage(`/seller/order-responses/${id}`);if(!viewer)notFound();
  const workspace=await readPreparationWorkspace(requireDatabase(env as unknown as {DB?:D1Database}),viewer.userId,id,'seller',{actorAuthSubject:viewer.authSubject});if(!workspace)notFound();
- return <main className="mx-auto max-w-4xl space-y-5 p-6"><Link href={`/seller/orders/${workspace.orderId}`}>Back to order</Link><OrderPreparationWorkspace workspace={workspace}/></main>;
+ return <div className="mx-auto max-w-3xl space-y-4 text-[#14213D]"><Link className="section-link min-h-11" href={`/seller/orders/${encodeURIComponent(workspace.orderId)}`}>Back to order</Link><OrderPreparationWorkspace workspace={workspace}/></div>;
 }

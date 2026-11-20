@@ -25,7 +25,9 @@ registerHooks({ resolve(specifier, context, nextResolve) {
         ? 'export function notFound(){throw Error("NOT_FOUND")};export function redirect(path){throw Error("REDIRECT:"+path)};export function useRouter(){return {refresh(){}}}'
         : specifier === 'next/link'
           ? 'export default function Link({children,...props}){return globalThis.sellerCaseHistoryReact.createElement("a",props,children)}'
-          : null;
+          : specifier === 'next/image'
+            ? 'export default function Image({unoptimized,...props}){return globalThis.sellerCaseHistoryReact.createElement("img",props)}'
+            : null;
   return fixture ? { url: `data:text/javascript,${fixture}`, shortCircuit: true } : nextResolve(specifier, context);
 } });
 

@@ -1106,12 +1106,21 @@ void test('seller case response client posts distinct published form answers', a
     for (const [id, note] of [['seller.case-return-response', 'Return context'],
       ['seller.case-complaint-response', 'Complaint context']]) {
       const form = page.locator(`form[data-form-id="${id}"]`);
-      await form.getByLabel('Response for the investigation').fill('I inspected the packing record and will resolve this case.');
+      const isReturn = id === 'seller.case-return-response';
+      const response = form.getByLabel(isReturn ? 'Explain what you know' : 'Response for the investigation');
+      const submit = form.getByRole('button', { name: isReturn ? 'Send reply to Hastabazaar' : 'Submit response' });
+      if (isReturn) {
+        await form.getByRole('radio', { name: /Disagree/ }).check();
+        await response.fill('Too short.');
+        await form.getByText('10 / 20 min').waitFor();
+        assert.equal(await submit.isDisabled(), true);
+      }
+      await response.fill('I inspected the packing record and will resolve this case.');
       await form.getByLabel('Seller context').fill(note);
-      await form.getByRole('button', { name: 'Submit response' }).click();
+      await submit.click();
       await form.getByText('Correct the response.').waitFor();
-      await form.getByLabel('Response for the investigation').fill('I rechecked the packing record and will resolve this case.');
-      await form.getByRole('button', { name: 'Submit response' }).click();
+      await response.fill('I rechecked the packing record and will resolve this case.');
+      await submit.click();
     }
     await page.waitForFunction(() => document.querySelectorAll('form[data-form-id]').length === 2);
     assert.deepEqual(bodies.map((body) => body.customAnswers), [
@@ -1121,6 +1130,7 @@ void test('seller case response client posts distinct published form answers', a
       [{ fieldId: 'context_note', value: 'Complaint context' }],
     ]);
     assert.deepEqual(bodies.map((body) => body.formVersion), [1, 1, 1, 1]);
+    assert.deepEqual(bodies.map((body) => body.recommendation), ['contest', 'contest', undefined, undefined]);
     assert.equal(bodies[0].idempotencyKey, bodies[1].idempotencyKey);
     assert.equal(bodies[2].idempotencyKey, bodies[3].idempotencyKey);
   } finally { await page.close(); await browser.close(); }

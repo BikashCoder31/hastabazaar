@@ -1,243 +1,215 @@
 import { env } from 'cloudflare:workers';
+import Image from 'next/image';
 import Link from 'next/link';
-import {
-  ArrowRight,
-  AlertTriangle,
-  Boxes,
-  Clock3,
-  FileText,
-  Package,
-  PackageCheck,
-} from 'lucide-react';
-import {
-  SellerEmpty,
-  SellerHeading,
-  SellerMetric,
-} from '@/components/seller/workspace-ui';
-import { SellerOrderList } from '@/components/seller/seller-order-list';
+import { CalendarDays, Package } from 'lucide-react';
+import { ApplicantSection } from '@/components/seller/applicant-section';
+import { InventoryEditor } from '@/components/seller/inventory-editor';
 import { SellerAgreementAcceptance } from '@/components/seller/seller-agreement-acceptance';
 import { SellerManagedProgramWorkspace } from '@/components/seller/managed-program-workspace';
-import { SellerEarningsSummary } from '@/components/seller/seller-earnings-summary';
+import { SellerOnboardingChecklist } from '@/components/seller/onboarding-checklist';
 import { SellerProgramDetails } from '@/components/seller/seller-program-details';
+import { SellerReadinessSummary } from '@/components/seller/readiness-summary';
+import { SellerActionOverview, type TodayTask } from '@/components/seller/seller-action-overview';
+import { WhoseTurn } from '@/components/ui/whose-turn';
 import { requireSellerCenterPage } from '@/lib/auth/seller-center';
-import { ApplicantSection } from '@/components/seller/applicant-section';
-import { requireDatabase } from '@/lib/db/d1';
-import { getSellerProductStats } from '@/lib/db/repositories/products';
-import {
-  getRegisteredSellerTerms,
-  sellerAcceptedCommissionVersion,
-} from '@/lib/db/repositories/marketplace-settings';
-import { listOrdersForSeller } from '@/lib/db/repositories/orders';
-import { getSellerEarnings } from '@/lib/seller/earnings';
 import { SELLER_AGREEMENT_VERSION } from '@/lib/content/legal-policies';
+import { requireDatabase } from '@/lib/db/d1';
+import { CommissionRateUnavailableError, getEffectiveBusinessSetting } from '@/lib/db/repositories/business-settings';
+import { getRegisteredSellerTerms, sellerAcceptedCommissionVersion } from '@/lib/db/repositories/marketplace-settings';
+import { listPayoutRequests, listSellerPayouts } from '@/lib/db/repositories/payouts';
+import { listSellerProducts } from '@/lib/db/repositories/products';
 import { getManagedProgramWorkspace } from '@/lib/managed-commerce/program-workspace';
-import { withFirstCodPresentation } from '@/lib/orders/first-cod-review';
-import { CommissionRateUnavailableError } from '@/lib/db/repositories/business-settings';
-import {getSellerReadiness} from '@/lib/sellers/readiness';
-import {SellerReadinessSummary} from '@/components/seller/readiness-summary';
-import {SellerOnboardingChecklist} from '@/components/seller/onboarding-checklist';
-import {getSellerOnboardingChecklist} from '@/lib/sellers/onboarding-checklist';
-import {readSellerWorkspaceTasks,assertSellerWorkspaceViewer} from '@/lib/seller/workspace-tasks';
-import {SellerWorkspaceTaskList} from '@/components/seller/workspace-task-list';
+import { publicCatalogueInventory } from '@/lib/products/public-catalogue-query';
+import { getSellerEarnings } from '@/lib/seller/earnings';
+import { sellerMoney } from '@/lib/seller/presentation';
+import { assertSellerWorkspaceViewer, readSellerWorkspaceTasks, type SellerWorkspaceTask } from '@/lib/seller/workspace-tasks';
+import { getSellerOnboardingChecklist } from '@/lib/sellers/onboarding-checklist';
+import { getSellerReadiness } from '@/lib/sellers/readiness';
+import { isSellerOrderTurn, readSellerOrderQueue, type SellerQueueOrder } from './orders/order-queue';
 
 export const dynamic = 'force-dynamic';
-// This dynamic server page uses one request-time snapshot for terms and consent.
+
 const sellerDashboardObservedAt = () => Date.now();
+const localDay = new Intl.DateTimeFormat('en-NP', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'Asia/Kathmandu' });
+const localTime = new Intl.DateTimeFormat('en-NP', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Asia/Kathmandu' });
+const choices = { order: 'Open order', return: 'Reply', complaint: 'Reply', product: 'Fix product', review: 'Open review',
+  payout: 'Open payout', recovery: 'Open statement', cancellation: 'Open order' };
+
+function todayTask(task: SellerWorkspaceTask, order?: SellerQueueOrder): TodayTask {
+  const key = task.key;
+  const { family, severity, dueAt, href } = task;
+  const status = task.status.replaceAll('_', ' ');
+  const reference = task.reference === task.sourceId ? '' : task.reference;
+  if (order && family === 'order') {
+    const names = order.items.map(item => item.name).filter((name, index, all) => all.indexOf(name) === index);
+    const customer = [order.address.recipientName, order.address.locality].filter(Boolean).join(', ');
+    const actionTitle = task.status === 'packing' ? `Mark ${order.orderNumber} ready for pickup` : `Start preparing ${order.orderNumber}`;
+    return {
+      key, family, severity, dueAt, href,
+      title: task.sellerActionRequired ? actionTitle : `Preparation update for ${order.orderNumber}`,
+      detail: [names.join(', '), customer || null].filter(Boolean).join(' · '), action: 'Open order',
+      readyDateHref: task.sellerActionRequired ? `/seller/order-responses/${encodeURIComponent(order.id)}` : undefined,
+    };
+  }
+  return { key, family, severity, dueAt, href, action: choices[family],
+    title: family === 'return' && task.sellerActionRequired && reference ? `Reply to return ${reference}` : task.title,
+    detail: [reference, family === 'return' && task.sellerActionRequired ? task.title.replace(/^Return: /, '') : status].filter(Boolean).join(' · '),
+  };
+}
+
+function readLowStock(db: D1Database, sellerId: string) {
+  const { stock } = publicCatalogueInventory(db);
+  return db.prepare(`SELECT products.id,
+    (${stock()}) AS quantity,
+    (EXISTS(SELECT 1 FROM product_publication_links l WHERE l.product_id=products.id) OR
+      EXISTS(SELECT 1 FROM product_offer_heads h WHERE h.product_id=products.id AND h.inventory_mapped=1)) AS offerManaged
+    FROM products WHERE products.seller_id=? AND products.status='published'
+    AND NOT EXISTS(SELECT 1 FROM product_deletions WHERE product_id=products.id)
+    AND (${stock()})<=5 ORDER BY quantity, products.updated_at DESC LIMIT 4`)
+    .bind(sellerId).all<{ id: string; quantity: number; offerManaged: number }>();
+}
 
 export default async function SellerDashboardPage() {
-  const now = sellerDashboardObservedAt();
   const seller = await requireSellerCenterPage('/seller');
   if (!seller.approvedSeller || !seller.sellerId) return <ApplicantSection viewer={seller} section="home" />;
   const db = requireDatabase(env as unknown as { DB?: D1Database });
-  const [currentWork, readiness] = await Promise.all([
-    readSellerWorkspaceTasks(db,seller.userId,{now,limit:8}).catch(()=>null),
-    getSellerReadiness(db,seller.sellerId,now).catch(()=>null),
+  const now = sellerDashboardObservedAt();
+  const [work, readiness, products, stock, earnings, orders, commission, program, payouts, payoutRequests, holdSetting, weekday, cutoff, zone] = await Promise.all([
+    readSellerWorkspaceTasks(db, seller.userId, { now, limit: 60 }).catch(() => null),
+    getSellerReadiness(db, seller.sellerId, now).catch(() => null),
+    listSellerProducts(db, seller.sellerId).catch(() => null),
+    readLowStock(db, seller.sellerId).catch(() => null),
+    getSellerEarnings(db, seller.sellerId, now),
+    readSellerOrderQueue(db, seller.sellerId),
+    getRegisteredSellerTerms(db, now).catch(error => { if (error instanceof CommissionRateUnavailableError) return null; throw error; }),
+    getManagedProgramWorkspace(db, seller.sellerId),
+    listSellerPayouts(db, seller.sellerId),
+    listPayoutRequests(db, seller.sellerId, { status: 'submitted', limit: 1 }),
+    getEffectiveBusinessSetting(db, 'seller_delivery_hold_days', now).catch(() => null),
+    getEffectiveBusinessSetting(db, 'payout_processing_weekday', now).catch(() => null),
+    getEffectiveBusinessSetting(db, 'payout_cutoff_local_time', now).catch(() => null),
+    getEffectiveBusinessSetting(db, 'payout_timezone', now).catch(() => null),
   ]);
-  const [products, earnings, orders, commission, managedProgram] =
-    await Promise.all([
-      getSellerProductStats(db, seller.sellerId),
-      getSellerEarnings(db, seller.sellerId),
-      listOrdersForSeller(db, seller.sellerId, 4),
-      getRegisteredSellerTerms(db, now).catch(error => { if (error instanceof CommissionRateUnavailableError) return null; throw error; }),
-      getManagedProgramWorkspace(db, seller.sellerId),
-    ]);
-  const [currentCommissionAccepted, displayedOrders, onboarding] = await Promise.all([
-    commission ? sellerAcceptedCommissionVersion(db, seller.sellerId, commission, now) : Promise.resolve(false),
-    withFirstCodPresentation(db, orders),
-    getSellerOnboardingChecklist(db, {
-      sellerId: seller.sellerId, ownerId: seller.userId, stage: readiness?.stage ?? seller.status,
-      readiness, viewer: { kind: 'seller' },
-    }),
+  const [commissionAccepted, onboarding] = await Promise.all([
+    commission ? sellerAcceptedCommissionVersion(db, seller.sellerId, commission, now) : false,
+    getSellerOnboardingChecklist(db, { sellerId: seller.sellerId, ownerId: seller.userId, stage: readiness?.stage ?? seller.status, readiness, viewer: { kind: 'seller' } }),
   ]);
-  const hasProgramHistory =
-    managedProgram.participationRoute === 'managed_maker' ||
-    managedProgram.supplies.length > 0 ||
-    managedProgram.transitions.length > 0;
-  await assertSellerWorkspaceViewer(db,seller.userId,seller.sellerId,seller.authSubject);
-  return (
-    <div className="flex flex-col gap-7">
-      <SellerHeading
-        eyebrow="Shop overview"
-        title={seller.tradingName}
-        description="Your next tasks, order progress and recorded earnings in one place."
-      />
-      <SellerOnboardingChecklist model={onboarding} />
-      <SellerWorkspaceTaskList model={currentWork} compact unavailable={!currentWork}/>
-      <div id="seller-readiness" className="scroll-mt-28"><SellerReadinessSummary readiness={readiness}/></div>
-      <section id="selling-fee-terms" className="scroll-mt-28">
-      {managedProgram.participationRoute!=='managed_maker'&&commission && (seller.sellerAgreementVersion !== SELLER_AGREEMENT_VERSION ||
-      !currentCommissionAccepted) ? (
-        <SellerAgreementAcceptance termsContext={commission.context} />
-      ) : <Link href={managedProgram.participationRoute==='managed_maker'?'/sell/application#selling-fee-terms':'/seller/registration'} className="section-link">Review recorded agreements and current selling terms →</Link>}
-      </section>
-      <SellerEarningsSummary earnings={earnings} compact />
-      <section aria-labelledby="recent-orders-title">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 id="recent-orders-title" className="font-heading text-2xl">
-            Recent orders
-          </h2>
-          <Link href="/seller/orders" className="section-link min-h-11">
-            All orders
-            <ArrowRight aria-hidden="true" className="size-4" />
-          </Link>
+  await assertSellerWorkspaceViewer(db, seller.userId, seller.sellerId, seller.authSubject);
+
+  const orderByNumber = new Map(orders.map(order => [order.orderNumber, order]));
+  const required = (work?.tasks ?? []).filter(task => {
+    if (task.group !== 'required') return false;
+    const order = orderByNumber.get(task.reference);
+    return task.family !== 'order' || !order || isSellerOrderTurn(order, 'packing') || isSellerOrderTurn(order, 'confirmed');
+  });
+  const waiting = (work?.tasks ?? []).filter(task => task.group === 'waiting')
+    .filter(task => task.family !== 'order' || !orderByNumber.get(task.reference)?.items.some(item => item.status === 'ready_for_pickup'))
+    .map(task => {
+      const product = task.family === 'review' ? products?.find(product => product.id === task.sourceId) : undefined;
+      const view = todayTask(task, orderByNumber.get(task.reference));
+      return product ? { ...view, title: product.nameEn, detail: 'Product review or publication' } : view;
+    });
+  for (const order of orders) {
+    if (order.items.some(item => item.status === 'ready_for_pickup')) {
+      waiting.push({ key: `pickup:${order.id}`, title: `Pickup for ${order.orderNumber}`, detail: 'See the courier arrangements on the order.',
+        family: 'order', severity: 'normal', dueAt: null, href: `/seller/orders?status=ready_for_pickup&order=${encodeURIComponent(order.id)}#order-details`,
+        action: 'Open order', courierPickup: true });
+    }
+    if (work?.tasks.some(task => task.family === 'order' && task.reference === order.orderNumber)) continue;
+    const step = (['packing', 'confirmed'] as const).find(stage => isSellerOrderTurn(order, stage));
+    if (step) required.push({ key: `order:${order.id}`, family: 'order', sourceId: order.id, reference: order.orderNumber,
+      title: 'Order preparation', status: step, nextActor: 'You', sellerActionRequired: true, group: 'required', severity: 'normal',
+      startedAt: order.placedAt, updatedAt: order.placedAt, dueAt: null, nextUpdateAt: null, href: `/seller/orders/${encodeURIComponent(order.id)}` });
+  }
+  required.sort((a, b) => (a.dueAt ?? Infinity) - (b.dueAt ?? Infinity) || a.startedAt - b.startedAt);
+  const priority = { urgent: 0, overdue: 1, normal: 2 };
+  const primary = required.reduce<SellerWorkspaceTask | undefined>((first, task) =>
+    !first || priority[task.severity] < priority[first.severity] ? task : first, undefined);
+  const first = primary ? todayTask(primary, orderByNumber.get(primary.reference)) : undefined;
+  const remaining = required.filter(task => task.key !== primary?.key).map(task => todayTask(task, orderByNumber.get(task.reference)));
+  const hour = Number(localTime.format(now));
+  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+
+  const pendingPayout = payouts.find(row => ['prepared', 'scheduled', 'approved', 'processing', 'failed'].includes(row.status));
+  const pendingRequest = !pendingPayout ? payoutRequests[0] : undefined;
+  const managed = earnings.participationRoute === 'managed_maker' && earnings.managed?.recordKind === 'live' ? earnings.managed.summary : null;
+  const undelivered = orders.map(order => order.items.filter(item => !item.companyHandled && !['delivered', 'cancelled'].includes(item.status)))
+    .filter(items => items.length > 0);
+  const expectedSales = undelivered.flat().reduce((total, item) => total + item.amountPaisa - item.commissionPaisa, 0);
+  const [cutoffHour, cutoffMinute] = cutoff?.value.split(':').map(Number) ?? [];
+  const cutoffLabel = cutoffHour === undefined ? null : `${cutoffHour % 12 || 12}${cutoffMinute ? ':' + String(cutoffMinute).padStart(2, '0') : ''} ${cutoffHour < 12 ? 'am' : 'pm'}`;
+  const lowStock = stock?.results.flatMap(row => {
+    const product = products?.find(product => product.id === row.id);
+    return product ? [{ ...row, product }] : [];
+  });
+
+  const hasProgramHistory = program.participationRoute === 'managed_maker' || program.supplies.length > 0 || program.transitions.length > 0;
+  return <div className="space-y-5 text-[#14213D]">
+    <header>
+      <h1 className="break-words font-heading text-3xl md:text-4xl">{greeting}, {seller.tradingName}</h1>
+      <p className="mt-2 text-sm text-muted-foreground">{localDay.format(now)} · <strong className="text-[#14213D]">{required.length} {required.length === 1 ? 'thing needs' : 'things need'} you</strong> · {waiting.length} {waiting.length === 1 ? 'is' : 'are'} with Hastabazaar</p>
+    </header>
+    {!onboarding.steps.every(step => step.status === 'Done') || readiness?.bankStatus !== 'verified' ? <SellerOnboardingChecklist model={onboarding} bankStatus={readiness?.bankStatus ?? null} /> : null}
+    <SellerActionOverview first={first} remaining={remaining} waiting={waiting} unavailable={!work || work.unavailableFamilies.length > 0} />
+    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+      <section aria-labelledby="seller-today-money" className="min-w-0 rounded-2xl border bg-card p-4 md:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2"><h2 id="seller-today-money" className="font-semibold">Your money</h2>
+          <Link href="/seller/finance" className="section-link min-h-11">Earnings</Link>
         </div>
-        {orders.length ? (
-          <SellerOrderList orders={displayedOrders} />
-        ) : (
-          <SellerEmpty
-            icon={Package}
-            title="Your first order will appear here"
-            description="Orders for your published products will appear here. You can check your listings while you wait."
-            href="/seller/products"
-            action="View your products"
-          />
-        )}
+        <dl className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+          <div className="min-w-0"><dt className="text-xs text-muted-foreground">{pendingPayout ? `Payout ${pendingPayout.payoutNumber}` : pendingRequest ? 'Payout requested' : 'Available for payout'}</dt>
+            <dd className="mt-1 break-words font-heading text-xl">{sellerMoney(pendingPayout?.amountPaisa ?? pendingRequest?.availableAmountSnapshotPaisa ?? managed?.payablePaisa ?? earnings.registered.availablePaisa)}</dd>
+            {pendingPayout || pendingRequest ? <WhoseTurn className="mt-1" status="with-hastabazaar" label={pendingPayout?.status === 'processing' ? 'Being sent to your bank' : pendingPayout?.status === 'approved' || pendingPayout?.status === 'scheduled' ? 'Approved' : 'With Hastabazaar'} /> : null}
+          </div>
+          <div className="min-w-0 sm:border-l sm:pl-3 lg:border-0 lg:pl-0 xl:border-l xl:pl-3"><dt className="text-xs text-muted-foreground">Held or pending earnings</dt>
+            <dd className="mt-1 break-words font-heading text-xl">{sellerMoney(managed?.blockedPaisa ?? earnings.registered.pendingPaisa)}</dd>
+            {!managed && holdSetting ? <p className="mt-1 text-xs text-muted-foreground">Current delivery hold · {holdSetting.value} days</p> : null}
+          </div>
+          <div className="min-w-0 sm:border-l sm:pl-3 lg:border-0 lg:pl-0 xl:border-l xl:pl-3"><dt className="text-xs text-muted-foreground">Orders not delivered yet</dt>
+            <dd className="mt-1 break-words font-heading text-xl">{sellerMoney(expectedSales)}</dd><p className="mt-1 text-xs text-muted-foreground">{undelivered.length} {undelivered.length === 1 ? 'order' : 'orders'}{orders.length >= 100 ? ' among the latest 100' : ''}</p>
+          </div>
+        </dl>
+        {weekday && cutoffLabel ? <p className="mt-4 flex items-start gap-2 rounded-xl bg-[#E3E9F4] p-3 text-sm text-[#264880]">
+          <CalendarDays className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <span>Payouts are scheduled for <strong className="capitalize">{weekday.value}s</strong>. The cutoff is {cutoffLabel}{zone?.value === 'Asia/Kathmandu' ? ' Nepal time' : ''}.</span>
+        </p> : null}
       </section>
-      <section
-        aria-labelledby="product-overview-title"
-        className="flex flex-col gap-4"
-      >
-        <div>
-          <h2 id="product-overview-title" className="font-heading text-2xl">
-            Product overview
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Current listing totals. Review decisions and reasons are available
-            with each product.
-          </p>
+      <section aria-labelledby="seller-today-stock" className="min-w-0 rounded-2xl border bg-card p-4 md:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2"><h2 id="seller-today-stock" className="font-semibold">Running low</h2>
+          <Link href="/seller/products" className="section-link min-h-11">All products</Link>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <SellerMetric
-            label="Total products"
-            value={products.total}
-            detail="All current listings"
-            icon={Package}
-            href="/seller/products"
-          />
-          <SellerMetric
-            label="Published / active"
-            value={products.published}
-            detail="Visible to customers"
-            icon={PackageCheck}
-            href="/seller/products?status=published"
-          />
-          <SellerMetric
-            label="Pending approval"
-            value={products.pendingApproval}
-            detail="Submitted or awaiting publication"
-            icon={Clock3}
-            href="/seller/products?status=pending"
-          />
-          <SellerMetric
-            label="Rejected"
-            value={products.rejected}
-            detail="Read the reviewer reason and available next steps"
-            icon={AlertTriangle}
-            href="/seller/products?status=rejected"
-          />
-          <SellerMetric
-            label="Drafts"
-            value={products.drafts}
-            detail="Not yet submitted"
-            icon={FileText}
-            href="/seller/products?status=draft"
-          />
-          <SellerMetric
-            label="Out of stock"
-            value={products.outOfStock}
-            detail="Published listings with zero stock"
-            icon={Boxes}
-            href="/seller/products?status=out_of_stock"
-          />
-        </div>
+        {lowStock?.length ? <ul className="divide-y">{lowStock.map(({ product, quantity, offerManaged }) => <li key={product.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
+          <div className="flex min-w-0 items-center gap-2">
+            {product.primaryMediaId ? <Image src={`/api/product-media/${encodeURIComponent(product.primaryMediaId)}`} alt="" width={38} height={38} unoptimized className="size-9 shrink-0 rounded-md border object-contain" /> : <Package className="size-8 shrink-0 rounded-md bg-muted p-1.5" aria-hidden="true" />}
+            <div className="min-w-0"><p className="break-words text-sm font-semibold">{product.nameEn}</p>
+              <p className="mt-0.5 text-xs text-[#78551F]">{quantity === 0 ? 'Out of stock' : quantity === 1 ? 'Last one' : `${quantity} left`}</p></div>
+          </div>
+          {offerManaged ? <Link className="section-link min-h-11" href={`/seller/products/${encodeURIComponent(product.id)}/availability`}>Update stock</Link> :
+            <InventoryEditor productId={product.id} productName={product.nameEn} quantity={quantity} compact />}
+        </li>)}</ul> : <p className="text-sm text-muted-foreground">{stock && products ? 'No products are running low.' : 'Stock could not be loaded. Open Products for your saved listings.'}</p>}
       </section>
-      <section
-        id="managed-program"
-        aria-labelledby="program-details-title"
-        className="scroll-mt-28"
-      >
-        <SellerProgramDetails>
-          {hasProgramHistory ? (
-            <>
-              <SellerManagedProgramWorkspace
-                workspace={managedProgram}
-                sellerId={seller.sellerId}
-              />
-              <div className="flex flex-wrap gap-4 text-sm">
-                <Link
-                  className="section-link min-h-11"
-                  href="/seller/form-history?kind=managed-supply"
-                >
-                  Managed supply answer history
-                </Link>
-                <Link
-                  className="section-link min-h-11"
-                  href="/seller/form-history?kind=managed-transition"
-                >
-                  Managed route answer history
-                </Link>
-              </div>
-            </>
-          ) : null}
-          <Link className="section-link min-h-11" href="/seller-agreement">
-            Seller Marketplace Agreement
-          </Link>
-          <Link
-            className="section-link min-h-11"
-            href="/seller/form-history?kind=payout-request"
-          >
-            Payout request answer history
-          </Link>
-        </SellerProgramDetails>
-      </section>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Link
-          href="/seller/cases"
-          className="rounded-2xl border bg-card p-6 hover:border-primary/50"
-        >
-          <h2 className="font-heading text-2xl">Returns & complaints</h2>
-          <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            Review cases for your items. Hastabazaar reviews the final outcome.
-          </p>
-          <span className="section-link mt-3">
-            Open cases
-            <ArrowRight aria-hidden="true" className="size-4" />
-          </span>
-        </Link>
-        <Link
-          href="/seller/profile"
-          className="rounded-2xl border bg-card p-6 hover:border-primary/50"
-        >
-          <h2 className="font-heading text-2xl">Your maker profile</h2>
-          <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            Keep your story, craft specialties and support details up to date.
-          </p>
-          <span className="section-link mt-3">
-            Edit shop profile
-            <ArrowRight aria-hidden="true" className="size-4" />
-          </span>
-        </Link>
-      </div>
     </div>
-  );
+    <section id="selling-fee-terms" className="scroll-mt-28">
+      {program.participationRoute !== 'managed_maker' && commission && (seller.sellerAgreementVersion !== SELLER_AGREEMENT_VERSION || !commissionAccepted)
+        ? <SellerAgreementAcceptance termsContext={commission.context} />
+        : <Link href={program.participationRoute === 'managed_maker' ? '/sell/application#selling-fee-terms' : '/seller/registration'} className="section-link min-h-11">Review agreements and selling terms</Link>}
+    </section>
+    <details id="seller-readiness" className="scroll-mt-28 rounded-xl border bg-card px-4">
+      <summary className="flex min-h-11 cursor-pointer items-center font-semibold">Shop readiness</summary>
+      <div className="pb-4"><SellerReadinessSummary readiness={readiness} /></div>
+    </details>
+    <section id="managed-program" aria-labelledby="program-details-title" className="scroll-mt-28">
+      <SellerProgramDetails>
+        {hasProgramHistory ? <>
+          <SellerManagedProgramWorkspace workspace={program} sellerId={seller.sellerId} />
+          <div className="flex flex-wrap gap-4 text-sm">
+            <Link className="section-link min-h-11" href="/seller/form-history?kind=managed-supply">Managed supply answer history</Link>
+            <Link className="section-link min-h-11" href="/seller/form-history?kind=managed-transition">Managed route answer history</Link>
+          </div>
+        </> : null}
+        <Link className="section-link min-h-11" href="/seller-agreement">Seller Marketplace Agreement</Link>
+        <Link className="section-link min-h-11" href="/seller/form-history?kind=payout-request">Payout request answer history</Link>
+      </SellerProgramDetails>
+    </section>
+  </div>;
 }

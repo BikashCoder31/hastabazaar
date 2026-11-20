@@ -135,23 +135,6 @@ void test('review and seller task layouts distinguish unavailable evidence, wait
   assert.match(task, /Next: Hastabazaar/); assert.match(task, /Reading a notification does not complete/);
 });
 
-const products = {
-  total: 12,
-  published: 5,
-  pendingApproval: 2,
-  rejected: 1,
-  drafts: 1,
-  outOfStock: 2,
-  needsChanges: 3,
-  lowStock: 4,
-};
-const work = {
-  toPack: 6,
-  packing: 2,
-  ready: 1,
-  needsChanges: 3,
-  awaitingConfirmation: 0,
-};
 const registered = {
   availablePaisa: 12345,
   pendingPaisa: 6789,
@@ -167,49 +150,50 @@ const noMarketplaceFees = { originalStandardPaisa: 0, originalWaivedPaisa: 0, or
 
 // Catch hiding actionable work below non-actionable catalog status, or treating review as a seller task.
 void test('seller action overview prioritizes owned work and separates waiting review', async () => {
-  const ui = await import('../components/seller/seller-action-overview').catch(
-    () => null,
-  );
-  assert.ok(ui, 'Seller action overview must exist');
-  const html = renderToStaticMarkup(
-    createElement(ui.SellerActionOverview, {
-      products,
-      work,
-      cases: { returns: 2, complaints: 1 },
-    }),
-  ).replaceAll('&amp;', '&');
-  assert.ok(html.indexOf('Orders to pack') < html.indexOf('Listing changes'));
-  assert.match(html, /6[\s\S]*Start packing/);
+  const { SellerActionOverview } = await import('../components/seller/seller-action-overview');
+  const html = renderToStaticMarkup(createElement(SellerActionOverview, {
+    first: {
+      key: 'order-1', family: 'order', title: 'Start preparing HB-1',
+      detail: 'Fictional cup', severity: 'urgent', dueAt: 60_000, href: '/seller/orders/HB-1', action: 'Open order',
+      readyDateHref: '/seller/order-responses/HB-1',
+    },
+    remaining: [
+      { key: 'return-1', family: 'return', title: 'Reply to a return', detail: 'Fictional cup', severity: 'normal',
+        dueAt: 120_000, href: '/seller/cases', action: 'Reply' },
+      { key: 'product-1', family: 'product', title: 'Fix product listing', detail: 'Changes requested', severity: 'normal',
+        dueAt: null, href: '/seller/products?status=needs_changes', action: 'Fix product' },
+    ],
+    waiting: [
+      { key: 'product-2', family: 'review', title: 'Product review', detail: 'Submitted', severity: 'normal',
+        dueAt: null, href: '/seller/products/product-2/edit', action: 'Open review' },
+    ],
+    unavailable: false,
+  }));
+  assert.ok(html.indexOf('Start preparing HB-1') < html.indexOf('Fix product listing'));
+  assert.ok(html.indexOf('Reply to a return') < html.indexOf('Fix product listing'));
+  assert.ok(html.indexOf('Your turn') < html.indexOf('With Hastabazaar'));
   assert.match(html, /href="\/seller\/products\?status=needs_changes"/);
   assert.match(html, /href="\/seller\/cases"/);
-  assert.ok(
-    html.indexOf('Needs your action') < html.indexOf('Waiting for review'),
-  );
+  assert.match(html, /href="\/seller\/order-responses\/HB-1"/);
+  assert.match(html, /With Hastabazaar[\s\S]*Product review/);
   assert.doesNotMatch(html, /rejected and requiring correction/);
 });
 
 void test('empty action queue does not invent urgent work from pending or rejected products', async () => {
-  const ui = await import('../components/seller/seller-action-overview').catch(
-    () => null,
-  );
-  assert.ok(ui, 'Seller action overview must exist');
-  const html = renderToStaticMarkup(
-    createElement(ui.SellerActionOverview, {
-      products: { ...products, needsChanges: 0, outOfStock: 0 },
-      work: {
-        toPack: 0,
-        packing: 0,
-        ready: 0,
-        needsChanges: 0,
-        awaitingConfirmation: 1,
-      },
-      cases: { returns: 0, complaints: 0 },
-    }),
-  );
-  assert.match(html, /No tasks need your action/);
-  assert.match(html, /Waiting for review/);
-  assert.doesNotMatch(html, /Start packing|Update stock/);
-  assert.match(html, /Waiting for staff confirmation/);
+  const { SellerActionOverview } = await import('../components/seller/seller-action-overview');
+  const html = renderToStaticMarkup(createElement(SellerActionOverview, {
+    remaining: [],
+    waiting: [
+      { key: 'review-1', family: 'review', title: 'Product review', detail: 'Submitted', severity: 'normal',
+        dueAt: null, href: '/seller/products/product-1/edit', action: 'Open review' },
+      { key: 'order-1', family: 'order', title: 'Payment confirmation', detail: 'Hastabazaar is confirming cash on delivery', severity: 'normal',
+        dueAt: null, href: '/seller/orders/HB-1', action: 'Open order' },
+    ],
+    unavailable: false,
+  }));
+  assert.match(html, /No tasks need you right now/);
+  assert.match(html, /With Hastabazaar[\s\S]*Product review[\s\S]*Payment confirmation/);
+  assert.doesNotMatch(html, /Do this first|Start preparing|Update stock/);
 });
 
 // Catch recalculating old commission from today's saved rate or presenting a request as payment.

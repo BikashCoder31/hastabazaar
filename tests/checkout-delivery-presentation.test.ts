@@ -21,7 +21,7 @@ void test('customer checkout shows only the arrival estimate, not delivery calcu
 
 void test('seller and staff order views retain protected delivery calculation details', async () => {
   const [sellerSource, staffSource] = await Promise.all([
-    readFile(new URL('../app/seller/orders/[id]/page.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../app/seller/orders/order-detail.tsx', import.meta.url), 'utf8'),
     readFile(new URL('../app/admin/orders/[id]/page.tsx', import.meta.url), 'utf8'),
   ]);
 

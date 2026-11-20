@@ -3,6 +3,7 @@
 import { FormGuide } from '@/components/forms/form-guide';
 import { useRouter } from 'next/navigation';
 import { useId, useState } from 'react';
+import { ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -28,7 +29,8 @@ export function SellerCaseResponseForm({
   const published = usePublishedFormConfig(formId);
   const inputId = useId();
   const [response, setResponse] = useState('');
-  const [recommendation, setRecommendation] = useState('accept');
+  const [recommendation, setRecommendation] = useState('');
+  const count = response.trim().length;
   const attemptKey = sessionAttemptKey(formId, id);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
@@ -41,7 +43,7 @@ export function SellerCaseResponseForm({
     );
   async function submit(event: React.SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (pending || disabled) return;
+    if (pending || disabled || count < 20 || (kind === 'return' && !recommendation)) return;
     if (!published.canSubmit || !published.config) {
       setError(published.message || 'Response form is unavailable.');
       return;
@@ -87,32 +89,35 @@ export function SellerCaseResponseForm({
       <FormGuide formId={kind === 'return' ? 'seller.case-return-response' : 'seller.case-complaint-response'} />
 
       {kind === 'return' ? (
-        <div className="space-y-2">
-          <Label htmlFor={inputId + '-recommendation'}>Recommendation</Label>
-          <select
-            id={inputId + '-recommendation'}
-            disabled={pending}
-            value={recommendation}
-            onChange={(event) => setRecommendation(event.target.value)}
-            className="h-10 w-full rounded-lg border bg-background px-3 text-sm"
-          >
-            <option value="accept">Accept</option>
-            <option value="contest">Contest with evidence</option>
-            <option value="request_information">Request information</option>
-          </select>
-        </div>
+        <fieldset disabled={pending} className="space-y-2">
+          <legend className="sr-only">Choose a reply</legend>
+          <div className="grid gap-2 md:grid-cols-3">
+            {[
+              { value: 'accept', label: 'Accept the return', hint: 'The item can come back.' },
+              { value: 'contest', label: 'Disagree', hint: 'Explain why in your reply.' },
+              { value: 'request_information', label: 'Ask a question', hint: 'Ask for the details you need.' },
+            ].map(option => <label key={option.value}
+              className="flex min-h-11 cursor-pointer items-start gap-2 rounded-xl border p-3 has-checked:border-[#14213D] has-checked:bg-[#F4F6FA]">
+              <input type="radio" name="recommendation" value={option.value} required
+                checked={recommendation === option.value} onChange={() => setRecommendation(option.value)}
+                aria-label={option.label} className="mt-0.5 size-4 shrink-0 accent-[#14213D]" />
+              <span className="min-w-0"><strong className="block text-sm">{option.label}</strong>
+                <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{option.hint}</span>
+              </span>
+            </label>)}
+          </div>
+        </fieldset>
       ) : null}
       <div className="space-y-2">
-        <Label htmlFor={inputId}>Response for the investigation</Label>
-        <Textarea
-          id={inputId}
-          disabled={pending}
-          value={response}
-          onChange={(event) => setResponse(event.target.value)}
-          minLength={20}
-          maxLength={2000}
-          placeholder="Provide factual item, packing, and fulfilment details. Do not include unrelated customer data."
-        />
+        <Label htmlFor={inputId}>{kind === 'return' ? 'Explain what you know' : 'Response for the investigation'}</Label>
+        <Textarea id={inputId} disabled={pending} value={response} rows={4} required
+          onChange={(event) => setResponse(event.target.value)} minLength={20} maxLength={2000}
+          aria-describedby={inputId + '-guidance'}
+          placeholder={kind === 'return' ? 'For example: I checked both hooks before packing and used a padded box.' : 'Provide factual item, packing, and fulfilment details.'} />
+        <div id={inputId + '-guidance'} className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
+          <p>Facts about the item and how you packed it. Hastabazaar reads this word for word.</p>
+          <output aria-live="polite" className="tabular-nums">{count} / 20 min</output>
+        </div>
       </div>
       {published.config ? <ConfiguredFields config={published.config} baseKeys={caseBaseKeys} /> : null}
       {!published.canSubmit ? <output>{published.message || 'Loading response form…'}</output> : null}
@@ -121,11 +126,13 @@ export function SellerCaseResponseForm({
           {error}
         </p>
       ) : null}
-      <Button
-        type="submit"
-        disabled={pending || response.trim().length < 20 || !published.canSubmit}
-      >
-        {pending ? 'Saving…' : 'Submit response'}
+      {kind === 'return' ? <div className="flex gap-2.5 rounded-xl bg-[#E3E9F4] p-3 text-sm leading-relaxed text-[#25416F]">
+        <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+        <p><strong>Hastabazaar makes the final decision.</strong> Your reply helps us review the return. Money for this order is held until the case closes.</p>
+      </div> : null}
+      <Button type="submit" className="min-h-11 bg-[#A8232E] text-white hover:bg-[#8F1D27]"
+        disabled={pending || count < 20 || !published.canSubmit || (kind === 'return' && !recommendation)}>
+        {pending ? 'Saving…' : kind === 'return' ? 'Send reply to Hastabazaar' : 'Submit response'}
       </Button>
     </form>
   );

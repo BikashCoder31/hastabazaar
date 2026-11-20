@@ -8,6 +8,7 @@ import { SellerNavigation } from '@/components/seller/seller-navigation';
 import { NotificationBell } from '@/components/account/notification-bell';
 import { requireSellerCenterPage } from '@/lib/auth/seller-center';
 import { getPublicMakerProfile } from '@/lib/db/repositories/customers';
+import { getSellerWorkSummary } from '@/lib/db/repositories/seller-workspace';
 import { env } from 'cloudflare:workers';
 import { requireDatabase } from '@/lib/db/d1';
 import { getSellerCommissionNotices } from '@/lib/db/repositories/commission-rates';
@@ -41,18 +42,19 @@ export default async function SellerLayout({
   const addProductHref = seller.sellerId
     ? seller.approvedSeller ? '/seller/products/new' : '/sell/application/products/new'
     : '/seller/registration';
-  const openOrders = seller.approvedSeller && seller.sellerId ? await database.prepare(
-    "SELECT COUNT(DISTINCT order_id) AS count FROM order_items WHERE seller_id=? AND fulfillment_status IN ('confirmed','packing')",
-  ).bind(seller.sellerId).first<{ count: number }>().catch(() => null) : null;
+  const sellerWork = seller.approvedSeller && seller.sellerId
+    ? await getSellerWorkSummary(database, seller.sellerId).catch(() => null)
+    : null;
   const navigation = {
     tradingName: seller.tradingName,
     sellerId: seller.sellerId,
     canReplyToReviews: seller.approvedSeller,
     publicShopHref: publicShop ? `/makers/${publicShop.id}` : null,
     addProductHref,
-    openOrderCount: openOrders?.count,
+    openOrderCount: sellerWork?.toPack,
   };
   const signOut = signOutPath('/');
+  const feeTermsNeedReview = feeOffers && (!feeOffers.current.accepted || feeOffers.upcoming.some(offer => !offer.accepted));
   return (
     <div className="seller-shell">
       {mfaEnabled ? <AccountSessionActivity accountLabel="seller" returnTo="/seller" /> : null}
@@ -65,61 +67,40 @@ export default async function SellerLayout({
       <SellerNavigation {...navigation} mode="mobile" signOut={signOut}
         brand={<Image src="/brand/hastabazaar-mark-96.png" alt="" width={30} height={30} sizes="30px"
           data-media-mode="contain" className={mediaObjectClass('contain', 'size-[30px] shrink-0 rounded-md')} />}
-        notifications={<NotificationBell workspace="seller" accountId={seller.userId} />} />
-      <header className="sticky top-0 z-30 hidden border-b bg-card lg:block">
-        <div className="shell flex min-h-20 flex-wrap items-center justify-between gap-4 py-3">
-          <Link href="/seller" className="flex items-center gap-3 rounded-xl">
-            <Image
-              data-media-mode="contain"
-              src="/brand/hastabazaar-mark-96.png"
-              alt=""
-              width={44}
-              height={44}
-              sizes={mediaSizes.brandMark}
-              className={mediaObjectClass('contain', 'size-11')}
-            />
-            <span>
-              <BrandWordmark className="block text-xl" />
-              <span className="block text-xs font-semibold text-[#A8232E]">
-                Seller Studio
-              </span>
-            </span>
+        notifications={<NotificationBell workspace="seller" accountId={seller.userId} />}
+        desktopBrand={
+          <Link href="/seller" className="flex w-fit items-center gap-3 rounded-xl">
+            <Image data-media-mode="contain" src="/brand/hastabazaar-mark-96.png" alt=""
+              width={44} height={44} sizes={mediaSizes.brandMark} className={mediaObjectClass('contain', 'size-11')} />
+            <span><BrandWordmark className="block text-xl" /><span className="block text-xs font-semibold text-[#A8232E]">Seller Studio</span></span>
           </Link>
-          <div className="flex flex-wrap items-center gap-2">
-            <NotificationBell workspace="seller" accountId={seller.userId} />
-            <Link href="/account" prefetch={false} className="header-action">Switch to customer dashboard</Link>
-            <Link href="/shop" className="header-action">
-              <span className="hidden sm:inline">Marketplace</span>
-              <ArrowUpRight className="size-4" />
-              <span className="sr-only sm:hidden">Marketplace</span>
-            </Link>
-            <Link
-              href={addProductHref}
-              className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#A8232E] px-4 text-sm font-semibold text-white"
-            >
-              <Plus className="size-4" />
-              Add product
-            </Link>
-            <form data-form-id="identity.logout" method="POST" action={signOut} target="_top">
-            <button
-              type="submit"
-              className="inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-semibold hover:bg-muted"
-            >
-              Sign out
-            </button>
-            </form>
-          </div>
-        </div>
-      </header>
+        }
+        desktopActions={<>
+          <Link href="/account" prefetch={false} className="header-action">Switch to customer dashboard</Link>
+          <Link href="/shop" className="header-action">
+            Marketplace <ArrowUpRight className="size-4" aria-hidden="true" />
+          </Link>
+          <Link href={addProductHref} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#A8232E] px-4 text-sm font-semibold text-white">
+            <Plus className="size-4" aria-hidden="true" />Add product
+          </Link>
+          <form data-form-id="identity.logout" method="POST" action={signOut} target="_top">
+            <button type="submit" className="inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-semibold hover:bg-muted">Sign out</button>
+          </form>
+        </>}
+      />
       <SellerAccessBoundary actorId={seller.userId}>
       <div className="shell grid items-start gap-6 py-6 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-6 lg:py-8 xl:grid-cols-[15rem_minmax(0,1fr)] xl:gap-8">
         <aside className="sticky top-28 hidden min-w-0 lg:block">
           <SellerNavigation {...navigation} mode="desktop" />
         </aside>
         <main tabIndex={-1} id="main-content" className="seller-main min-w-0">
-          {feeOffers?<CommonFeeTerms offers={feeOffers}/>:null}
+          {feeOffers && feeTermsNeedReview ? <CommonFeeTerms offers={feeOffers} /> : null}
           {notices.map(notice => <CommissionFeeNotice key={notice.id} notice={notice} agreementAccepted={seller.sellerAgreementVersion === notice.agreementVersion} />)}
           {children}
+          {feeOffers && !feeTermsNeedReview ? <details className="mt-6 rounded-xl border bg-card px-4">
+            <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold">View accepted selling fee terms</summary>
+            <CommonFeeTerms offers={feeOffers} />
+          </details> : null}
         </main>
       </div>
       </SellerAccessBoundary>

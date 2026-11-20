@@ -30,6 +30,8 @@ type NavigationProps = {
   openOrderCount?: number | null;
   notifications?: ReactNode;
   brand?: ReactNode;
+  desktopBrand?: ReactNode;
+  desktopActions?: ReactNode;
   mode?: 'mobile' | 'desktop';
 };
 const linkClass = 'flex min-h-11 items-center gap-2 rounded-xl px-3 py-3 text-sm hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary aria-[current=page]:bg-secondary aria-[current=page]:font-semibold aria-[current=page]:text-primary';
@@ -40,7 +42,7 @@ export function SellerNavigation(props: NavigationProps) {
 
 export function SellerNavigationView({
   pathname, tradingName, sellerId, canReplyToReviews, publicShopHref, previewShopHref,
-  signOut, addProductHref, openOrderCount, notifications, brand, mode,
+  signOut, addProductHref, openOrderCount, notifications, brand, desktopBrand, desktopActions, mode,
 }: NavigationProps & { pathname: string }) {
   const active = sellerWorkspaceSection(pathname);
   const sections = sellerWorkspaceSections.map(section => ({
@@ -66,19 +68,23 @@ export function SellerNavigationView({
     return () => desktop.removeEventListener('change', closeAtDesktop);
   }, [mode]);
   return <>
-    {mode !== 'desktop' ? <div className="seller-mobile-shell lg:hidden">
-      <div className="seller-mobile-toolbar">
-        <Link href="/seller" className="flex min-h-11 min-w-0 flex-1 items-center gap-2">
+    {mode !== 'desktop' ? <div className="seller-mobile-shell">
+      <header className="seller-mobile-toolbar">
+        <div className="shell flex min-w-0 items-center gap-1 lg:py-3">
+        <Link href="/seller" className="flex min-h-11 min-w-0 flex-1 items-center gap-2 lg:hidden">
           {brand ?? <Store className="size-7 shrink-0 rounded-md bg-secondary p-1.5" aria-hidden="true" />}
           <span className="min-w-0"><strong className="block break-words leading-tight">{tradingName || 'Your shop'}</strong>
             <span className="block text-xs font-semibold text-[#A8232E]">Seller Studio</span></span>
         </Link>
+        {desktopBrand ? <div className="hidden min-w-0 flex-1 lg:block">{desktopBrand}</div> : null}
         {notifications}
+        {desktopActions ? <div className="hidden flex-wrap items-center gap-2 lg:flex">{desktopActions}</div> : null}
         <button type="button" data-mobile-shortcut="menu" aria-label="Open seller menu" aria-haspopup="dialog"
-          aria-controls={dialogId} onClick={() => dialog.current?.showModal()} className="grid size-11 shrink-0 place-items-center rounded-lg">
+          aria-controls={dialogId} onClick={() => dialog.current?.showModal()} className="grid size-11 shrink-0 place-items-center rounded-lg lg:hidden">
           <Menu className="size-5" aria-hidden="true" />
         </button>
-      </div>
+        </div>
+      </header>
       <nav aria-label="Seller quick links" className="seller-mobile-tabs">
         {dailyLinks.map(({ id, label, icon: Icon }) => {
           const section = sections.find(item => item.id === id);

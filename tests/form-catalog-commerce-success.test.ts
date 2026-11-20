@@ -39,9 +39,11 @@ async function fill(page: FixturePage, mode: string, form: FixtureLocator) {
   if (mode.startsWith('customer-')) {
     if (mode === 'customer-complaint') await form.getByLabel('Subject').fill('Damaged delivery');
     await form.locator('[name="detail"]').fill('The item arrived damaged and cannot be used.');
-  } else if (mode.startsWith('seller-'))
-    await form.getByLabel('Response for the investigation').fill('I inspected the packing record and will resolve the case.');
-  else if (mode.startsWith('gift-'))
+  } else if (mode.startsWith('seller-')) {
+    if (mode === 'seller-return') await form.getByRole('radio', { name: /Accept the return/ }).check();
+    await form.getByLabel(mode === 'seller-return' ? 'Explain what you know' : 'Response for the investigation')
+      .fill('I inspected the packing record and will resolve the case.');
+  } else if (mode.startsWith('gift-'))
     await form.getByLabel(mode === 'gift-issue' ? 'Amount in NPR' : 'Gift card code').fill(mode === 'gift-issue' ? '100' : 'HG-SIMULATED');
   else {
     for (const [label, value] of [['Recipient name', 'Maya Buyer'], ['Recipient phone', '9811111111'],
@@ -59,7 +61,7 @@ const retainedValues = (form: FixtureLocator) => form.evaluate((element) => Arra
 
 async function submitAttempt(page: FixturePage, form: FixtureLocator, expectEnabled = true) {
   const completed = await page.evaluate(() => (window as unknown as { __completed: number }).__completed);
-  await form.getByRole('button', { name: /Send return request|Send complaint|Submit response|Issue gift card|Redeem into wallet|Place COD order/ }).click();
+  await form.getByRole('button', { name: /Send return request|Send complaint|Submit response|Send reply to Hastabazaar|Issue gift card|Redeem into wallet|Place COD order/ }).click();
   await page.waitForFunction((previous) => (window as unknown as { __completed: number }).__completed > previous, completed);
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   if (expectEnabled) {
@@ -67,7 +69,7 @@ async function submitAttempt(page: FixturePage, form: FixtureLocator, expectEnab
     await page.waitForFunction((id) => {
       const buttons = document.querySelector(`form[data-form-id="${id}"]`)?.querySelectorAll('button');
       return buttons && Array.from(buttons).some((button) => !button.disabled &&
-        /Send return request|Send complaint|Submit response|Issue gift card|Redeem into wallet|Place COD order/.test(button.textContent ?? ''));
+        /Send return request|Send complaint|Submit response|Send reply to Hastabazaar|Issue gift card|Redeem into wallet|Place COD order/.test(button.textContent ?? ''));
     }, formId);
   }
 }
@@ -154,13 +156,13 @@ for (const [mode, formId] of modes) void test(`${formId} retains attempts and in
       assert.deepEqual(await retainedValues(form), expectedValues, `${formId}: malformed success must retain all values`);
       assert.equal(await page.evaluate(() => (window as unknown as { __refreshes: number }).__refreshes), 0,
         `${formId}: malformed success must not refresh`);
-      assert.equal(await form.getByRole('button', { name: /Send return request|Send complaint|Submit response|Issue gift card|Redeem into wallet|Place COD order/ }).isEnabled(), true);
+      assert.equal(await form.getByRole('button', { name: /Send return request|Send complaint|Submit response|Send reply to Hastabazaar|Issue gift card|Redeem into wallet|Place COD order/ }).isEnabled(), true);
     }
     for (const failure of ['lost', { status: 409, body: '{"error":"Correct the details."}' }] as const) {
       reply = failure;
       await submitAttempt(page, form);
       await page.getByRole('alert').first().waitFor();
-      await form.getByRole('button', { name: /Send return request|Send complaint|Submit response|Issue gift card|Redeem into wallet|Place COD order/ }).waitFor();
+      await form.getByRole('button', { name: /Send return request|Send complaint|Submit response|Send reply to Hastabazaar|Issue gift card|Redeem into wallet|Place COD order/ }).waitFor();
       await page.waitForFunction(() => !document.querySelector('form button[type="submit"]:disabled'));
       assert.deepEqual(await retainedValues(form), expectedValues);
     }
@@ -200,7 +202,7 @@ for (const [mode, formId] of modes) void test(`${formId} retains attempts and in
         : mode === 'gift-issue' ? { id: 'gift-1', amountPaisa: 10000, duplicate: true, code: null }
           : mode === 'gift-redeem' ? { id: 'gift-1', amountPaisa: 10000, duplicate: false }
             : { orderNumber: 'HK-20260928-ABCDEF' }) };
-    await form.getByRole('button', { name: /Send return request|Send complaint|Submit response|Issue gift card|Redeem into wallet|Place COD order/ }).click();
+    await form.getByRole('button', { name: /Send return request|Send complaint|Submit response|Send reply to Hastabazaar|Issue gift card|Redeem into wallet|Place COD order/ }).click();
     if (mode === 'checkout') await page.waitForFunction(() => location.pathname === '/orders/HK-20260928-ABCDEF');
     else await page.waitForFunction(() => (window as unknown as { __refreshes: number }).__refreshes === 1);
     assert.equal(payloads.at(-1)?.id, firstId);
@@ -222,7 +224,7 @@ for (const [mode, formId] of modes) void test(`${formId} retains attempts and in
       }
       await submitAttempt(page, form, false);
       await page.getByText(mode === 'checkout' ? /Checkout details changed/ : /This form changed while/).first().waitFor();
-      assert.equal(await form.getByRole('button', { name: /Send return request|Send complaint|Submit response|Issue gift card|Redeem into wallet|Place COD order/ }).isDisabled(), true);
+      assert.equal(await form.getByRole('button', { name: /Send return request|Send complaint|Submit response|Send reply to Hastabazaar|Issue gift card|Redeem into wallet|Place COD order/ }).isDisabled(), true);
     }
   } finally { await page.close(); await browser.close(); }
 });
