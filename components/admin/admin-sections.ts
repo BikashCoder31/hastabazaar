@@ -80,8 +80,8 @@ const definitions = [
     { href: '/admin/staff-form-history', label: 'Form answers' },
   ] },
   { id: 'settings', label: 'Settings', tabs: [
-    { href: '/admin/team', label: 'Team & roles' },
-    { href: '/admin/business-settings', label: 'Business settings' },
+    { href: '/admin/team', label: 'Team & access' },
+    { href: '/admin/business-settings', label: 'Business' },
     { href: '/admin/legal-policies', label: 'Legal & procedures', fallback: '/admin/legal-policies/active',
       related: [{ href: '/admin/legal-policies/active', label: 'Active staff procedure' }] },
     { href: '/admin/governance', label: 'Approval rules' },

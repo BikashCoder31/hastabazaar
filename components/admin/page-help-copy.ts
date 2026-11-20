@@ -68,6 +68,13 @@ const workflowHelp: Readonly<Record<string, HelpCopy>> = {
       'Record what you found and the next action or outcome for the case.',
     ],
   },
+  '/admin/business-settings': {
+    title: 'How business settings work',
+    sentences: [
+      'Pick a setting and enter a new value to preview what changes before you save.',
+      'Use a start date when the setting needs one. Orders already placed keep the values saved with them.',
+    ],
+  },
   '/admin/commission/terms': {
     title: 'How to review fee agreements',
     sentences: [

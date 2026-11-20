@@ -9,7 +9,7 @@ Branch `admin-redesign`. The checked preview is at `http://localhost:3018`. Refe
 | 0.1 Local Super Admin sign-in | Main agent | `8615cb6`. Implemented and verified in the checked preview at 390, 768, 1024 and 1440 px. Typecheck, lint and 16 focused checks passed. Full suite running. |
 | 0.2 Own delivery off, couriers on | Main agent | `b574059`. Checked the parked settings at 390, 768, 1024 and 1440 px and Today at 390 and 1440 px. Typecheck, lint and 22 focused checks passed, with one fixture-dependent skip. Full suite pending. |
 | 0.3 Phone and tablet shells | Main agent | `cf84e71`. Checked both workspaces at 390, 768, 1024 and 1440 px. Both menus restore focus on Escape. The phone help sheet fits edge to edge. Typecheck, lint and 49 focused checks passed. Full suite pending. |
-| 0.4 Shared UI pieces | Main agent | Typecheck, lint and static component render checks passed. The admin preview fit at all four widths. Full suite pending. |
+| 0.4 Shared UI pieces | Main agent | `cb22b05`. Typecheck, lint and static component render checks passed. The admin preview fit at all four widths. Full suite pending. |
 
 ### Local preview sign-in
 
@@ -30,12 +30,12 @@ The rows below reserve work. Only the assigned helper may edit its active alloca
 
 | Task | Helper | Files owned | Status |
 | --- | --- | --- | --- |
-| A Orders | batch_orders | `app/admin/orders/**`, `app/admin/order-responses/**`, `app/admin/shipping/**`, `app/admin/exceptions/**`; admin `order-fulfillment-actions`, `parcel-controls`, `cod-reconciliation`, `exception-order-section`, `exception-work-form`, `cancellation-review-*`, `first-cod-confirmation`, `paid-order-release`, `order-email-retry` | Assigned |
-| B Money | batch_money | `app/admin/{payouts,payments,accounting,financial-notices}/**`; admin `payout-*`, `refund-funding-review`, `customer-refund-reversal-review`, `manual-payment-review`, `accounting-workspace`, `recovery-*`, `seller-recovery-review`, `commercial-recovery` | Assigned |
-| C Settings | batch_settings | `app/admin/{business-settings,commission,fees,fee-waivers,delivery-rates}/**`; admin `business-settings-manager`, `setting-value-preview`, `commission-settings`, `company-bank-accounts`, `fee-*`, `common-fee-policy`, `delivery-rate-settings` | Assigned |
-| D Care, Sellers and Catalog | batch_care_catalog | `app/admin/{cases,sellers,seller-*,products,catalog,reviews}/**`; admin `return-*`, `complaint-case-actions`, `supported-case-intake`, `seller-*` except B's `seller-recovery-review`, `document-review-workspace`, `protected-*`, `public-profile-review`, `product-*`, `review-*`, `catalog-manager`, `category-*` | Assigned |
-| E Seller Today, Orders and Returns | batch_seller_orders | `app/seller/page.tsx`, `app/seller/{orders,order-responses,cases,notifications}/**`; seller `seller-action-overview`, `seller-task-summary`, `workspace-task-list`, `seller-order-list`, `order-fulfillment-actions`, `case-response-form`, `onboarding-checklist`, `readiness-summary`; `components/commerce/order-preparation-workspace.tsx` | Assigned |
-| F Seller Products and Earnings | batch_seller_products | `app/seller/{products,finance,analytics}/**`; seller `product-*`, `maker-product-workspace`, `inventory-editor`, `variant-editor`, `price-profit-preview`, `archive-product-button`, `seller-products-description`, `payout-request-form`, `bank-details-form`, `seller-earnings-summary`, `marketplace-fee-breakdown`, `order-marketplace-fees`, `commission-fee-notice`, `recovery-statement` | Assigned |
+| A Orders | batch_orders | `app/admin/orders/**`, `app/admin/order-responses/**`, `app/admin/shipping/**`, `app/admin/exceptions/**`; admin `order-fulfillment-actions`, `parcel-controls`, `cod-reconciliation`, `exception-order-section`, `exception-work-form`, `cancellation-review-*`, `first-cod-confirmation`, `paid-order-release`, `order-email-retry` | In progress |
+| B Money | batch_money | `app/admin/{payouts,payments,accounting,financial-notices}/**`; admin `payout-*`, `refund-funding-review`, `customer-refund-reversal-review`, `manual-payment-review`, `accounting-workspace`, `recovery-*`, `seller-recovery-review`, `commercial-recovery` | In progress |
+| C Settings | batch_settings | `app/admin/{business-settings,commission,fees,fee-waivers,delivery-rates}/**`; admin `business-settings-manager`, `setting-value-preview`, `commission-settings`, `company-bank-accounts`, `fee-*`, `common-fee-policy`, `delivery-rate-settings` | Verified and committed. Main typecheck and 18 focused checks passed. C lint was clean and the in-progress B files still had two lint diagnostics. Checked Settings at 390 and 1440 px independently. Full suite pending. |
+| D Care, Sellers and Catalog | batch_care_catalog | `app/admin/{cases,sellers,seller-*,products,catalog,reviews}/**`; admin `return-*`, `complaint-case-actions`, `supported-case-intake`, `seller-*` except B's `seller-recovery-review`, `document-review-workspace`, `protected-*`, `public-profile-review`, `product-*`, `review-*`, `catalog-manager`, `category-*`; `tests/product-publication-browser.test.ts`, `tests/product-source-scope-browser.test.ts` | In progress |
+| E Seller Today, Orders and Returns | batch_seller_orders | `app/seller/page.tsx`, `app/seller/{orders,order-responses,cases,notifications}/**`; seller `seller-action-overview`, `seller-task-summary`, `workspace-task-list`, `seller-order-list`, `order-fulfillment-actions`, `case-response-form`, `onboarding-checklist`, `readiness-summary`; `components/commerce/order-preparation-workspace.tsx`; `tests/seller-workspace-pages.test.ts`, `tests/checkout-delivery-presentation.test.ts`, `tests/cancellation-fulfillment-browser.test.ts`, `tests/form-catalog-commerce.test.ts`, `tests/form-catalog-commerce-success.test.ts`, `tests/seller-dashboard-experience.test.ts`, `tests/form-catalog-seller-case-history.test.ts` | In progress |
+| F Seller Products and Earnings | batch_seller_products | `app/seller/{products,finance,analytics}/**`; seller `product-*`, `maker-product-workspace`, `inventory-editor`, `variant-editor`, `price-profit-preview`, `archive-product-button`, `seller-products-description`, `payout-request-form`, `bank-details-form`, `seller-earnings-summary`, `marketplace-fee-breakdown`, `order-marketplace-fees`, `commission-fee-notice`, `recovery-statement` | In progress |
 | G Today handoffs | Unassigned | `app/admin/page.tsx`, `components/admin/overview-*.ts(x)` | Queued |
 | H Button conventions | Unassigned | Assigned from free page files | Queued |
 | I Background loading | Unassigned | `app/{admin,seller}/loading.tsx`, free route-level loading files | Queued |
@@ -56,9 +56,19 @@ The rows below reserve work. Only the assigned helper may edit its active alloca
 | X All offers | Unassigned | `app/admin/offers/**`, admin `promo-code-*`, `loyalty-*`, `referral-settings.tsx`; `fee-program-*` only after C releases it | Queued |
 | Y System health and backups | Unassigned | `app/admin/system-health/**`, backup-transfer page layout, admin `system-health-workspace.tsx`, `incident-workspace.tsx`, `overview-health*` after G releases it | Queued |
 
+### Integrations reserved to the main agent
+
+- A supplies its order-detail breadcrumb without repeating the shared breadcrumb.
+- B uses the existing eligibility predicate through a narrow export in `lib/db/repositories/payouts.ts`.
+- C includes approved Settings tab labels in `components/admin/admin-sections.ts`.
+- D includes the matching workflow help in `components/admin/page-help-copy.ts`.
+- E includes the shell update to reuse the existing first-COD-aware Orders count in `app/seller/layout.tsx`.
+
 ## For the owner
 
-- The previous full suite had two missing historical MariaDB fixtures and one staff-access assertion failure counted with its parent test. This is the baseline for the redesign verification.
+- The previous full suite had two failures from missing historical MariaDB test fixtures and a staff-access assertion failure counted with its parent test. The three missing SQL files were generated from checked-in source and matched the exact V8, 156 and reset SHA256 hashes in the historical release evidence. The two affected test files now pass all four checks. This generated test input was never executed as SQL or staged.
 - The parked rider links open historical views. The original bookmarked rider operations URL still works. Today reads courier balances from the existing COD reconciliation view.
 - The full test runner serializes several shared test-artifact paths. Full runs are coordinated so two suites do not overwrite the same fixtures. The first run spans changes made in Wave 0. The stale privacy wording assertion it surfaced was updated and passed on rerun.
+- The staff-access browser fixture now flushes each new set of server props before testing the disabled state. The unmodified business checks and all eight fixture assertions pass. The fixture change is reserved for L.
+- C preserves the existing paired commission schedule confirmation and keeps inactive open-box districts read-only. The checked local database showed the customer marketplace fee **On · NPR 10 per order**, which differs from the brief’s Off state. The UI reflects the saved setting. No fee change was submitted.
 - Database migrations written and awaiting review: none.
