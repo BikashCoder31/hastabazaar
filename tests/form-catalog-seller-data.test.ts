@@ -859,9 +859,14 @@ void test('seller profile history is owner-only and keeps archived answers', asy
 });
 
 void test('product list exposes record-local history without fetching every product answer', async () => {
-  const source = await readFile(new URL('../app/seller/products/page.tsx', import.meta.url), 'utf8');
-  assert.match(source, /seller\/products\/\$\{product\.id\}\/answers/);
-  assert.doesNotMatch(source, /listFormAnswersForSubjectPage/);
+  const [page, catalogue] = await Promise.all([
+    readFile(new URL('../app/seller/products/page.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../components/seller/product-catalogue.tsx', import.meta.url), 'utf8'),
+  ]);
+  assert.match(page, /<ProductCatalogue\b/);
+  assert.match(catalogue, /'\/seller\/products\/' \+ encodeURIComponent\(product\.id\)/);
+  assert.match(catalogue, /href=\{base \+ '\/answers'\}/);
+  assert.doesNotMatch(page + catalogue, /listFormAnswersForSubjectPage/);
 });
 
 void test('application progress shows only the current maker’s application and profile history', async () => {
