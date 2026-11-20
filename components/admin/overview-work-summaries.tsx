@@ -9,9 +9,9 @@ import { useOverviewHealthChecks } from './overview-health';
 const number = new Intl.NumberFormat('en-NP');
 const npr = new Intl.NumberFormat('en-NP', { style: 'currency', currency: 'NPR', maximumFractionDigits: 2, minimumFractionDigits: 0 });
 
-export function TodayWorkSummaries({ orders, riderCash, cases, checks }: {
+export function TodayWorkSummaries({ orders, courierCash, cases, checks }: {
   orders: TodayOrders | null | undefined;
-  riderCash: { paisa: number; riders: number } | null | undefined;
+  courierCash: { paisa: number; parcels: number } | null | undefined;
   cases: number | null | undefined;
   checks: OverviewHealthChecks | null | undefined;
 }) {
@@ -23,7 +23,7 @@ export function TodayWorkSummaries({ orders, riderCash, cases, checks }: {
     observed.some(row => row.tone === 'unknown') ? 'Status unknown' : number.format(observed.length) + ' checked';
   const metrics = [
     orders === undefined ? null : { label: 'Orders today', value: orders === null ? 'Unavailable' : number.format(orders.count), detail: 'Placed today, Nepal time' },
-    riderCash === undefined ? null : { label: 'Rider cash to count', value: riderCash === null ? 'Unavailable' : npr.format(riderCash.paisa / 100), detail: riderCash ? `From ${number.format(riderCash.riders)} ${riderCash.riders === 1 ? 'rider' : 'riders'}` : 'Pending remittances' },
+    courierCash === undefined ? null : { label: 'Courier cash due', value: courierCash === null ? 'Unavailable' : npr.format(courierCash.paisa / 100), detail: courierCash ? `From ${number.format(courierCash.parcels)} ${courierCash.parcels === 1 ? 'parcel' : 'parcels'}` : 'Pending remittances' },
     cases === undefined ? null : { label: 'Returns & complaints', value: cases === null ? 'Unavailable' : number.format(cases), detail: 'Open cases' },
     health === undefined ? null : { label: 'System checks', value: healthText, detail: 'Recorded observations', warning: health === null || observed.some(row => row.tone !== 'good') },
   ].filter(row => row !== null);

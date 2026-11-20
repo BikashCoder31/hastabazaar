@@ -332,7 +332,7 @@ export default async function AdminDashboardPage({ searchParams }: {
     <OverviewHealthProvider key={staff.id} actorId={staff.id} initial={checks}>
       <TodayOverview actorId={staff.id} firstName={staff.displayName.trim().split(/\s+/)[0]} observedAt={now}
         returnTo={returnTo} tasks={today.rows} partialSources={[...partialSources, ...today.partial]}
-        metrics={<TodayWorkSummaries orders={today.orders} riderCash={today.riderCash} cases={cases} checks={checks}/>}
+        metrics={<TodayWorkSummaries orders={today.orders} courierCash={today.courierCash} cases={cases} checks={checks}/>}
         sidebar={<aside className="today-sidebar" aria-label="Operations updates">
           <OverviewOrdersByStage orders={today.orders}/>
           <OverviewHealth checks={checks} returnTo={returnTo}/>

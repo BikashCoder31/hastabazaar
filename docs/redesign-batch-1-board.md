@@ -6,9 +6,9 @@ Branch `admin-redesign`. The checked preview is at `http://localhost:3018`. Refe
 
 | Task | Owner | Status |
 | --- | --- | --- |
-| 0.1 Local Super Admin sign-in | Main agent | Implemented and verified in the checked preview at 390, 768, 1024 and 1440 px. Typecheck, lint and 16 focused checks passed. Full suite running. |
-| 0.2 Own delivery off, couriers on | Main agent | In progress |
-| 0.3 Phone and tablet shells | Main agent | Queued |
+| 0.1 Local Super Admin sign-in | Main agent | `8615cb6`. Implemented and verified in the checked preview at 390, 768, 1024 and 1440 px. Typecheck, lint and 16 focused checks passed. Full suite running. |
+| 0.2 Own delivery off, couriers on | Main agent | Checked the parked settings at 390, 768, 1024 and 1440 px and Today at 390 and 1440 px. Typecheck, lint and 22 focused checks passed, with one fixture-dependent skip. Full suite pending. |
+| 0.3 Phone and tablet shells | Main agent | In progress |
 | 0.4 Shared UI pieces | Main agent | Queued |
 
 ### Local preview sign-in
@@ -53,4 +53,5 @@ The rows below reserve work. Only the assigned helper may edit its active alloca
 ## For the owner
 
 - The previous full suite had two missing historical MariaDB fixtures and one staff-access assertion failure counted with its parent test. This is the baseline for the redesign verification.
+- The parked rider links open historical views. The original bookmarked rider operations URL still works. Today reads courier balances from the existing COD reconciliation view.
 - Database migrations written and awaiting review: none.

@@ -93,7 +93,7 @@ void test('Today puts operational metrics before the task board and keeps the ma
  const {default:Dashboard}=await import('../app/admin/page');fixture.role='super_admin';fixture.topSellers=[];
  const html=renderToStaticMarkup(await Dashboard());
  assert.match(html,/<h1[^>]*>Good morning, Local<\/h1>/);assert.match(html,/with no owner yet/);
- for(const label of ['Orders today','Rider cash to count','Returns &amp; complaints','System checks','Needs action','Refresh checks'])assert.ok(html.includes(label),label);
+ for(const label of ['Orders today','Courier cash due','Returns &amp; complaints','System checks','Needs action','Refresh checks'])assert.ok(html.includes(label),label);
  assert.ok(html.indexOf('aria-label="Work totals"')<html.indexOf('id="seller-review-queue"'));
  assert.ok(html.indexOf('id="seller-review-queue"')<html.indexOf('data-operational-summary'));
  assert.match(html,/<details[^>]*data-operational-summary="true"[^>]*>/);

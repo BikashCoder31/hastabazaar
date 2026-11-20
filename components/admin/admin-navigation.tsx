@@ -105,7 +105,8 @@ export function AdminSearch({ role, permissions, settings }: AdminStaffAccess & 
   const term = query.trim();
   const destinations = adminNavigation(role, permissions);
   const matching = new Map([
-    ...adminNavigation(role, permissions, query).map(({ href, label }) => [href, label] as const),
+    ...adminNavigation(role, permissions, query).filter(({ href }) => href !== '/admin/riders')
+      .map(({ href, label }) => [href, label] as const),
     ...adminSections(role, permissions).flatMap(section => section.tabs
       .flatMap(tab => [tab, ...tab.related])
       .filter(({ label }) => (section.label + ' ' + label).toLowerCase().includes(term.toLowerCase()))

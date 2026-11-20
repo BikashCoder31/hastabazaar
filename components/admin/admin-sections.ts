@@ -26,11 +26,10 @@ const definitions = [
   { id: 'orders', label: 'Orders', tabs: [
     { href: '/admin/orders', label: 'All orders' },
     { href: '/admin/shipping', label: 'Parcel problems' },
-    { href: '/admin/riders', label: 'Riders' },
     { href: '/admin/delivery-rates', label: 'Delivery rates' },
     { href: '/admin/order-emails', label: 'Order emails' },
-    { href: '/admin/orders?workspace=answers', label: 'Seller & rider answers', access: '/admin/orders',
-      routes: ['/admin/order-responses', '/admin/riders/form-history'] },
+    { href: '/admin/orders?workspace=answers', label: 'Seller answers', access: '/admin/orders',
+      routes: ['/admin/order-responses'] },
   ] },
   { id: 'care', label: 'Care', tabs: [
     { href: '/admin/cases', label: 'Returns & complaints' },
@@ -58,7 +57,7 @@ const definitions = [
     { href: '/admin/homepage', label: 'Homepage' },
   ] },
   { id: 'money', label: 'Money', tabs: [
-    { href: '/admin/payments', label: 'Rider cash' },
+    { href: '/admin/payments', label: 'Courier cash' },
     { href: '/admin/payouts', label: 'Payouts', routes: ['/admin/payments/payouts', '/admin/payments/recoveries'] },
     { href: '/admin/accounting', label: 'Books' },
     { href: '/admin/commission', label: 'Commission' },
@@ -91,6 +90,7 @@ const definitions = [
     { href: '/admin/system-health', label: 'System health' },
     { href: '/admin/backup-transfer', label: 'Backup & transfer' },
     { href: '/security', label: 'Security' },
+    { href: '/admin/not-in-use', label: 'Not in use yet', routes: ['/admin/riders'] },
   ] },
 ] as const satisfies readonly { id: string; label: string; tabs: readonly TabDefinition[] }[];
 

@@ -196,7 +196,7 @@ export function ParcelControls({
                         <span>Super Admin confirmation required.</span>
                       ) : r.riderId === actorId || (r.maker === actorId && !isSuperAdmin) ? (
                         <span>
-                          Another staff member must review this record.
+                          Access is restricted for the person who submitted or collected this cash.
                         </span>
                       ) : null}
                     </div>
@@ -211,7 +211,7 @@ export function ParcelControls({
                   className="rounded-lg border border-dashed p-3 text-sm"
                 >
                   <p>
-                    Simulated rider compensation · {entry.outcome} ·{' '}
+                    Historical simulated delivery compensation · {entry.outcome} ·{' '}
                     {money(entry.amountPaisa)} · {entry.status}
                   </p>
                   <p>
@@ -345,12 +345,10 @@ function ParcelForm({
               id={field('method')}
               className="mt-1 block w-full rounded border bg-background p-2"
             >
-              {isSuperAdmin ? <option value="own_rider">Own rider</option> : null}
               <option value="courier">Courier</option>
             </select>
           </label>
           {[
-            ...(isSuperAdmin ? [['riderEmail', 'Registered rider email']] : []),
             ['courierName', 'Courier company'],
             ['trackingCode', 'Tracking / handover reference'],
             ['trackingUrl', 'Optional HTTPS tracking link'],

@@ -4,7 +4,7 @@ import { canViewStaffNotification } from '@/lib/operations/notification-links';
 import { readReminderMilestone } from '@/lib/operations/reminder-notice-sources';
 import { resolveReminderDestination } from '@/lib/operations/reminder-destination';
 import { readExceptionWorkQueue, listUnrecordedParcelExceptions } from '@/lib/operations/exception-work';
-import { readRiderCashToCount } from '@/lib/payments/manual-payment-workspace';
+import { readCourierCashDue } from '@/lib/payments/manual-payment-workspace';
 import { can } from '@/lib/marketplace/permissions';
 import { marketplaceSummaryRange } from '@/lib/admin/marketplace-period';
 import { reviewTaskOpen, type NativeReviewTask, type ReviewQueueTask } from '@/lib/admin/review-queue-view';
@@ -18,7 +18,7 @@ const orderStages = [
   { label: 'New', status: 'confirmed' },
   { label: 'Packing', status: 'packing' },
   { label: 'Waiting for pickup', status: 'ready_for_pickup' },
-  { label: 'With rider', status: 'dispatched' },
+  { label: 'With courier', status: 'dispatched' },
   { label: 'Delivered today', status: 'delivered' },
 ] as const;
 export type TodayOrders = { count: number; stages: { label: string; count: number }[] };
@@ -112,30 +112,24 @@ export async function readTodaySources({
   const recorded = exceptions?.items;
   const unrecorded = orders !== undefined ? await listUnrecordedParcelExceptions(db, actor.id).catch(() => null) : undefined;
   const cash = actor.role === 'super_admin' && can(actor, 'payment.receipt.verify')
-    ? await readRiderCashToCount(db, actor.id).catch(() => null) : undefined;
+    ? await readCourierCashDue(db, actor.id).catch(() => null) : undefined;
   const reminders = await readTodayReminders(db, actor, now, tasks, returnTo).catch(() => null);
   const native = tasks.filter((task): task is NativeReviewTask => !('finance' in task));
   const completed = await readRecentReviewDecisions(db, actor.id, native, returnTo, 8, { from, through: now }).catch(() => null);
-  const ownerIds = [...new Set([
-    ...tasks.flatMap(task => task.ownerId ? [task.ownerId] : []),
-    ...(cash ?? []).map(row => row.riderId),
-  ])];
+  const ownerIds = [...new Set(tasks.flatMap(task => task.ownerId ? [task.ownerId] : []))];
   const names = await displayNames(db, ownerIds).catch(() => new Map<string, string>());
   const completedTasks = new Map(native.filter(task => task.status === 'completed').map(task => [task.id, task]));
   const rows = tasks.filter(reviewTaskOpen).map(task => todayReviewTask(task, returnTo, names.get(task.ownerId ?? '') ?? null));
   const partial = [
     ...(exceptions === null || unrecorded === null ? ['Parcel follow-up unavailable'] : []),
     ...(exceptions?.partial || unrecorded?.length === 100 ? ['Parcel follow-up shows the latest records'] : []),
-    ...(cash === null ? ['Rider cash unavailable'] : []),
+    ...(cash === null ? ['Courier cash unavailable'] : []),
     ...(reminders === null ? ['Reminders unavailable'] : reminders.partial ? ['Reminders show the latest notifications'] : []),
     ...(completed === null ? ['Saved review outcomes unavailable'] : []),
   ];
   const money = new Intl.NumberFormat('en-NP', { style: 'currency', currency: 'NPR' });
-  const pendingCash = new Set((cash ?? []).map(row => row.id));
-  const parcelActions = new Set((recorded ?? []).filter(row => row.status === 'open' &&
-    (!row.cashRecordId || !pendingCash.has(row.cashRecordId))).map(row => row.jobId));
+  const parcelActions = new Set((recorded ?? []).filter(row => row.status === 'open').map(row => row.jobId));
   for (const row of recorded ?? []) {
-    if (row.cashRecordId && pendingCash.has(row.cashRecordId)) continue;
     if (row.status !== 'open' && (row.resolvedAt === null || row.resolvedAt < from || row.resolvedAt > now)) continue;
     rows.push({
       id: 'exception:' + row.id, section: 'Orders', type: 'Parcel problems',
@@ -155,13 +149,13 @@ export async function readTodaySources({
     });
   }
   for (const row of cash ?? []) {
-    const query = new URLSearchParams({ order: row.orderId, parcel: row.jobId, remittance: row.id });
-    const rider = names.get(row.riderId);
+    const query = new URLSearchParams({ order: row.orderId, parcel: row.jobId });
     rows.push({
-      id: 'remittance:' + row.id, section: 'Money', type: 'Rider cash',
-      title: rider ? 'Count cash from ' + rider : 'Count rider cash', context: row.orderNumber + ' · ' + money.format(row.amountPaisa / 100) + ' reported',
-      startedAt: row.createdAt, dueAt: null, state: 'action', ownerId: null, ownerName: null, ownerKnown: false, assignment: null,
-      href: withAdminReturnTo('/admin/payments?' + query + '#cod-parcel-' + encodeURIComponent(row.jobId), returnTo), action: 'Count cash',
+      id: 'courier-cash:' + row.jobId, section: 'Money', type: 'Courier cash',
+      title: row.courierName ? 'Check cash from ' + row.courierName : 'Check courier cash',
+      context: row.orderNumber + ' · ' + money.format(row.amountPaisa / 100) + ' due',
+      startedAt: row.updatedAt, dueAt: null, state: 'action', ownerId: null, ownerName: null, ownerKnown: false, assignment: null,
+      href: withAdminReturnTo('/admin/payments?' + query + '#cod-parcel-' + encodeURIComponent(row.jobId), returnTo), action: 'Check cash',
     });
   }
   const positions = new Map(rows.map((row, index) => [row.id, index]));
@@ -202,9 +196,9 @@ export async function readTodaySources({
   }
   return {
     rows, partial, orders,
-    riderCash: cash ? {
+    courierCash: cash ? {
       paisa: cash.reduce((sum, row) => sum + row.amountPaisa, 0),
-      riders: new Set(cash.map(row => row.riderId)).size,
+      parcels: cash.length,
     } : cash,
   };
 }

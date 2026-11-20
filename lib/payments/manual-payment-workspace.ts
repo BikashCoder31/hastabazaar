@@ -20,6 +20,23 @@ export async function readRiderCashToCount(db:D1Database,actorId:string){
  return rows;
 }
 
+export async function readCourierCashDue(db: D1Database, actorId: string) {
+  await staffMutationGuard(db, actorId, 'payment.receipt.verify', FinanceAccessError, 'super_admin');
+  const { results } = await db.prepare(`SELECT j.id AS jobId, o.id AS orderId,
+    o.order_number AS orderNumber, p.courier_name AS courierName,
+    b.remaining_paisa AS amountPaisa, j.updated_at AS updatedAt
+    FROM cod_reconciliation_balances b
+    JOIN shipping_parcels p ON p.shipping_job_id = b.shipping_job_id
+    JOIN shipping_jobs j ON j.id = p.shipping_job_id
+    JOIN orders o ON o.id = j.order_id
+    WHERE o.payment_mode = 'cod' AND p.method = 'courier' AND b.remaining_paisa > 0
+    ORDER BY j.updated_at, j.id`).all<{
+      jobId: string; orderId: string; orderNumber: string; courierName: string | null;
+      amountPaisa: number; updatedAt: number;
+    }>();
+  return results;
+}
+
 export async function getManualPaymentWorkspace(db:D1Database,actorId:string,orderFilter:string|null=null,focus?:IncomingParcelFocus){
  const authority=await staffMutationGuard(db,actorId,'payment.receipt.verify',FinanceAccessError);
  const clock=checkoutCommitClock(db),now=Number((await db.prepare(`SELECT ${clock} AS now`).first<{now:number}>())!.now);

@@ -28,7 +28,7 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
   const localMfaNotice = local && localStaffMfaFlagEnabled(bindings, (await headers()).get('host') ?? '');
   const counts = bindings.DB ? await readAdminSidebarCounts(bindings.DB, staff).catch(() => ({})) : {};
   const settings = destinations.some(item => item.href === '/admin/business-settings')
-    ? businessSettingDefinitions.filter(definition => staff.role === 'super_admin' || !definition.affectedSurfaces.some(surface => surface === 'rider'))
+    ? businessSettingDefinitions.filter(definition => !definition.affectedSurfaces.some(surface => surface === 'rider'))
       .map(({ key, label, description }) => ({ key, label, description }))
     : [];
   const account = { name: staff.displayName, role: staff.role, signOut: signOutPath('/'), procedure };

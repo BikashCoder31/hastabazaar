@@ -55,7 +55,7 @@ export default async function StaffRiderFormHistoryPage({ searchParams }: {
 
   const { records, nextCursor } = await listRiderHistoryRecords(db, kind, null, before);
   return <main className="space-y-5">
-    <p><Link className="underline" href="/admin/riders">← Rider operations</Link></p>
+    <p><Link className="underline" href="/admin/riders?view=records">← Rider applications &amp; reports</Link></p>
     <AdminPageTitle><h1 className="text-2xl font-semibold">{spec.title} answer history</h1></AdminPageTitle>
     {records.length ? <ul className="space-y-2">{records.map((record) => <li key={record.id}>
       <Link className="underline" href={`${base}&id=${encodeURIComponent(record.id)}`}>

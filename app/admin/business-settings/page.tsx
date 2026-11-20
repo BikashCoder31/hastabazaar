@@ -27,7 +27,7 @@ export default async function BusinessSettingsPage({searchParams}: {searchParams
   const bindings=env as unknown as Record<string,string|undefined>,environment=resolveRuntimeEnvironment({runtimeEnvironment:bindings.HASTABAZAAR_RUNTIME_ENV,nodeEnvironment:bindings.NODE_ENV??process.env.NODE_ENV,appOrigin:bindings.APP_ORIGIN});
   const companyAccounts=staff.role==='super_admin'?await getCompanyAccountWorkspace(database,staff.id,now).catch(()=>null):null;
   const initialSettings = await Promise.all(
-    businessSettingDefinitions.filter(definition => staff.role === 'super_admin' || !definition.affectedSurfaces.some(surface => surface === 'rider')).map(async (definition) => ({
+    businessSettingDefinitions.filter(definition => !definition.affectedSurfaces.some(surface => surface === 'rider')).map(async (definition) => ({
       key: definition.key,
       label: definition.label,
       description: definition.description,
@@ -58,6 +58,7 @@ export default async function BusinessSettingsPage({searchParams}: {searchParams
         </p>
       </div>
       <Link href="/admin/commission" className="inline-flex min-h-11 items-center text-sm font-semibold text-primary underline">Manage commission rates and earnings</Link>
+      {staff.role === 'super_admin' ? <Link href="/admin/not-in-use" className="section-link">Not in use yet</Link> : null}
       {staff.role==='super_admin'?<CompanyBankAccounts workspace={companyAccounts}/>:null}
       <StaffFormHistoryLinks entries={[{kind:'business-settings',label:'Business setting answers'},
         {kind:'homepage-hero-settings',label:'Homepage hero answers'},{kind:'homepage-occasion-settings',label:'Homepage occasion answers'}]} />

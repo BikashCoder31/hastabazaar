@@ -15,11 +15,16 @@ import {readFormHealth,formHealthDatabaseScope} from '@/lib/operations/form-heal
 
 export const dynamic = 'force-dynamic';
 
+function isParkedDeliveryForm(id: string) {
+  return id.startsWith('rider.') || id.startsWith('staff.rider-');
+}
+
 export default async function FormCatalogPage() {
   const staff = await requireStaffPage('/admin/forms', 'business_settings.manage');
   if (staff.role !== 'super_admin') redirect('/staff-access-denied');
   const db = requireDatabase(env as unknown as { DB?: D1Database });
-  const health=await readFormHealth(db,staff.id,formHealthDatabaseScope(db));
+  const health = (await readFormHealth(db, staff.id, formHealthDatabaseScope(db)))
+    .filter(row => !isParkedDeliveryForm(row.formId));
   const result = await db.prepare(`SELECT v.form_id AS formId,
     MAX(CASE WHEN v.status = 'published' THEN v.version ELSE 0 END) AS publishedVersion,
     MAX(CASE WHEN v.status = 'draft' THEN v.version ELSE 0 END) AS draftVersion,
@@ -30,7 +35,8 @@ export default async function FormCatalogPage() {
       WHERE latest.form_id = v.form_id ORDER BY latest.updated_at DESC, latest.version DESC LIMIT 1) AS lastEditor
     FROM form_config_versions v GROUP BY v.form_id`).all<{ formId: string; publishedVersion: number; draftVersion: number; lastChangedAt: number; lastEditor?: string; publishedConfigJson: string; publishedAt: number }>();
   const versions = new Map(result.results.map(row => [row.formId, row]));
-  const rows = Object.values(FORM_REGISTRY).filter(isFormCatalogEditable).map(form => {
+  const nativeForms = [...NATIVE_TASK_FORM_IDS].filter(id => !isParkedDeliveryForm(id));
+  const rows = Object.values(FORM_REGISTRY).filter(form => !isParkedDeliveryForm(form.id) && isFormCatalogEditable(form)).map(form => {
     const stored = versions.get(form.id);
     let availability: 'checked' | 'core' | 'unavailable';
     let availabilityReason: string | undefined;
@@ -48,11 +54,11 @@ export default async function FormCatalogPage() {
       <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">Find a form, check what it asks, and make changes. Save a draft, preview it, then publish when it is ready.</p>
     </div>
     <FormCatalogList rows={rows} />
-    <details className="rounded-xl border bg-card p-5"><summary className="cursor-pointer font-semibold">Managed by their features · 57 native tasks</summary><p className="mt-3 text-sm text-muted-foreground">Use the owning workspace for native controls. Existing questions, answers and historical identifiers remain; no editorial publication is invented for a native task.</p><ul className="mt-4 grid gap-3 md:grid-cols-2">{[...NATIVE_TASK_FORM_IDS].map(id=>{const destination=nativeFormDestination(id),stored=versions.get(id);return <li key={id} className="min-w-0 rounded-lg border p-3"><h2 className="font-semibold">{formCatalogPresentation(FORM_REGISTRY[id]).label}</h2><p className="mt-1 break-words text-xs text-muted-foreground">{id} · {stored?.publishedVersion?'Published question history retained':'Native contract; no editorial publication'}{stored?.draftVersion?' · Unpublished draft history retained':''}</p><div className="mt-2 flex flex-wrap gap-3 text-sm">{destination?<Link href={withAdminReturnTo(destination.href,'/admin/forms')} className="underline">{destination.label}</Link>:null}<Link href={'/admin/forms/'+encodeURIComponent(id)} className="underline">Task and question history</Link></div></li>;})}</ul></details>
+    <details className="rounded-xl border bg-card p-5"><summary className="cursor-pointer font-semibold">Managed by their features · {nativeForms.length} native tasks</summary><p className="mt-3 text-sm text-muted-foreground">Use the owning workspace for native controls. Existing questions, answers and historical identifiers remain; no editorial publication is invented for a native task.</p><ul className="mt-4 grid gap-3 md:grid-cols-2">{nativeForms.map(id=>{const destination=nativeFormDestination(id),stored=versions.get(id);return <li key={id} className="min-w-0 rounded-lg border p-3"><h2 className="font-semibold">{formCatalogPresentation(FORM_REGISTRY[id]).label}</h2><p className="mt-1 break-words text-xs text-muted-foreground">{id} · {stored?.publishedVersion?'Published question history retained':'Native contract; no editorial publication'}{stored?.draftVersion?' · Unpublished draft history retained':''}</p><div className="mt-2 flex flex-wrap gap-3 text-sm">{destination?<Link href={withAdminReturnTo(destination.href,'/admin/forms')} className="underline">{destination.label}</Link>:null}<Link href={'/admin/forms/'+encodeURIComponent(id)} className="underline">Task and question history</Link></div></li>;})}</ul></details>
     <section className="space-y-3 rounded-xl border p-5" aria-label="Observed form loading and saved submissions"><h2 className="text-xl font-semibold">Actual loading and saved submissions</h2><p>Definition compatibility above is a configuration check. Durable submissions below come from committed domain receipts for the recorded environment, release and version.</p>{health.length?health.map(row=><article key={row.formId} className="rounded border p-3"><h3>{row.formId} · {row.state.replaceAll('_',' ')}</h3><p>{row.lastLoad?'Last definition observation: '+row.lastLoad.outcome:'No loading observation'} · {row.lastSave?'Durable submission recorded':'No durable submission evidence for this release and version'}</p>{row.lastLoad?<p>Support reference: {row.lastLoad.supportReference}</p>:null}</article>):<p>Unknown — no matching runtime or durable-submission observations have been recorded.</p>}<Link href="/admin/system-health" className="underline">Open System health and scoped records</Link></section>
     <details className="rounded-xl border bg-card p-5"><summary className="w-fit cursor-pointer font-semibold text-primary">History and recorded answers</summary>
       <p className="mt-3 text-sm leading-6 text-muted-foreground">Form changes and submitted answers are separate records. Access to answers depends on your permissions.</p>
-      <div className="mt-3 flex flex-wrap gap-4"><Link href="/admin/form-submissions" className="text-sm font-medium text-primary hover:underline">Sign-in and identity request history</Link><Link href="/admin/forms/rider.application" className="text-sm font-medium text-primary hover:underline">Inactive rider application history</Link><Link href="/admin/staff-form-history" className="text-sm font-medium text-primary hover:underline">Staff form history</Link></div>
+      <div className="mt-3 flex flex-wrap gap-4"><Link href="/admin/form-submissions" className="text-sm font-medium text-primary hover:underline">Sign-in and identity request history</Link><Link href="/admin/staff-form-history" className="text-sm font-medium text-primary hover:underline">Staff form history</Link></div>
     </details>
   </div>;
 }

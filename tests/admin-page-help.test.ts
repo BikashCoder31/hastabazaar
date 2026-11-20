@@ -57,7 +57,7 @@ void test('page help gives short workflow guidance and uses existing procedure a
   const receipt = getAdminPageHelp('/admin/payments/refunds', { role: 'admin', permissions: ['refund.approve.standard'] });
   assert.match(receipt.sentences.join(' '), /refund/i);
   const answers = getAdminPageHelp('/admin/orders', { role: 'admin', permissions: ['order.manage'] }, new URLSearchParams('workspace=answers'));
-  assert.match(answers.sentences.join(' '), /Rider form history/);
+  assert.match(answers.sentences.join(' '), /original order/);
   const release = getAdminPageHelp('/admin/payments/orders/order-1', { role: 'super_admin' });
   assert.match(release.sentences.join(' '), /Check readiness and release/);
   const reviewTasks = getAdminPageHelp('/admin', { role: 'super_admin' }, new URLSearchParams('workspace=reviews'));

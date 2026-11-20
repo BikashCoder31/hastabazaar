@@ -19,7 +19,7 @@ const areaRoutes: readonly [AdminArea, readonly string[]][] = [
   ['Orders & customer care', ['/admin/orders', '/admin/shipping', '/admin/cases', '/admin/privacy', '/admin/riders', '/admin/feedback', '/admin/delivery-rates']],
   ['Finance & payments', ['/admin/payments', '/admin/payouts', '/admin/accounting']],
   ['Fees, programs & promotions', ['/admin/fees', '/admin/referrals', '/admin/promo-codes', '/admin/fee-waivers', '/admin/loyalty', '/admin/commission', '/admin/programs', '/admin/gift-cards']],
-  ['Team & business policies', ['/security', '/admin/team', '/admin/business-settings', '/admin/legal-policies', '/admin/legal-policies/active']],
+  ['Team & business policies', ['/security', '/admin/team', '/admin/business-settings', '/admin/legal-policies', '/admin/legal-policies/active', '/admin/not-in-use']],
   ['System health & records', ['/admin/system-health', '/admin/backup-transfer', '/admin/forms', '/admin/business-emails', '/admin/order-emails', '/admin/activity', '/admin/governance', '/admin/staff-form-history', '/admin/form-submissions']],
 ];
 const areaForRoute = new Map(areaRoutes.flatMap(([area, routes]) => routes.map(route => [route, area] as const)));
@@ -73,6 +73,13 @@ const destinations: readonly {
     href: '/admin/riders',
     label: 'Rider operations',
     icon: 'shipping',
+    permission: 'order.manage',
+    role: 'super_admin',
+  },
+  {
+    href: '/admin/not-in-use',
+    label: 'Not in use yet',
+    icon: 'settings',
     permission: 'order.manage',
     role: 'super_admin',
   },
@@ -406,6 +413,10 @@ const taskGuides: Readonly<
       'Use the retained record to plan any follow-up.',
     ],
   ],
+  '/admin/not-in-use': [
+    'See features that are switched off and where their records are kept.',
+    ['Open the saved records when you need to check past work.', 'Use Money › Courier cash to track payments from couriers.'],
+  ],
   '/admin/riders': [
     'Private rider records are available only to Super Admin. Applications and the rider portal are on hold.',
     [
@@ -627,6 +638,7 @@ const taskOrder: readonly string[] = [
   '/admin/progress',
   '/admin/feedback',
   '/admin/riders',
+  '/admin/not-in-use',
   '/admin/sellers',
   '/admin/products',
   '/admin/products/publications',

@@ -30,10 +30,10 @@ const tabHelp: Readonly<Record<string, HelpCopy>> = {
     ],
   },
   '/admin/orders?workspace=answers': {
-    title: 'How to review seller and rider answers',
+    title: 'How to review seller answers',
     sentences: [
       'Open a response to see what the seller reported and what is due next.',
-      'Use Rider form history when available to find submitted rider answers.',
+      'Open the original order to check the preparation history before recording your follow-up.',
     ],
   },
   '/admin/notifications?view=reminders': {

@@ -34,7 +34,6 @@ import {
   queuePageHref,
 } from '@/lib/admin/queue-filters';
 import { loadQueryPresentationConfig } from '@/lib/catalog/shop-query';
-import { adminNavigation } from '@/lib/admin/navigation';
 export const dynamic = 'force-dynamic';
 const pageSize = 50;
 const money = (paisa: number) =>
@@ -56,11 +55,9 @@ export default async function AdminOrdersPage({
     params = (await searchParams) ?? {};
   if (params.workspace === 'answers') {
     const tasks = await readAdminReviewTasks(database, staff.id);
-    const riderHistory = adminNavigation(staff.role, staff.permissions).some(link => link.href === '/admin/riders');
     return (
       <div className="space-y-5">
-        <AdminPageTitle><h1 className="section-title">Seller &amp; rider answers</h1></AdminPageTitle>
-        {riderHistory ? <Link href="/admin/riders/form-history?kind=report" className="section-link">Rider form history</Link> : null}
+        <AdminPageTitle><h1 className="section-title">Seller answers</h1></AdminPageTitle>
         <SharedReviewQueue tasks={tasks?.filter(task => task.sourceType === 'order_response') ?? []}
           actorId={staff.id} unavailable={tasks === null} />
       </div>

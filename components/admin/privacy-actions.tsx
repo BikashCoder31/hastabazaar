@@ -132,7 +132,7 @@ export function PrivacyActions({
       ) : null}
       {status === 'approved' && assignedToCurrentStaff && requestType === 'deletion' && canDecide ? (
         <div className="mb-5 rounded-xl border p-4">
-          <p className="text-sm text-muted-foreground">Erase eligible account-profile answer history after confirming retention and legal holds. Linked seller, rider, order, and case records remain. This action does not close the request.</p>
+          <p className="text-sm text-muted-foreground">Erase eligible account-profile answer history after confirming retention and legal holds. Linked seller, delivery, order, and case records remain. This action does not close the request.</p>
           <Button type="button" variant="destructive" disabled={pending} onClick={() => setEraseConfirm(true)}>Erase profile answers</Button>
           {eraseDone ? <output aria-live="polite" className="mt-2 block text-sm">Eligible profile answers erased. Other linked records and request status are unchanged.</output> : null}
           {eraseRetry?<div className="mt-3 space-y-2 text-sm"><p>A prior erasure may have succeeded. Check the request record before another attempt.</p><Button type="button" variant="outline" disabled={pending} onClick={()=>{if(!window.confirm('Starting a new attempt may repeat a prior successful erasure. Check the request record first. Continue?'))return;clearSessionAttempt(eraseKey);setEraseRetry(false);setError('');}}>Start a new erasure attempt</Button></div>:null}
