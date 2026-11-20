@@ -16,7 +16,7 @@ const areaRoutes: readonly [AdminArea, readonly string[]][] = [
   ['Overview & work queue', ['/admin', '/admin/notifications', '/admin/progress', '/admin/analytics', '/admin/exceptions']],
   ['Sellers', ['/admin/sellers']],
   ['Products & storefront', ['/admin/products/publications', '/admin/products', '/admin/catalog', '/admin/homepage', '/admin/reviews']],
-  ['Orders & customer care', ['/admin/orders', '/admin/shipping', '/admin/cases', '/admin/privacy', '/admin/riders', '/admin/feedback', '/admin/delivery-rates']],
+  ['Orders & customer care', ['/admin/orders', '/admin/orders/dispatch', '/admin/shipping', '/admin/cases', '/admin/privacy', '/admin/riders', '/admin/feedback', '/admin/delivery-rates']],
   ['Finance & payments', ['/admin/payments', '/admin/payouts', '/admin/accounting']],
   ['Fees, programs & promotions', ['/admin/fees', '/admin/referrals', '/admin/promo-codes', '/admin/fee-waivers', '/admin/loyalty', '/admin/commission', '/admin/programs', '/admin/gift-cards']],
   ['Team & business policies', ['/security', '/admin/team', '/admin/business-settings', '/admin/legal-policies', '/admin/legal-policies/active', '/admin/not-in-use']],
@@ -194,6 +194,7 @@ const destinations: readonly {
     icon: 'orders',
     permission: 'order.manage',
   },
+  { href: '/admin/orders/dispatch', label: 'Dispatch', icon: 'shipping', permission: 'order.manage' },
   {
     href: '/admin/shipping',
     label: 'Shipping & claims',
@@ -365,6 +366,7 @@ const taskGuides: Readonly<
       'Record fulfillment changes and follow up on exceptions.',
     ],
   ],
+  '/admin/orders/dispatch': ['Book courier pickup for parcels that are ready.', ['Check the seller pickup address.', 'Record the courier, pickup window and reference.', 'Record handoff when the courier collects the parcel.']],
   '/admin/shipping': [
     'Review courier bookings, delivery progress and shipping claims.',
     [
@@ -628,6 +630,7 @@ const taskOrder: readonly string[] = [
   '/admin',
   '/admin/accounting',
   '/admin/orders',
+  '/admin/orders/dispatch',
   '/admin/shipping',
   '/admin/cases',
   '/admin/payments',

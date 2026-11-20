@@ -63,12 +63,12 @@ export async function SellerOrderDetail({
       JOIN order_response_portions p ON p.id=c.portion_id WHERE p.order_id=? AND p.seller_id=? AND p.operator_mode='seller'
       AND c.state NOT IN ('resolved','closed') ORDER BY c.created_at DESC LIMIT 1`)
       .bind(id, seller.sellerId).first<{ message: string | null; updateAt: number | null }>(),
-    db.prepare(`SELECT j.pickup_window_start AS startAt, j.pickup_window_end AS endAt
+    db.prepare(`SELECT p.courier_name AS courierName, j.pickup_window_start AS startAt, j.pickup_window_end AS endAt
       FROM shipping_jobs j JOIN shipping_parcels p ON p.shipping_job_id=j.id
       WHERE j.order_id=? AND j.seller_id=? AND j.direction='outbound' AND p.method='courier'
-        AND j.status IN ('pickup_requested','pickup_scheduled')
+        AND j.status IN ('pickup_requested','label_pending','label_ready','pickup_scheduled')
       ORDER BY j.pickup_window_start,j.id LIMIT 1`)
-      .bind(id, seller.sellerId).first<{ startAt: number | null; endAt: number | null }>(),
+      .bind(id, seller.sellerId).first<{ courierName: string | null; startAt: number | null; endAt: number | null }>(),
     db.prepare(`SELECT e.order_item_id AS itemId, e.to_status AS status, MAX(e.created_at) AS at
       FROM order_item_status_events e JOIN order_items i ON i.id=e.order_item_id
       WHERE i.order_id=? AND i.seller_id=? GROUP BY e.order_item_id,e.to_status`)
@@ -86,6 +86,11 @@ export async function SellerOrderDetail({
   const done = status === 'delivered' || status === 'cancelled';
   const turn = done ? 'done' : canAct ? 'your-turn' : 'with-hastabazaar';
   const courier = parcels.find(parcel => parcel.courierName && !['cancelled', 'returned'].includes(parcel.status));
+  const bookedCourier = pickup?.courierName ?? courier?.courierName;
+  const bookedSlot = pickup?.startAt == null ? '' : pickup.endAt != null && pickup.endAt >= pickup.startAt
+    ? dateTime.formatRange(pickup.startAt, pickup.endAt) : dateTime.format(pickup.startAt);
+  const bookingMessage = status === 'ready_for_pickup' && bookedCourier
+    ? `Courier booked: ${bookedCourier}${bookedSlot ? `, ${bookedSlot}` : ''}.` : '';
   const collected = order.paymentMode === 'cod' && Boolean(courier && courier.codDuePaisa > 0 && courier.collectedPaisa >= courier.codDuePaisa);
   const stageItemIds = new Set(stageItems.map(item => item.id));
   const completedAt = new Map<string, number>();
@@ -111,7 +116,7 @@ export async function SellerOrderDetail({
   } else if (!payment) {
     progressText = 'Hastabazaar is reviewing payment before releasing these items for preparation.';
   } else if (status === 'ready_for_pickup') {
-    progressText = courier ? `Courier booked: ${courier.courierName}${pickup?.startAt ? ` · ${dateTime.format(pickup.startAt)}${pickup.endAt ? ` to ${dateTime.format(pickup.endAt)}` : ''}` : ''}.` : 'Hastabazaar will book pickup with the courier.';
+    progressText = bookingMessage || 'Hastabazaar will book pickup with the courier.';
   } else if (status === 'dispatched') {
     progressText = courier ? `${courier.courierName} is handling delivery.` : 'The courier is handling delivery.';
   }
@@ -130,6 +135,7 @@ export async function SellerOrderDetail({
       <WhoseTurn status={turn} />
     </div>
     <NextStepBox title={progressTitle} className={canAct ? 'bg-[#F0EEE9]' : undefined}>{progressText}
+      {bookingMessage && progressText !== bookingMessage ? <p>{bookingMessage}</p> : null}
       {!done && issue?.updateAt ? <p>Next update {dateTime.format(issue.updateAt)}</p> : null}
     </NextStepBox>
     {seller.approvedSeller ? <SellerOrderFulfillmentActions key={id} actorId={seller.userId} orderId={id} items={canAct ? actionableItems : []} /> : null}

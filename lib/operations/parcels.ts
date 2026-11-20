@@ -526,6 +526,8 @@ export interface ParcelOperation {
   courierName?: string;
   trackingUrl?: string;
   trackingCode?: string;
+  pickupStart?: number;
+  pickupEnd?: number;
   riderReportId?: string;
   form?: {
     requestId: string;
@@ -556,6 +558,14 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
     throw new ParcelConflictError(
       'Form request does not match parcel operation.',
     );
+  if (o.pickupStart !== undefined || o.pickupEnd !== undefined) {
+    if (
+      o.action !== 'assign' || o.method !== 'courier' ||
+      o.pickupStart === undefined || o.pickupEnd === undefined ||
+      !Number.isSafeInteger(o.pickupStart) || !Number.isSafeInteger(o.pickupEnd) ||
+      o.pickupStart < 0 || o.pickupEnd <= o.pickupStart || o.pickupEnd > 8_640_000_000_000_000
+    ) throw new ParcelConflictError('Enter a valid courier pickup window.');
+  }
   if (
     o.form?.formId === 'staff.rider-control-1' &&
     (!o.riderReportId || !['deliver', 'fail'].includes(o.action))
@@ -902,9 +912,11 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
     statements.push(
       db
         .prepare(
-          'UPDATE shipping_jobs SET tracking_code=?,updated_at=? WHERE id=?',
+          `UPDATE shipping_jobs SET tracking_code=?,updated_at=?,
+            pickup_window_start=COALESCE(?,pickup_window_start),
+            pickup_window_end=COALESCE(?,pickup_window_end) WHERE id=?`,
         )
-        .bind(tracking, o.now, o.jobId),
+        .bind(tracking, o.now, o.pickupStart ?? null, o.pickupEnd ?? null, o.jobId),
     );
     if (riderId)
       statements.push(

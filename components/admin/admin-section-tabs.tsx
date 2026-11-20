@@ -11,6 +11,7 @@ export function AdminSectionTabs({ role, permissions }: AdminStaffAccess) {
   if (!current) return null;
   const { section, tab: active } = current;
   const pageTitlesSection = (pathname === '/admin/orders' && active.href === '/admin/orders')
+    || pathname === '/admin/orders/dispatch'
     || (pathname === '/admin/payouts' && !params.has('request'));
 
   return (

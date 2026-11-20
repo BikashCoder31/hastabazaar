@@ -25,6 +25,7 @@ const definitions = [
   ] },
   { id: 'orders', label: 'Orders', tabs: [
     { href: '/admin/orders', label: 'All orders' },
+    { href: '/admin/orders/dispatch', label: 'Dispatch' },
     { href: '/admin/shipping', label: 'Parcel problems' },
     { href: '/admin/delivery-rates', label: 'Delivery rates' },
     { href: '/admin/order-emails', label: 'Order emails' },
