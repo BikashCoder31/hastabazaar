@@ -176,7 +176,7 @@ export async function reviewRouteTransition(db:D1Database,input:{applicationId:s
   if(input.form&&await decisionFormReplay(db,{formId:'staff.managed-transition-decision',requestId:input.requestId,actorId:input.actorId,action:`seller_route_transition.${status}`,subjectType:'seller_route_transition',subjectId:input.applicationId,versionId:input.form.versionId,digest}))return;
   const row=await db.prepare(`${selectRow} WHERE id=?`).bind(input.applicationId).first<TransitionRow>();
   if(!row)throw new RouteTransitionError('Transition not found.');
-  if(row.requestedBy===input.actorId)throw new RouteTransitionError('A different active Super Admin must review this transition.');
+  if(row.requestedBy===input.actorId)throw new RouteTransitionError('You cannot review your own seller transition request.');
   if(!input.form){const prior=await db.prepare('SELECT next_json AS json,actor_id AS actorId FROM audit_logs WHERE request_id=? AND subject_id=? AND action=?').bind(input.requestId,row.id,`seller_route_transition.${status}`).first<{json:string;actorId:string}>();
     if(prior){if(prior.actorId===input.actorId&&JSON.parse(prior.json).catalogDigest===digest)return;throw new FormRequestConflictError('The recorded transition decision differs.');}}
   if(row.status!=='submitted')throw new RouteTransitionError('Only a current submitted transition can be reviewed.');
@@ -215,7 +215,7 @@ async function applyOne(db:D1Database,row:TransitionRow,now:number,invocation?:A
   await owner(db,row.sellerId,row.requestedBy,now);
   const current=await evidence(db,row.sellerId,original.evidence.map(item=>item.id),row.taxMode,now);
   if(JSON.stringify(current)!==JSON.stringify(original.evidence))throw new RouteTransitionError('Registration or tax evidence changed. Renew the private evidence review.');
-  if(!row.reviewedBy)throw new RouteTransitionError('An independent Super Admin must review this transition.');
+  if(!row.reviewedBy)throw new RouteTransitionError('This transition requires a recorded Super Admin decision.');
   const reviewer=await staffMutationGuard(db,row.reviewedBy,'seller.application.review',RouteTransitionError,'super_admin');
   const requestId=`route-transition-apply:${row.id}`;
   const acceptance=await prepareSellerCommissionAcceptance(db,{sellerId:row.sellerId,actorId:row.requestedBy,context:original.context,requestId,

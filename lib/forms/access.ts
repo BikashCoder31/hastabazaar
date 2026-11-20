@@ -583,8 +583,7 @@ async function staffActionGrant(db: D1Database, viewer: FormAnswerViewer,
         JOIN audit_logs audit ON audit.subject_type='payout' AND audit.subject_id=parent.id
           AND audit.request_id=event.request_id AND audit.actor_id=event.actor_id
           AND audit.action=? AND json_type(audit.next_json,'$.catalogDigest')='text'
-        WHERE parent.id=? ${formId === 'staff.payout-1' ? 'AND parent.created_request_id=event.request_id AND parent.prepared_by=event.actor_id'
-          : event.action === 'approve' || event.action === 'reject' ? 'AND parent.prepared_by<>event.actor_id' : ''} LIMIT 1`;
+        WHERE parent.id=? ${formId === 'staff.payout-1' ? 'AND parent.created_request_id=event.request_id AND parent.prepared_by=event.actor_id' : ''} LIMIT 1`;
       values = [requestId, actorId, formId === 'staff.payout-1' ? 'payout.prepared' : `payout.${event.action}`, subjectId];
       break;
     }

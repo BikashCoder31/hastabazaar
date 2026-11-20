@@ -58,7 +58,9 @@ export async function decideFixedSupplyRecord(database:D1Database,options:{recor
  else if(await database.prepare('SELECT 1 FROM managed_supply_records WHERE decision_request_id=?').bind(options.requestId).first())return;
  const row=await database.prepare(`SELECT r.status,r.quantity_proposed AS quantityProposed,r.agreed_unit_paisa AS unitPaisa,r.created_by AS createdBy,r.seller_id AS sellerId,r.agreement_version AS agreementVersion,r.agreement_language AS agreementLanguage,r.payout_beneficiary_reference AS beneficiary,
   EXISTS(SELECT 1 FROM users JOIN user_roles ON user_roles.user_id=users.id WHERE users.id=? AND users.status='active' AND user_roles.role='super_admin') AS authorized FROM managed_supply_records r WHERE r.id=?`).bind(options.actorId,options.recordId).first<{status:string;quantityProposed:number;unitPaisa:number;createdBy:string;sellerId:string;agreementVersion:string;agreementLanguage:'en'|'ne';beneficiary:string;authorized:number}>();
- if(!row||row.status!=='proposed')throw new FixedSupplyError('Only a current proposed supply can be decided.');if(!row.authorized||row.createdBy===options.actorId)throw new FixedSupplyError('A different active Super Admin must record the supply decision.');
+ if(!row||row.status!=='proposed')throw new FixedSupplyError('Only a current proposed supply can be decided.');
+ if(!row.authorized)throw new FixedSupplyError('An active Super Admin must record the supply decision.');
+ if(row.createdBy===options.actorId)throw new FixedSupplyError('You cannot decide your own supply proposal.');
  const reason=text('Decision reason',options.reason,10,1000),evidence=text('Evidence reference',options.evidenceReference,3,191);
  if(options.action==='accept'&&(options.quantityAccepted<1||options.quantityAccepted>row.quantityProposed||options.possessionStatus!=='received'||options.qualityStatus!=='accepted'))throw new FixedSupplyError('Acceptance requires received possession, accepted quality, and a valid accepted quantity.');
  if(options.action!=='accept'&&options.quantityAccepted!==0)throw new FixedSupplyError('Rejected or cancelled supply cannot record an accepted quantity.');

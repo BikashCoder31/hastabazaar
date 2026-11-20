@@ -26,7 +26,7 @@ void test('program, maker, and product readiness all gate simulation activation'
   assert.match(managedActivationOutstanding({...ready, programMode: 'applications_only'}).join(' '), /program activation/i);
 });
 
-void test('self approval, missing authority, and production simulation fail closed', () => {
+void test('Admins, the seller owner, and production simulation cannot activate a Managed Maker', () => {
   const base = {
     environment, actorId: 'maker', ownerId: 'maker', actorIsSuperAdmin: false,
     programMode: 'activation_enabled' as const,
@@ -35,9 +35,9 @@ void test('self approval, missing authority, and production simulation fail clos
     legalSellerReference: 'legal', invoiceIssuerReference: 'issuer', payoutBeneficiaryReference: 'beneficiary',
     agreementVersion: 'agreement', agreementAcceptedAt: 1, approvedProductCount: 1,
   };
-  const outstanding = managedActivationOutstanding(base).join(' ');
-  assert.match(outstanding, /Super Admin/i);
-  assert.match(outstanding, /Independent reviewer/i);
+  assert.deepEqual(managedActivationOutstanding({ ...base, actorId: 'admin' }), ['Active Super Admin reviewer']);
+  assert.deepEqual(managedActivationOutstanding({ ...base, actorIsSuperAdmin: true }),
+    ['You cannot activate your own seller account']);
   assert.match(managedActivationOutstanding({...base, environment: resolveRuntimeEnvironment({runtimeEnvironment:'production'})}).join(' '), /simulation environment/i);
 });
 

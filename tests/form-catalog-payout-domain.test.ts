@@ -297,6 +297,49 @@ void test('payout action status or permission race and answer failure leave zero
   }
 });
 
+void test('the sole Super Admin can decide a payout they prepared as an Admin and read the audited decision', async () => {
+  for (const action of ['approve', 'reject'] as const) {
+    const { sqlite, db } = fixture();
+    try {
+      const payout = await prepareSellerPayout(db, {
+        sellerId: 'seller-one', actorId: 'admin1', actorRole: 'admin',
+        note: 'Verified eligible balance and destination', requestId: 'original-preparation', now,
+      });
+      const requestId = 'payout-decision';
+      const decision = {
+        payoutId: payout.id, actorId: 'admin1', action,
+        note: 'Reviewed fictional payout evidence', requestId, now: now + 1,
+        form: form('staff.payout-2', requestId),
+      };
+      await assert.rejects(operatePayout(db, { ...decision, actorRole: 'admin' }), /permission/i);
+      assert.equal(count(sqlite, 'form_answer_sets'), 0);
+
+      sqlite.exec("DELETE FROM user_roles WHERE role='super_admin'");
+      sqlite.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('sa2','admin',?)").run(now);
+      sqlite.exec("UPDATE user_roles SET role='super_admin' WHERE user_id='admin1'");
+      await operatePayout(db, { ...decision, actorRole: 'super_admin' });
+
+      const event = sqlite.prepare(`SELECT event.actor_id AS actorId, audit.actor_id AS auditActorId
+        FROM payout_events event JOIN audit_logs audit ON audit.request_id=event.request_id
+        WHERE event.payout_id=? AND event.request_id=? AND audit.action=?`)
+        .get(payout.id, requestId, `payout.${action}`);
+      assert.deepEqual({ ...event }, { actorId: 'admin1', auditActorId: 'admin1' });
+      const answerId = String(sqlite.prepare('SELECT id FROM form_answer_sets WHERE request_id=?').get(requestId)?.id);
+      const answer = await getFormAnswerById(db, answerId);
+      assert.ok(answer);
+      const superAdmin = { id: 'admin1', role: 'super_admin' as const };
+      assert.equal(await authorizeFormAnswerRead(db, superAdmin, answer), true, action);
+      assert.equal(await authorizeFormAnswerRead(db, superAdmin, { ...answer, requestId: 'other-decision' }), false);
+      assert.ok(await readStaffFormHistoryAnswer(db, superAdmin, 'payout-action', payout.id, answerId));
+      assert.equal(await authorizeFormAnswerRead(db, { id: 'sa2', role: 'admin' }, answer), false);
+      sqlite.exec("UPDATE user_roles SET role='admin' WHERE user_id='admin1'");
+      assert.equal(await authorizeFormAnswerRead(db, superAdmin, answer), false);
+    } finally {
+      sqlite.close();
+    }
+  }
+});
+
 void test('rejected payout releases its reservation once and preserves exact form-backed replay', async () => {
   const { sqlite, db } = fixture();
   try {

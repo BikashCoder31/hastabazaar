@@ -102,13 +102,21 @@ async function fixture(){
  return {sqlite,database:new Database(sqlite) as unknown as D1Database};
 }
 
-void test('documented acceptance creates the exact supplier obligation with no 9% deduction',async()=>{
+void test('one active Super Admin can accept documented supply and an Admin or supplier cannot',async()=>{
  const f=await fixture();try{
   const id=await createFixedSupplyRecord(f.database,{sellerId:'seller',productId:'product',quantity:2,agreedUnitPaisa:50_000,createdBy:'maker',agreementVersion:'SIM-FIXED-V1',agreementLanguage:'ne',payoutBeneficiaryReference:'SIM-MAKER-ACCOUNT',requestId:'propose-1',now:100,environment});
-  await decideFixedSupplyRecord(f.database,{recordId:id,actorId:'reviewer',action:'accept',quantityAccepted:2,possessionStatus:'received',qualityStatus:'accepted',ownershipRecordStatus:'simulated_terms_recorded',riskRecordStatus:'simulated_terms_recorded',evidenceReference:'SIM-GRN-001',reason:'SIMULATED quantity and quality acceptance',requestId:'accept-1',now:200,environment});
+  const decision={recordId:id,action:'accept',quantityAccepted:2,possessionStatus:'received',qualityStatus:'accepted',ownershipRecordStatus:'simulated_terms_recorded',riskRecordStatus:'simulated_terms_recorded',evidenceReference:'SIM-GRN-001',reason:'SIMULATED quantity and quality acceptance',requestId:'accept-1',now:200,environment} as const;
+  f.sqlite.exec("INSERT INTO users VALUES('admin','active'); INSERT INTO user_roles VALUES('admin','admin'),('maker','super_admin');");
+  await assert.rejects(decideFixedSupplyRecord(f.database,{...decision,actorId:'admin'}),/active Super Admin/i);
+  await assert.rejects(decideFixedSupplyRecord(f.database,{...decision,actorId:'maker'}),/own supply proposal/i);
+  assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS count FROM audit_logs').get()?.count,0);
+  f.sqlite.exec("DELETE FROM user_roles WHERE user_id='maker'");
+  await decideFixedSupplyRecord(f.database,{...decision,actorId:'reviewer'});
   assert.deepEqual(await getFixedSupplyBalance(f.database,id),{originalOwedPaisa:100_000,adjustmentsPaisa:0,paidPaisa:0,balancePaisa:100_000,recoverablePaisa:0,status:'owed'});
   const row=f.sqlite.prepare('SELECT original_amount_paisa AS amount,owed_at AS owedAt FROM managed_supplier_obligations').get() as {amount:number;owedAt:number};
   assert.deepEqual({...row},{amount:100_000,owedAt:200});
+  assert.equal(f.sqlite.prepare('SELECT decided_by FROM managed_supply_records WHERE id=?').get(id)?.decided_by,'reviewer');
+  assert.equal(f.sqlite.prepare("SELECT actor_id FROM audit_logs WHERE action='managed_supply.accept' AND subject_id=?").get(id)?.actor_id,'reviewer');
  }finally{f.sqlite.close();}
 });
 

@@ -79,7 +79,7 @@ export function RegisteredTransitionForm({sellerId,ownerId}:{sellerId:string;own
   }
   return <section id="registered-transition" className="min-w-0 scroll-mt-6 space-y-4 rounded-2xl border bg-card p-5">
     <h2 className="font-heading text-2xl">Become a Registered Seller</h2>
-    <p className="text-sm">When your business registration and PAN or VAT are ready, submit private certificates and accept the current seller terms. A different Super Admin reviews the request. Earlier company-store orders and payments keep their original terms.</p>
+    <p className="text-sm">When your business registration and PAN or VAT are ready, submit private certificates and accept the current seller terms. A Super Admin reviews the request. Earlier company-store orders and payments keep their original terms.</p>
     {!loaded&&!error?<output className="block">Loading transition details…</output>:null}
     {error?<p role="alert">{error} <button type="button" className="underline" onClick={()=>setReload(value=>value+1)}>Reload details</button></p>:null}
     {workspace?.route==='registered_seller'?<Link className="section-link" href="/seller">Open your seller dashboard</Link>:null}

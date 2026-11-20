@@ -32,7 +32,7 @@ export function managedActivationOutstanding(input: ManagedActivationAssessment)
   const outstanding: string[] = [];
   if (!input.environment.simulationAllowed) outstanding.push('Disposable simulation environment');
   if (!input.actorIsSuperAdmin) outstanding.push('Active Super Admin reviewer');
-  if (input.actorId === input.ownerId) outstanding.push('Independent reviewer');
+  if (input.actorId === input.ownerId) outstanding.push('You cannot activate your own seller account');
   if (input.programMode !== 'activation_enabled') outstanding.push('Program activation mode');
   if (!input.configuredModel || input.configuredModel !== input.makerModel) outstanding.push('Configured implemented commercial model');
   if (input.makerStage !== 'approved_for_activation') outstanding.push('Maker approval for activation');

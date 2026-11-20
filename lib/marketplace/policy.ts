@@ -45,7 +45,7 @@ export const phaseOneMarketplacePolicy = {
       newSellerReserveBps: 500,
       reserveAppliesForDays: 90,
       reserveReleaseAfterDays: 30,
-      requiresMakerChecker: true,
+      requiresMakerChecker: false,
     },
     cancellations: {
       freeBeforePacking: true,
