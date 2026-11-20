@@ -238,7 +238,7 @@ const destinations: readonly {
     icon: 'reviews',
     permission: 'product.review',
   },
-  {href:'/admin/payments',label:'Incoming payments',icon:'payouts',permission:'payment.receipt.verify'},
+  {href:'/admin/payments',label:'Courier cash',icon:'payouts',permission:'payment.receipt.verify'},
   {
     href: '/admin/payouts',
     label: 'Payouts',
