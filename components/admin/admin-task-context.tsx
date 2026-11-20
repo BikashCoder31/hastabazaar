@@ -31,10 +31,12 @@ export function AdminTaskContext({
   );
   const help = getAdminPageHelp(pathname, { role, permissions }, searchParams);
   const isDetail = pathname !== guide?.href;
-  const hasOrderBreadcrumb = /^\/admin\/orders\/[^/]+$/.test(pathname);
+  const showBreadcrumb = !/^\/admin\/orders\/[^/]+$/.test(pathname)
+    && pathname !== '/admin/products/intakes'
+    && pathname !== '/admin/products/publications';
   return (
     <AdminPageHelpProvider help={help}>
-      {guide && !hasOrderBreadcrumb ? <Breadcrumb className="mb-4" aria-label="Task location">
+      {guide && showBreadcrumb ? <Breadcrumb className="mb-4" aria-label="Task location">
         <BreadcrumbList>
           {canViewOverview && guide.href !== '/admin' ? (
             <>

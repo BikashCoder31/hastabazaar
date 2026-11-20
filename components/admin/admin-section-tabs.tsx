@@ -14,6 +14,8 @@ export function AdminSectionTabs({ role, permissions }: AdminStaffAccess) {
     || pathname === '/admin/orders/dispatch'
     || pathname === '/admin/shipping'
     || pathname === '/admin/customers'
+    || pathname === '/admin/products/intakes'
+    || pathname === '/admin/products/publications'
     || (pathname === '/admin/payouts' && !params.has('request'));
 
   return (

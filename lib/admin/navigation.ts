@@ -15,7 +15,7 @@ type AdminArea = typeof adminNavigationGroups[number];
 const areaRoutes: readonly [AdminArea, readonly string[]][] = [
   ['Overview & work queue', ['/admin', '/admin/notifications', '/admin/progress', '/admin/analytics', '/admin/exceptions']],
   ['Sellers', ['/admin/sellers']],
-  ['Products & storefront', ['/admin/products/publications', '/admin/products', '/admin/catalog', '/admin/homepage', '/admin/reviews']],
+  ['Products & storefront', ['/admin/products/publications', '/admin/products/intakes', '/admin/products', '/admin/catalog', '/admin/homepage', '/admin/reviews']],
   ['Orders & customer care', ['/admin/orders', '/admin/orders/dispatch', '/admin/shipping', '/admin/cases', '/admin/customers', '/admin/privacy', '/admin/riders', '/admin/feedback', '/admin/delivery-rates']],
   ['Finance & payments', ['/admin/payments', '/admin/payouts', '/admin/payouts/run', '/admin/payments/refunds', '/admin/payments/recoveries', '/admin/accounting']],
   ['Fees, programs & promotions', ['/admin/fees', '/admin/referrals', '/admin/promo-codes', '/admin/fee-waivers', '/admin/loyalty', '/admin/commission', '/admin/programs', '/admin/gift-cards']],
@@ -34,6 +34,7 @@ const destinations: readonly {
   label: string;
   icon: string;
   permission: Permission;
+  alternativePermission?: Permission;
   role?: 'super_admin';
 }[] = [
   {
@@ -220,6 +221,7 @@ const destinations: readonly {
     icon: 'products',
     permission: 'product.review',
   },
+  { href: '/admin/products/intakes', label: 'Help requests', icon: 'products', permission: 'product.review', alternativePermission: 'support.manage' },
   { href: '/admin/products/publications', label: 'Product publishing', icon: 'products', permission: 'product.publish' },
   {
     href: '/admin/homepage',
@@ -440,6 +442,7 @@ const taskGuides: Readonly<
       'Check activation readiness separately from application approval.',
     ],
   ],
+  '/admin/products/intakes': ['Review seller product help requests.', ['Read what the seller asked for.', 'Use the available fields to propose edits.', 'Send the edits or ask the seller a question.']],
   '/admin/products': [
     'Review submitted listings and decide whether their content and evidence are ready.',
     [
@@ -656,6 +659,7 @@ const taskOrder: readonly string[] = [
   '/admin/not-in-use',
   '/admin/sellers',
   '/admin/products',
+  '/admin/products/intakes',
   '/admin/products/publications',
   '/admin/reviews',
   '/admin/catalog',
@@ -703,7 +707,8 @@ export function adminNavigation(
     .filter(
       (item) =>
         (!item.role || item.role === role) &&
-        can({ role, permissions }, item.permission),
+        (can({ role, permissions }, item.permission) ||
+          (item.alternativePermission && can({ role, permissions }, item.alternativePermission))),
     )
     .map((item) => ({ ...item,
       label: item.href === '/admin/team' && role === 'admin' ? 'My responsibilities' : item.label,

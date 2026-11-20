@@ -56,6 +56,7 @@ const definitions = [
   ] },
   { id: 'catalog', label: 'Catalog', tabs: [
     { href: '/admin/products', label: 'Product review' },
+    { href: '/admin/products/intakes', label: 'Help requests' },
     { href: '/admin/products/publications', label: 'Publishing' },
     { href: '/admin/catalog', label: 'Categories & occasions' },
     { href: '/admin/homepage', label: 'Homepage' },

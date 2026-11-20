@@ -5,6 +5,9 @@ import {ProductOrderablePriceHistory} from './product-orderable-price-history';
 import {ProductLegacyStockMapping} from './product-legacy-stock-mapping';
 import {ProductAvailabilityPanel} from '@/components/products/product-availability-panel';
 import {useCallback,useEffect,useState} from 'react';
+import {Eye} from 'lucide-react';
+import {CatalogProductPhoto} from '@/app/admin/products/intakes/catalog-product-photo';
+import {formatPaisaExact} from '@/lib/marketplace/money-display';
 import type {getProductPublicationReview,PublicationDecisionInput} from '@/lib/products/publication';
 import {publicPublicationSnapshot} from '@/lib/products/publication-view';
 import {offerMoney} from '@/lib/products/offer-contracts';
@@ -12,11 +15,13 @@ import {ProductPublicationFacts} from '@/components/products/product-publication
 import {usePublicationCommand} from '@/components/products/use-publication-command';
 import {useProductScope} from '@/components/products/use-product-scope';
 type Review=Awaited<ReturnType<typeof getProductPublicationReview>>;
+type ApprovalSummary={title:string;sellerName:string;photoId?:string;approvedAt:number;pricePaisa:number;hasPreviousVersion:boolean};
+const publicationDate=new Intl.DateTimeFormat('en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kathmandu'});
 const button='inline-flex min-h-11 max-w-full items-center justify-center rounded-lg border px-4 py-2 text-sm font-semibold hover:bg-muted disabled:opacity-50';
 const primaryButton=button+' border-[#A8232E] bg-[#A8232E] text-white hover:bg-[#8e1d28]';
 const field='min-h-11 min-w-0 w-full rounded-lg border bg-background p-3';
 export function ProductPublicationReview(props:Parameters<typeof ProductPublicationReviewBody>[0]){return <ProductScopeBoundary workspace="staff" key={JSON.stringify([props.initial?.actorId??props.actorId??'current',props.caseId])} actorId={props.initial?.actorId??props.actorId??null}><ProductPublicationReviewBody {...props}/></ProductScopeBoundary>;}
-function ProductPublicationReviewBody({caseId,initial=null,blocked=false,onRecorded,actorId}:{caseId:string;initial?:Review|null;blocked?:boolean;onRecorded?:()=>Promise<void>;actorId?:string}){
+function ProductPublicationReviewBody({caseId,initial=null,blocked=false,onRecorded,actorId,approval}:{approval?:ApprovalSummary;caseId:string;initial?:Review|null;blocked?:boolean;onRecorded?:()=>Promise<void>;actorId?:string}){
  const denyProduct=useDenyProductScope();
  const [view,setView]=useState(initial),[loadError,setLoadError]=useState(''),[unavailable,setUnavailable]=useState(false),[sameItem,setSameItem]=useState(false),[accurateCover,setAccurateCover]=useState(false),[evidence,setEvidence]=useState<Record<string,string>>({}),[reason,setReason]=useState(''),[priceOffer,setPriceOffer]=useState(''),[priceDecision,setPriceDecision]=useState<'approved'|'suppressed'>('approved'),[priceKind,setPriceKind]=useState<'external_offer'|'historical_order'|'review_finding'|'platform_orderable'>('external_offer'),[reference,setReference]=useState(''),[from,setFrom]=useState(''),[to,setTo]=useState(''),[sameOffer,setSameOffer]=useState(false),[observationId,setObservationId]=useState(''),[historyChecked,setHistoryChecked]=useState(false),[historyBasis,setHistoryBasis]=useState('');
  const [readerDenied,setReaderDenied]=useState(false),{capture:readCapture}=useProductScope(JSON.stringify([initial?.actorId??actorId??'loading',caseId]));
@@ -35,6 +40,46 @@ function ProductPublicationReviewBody({caseId,initial=null,blocked=false,onRecor
  const observations=(view.priceHistory??[]).filter(row=>row.offerId===selected?.id),observation=observations.find(row=>row.id===observationId);
  async function observePrice(offerId:string,reason:string){if(!view||!view.currentVersionId)return;await command.run({action:'observe_price',requestId:crypto.randomUUID(),expectedRevision:String(view.offerRevision),caseId,versionId:view.candidate.versionId,expectedCaseRevision:String(view.caseRevision),publicVersionId:view.currentVersionId,offerId,reason},'The current genuinely orderable price observation is retained for review.');}
  async function recordPrice(){if(!view||!selected||disabled)return;await command.run({action:'price_reference',requestId:crypto.randomUUID(),expectedRevision:String(view.offerRevision),caseId,versionId:view.candidate.versionId,expectedCaseRevision:String(view.caseRevision),offerId:selected.id,decision:priceDecision,evidence:{kind:priceKind,reference:priceKind==='platform_orderable'?observation?.id:reference,...(priceKind==='platform_orderable'?{checkedPriceHistory:historyChecked,historyBasis,historyThroughId:observations[0]?.id,historyCount:observations.length}:{}),offeredFrom:priceKind==='review_finding'?null:priceKind==='platform_orderable'?observation?.observedAt:new Date(from).getTime(),offeredTo:priceKind==='review_finding'?null:priceKind==='platform_orderable'?observation?.observedAt:new Date(to).getTime(),checkedSameSellerOffer:priceKind==='review_finding'?false:sameOffer},reason},'The exact original-price evidence decision is recorded. Selling prices are unchanged.');}
+ if(approval){
+  const published=view.currentVersionId===view.candidate.versionId;
+  const held=view.availability.ownerWithdrawn||view.availability.staffWithdrawn||view.availability.ownerPaused;
+  const approved=view.canPublish&&Boolean(view.approvedDecisionId)&&actionable;
+  return <section aria-label="Approved product publication" className="min-w-0 space-y-3.5 rounded-[14px] border border-[#E4DACA] bg-white p-[22px] text-[#14213D]">
+   <header className="flex min-w-0 items-center gap-3.5">
+    <CatalogProductPhoto caseId={caseId} photoId={approval.photoId} large/>
+    <div className="min-w-0 [overflow-wrap:anywhere]">
+     <p className="text-sm text-[#46536F]">{approval.sellerName}</p>
+     <h2 className="font-heading text-[24px] font-medium leading-[1.12]">{approval.title}</h2>
+    </div>
+   </header>
+   <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2 text-sm">
+    <dt className="text-[#46536F]">Approved</dt><dd>{publicationDate.format(approval.approvedAt)}</dd>
+    <dt className="text-[#46536F]">Seller base price</dt><dd>{formatPaisaExact(approval.pricePaisa)}</dd>
+    <dt className="text-[#46536F]">Change</dt><dd>{approval.hasPreviousVersion?'New product version':'New product'}</dd>
+   </dl>
+   <div className="flex items-start gap-3 rounded-xl bg-[#E3E9F4] px-4 py-3.5 text-sm leading-relaxed text-[#1E3566]">
+    <Eye aria-hidden="true" className="mt-0.5 size-4 shrink-0"/>
+    <p>{published?held?'This version was published. Existing listing restrictions still apply.':'This exact version is published.':approved?'Publish this approved version. Existing stock and listing restrictions still apply.':'A current approval is needed to publish this version.'}</p>
+   </div>
+   {view.categoryChanged&&<p className="text-sm text-[#A8232E]">The category policy changed after approval. Ask the seller to review the current guidance and resubmit.</p>}
+   {!proofsReady&&<p className="text-sm text-[#A8232E]">The recorded original-price evidence needs review.</p>}
+   {approved&&<form className="space-y-3.5" onSubmit={event=>{event.preventDefault();if(!disabled&&reason.trim().length>=10&&proofsReady&&!view.categoryChanged)void decide('publish_approved');}}>
+    <label className="grid gap-2 text-sm font-semibold">Review note<textarea rows={2} className={field+' border-[#D3C5AD] bg-white font-normal'} value={reason} minLength={10} maxLength={1000} required disabled={disabled} onChange={event=>setReason(event.target.value)} placeholder="Explain the publication decision."/></label>
+    <button type="submit" className={primaryButton} disabled={disabled||reason.trim().length<10||!proofsReady||view.categoryChanged}>Publish now</button>
+   </form>}
+   <details className="rounded-xl border border-[#E4DACA] px-3.5">
+    <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold">Preview approved details</summary>
+    <div className="min-w-0 pb-3.5"><ProductPublicationFacts title="Approved product details" snapshot={view.candidate.snapshot} uploads={view.uploads} caseId={caseId} priceReferences={view.priceReferences}/></div>
+   </details>
+   <a className={button} href={'/admin/products/publications/'+encodeURIComponent(caseId)}>Open publication record</a>
+   <div className="flex flex-wrap gap-2">
+    {command.pending&&<button type="button" className={button} disabled={command.busy||blocked} onClick={()=>void command.retry()}>Retry same publication decision</button>}
+    {loadError&&<p role="alert" className="text-sm">{loadError}</p>}
+    {command.status&&<output className="block whitespace-pre-wrap text-sm">{command.status}</output>}
+    <ProductOutcomeCheck command={command}/>
+   </div>
+  </section>;
+ }
  return <section aria-label="Exact product publication review" className="min-w-0 space-y-5 rounded-xl border bg-card p-5"><header className="space-y-2"><h2 className="font-heading text-2xl">Review the exact product version</h2><p className="text-sm text-muted-foreground">Check the seller’s submitted photos, product details and prices before you decide.</p><p className="text-sm">{view.currentVersionId===view.candidate.versionId?(view.availability.ownerWithdrawn||view.availability.staffWithdrawn?'This exact version is recorded; the listing remains withdrawn.':view.availability.ownerPaused?'This exact version is published; new orders remain paused.':'This exact version is published.'):view.caseState==='resolved'?'This case is closed; its submitted facts remain available.':view.approvedDecisionId?'Approved; a separate publication action is pending.':'Awaiting a review decision.'}</p>{view.categoryChanged&&<p className="text-sm text-amber-800">The category policy changed after submission. Ask the owner to compare the guidance and explicitly resubmit this candidate.</p>}</header>
  <div className="grid min-w-0 items-start gap-5 lg:grid-cols-2">
  <div className="min-w-0 [&>section>div:first-of-type>figure:only-child]:col-span-2 [&>section>div:first-of-type>figure:only-child_img]:h-auto [&>section>div:first-of-type>figure:only-child_img]:aspect-square">
