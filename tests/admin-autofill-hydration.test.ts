@@ -83,8 +83,17 @@ void test('staff workspace tolerates autofill DOM changes without hiding real hy
       const page = await browser.newPage();
       try {
         const markup = await serverModule.exports.markup(mode === 'mismatch');
-        await page.route('https://admin-autofill.test/**', route => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8',
-          body: `<!doctype html><div id="root">${markup}</div>${mode === 'autofill' ? `<script>${extension}</script>` : ''}` }));
+        await page.route('https://admin-autofill.test/**', route => {
+          const url = new URL(route.request().url());
+          if (url.pathname === '/api/admin/search') {
+            const results = url.searchParams.get('q') === 'form'
+              ? [{ group: 'Pages', title: 'Forms', href: '/admin/forms' }]
+              : [];
+            return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ results }) });
+          }
+          return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8',
+            body: `<!doctype html><div id="root">${markup}</div>${mode === 'autofill' ? `<script>${extension}</script>` : ''}` });
+        });
         await page.goto(`https://admin-autofill.test/admin/team${mode === 'mismatch' ? '?mismatch' : ''}`);
         await page.addScriptTag({ content: client.outputFiles[0].text });
         await page.getByLabel('Staff email').waitFor();
@@ -100,11 +109,11 @@ void test('staff workspace tolerates autofill DOM changes without hiding real hy
         assert.deepEqual(errors.console, [], 'The workspace must not produce hydration warnings');
         if (mode === 'autofill') assert.equal(await page.locator('shark-icon-container').count(), 1, 'Autofill decoration is retained');
         await page.getByRole('button', { name: 'Jump to an order, seller, phone or setting…' }).click();
-        const search = page.getByRole('dialog');
-        await search.getByLabel('Find a task').fill('form');
-        await search.getByRole('link', { name: 'Forms', exact: true }).waitFor();
-        assert.ok(await search.getByRole('link', { name: 'Forms', exact: true }).isVisible());
-        await search.getByRole('button', { name: 'Close', exact: true }).click();
+        const search = page.getByRole('dialog', { name: 'Search everything', exact: true });
+        await search.getByRole('combobox', { name: 'Search everything', exact: true }).fill('form');
+        await search.getByRole('option', { name: 'Forms', exact: true }).waitFor();
+        assert.ok(await search.getByRole('option', { name: 'Forms', exact: true }).isVisible());
+        await search.getByRole('button', { name: 'Close search', exact: true }).click();
         await page.getByLabel('Staff email').fill('colleague@local.hastabazaar.test');
         await page.getByRole('button', { name: 'Review invitation', exact: true }).click();
         await page.getByRole('alertdialog').getByText('Create this staff invitation?', { exact: true }).waitFor();
