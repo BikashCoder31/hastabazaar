@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { ConfiguredField, PublishedFormConfig } from '../lib/forms/types';
 
 const fixtures = { configs: {} as Record<string, PublishedFormConfig>, failed: new Set<string>(),
-  productQueries: [] as unknown[] };
+  productQueries: [] as unknown[], sellerProducts: [] as Record<string, unknown>[] };
 (globalThis as unknown as { React: typeof React; queryFixtures: typeof fixtures }).React = React;
 (globalThis as unknown as { queryFixtures: typeof fixtures }).queryFixtures = fixtures;
 const shopQueryUrl = new URL('../lib/catalog/shop-query.ts', import.meta.url).href;
@@ -17,13 +17,16 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   const mocks: Record<string, string> = {
     './site-header.module.css': 'export default {}',
     './rewards-shortcut.module.css': 'export default {}',
-    'cloudflare:workers': `export const env={DB:{prepare(){return {bind(id){return {async first(){
+    'cloudflare:workers': `export const env={DB:{prepare(sql){return {bind(id){return {async all(){
+      if(!/FROM order_items i JOIN orders o|FROM product_intake_drafts d|FROM products WHERE products.seller_id/.test(sql)) throw Error('Unexpected product read');
+      return {results:[]};
+    },async first(){
       if(globalThis.queryFixtures.failed.has(id))throw Error('Configuration read failed');
       return globalThis.queryFixtures.configs[id]?{found:1}:null;
     }}}}}}}`,
     '@/app/auth': 'export async function requireAuthenticatedUser(){throw Error("Unexpected provider authentication")};export async function getAuthenticatedUser(){return null};export function signInPath(path){return "/login?next="+path}',
     '@/lib/auth/staff': 'export async function requireStaffPage(){return {id:"staff",role:"super_admin",permissions:[]}}',
-    '@/lib/auth/seller-center': 'export async function requireSellerCenterPage(){return {sellerId:"seller",id:"owner",approvedSeller:true}}',
+    '@/lib/auth/seller-center': 'export async function requireSellerCenterPage(){return {sellerId:"seller",userId:"owner",approvedSeller:true}}',
     '@/lib/auth/seller': 'export async function requireSellerPage(){return {sellerId:"seller",id:"owner"}}',
     '../forms/runtime': `export async function resolvePublishedForm(db,id){return globalThis.queryFixtures.configs[id]}`,
     'next/link': 'export default function Link({href,children,...props}){return globalThis.React.createElement("a",{href,...props},children)}',
@@ -36,10 +39,11 @@ registerHooks({ resolve(specifier, context, nextResolve) {
     '@/components/admin/recorded-progress': 'export function RecordedProgressSection(){return null}',
     '@/components/admin/homepage-hero-manager': 'export function HomepageHeroManager(){return globalThis.React.createElement("section",null,"Hero controls remain")}',
     '@/components/admin/homepage-occasion-manager': 'export function HomepageOccasionManager(){return null}',
+    '@/lib/db/repositories/customers': 'export async function getPublicMakerProfile(){return null}',
     '@/lib/db/repositories/products': `export async function listPublicDiscoveryCategories(){return []};export async function listActiveOccasions(){return []};
       export async function countPublishedProducts(db,filters){globalThis.queryFixtures.productQueries.push(filters);return 0};
       export async function listPublishedProducts(db,filters){globalThis.queryFixtures.productQueries.push(filters);return []};
-      export async function listSellerProducts(db,id,filters){globalThis.queryFixtures.productQueries.push({id,...filters});return []};
+      export async function listSellerProducts(db,id,filters){globalThis.queryFixtures.productQueries.push({id,...filters});return globalThis.queryFixtures.sellerProducts};
       export async function listHomepageProductControls(db,filters){globalThis.queryFixtures.productQueries.push(filters);return {items:[],total:0,pageSize:30}}`,
     '@/lib/db/repositories/business-settings': 'export async function getEffectiveBusinessSetting(){return {value:[]}};export async function listBusinessSettingHistory(){return []}',
     '@/lib/db/repositories/homepage-hero': 'export async function listHomepageHeroMediaForAdmin(){return []}',
@@ -107,11 +111,20 @@ void test('seller search presentation preserves the existing status and scoped s
   fixtures.configs['seller.product-filter'] = config('seller.product-filter', ['q']);
   fixtures.productQueries = [];
   const Page = (await import('../app/seller/products/page')).default;
-  const html = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({q:'craft',status:'pending'}) }));
-  assert.match(html, /Edited q/);
-  assert.match(html, /Help q/);
-  assert.match(html, /name="status" value="pending"/);
-  assert.deepEqual(fixtures.productQueries, [{id:'seller',status:'pending',search:'craft'}]);
+  const product = {sku:'CRAFT', slug:'craft', pricePaisa:1_000, inventoryQuantity:2, updatedAt:1, createdAt:1};
+  fixtures.sellerProducts = [
+    {...product,id:'pending-craft',nameEn:'Pending craft fixture',status:'under_review'},
+    {...product,id:'live-craft',nameEn:'Live craft fixture',status:'published'},
+  ];
+  try {
+    const html = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({q:'craft',status:'pending'}) }));
+    assert.match(html, /Edited q/);
+    assert.match(html, /Help q/);
+    assert.match(html, /name="status" value="pending"/);
+    assert.match(html, /Pending craft fixture/);
+    assert.doesNotMatch(html, /Live craft fixture/);
+    assert.deepEqual(fixtures.productQueries, [{id:'seller',search:'craft'}]);
+  } finally { fixtures.sellerProducts = []; }
 });
 
 void test('homepage presentation keeps the fixed visibility choices and unrelated controls', async () => {

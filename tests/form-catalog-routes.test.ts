@@ -299,7 +299,7 @@ void test('every staff form keeps its page or receiver permission, including ret
     const superAdminForms = [
       // Native workflows retain this generic config endpoint's default SA
       // guard; this does not grant their separately authorized domain actions.
-      'staff.system-records-filter', 'staff.incoming-payment-filter',
+      'staff.system-records-filter', 'staff.incoming-payment-filter', 'staff.customer-directory-search',
       'staff.refund-funding-filter', 'staff.team-people-filter',
       'staff.commercial-combination-preview', 'staff.seller-document-review',
       'staff.seller-document-change-permission', 'staff.protected-change-permission',
