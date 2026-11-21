@@ -11,6 +11,8 @@ import {prepareInitialResponseNotices} from '../orders/response-notifications';
 import {prepareOrderStockSettlement} from '../products/order-stock-settlement';
 
 import {prepareCancelledManualPayment} from '../payments/manual-payment-lifecycle';
+import { cancellationCauseSchemaAvailable, inferCancellationCause, savedReviewCancellationCause, uncoveredSellerCancellationItemsSql } from './attribution';
+import { readCancellationCause } from './causes';
 import { cancellationNotifications } from './notifications';
 import { currentPlatformServiceFeeSql, payableOrderTotalSql } from '../db/repositories/platform-service-fee';
 import { riderNotifications } from '../riders/repository';
@@ -356,8 +358,9 @@ export async function cancelSelectedParcels(
     originalProof?: AtomicActionProof;
     staffAuthSubject?:string;
     codNotConfirmed?: boolean;
+    cause?: string;
     form?: CancellationForm;
-    parcelContext?: { jobId: string; payload: string; riderPrivacyRequired?: boolean;
+    parcelContext?: { jobId: string; payload: string; riderPrivacyRequired?: boolean; causeSchemaAvailable?: boolean;
       form?: {requestId:string;versionId:string;answers:FormAnswerSnapshot} };
   },
 ) {
@@ -375,6 +378,10 @@ export async function cancelSelectedParcels(
   if(parcelForm && (!a.actorId || parcelForm.requestId!==o.requestId))
     throw new CancellationConflictError('Configured parcel cancellation requires its staff request.');
   const form = o.form;
+  const causeAvailable = o.parcelContext?.causeSchemaAvailable ?? await cancellationCauseSchemaAvailable(db);
+  const causeInput = causeAvailable ? readCancellationCause(o.cause) : undefined;
+  if (causeAvailable && o.cause !== undefined && (!causeInput || !a.actorId))
+    throw new CancellationConflictError('Choose a cancellation cause.');
   if (o.codNotConfirmed && (!a.actorId || form?.formId !== 'staff.order-fulfillment' ||
       !await customerCodSchemaAvailable(db)))
     throw new CancellationConflictError('Cash-on-delivery confirmation is unavailable for this order.');
@@ -399,6 +406,7 @@ export async function cancelSelectedParcels(
     action: formAction, orderId: authorizedSource.order.id, actorId, selectedIds,
     note: o.note.trim(), fingerprint: o.fingerprint, reviewId: o.reviewId ?? null,
     ...(o.codNotConfirmed ? { codNotConfirmed: true } : {}),
+    ...(causeInput ? { cause: causeInput } : {}),
     versionId: form.versionId, answers: form.answers }) : null;
   const catalogAuditId = `${o.requestId}:catalog`;
   const catalogAudit = () => db.prepare(`INSERT INTO audit_logs
@@ -431,6 +439,20 @@ export async function cancelSelectedParcels(
       answer?.actorId !== actorId)
       throw new CancellationConflictError('Request reference already used.');
   }
+  async function assertCauseReplay(subject: 'event' | 'review') {
+    if (!causeAvailable) return;
+    const requestId = subject === 'event' ? o.requestId
+      : o.requestId + (parcelForm ? ':parcel-form' : ':review-cause');
+    const audit = await db.prepare(`SELECT next_json AS data FROM audit_logs WHERE request_id=?
+      AND subject_type='order' AND subject_id=? AND action IN
+        ('order.parcel_cancelled','order.cancellation_accounting','cancellation.review_requested')`)
+      .bind(requestId, authorizedSource.order.id).first<{ data: string | null }>();
+    let saved: { causeInput?: string } | null;
+    try { saved = JSON.parse(audit?.data ?? 'null'); }
+    catch { throw new CancellationConflictError('Request reference already used.'); }
+    if (saved?.causeInput !== causeInput)
+      throw new CancellationConflictError('Request reference already used.');
+  }
   const existing = await db
     .prepare(
       'SELECT order_id AS orderId,actor_id AS actorId,seller_ids_json AS sellers,note FROM order_cancellation_events WHERE id=?',
@@ -457,6 +479,7 @@ export async function cancelSelectedParcels(
       if(event?.actorId!==a.actorId||event?.jobId!==o.parcelContext?.jobId||event?.payload!==o.parcelContext?.payload)
         throw new CancellationConflictError('Request reference already used.');
     }
+    await assertCauseReplay('event');
     await assertFormReplay('order_cancellation_event');
     // Cancellation and its receipt commit together. A verified retry resumes
     // only the idempotent managed hooks if a post-commit dependency failed.
@@ -487,9 +510,11 @@ export async function cancelSelectedParcels(
     if(parcelForm){
       const audit=await db.prepare("SELECT next_json AS nextJson FROM audit_logs WHERE request_id=? AND action='cancellation.review_requested' AND subject_type='order' AND actor_id=?")
         .bind(o.requestId+':parcel-form',a.actorId).first<{nextJson:string}>();
-      if(audit?.nextJson!==JSON.stringify({jobId:o.parcelContext?.jobId,payload:o.parcelContext?.payload}))
+      const saved = JSON.parse(audit?.nextJson ?? 'null');
+      if (saved?.jobId !== o.parcelContext?.jobId || saved?.payload !== o.parcelContext?.payload)
         throw new CancellationConflictError('Request reference already used.');
     }
+    await assertCauseReplay('review');
     await assertFormReplay('order_cancellation_review');
     return { status: 'review_requested', id: o.requestId };
   }
@@ -500,6 +525,17 @@ export async function cancelSelectedParcels(
     throw new CancellationConflictError(
       'Order amounts or readiness changed. Review the updated cancellation before confirming.',
     );
+  const savedCause = causeAvailable && o.reviewId
+    ? await savedReviewCancellationCause(db, p.order.id, o.reviewId) : undefined;
+  const inferredCause = causeAvailable && !savedCause
+    ? !a.actorId || o.codNotConfirmed ? 'customer' : await inferCancellationCause(db, p.order.id, p.selected)
+    : undefined;
+  const cause = causeAvailable ? savedCause ?? inferredCause ?? causeInput : undefined;
+  const inferredSellerGuard = () => inferredCause === 'seller'
+    ? guard(db, `NOT EXISTS(${uncoveredSellerCancellationItemsSql(db, true)})`, [p.order.id, JSON.stringify(p.selected)])
+    : [];
+  if (causeAvailable && !cause)
+    throw new CancellationConflictError('Choose a cancellation cause.');
   if (p.reviewRequired && !o.reviewId) {
     const id = o.requestId;
     const reviewAuthority = a.actorId
@@ -521,6 +557,7 @@ export async function cancelSelectedParcels(
       db
         .prepare('UPDATE orders SET updated_at=updated_at WHERE id=?')
         .bind(p.order.id),
+      ...inferredSellerGuard(),
       ...guard(
         db,
         'EXISTS(SELECT 1 FROM orders WHERE id=? AND cancellation_version=?)',
@@ -533,7 +570,7 @@ export async function cancelSelectedParcels(
       ),
       db
         .prepare(
-          `INSERT INTO order_cancellation_reviews(id,order_id,seller_ids_json,note,requested_by,created_at,original_facts_json) VALUES (?,?,?,?,?,${checkoutCommitClock(db)},?)`,
+          `INSERT INTO order_cancellation_reviews(id,order_id,seller_ids_json,note,requested_by,created_at,original_facts_json${cause ? ',cause' : ''}) VALUES (?,?,?,?,?,${checkoutCommitClock(db)},?${cause ? ',?' : ''})`,
         )
         .bind(
           id,
@@ -542,6 +579,7 @@ export async function cancelSelectedParcels(
           o.note.trim(),
           actorId,
           JSON.stringify({order:p.order,items:p.items,parcels:p.parcels,paymentFacts:p.paymentFacts,fingerprint:p.fingerprint}),
+          ...(cause ? [cause] : []),
         ),
       db
         .prepare(
@@ -552,8 +590,9 @@ export async function cancelSelectedParcels(
           actorId,
           p.order.id,
           o.note,
-          parcelForm?JSON.stringify({jobId:o.parcelContext?.jobId,payload:o.parcelContext?.payload}):null,
-          parcelForm?o.requestId+':parcel-form':null,
+          parcelForm ? JSON.stringify({ jobId: o.parcelContext?.jobId, payload: o.parcelContext?.payload, cause, causeInput })
+            : cause ? JSON.stringify({ cause, causeInput }) : null,
+          parcelForm ? o.requestId+':parcel-form' : cause ? o.requestId+':review-cause' : null,
           o.now,
         ),
       ...(parcelForm?[buildFormAnswerInsert(db,{formId:'staff.parcel-control',requestId:o.requestId,
@@ -590,6 +629,7 @@ export async function cancelSelectedParcels(
         'UPDATE orders SET cancellation_version=cancellation_version+1,operation_request_id=? WHERE id=? AND cancellation_version=?',
       )
       .bind(o.requestId, p.order.id, p.order.version),
+    ...inferredSellerGuard(),
     ...guard(
       db,
       'EXISTS(SELECT 1 FROM orders WHERE id=? AND cancellation_version=? AND operation_request_id=?)',
@@ -775,7 +815,7 @@ export async function cancelSelectedParcels(
   statements.push(
     db
       .prepare(
-        'INSERT INTO order_cancellation_events(id,order_id,actor_id,version,seller_ids_json,original_allocations_json,previous_json,next_json,note,wallet_restored_paisa,discount_removed_paisa,item_removed_paisa,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        `INSERT INTO order_cancellation_events(id,order_id,actor_id,version,seller_ids_json,original_allocations_json,previous_json,next_json,note,wallet_restored_paisa,discount_removed_paisa,item_removed_paisa,created_at${cause ? ',cause' : ''}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?${cause ? ',?' : ''})`,
       )
       .bind(
         o.requestId,
@@ -791,6 +831,7 @@ export async function cancelSelectedParcels(
         p.discountRemoved,
         p.previous.subtotal - p.next.subtotal,
         o.now,
+        ...(cause ? [cause] : []),
       ),
     db
       .prepare(
@@ -843,7 +884,7 @@ export async function cancelSelectedParcels(
         p.order.id,
         o.note,
         JSON.stringify(p.previous),
-        JSON.stringify(p.next),
+        JSON.stringify(cause ? { ...p.next, cause, causeInput } : p.next),
         o.requestId,
         o.now,
       ),

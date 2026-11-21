@@ -39,6 +39,7 @@ export default async function AdminAnalyticsPage({
           report={await readBusinessReport(database, range, staff)}
           range={range}
           canViewSellers={destinations.has('/admin/sellers')}
+          canExport={canViewDetails}
         />
       )}
       <nav className="flex flex-wrap gap-2" aria-label="Detailed reports">

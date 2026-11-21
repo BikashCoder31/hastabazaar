@@ -60,6 +60,7 @@ import {
 import { SellerBankReview } from '@/components/admin/seller-bank-review';
 import { SellerDocumentReview } from '@/components/admin/seller-document-review';
 import { StaffReviewAccessBoundary } from '@/components/admin/staff-review-access-boundary';
+import { cancellationCauseSchemaAvailable } from '@/lib/cancellation/attribution';
 import { listSellerStaffNotes } from '@/lib/admin/seller-notes';
 import { SellerNotesCard } from './seller-notes-card';
 
@@ -159,6 +160,7 @@ export default async function SellerApplicationPage({
   const sellerName = application.tradingName.trim() || application.legalName.trim() || application.applicationReference;
   const independent = application.userId !== staff.id;
   const allowedOrders = independent && can(staff, 'order.manage');
+  const cancellationSchema = allowedOrders ? cancellationCauseSchemaAvailable(database) : false;
   const allowedProducts = independent && can(staff, 'product.review');
   const allowedFinance = independent && can(staff, 'payout.prepare');
   const allowedRestrictions = can(staff, 'seller.suspend');
@@ -201,10 +203,10 @@ export default async function SellerApplicationPage({
     registered ? null : readAcceptedManagedTerms(database, id),
     applying ? listSellerApplicationsForReview(database) : [],
     getReviewedPublicProfileExtras(database, id, observedAt).catch(() => null),
-    readSellerStanding(database, id, staff, independent),
+    readSellerStanding(database, id, staff, independent, cancellationSchema),
     allowedFinance && registered ? readSellerMoney(database, id, observedAt) : null,
     independent ? readSellerOpenWork(database, id, staff, observedAt) : null,
-    tab === 'orders' ? readSellerOrders(database, id, staff.id, page) : tab === 'products' ? readSellerProducts(database, id, page) : [],
+    tab === 'orders' ? readSellerOrders(database, id, staff.id, page, cancellationSchema) : tab === 'products' ? readSellerProducts(database, id, page) : [],
     tab === 'history' && allowedFinance && registered ? readPaidPayoutHistory(database, id) : [],
     independent ? listSellerStaffNotes(database, application.id) : null,
   ]);

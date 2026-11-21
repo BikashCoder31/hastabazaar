@@ -3,6 +3,8 @@ import { getSellerCommissionTerms } from '@/lib/db/repositories/commission-rates
 import { getSellerFinanceSummary } from '@/lib/db/repositories/payouts';
 import { can, type Permission } from '@/lib/marketplace/permissions';
 import { formatPaisaExact } from '@/lib/marketplace/money-display';
+import { cancellationCauseSchemaAvailable } from '@/lib/cancellation/attribution';
+import { cancellationCauseLabel, readCancellationCause } from '@/lib/cancellation/causes';
 import { responseScopeContains } from '@/lib/orders/response-sql';
 
 type Viewer = { id: string; role: 'admin' | 'super_admin'; permissions?: readonly Permission[] };
@@ -27,12 +29,13 @@ export const sellerRecordDate = new Intl.DateTimeFormat('en-NP', {
   day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kathmandu',
 });
 
-export async function readSellerStanding(db: D1Database, sellerId: string, staff: Viewer, independent = true) {
+export async function readSellerStanding(db: D1Database, sellerId: string, staff: Viewer, independent = true, cancellationSchema?: boolean | Promise<boolean>) {
   const ordersAllowed = independent && can(staff, 'order.manage');
   const returnsAllowed = independent && (ordersAllowed || can(staff, 'support.manage') || can(staff, 'refund.approve.standard'));
 
   // Match the first actual ready event to the latest proposal recorded before it for that exact item.
-  const [ready, returns, rating] = await Promise.all([
+  const recordedCauses = ordersAllowed && await (cancellationSchema ?? cancellationCauseSchemaAvailable(db));
+  const [ready, returns, rating, cancellations] = await Promise.all([
     ordersAllowed ? db.prepare(`
       WITH proposals AS (
         SELECT i.id AS item_id,c.id,c.created_at,c.proposed_ready_at,
@@ -68,11 +71,14 @@ export async function readSellerStanding(db: D1Database, sellerId: string, staff
       FROM order_items i JOIN product_reviews r ON r.order_item_id=i.id
       WHERE i.seller_id=? AND r.status='published'
     `).bind(sellerId).first<Rating>(),
+    recordedCauses ? db.prepare(`
+      SELECT COUNT(DISTINCT e.order_id) AS count
+      FROM order_cancellation_events e JOIN orders o ON o.id=e.order_id
+      WHERE e.cause='seller' AND ${responseScopeContains(db, 'e.seller_ids_json', '?')}
+        AND (o.customer_id IS NULL OR o.customer_id<>?)
+    `).bind(sellerId, staff.id).first<{ count: number }>() : null,
   ]);
-
-  // The original cancellation actor is the customer or the deciding staff member.
-  // The cancelled seller scope does not establish that the seller initiated the cancellation.
-  return { ready, cancellations: null, returns, rating };
+  return { ready, cancellations: cancellations ? Number(cancellations.count) : null, returns, rating };
 }
 
 type Payout = { id: string; reference: string; amount: number; at: number };
@@ -107,9 +113,14 @@ export async function readSellerMoney(db: D1Database, sellerId: string, now: num
   };
 }
 
-export async function readSellerOrders(db: D1Database, sellerId: string, staffId: string, page: number) {
+export async function readSellerOrders(db: D1Database, sellerId: string, staffId: string, page: number, cancellationSchema?: boolean | Promise<boolean>) {
+  const recordedCauses = await (cancellationSchema ?? cancellationCauseSchemaAvailable(db));
+  const causeSql = recordedCauses ? `(SELECT e.cause FROM order_cancellation_events e
+    WHERE e.order_id=o.id AND ${responseScopeContains(db, 'e.seller_ids_json', '?')}
+    ORDER BY e.version DESC LIMIT 1)` : 'NULL';
   const rows = await db.prepare(`
     SELECT o.id,o.order_number AS title,MIN(i.product_name_snapshot) AS firstProduct,
+      ${causeSql} AS cancellationCause,
       COUNT(i.id) AS lineCount, o.created_at AS at,
       SUM(CASE WHEN i.fulfillment_status='cancelled' THEN 1 ELSE 0 END) AS cancelled,
       SUM(CASE WHEN i.fulfillment_status='delivered' THEN 1 ELSE 0 END) AS delivered,
@@ -121,8 +132,8 @@ export async function readSellerOrders(db: D1Database, sellerId: string, staffId
     WHERE i.seller_id=? AND (o.customer_id IS NULL OR o.customer_id<>?)
     GROUP BY o.id,o.order_number,o.status,o.created_at
     ORDER BY o.created_at DESC,o.id DESC LIMIT ? OFFSET ?
-  `).bind(sellerId, staffId, recordPageSize + 1, (page - 1) * recordPageSize).all<{
-    id: string; title: string; firstProduct: string; lineCount: number; at: number;
+  `).bind(...(recordedCauses ? [sellerId] : []), sellerId, staffId, recordPageSize + 1, (page - 1) * recordPageSize).all<{
+    id: string; title: string; firstProduct: string; lineCount: number; at: number; cancellationCause: string | null;
     cancelled: number; delivered: number; dispatched: number; ready: number; packing: number; orderStatus: string;
   }>();
 
@@ -137,7 +148,8 @@ export async function readSellerOrders(db: D1Database, sellerId: string, staffId
     return {
       id: row.id, title: row.title, at: row.at, status,
       href: '/admin/orders/' + encodeURIComponent(row.id),
-      detail: row.firstProduct + (row.lineCount > 1 ? ` · ${row.lineCount - 1} more ${row.lineCount === 2 ? 'line' : 'lines'}` : ''),
+      detail: row.firstProduct + (row.lineCount > 1 ? ` · ${row.lineCount - 1} more ${row.lineCount === 2 ? 'line' : 'lines'}` : '') +
+        (recordedCauses && row.cancelled ? ` · ${cancellationCauseLabel(readCancellationCause(row.cancellationCause) ?? null)}` : ''),
     };
   });
 }

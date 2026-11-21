@@ -9,6 +9,7 @@ import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { isValidatedFormVersionStale, validateSellerFormSubmission } from '@/lib/forms/submission';
 import { FormRuntimeError } from '@/lib/forms/runtime';
 import { FormValidationError } from '@/lib/forms/validation';
+import { cancellationCauseSchemaAvailable, inferCancellationCause, savedReviewCancellationCause } from '@/lib/cancellation/attribution';
 import {
   cancellationPreview,
   continueCancellationSettlement,
@@ -53,9 +54,11 @@ export async function POST(request: Request) {
     }
     if (!body || typeof body !== 'object' || Array.isArray(body) ||
       Object.keys(body).some((key) => !['reviewId','action','note','fingerprint',
-        'formVersion','customAnswers','clientAttemptId'].includes(key)))
+        'formVersion','customAnswers','clientAttemptId','cause'].includes(key)))
       return json({ error: 'Invalid cancellation review request.' }, 400);
     const input = body as Record<string, unknown>;
+    if (input.cause !== undefined && (input.action !== 'approve' || typeof input.cause !== 'string'))
+      return json({ error: 'Choose a cancellation cause when approving.' }, 400);
     if (typeof input.reviewId !== 'string' || !/^[a-zA-Z0-9:_-]{1,150}$/.test(input.reviewId))
       return json({ error: 'Select a review.' }, 400);
     if (!['preview','approve','reject'].includes(String(input.action)) ||
@@ -121,6 +124,10 @@ export async function POST(request: Request) {
         walletRestored: p.walletRestored,
         delivery: p.next.delivery,
         deliveryPricingPolicy:p.deliveryPricingPolicy,
+        ...await cancellationCauseSchemaAvailable(database) ? {
+          cancellationCause: await savedReviewCancellationCause(database, p.order.id, input.reviewId)
+            ?? await inferCancellationCause(database, p.order.id, p.selected) ?? null,
+        } : {},
       });
     }
     if (
@@ -141,6 +148,7 @@ export async function POST(request: Request) {
         requestId: requestId!,
         note: input.note,
         reviewId: input.reviewId,
+        cause: typeof input.cause === 'string' ? input.cause : undefined,
         now: Date.now(),
         form: { formId: 'staff.cancellation-review', requestId: requestId!,
           versionId: form.versionId, answers: form.answers },

@@ -10,13 +10,16 @@ import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 import {sessionAttemptKey} from '@/lib/forms/client-attempt';
 import {useActionRecovery} from '@/components/orders/use-action-recovery';
+import { CancellationCauseField } from './cancellation-cause-field';
+import { readCancellationCause, type CancellationCause } from '@/lib/cancellation/causes';
 import {useDenyStaffReview} from './staff-review-access-boundary';
 
 const FORM_ID = 'staff.cancellation-review';
-const BASE_KEYS = ['reviewId', 'action', 'note', 'fingerprint', 'requestId', 'clientAttemptId', 'formVersion', 'customAnswers'];
+const BASE_KEYS = ['reviewId', 'action', 'note', 'fingerprint', 'cause', 'requestId', 'clientAttemptId', 'formVersion', 'customAnswers'];
 interface ReviewPreview {
   fingerprint: string; total: number; walletRestored: number; delivery: number;
   deliveryPricingPolicy: string | null;
+  cancellationCause?: CancellationCause | null;
 }
 function validPreview(value: unknown): value is ReviewPreview {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -24,6 +27,7 @@ function validPreview(value: unknown): value is ReviewPreview {
   return typeof preview.fingerprint === 'string' && /^[a-f0-9]{64}$/i.test(preview.fingerprint)
     && [preview.total, preview.walletRestored, preview.delivery]
       .every((amount) => typeof amount === 'number' && Number.isSafeInteger(amount) && amount >= 0)
+    && (preview.cancellationCause == null || Boolean(readCancellationCause(preview.cancellationCause)))
     && (preview.deliveryPricingPolicy === null || preview.deliveryPricingPolicy === 'base_plus_half_per_additional_store_v1');
 }
 const actions=['approve','reject'];
@@ -40,13 +44,7 @@ function ScopedCancellationReviewControl({reviewId,actorId,isCurrent,canDecide=t
     [accessDenied,setAccessDenied]=useState(false),
     [note, setNote] = useState(''),
     [message, setMessage] = useState(''),
-    [preview, setPreview] = useState<{
-      fingerprint: string;
-      total: number;
-      walletRestored: number;
-      delivery: number;
-      deliveryPricingPolicy:string|null;
-    } | null>(null),
+    [preview, setPreview] = useState<ReviewPreview | null>(null),
     [busy, setBusy] = useState(false);
   const denyAccess=useCallback(()=>{if(!isCurrent())return;setNote('');setPreview(null);setAccessDenied(true);denyParent?.();router.refresh();},[isCurrent,denyParent,router]);
   const catalog=usePublishedFormConfig(FORM_ID,{actorId,onAccessDenied:denyAccess,enabled:!accessDenied});
@@ -57,12 +55,19 @@ function ScopedCancellationReviewControl({reviewId,actorId,isCurrent,canDecide=t
       setMessage(catalog.message || 'Form configuration is unavailable.'); return;
     }
     if (!formRef.current.reportValidity()) return;
+    const cause = action === 'approve' && preview?.cancellationCause === null
+      ? readCancellationCause(new FormData(formRef.current).get('cause')) : undefined;
+    if (action === 'approve' && preview?.cancellationCause === null && !cause) {
+      setMessage('Choose a cancellation cause.');
+      formRef.current.querySelector<HTMLElement>('select[name="cause"]')?.focus();
+      return;
+    }
     setBusy(true);
     setMessage('');
     try {
       const configured = readConfiguredSubmission(formRef.current, catalog.config, BASE_KEYS);
       const formPayload = configuredJsonPayload(catalog.config, configured.answers, BASE_KEYS);
-      if(action!=='preview'){if(await recovery.run(action,{reviewId,action,note,...(preview?{fingerprint:preview.fingerprint}:{}),...formPayload},'clientAttemptId')&&isCurrent())router.refresh();return;}
+      if(action!=='preview'){if(await recovery.run(action,{reviewId,action,note,...(cause ? { cause } : {}),...(preview?{fingerprint:preview.fingerprint}:{}),...formPayload},'clientAttemptId')&&isCurrent())router.refresh();return;}
       const r = await fetch('/api/admin/cancellations', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json',[ACTOR_INTENT_HEADER]:actorId },
@@ -87,6 +92,7 @@ function ScopedCancellationReviewControl({reviewId,actorId,isCurrent,canDecide=t
           walletRestored: number;
           delivery: number;
           deliveryPricingPolicy:string|null;
+          cancellationCause?: CancellationCause | null;
         } | null;
       if(!isCurrent())return;
 
@@ -132,7 +138,7 @@ function ScopedCancellationReviewControl({reviewId,actorId,isCurrent,canDecide=t
       <button
         type="button"
         disabled={busy || !catalog.canSubmit}
-        className="rounded border p-2"
+        className="min-h-11 rounded border p-2"
         onClick={() => void act('preview')}
       >
         Review current cancellation amounts
@@ -145,10 +151,11 @@ function ScopedCancellationReviewControl({reviewId,actorId,isCurrent,canDecide=t
             {formatPaisaExact(preview.delivery)}
           </p>
           <p className="text-sm text-muted-foreground">{preview.deliveryPricingPolicy?'Delivery is recalculated from the remaining store count under the saved 50%-increment policy.':'This historical order retains its recorded single-fee cancellation policy.'}</p>
+          {preview.cancellationCause !== undefined ? <CancellationCauseField inferred={preview.cancellationCause} required={false} /> : null}
           <button
             type="button"
             disabled={busy || note.trim().length < 8 || !catalog.canSubmit}
-            className="rounded border p-2"
+            className="min-h-11 rounded border p-2"
             onClick={() => void act('approve')}
           >
             Approve reviewed cancellation
@@ -158,7 +165,7 @@ function ScopedCancellationReviewControl({reviewId,actorId,isCurrent,canDecide=t
       <button
         type="button"
         disabled={busy || note.trim().length < 8 || !catalog.canSubmit}
-        className="rounded border p-2"
+        className="min-h-11 rounded border p-2"
         onClick={() => void act('reject')}
       >
         Reject with reason

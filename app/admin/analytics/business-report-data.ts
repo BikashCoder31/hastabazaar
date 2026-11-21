@@ -3,6 +3,8 @@ import { getStorefrontFunnel } from '@/lib/db/repositories/analytics';
 import { getCommissionReport } from '@/lib/db/repositories/commission-reporting';
 import { can } from '@/lib/marketplace/permissions';
 import { responseScopeContains } from '@/lib/orders/response-sql';
+import { cancellationCauseSchemaAvailable } from '@/lib/cancellation/attribution';
+import { cancellationCauses, type CancellationCause } from '@/lib/cancellation/causes';
 import { dayMs, type BusinessReportRange } from './business-report-range';
 
 type ReportViewer = Pick<StaffUser, 'id' | 'role' | 'permissions'>;
@@ -20,10 +22,25 @@ type SellerDelay = Seller & { lateOrders: number };
 // earlier orders. Completed refunds and payouts use their own recorded dates.
 const placedAt = 'COALESCE(o.placed_at,o.created_at)';
 
+export async function readReportCancellations(db: D1Database, start: number, end: number) {
+  if (!await cancellationCauseSchemaAvailable(db)) return null;
+  const rows = await db.prepare(`
+    SELECT cause,COUNT(*) AS count FROM (
+      SELECT cause FROM order_cancellation_events WHERE created_at BETWEEN ? AND ?
+      UNION ALL
+      SELECT NULL AS cause FROM orders o WHERE o.cancelled_at BETWEEN ? AND ?
+        AND NOT EXISTS(SELECT 1 FROM order_cancellation_events e WHERE e.order_id=o.id)
+    ) recorded GROUP BY cause
+  `).bind(start, end, start, end).all<{ cause: CancellationCause | null; count: number }>();
+  const counts = new Map(rows.results.map(row => [row.cause, Number(row.count)]));
+  return [...cancellationCauses.map(([cause]) => cause), null].map(cause => ({ cause, count: counts.get(cause) ?? 0 }));
+}
+
 export async function readBusinessReport(db: D1Database, range: BusinessReportRange, staff: ReportViewer) {
   const { from, to, start, now, previousStart } = range;
   const canViewSellerWork = can(staff, 'order.manage');
-  const [commerce, daily, commission, refunds, payouts, courierCash, funnel, topSellers, sellerDelays] = await Promise.all([
+  const [cancellations, commerce, daily, commission, refunds, payouts, courierCash, funnel, topSellers, sellerDelays] = await Promise.all([
+    readReportCancellations(db, start, now),
     db.prepare(`
       WITH placed AS (
         SELECT o.id,o.status,o.delivered_at,o.grand_total_paisa,${placedAt} AS placedAt
@@ -94,6 +111,7 @@ export async function readBusinessReport(db: D1Database, range: BusinessReportRa
   const counts = new Map(daily.results.map(row => [Number(row.dayIndex), Number(row.orders)]));
   return {
     commerce,
+    cancellations,
     daily: Array.from({ length: range.days }, (_, index) => ({
       at: start + index * dayMs,
       orders: counts.get(index) ?? 0,

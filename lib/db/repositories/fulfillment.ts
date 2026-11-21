@@ -573,6 +573,7 @@ export async function transitionAdminFulfillment(
     action: AdminFulfillmentAction;
     note: string;
     codNotConfirmed?: boolean;
+    cause?: string;
     trackingCode?: string;
     requestId: string;
     now: number;
@@ -734,6 +735,7 @@ export async function transitionAdminFulfillment(
       staffGuards: authority.statements,
       form: options.form,
       codNotConfirmed: options.codNotConfirmed,
+      cause: options.cause,
     });
   }
 
@@ -1005,6 +1007,7 @@ async function cancelOrder(
     receiptTokenHash?: string | null;
     staffGuards?: readonly D1PreparedStatement[];
     codNotConfirmed?: boolean;
+    cause?: string;
     form?: {
       requestId: string;
       versionId: string;
@@ -1054,6 +1057,7 @@ async function cancelOrder(
       note: options.note,
       now: options.now,
       ...(options.codNotConfirmed ? { codNotConfirmed: true } : {}),
+      cause: options.cause,
       ...(options.form
         ? {
             form: {

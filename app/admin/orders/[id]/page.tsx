@@ -10,6 +10,8 @@ import { PlatformServiceFeeRefund } from '@/components/admin/platform-service-fe
 import { serviceFeeRefundSummary } from '@/lib/db/repositories/platform-service-fee-refunds';
 import { getFirstCodReview } from '@/lib/orders/first-cod-review';
 import { StaffFormHistoryLinks } from '@/components/admin/staff-form-history-links';
+import { cancellationCauseSchemaAvailable, inferCancellationCause } from '@/lib/cancellation/attribution';
+import { cancellationCauseLabel, readCancellationCause } from '@/lib/cancellation/causes';
 import { CancellationReviewSection } from '@/components/admin/cancellation-review-section';
 import { ExceptionOrderSection } from '@/components/admin/exception-order-section';
 import { InvoiceAdjustmentForm } from '@/components/admin/invoice-adjustment-form';
@@ -165,7 +167,7 @@ export default async function AdminOrderPage({
     ).some((allowed) => !allowed)
   )
     notFound();
-  const [parcels, cash, compensation, invoiceGroups, failureReasonsAvailable] = await Promise.all([
+  const [parcels, cash, compensation, invoiceGroups, failureReasonsAvailable, cancellationCausesAvailable] = await Promise.all([
     listParcels(db, id),
     parcelCashRecords(db, id).then((records) =>
       staff.role === 'super_admin'
@@ -177,28 +179,9 @@ export default async function AdminOrderPage({
       : Promise.resolve([]),
     listManagedInvoiceGroupsForOrder(db, id),
     deliveryFailureSchemaAvailable(db),
+    cancellationCauseSchemaAvailable(db),
   ]);
-  const adjustmentReasons = can(staff, 'tax_policy.manage')
-    ? (
-        await getEffectiveBusinessSetting(
-          db,
-          'managed_adjustment_reason_codes',
-          requestTime(),
-        )
-      ).value
-    : [];
   const isSuperAdmin = staff.role === 'super_admin';
-  const [delivery, progress, manualReview] = await Promise.all([
-    getDelivery(db, id).then(publicDelivery),
-    readOrderProgress(db, order, isSuperAdmin, can(staff, 'payout.prepare')),
-    order.paymentMode === 'prepaid' && order.status === 'pending_payment'
-      ? getPaidManualReleaseReview(db, staff.id, id).catch((error) => {
-          if (error instanceof ManualPaymentError && error.status === 404)
-            return null;
-          throw error;
-        })
-      : null,
-  ]);
   const visibleParcels = isSuperAdmin
     ? parcels
     : parcels
@@ -214,6 +197,35 @@ export default async function AdminOrderPage({
           positionAt: null,
           riderFinanceSnapshotJson: null,
         }));
+  const [wholeOrderCancellationCause, cancellationCausesBySeller, recordedCancellations] = await Promise.all([
+    cancellationCausesAvailable && !parcels.length
+      ? inferCancellationCause(db, id).then(cause => cause ?? null) : undefined,
+    cancellationCausesAvailable ? Promise.all([...new Set(visibleParcels.map(parcel => parcel.sellerId))].map(async sellerId =>
+      [sellerId, await inferCancellationCause(db, id, [sellerId]) ?? null] as const,
+    )).then(entries => Object.fromEntries(entries)) : undefined,
+    cancellationCausesAvailable ? db.prepare(`SELECT id,cause,note FROM order_cancellation_events
+      WHERE order_id=? ORDER BY version DESC`).bind(id).all<{ id: string; cause: string | null; note: string }>() : null,
+  ]);
+  const adjustmentReasons = can(staff, 'tax_policy.manage')
+    ? (
+        await getEffectiveBusinessSetting(
+          db,
+          'managed_adjustment_reason_codes',
+          requestTime(),
+        )
+      ).value
+    : [];
+  const [delivery, progress, manualReview] = await Promise.all([
+    getDelivery(db, id).then(publicDelivery),
+    readOrderProgress(db, order, isSuperAdmin, can(staff, 'payout.prepare')),
+    order.paymentMode === 'prepaid' && order.status === 'pending_payment'
+      ? getPaidManualReleaseReview(db, staff.id, id).catch((error) => {
+          if (error instanceof ManualPaymentError && error.status === 404)
+            return null;
+          throw error;
+        })
+      : null,
+  ]);
   const sellerById = new Map(
     order.items.map((item) => [item.sellerId, item.sellerName]),
   );
@@ -619,6 +631,7 @@ export default async function AdminOrderPage({
                   <ParcelControls
                     orderId={id}
                     failureReasonsAvailable={failureReasonsAvailable}
+                    cancellationCausesBySeller={cancellationCausesBySeller}
                     parcels={visibleParcels}
                     records={
                       staff.role === 'super_admin'
@@ -661,6 +674,8 @@ export default async function AdminOrderPage({
                     <h2 className="font-semibold">Whole-order actions</h2>
                     <AdminOrderFulfillmentActions
                       key={order.trackingCode ?? 'manual'}
+                      actorId={staff.id}
+                      cancellationCause={wholeOrderCancellationCause}
                       initialTrackingCode={order.trackingCode}
                       orderId={id}
                       status={order.status}
@@ -772,6 +787,21 @@ export default async function AdminOrderPage({
                   </div>
                 ) : null}
                 <div id="cancellation-records">
+                  {recordedCancellations && (recordedCancellations.results.length || order.status === 'cancelled') ? (
+                    <section className={panel + ' space-y-2'}>
+                      <h2 className="font-semibold">Cancellation history</h2>
+                      {recordedCancellations.results.length ? (
+                        <ul className="space-y-2">
+                          {recordedCancellations.results.map(record => (
+                            <li key={record.id} className="wrap-anywhere text-sm">
+                              <strong>{cancellationCauseLabel(readCancellationCause(record.cause) ?? null)}</strong>
+                              <p>{record.note}</p>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : <p className="text-sm">Cause not recorded</p>}
+                    </section>
+                  ) : null}
                   <CancellationReviewSection
                     db={db}
                     orderId={id}

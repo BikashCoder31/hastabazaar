@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { nepalDateTimeInput } from '@/lib/commission/rates';
 import { formatPaisaExact } from '@/lib/marketplace/money-display';
+import { cancellationCauseLabel } from '@/lib/cancellation/causes';
 import { BusinessReportExport, type ReportCsvRow } from './business-report-export';
 import type { BusinessReport } from './business-report-data';
 import { reportPeriods, type BusinessReportRange } from './business-report-range';
@@ -64,14 +65,21 @@ function funnelStages(funnel: BusinessReport['funnel']) {
 }
 
 function reportCsv(report: BusinessReport, range: BusinessReportRange): ReportCsvRow[] {
-  return [
-    ['Section', 'Measure', 'Date or seller', 'Value', 'Unit', 'Detail'],
+  const header = ['Section', 'Measure', 'Date or seller', 'Value', 'Unit', 'Detail'];
+  const rows: ReportCsvRow[] = [
     ['Period', range.label, `${range.from} to ${range.to}`, null, '', 'Nepal time'],
     ...summaryCards(report, range).map(item => ['Summary', item.label, '', item.raw, item.unit, item.detail]),
     ...report.daily.map(day => ['Orders per day', 'Orders', nepalDateTimeInput(day.at).slice(0, 10), day.orders, 'orders', '']),
     ...funnelStages(report.funnel).map(([label, value]) => ['Shopper funnel', label, '', value, 'events', 'Estimate from retained site events']),
     ...report.topSellers.map(row => ['Top sellers', 'Delivered value', row.name, Number(row.amountPaisa), 'paisa', 'Delivered item totals']),
     ...(report.sellerDelays ?? []).map(row => ['Sellers below target', 'Missed saved ready-by date', row.name, Number(row.lateOrders), 'orders', 'Open seller delays']),
+  ];
+  if (!report.cancellations) return [header, ...rows];
+  return [
+    [...header, 'Cancellation cause'],
+    ...rows.map(row => [...row, '']),
+    ...report.cancellations.map(row =>
+      ['Cancellations', 'Recorded cancellations', '', row.count, 'cancellations', '', cancellationCauseLabel(row.cause)]),
   ];
 }
 
@@ -137,8 +145,8 @@ function ShopperFunnel({ funnel, range }: { funnel: BusinessReport['funnel']; ra
   );
 }
 
-export function BusinessReportOverview({ report, range, canViewSellers }: {
-  report: BusinessReport; range: BusinessReportRange; canViewSellers: boolean;
+export function BusinessReportOverview({ report, range, canViewSellers, canExport }: {
+  report: BusinessReport; range: BusinessReportRange; canViewSellers: boolean; canExport: boolean;
 }) {
   return (
     <div className="space-y-[18px]">
@@ -152,7 +160,7 @@ export function BusinessReportOverview({ report, range, canViewSellers }: {
             </Link>
           ))}
         </nav>
-        <BusinessReportExport rows={reportCsv(report, range)} filename={`hastabazaar-business-report-${range.from}-to-${range.to}.csv`} />
+        {canExport ? <BusinessReportExport rows={reportCsv(report, range)} filename={`hastabazaar-business-report-${range.from}-to-${range.to}.csv`} /> : null}
       </div>
 
       <dl aria-label="Business report summary" className="grid gap-3.5 lg:grid-cols-4">
@@ -169,6 +177,22 @@ export function BusinessReportOverview({ report, range, canViewSellers }: {
         <DailyOrders daily={report.daily} />
         <ShopperFunnel funnel={report.funnel} range={range} />
       </div>
+
+      {report.cancellations ? (
+        <section className={card} aria-labelledby="cancellation-causes">
+          <h2 id="cancellation-causes" className="px-[18px] py-3.5 font-bold">Cancellations by cause</h2>
+          {report.cancellations.some(row => row.count > 0) ? (
+            <dl className="grid gap-3 border-t px-[18px] py-3.5 sm:grid-cols-2 lg:grid-cols-3">
+              {report.cancellations.map(({ cause, count: total }) => (
+                <div key={cause ?? 'unrecorded'} className="flex min-w-0 justify-between gap-3">
+                  <dt>{cancellationCauseLabel(cause)}</dt>
+                  <dd className="font-semibold tabular-nums">{count(total)}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : <p className="border-t px-[18px] py-3.5 text-sm text-muted-foreground">No cancellations in this period.</p>}
+        </section>
+      ) : null}
 
       <div className="grid gap-[18px] lg:grid-cols-2">
         <section className={card} aria-labelledby="top-sellers">

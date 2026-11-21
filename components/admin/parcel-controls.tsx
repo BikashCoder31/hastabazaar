@@ -11,8 +11,10 @@ import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/cli
 import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 import { ACTOR_INTENT_HEADER } from '@/lib/http/actor-intent';
 import { DeliveryFailureReasonField } from './delivery-failure-reason-field';
+import type { CancellationCause } from '@/lib/cancellation/causes';
+import { CancellationCauseField } from './cancellation-cause-field';
 const BASE_KEYS = ['jobId','version','action','note','method','riderEmail','courierName','trackingCode',
-  'trackingUrl','reference','amount','amountPaisa','cashRecordId','failureReason','requestId'];
+  'trackingUrl','reference','amount','amountPaisa','cashRecordId','failureReason','cause','requestId'];
 // Hydrate the absent server snapshot; own attempt mutations rerender the client.
 const subscribeToAttempt = () => () => undefined;
 const money = (n: number) =>
@@ -52,6 +54,7 @@ export function ParcelControls({
   returnTo,
   canPrepare,
   failureReasonsAvailable = false,
+  cancellationCausesBySeller,
 }: {
   orderId: string;
   parcels: Parcel[];
@@ -63,6 +66,7 @@ export function ParcelControls({
   returnTo?: string;
   canPrepare: boolean;
   failureReasonsAvailable?: boolean;
+  cancellationCausesBySeller?: Record<string, CancellationCause | null>;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false),
@@ -73,7 +77,7 @@ export function ParcelControls({
     try {
       const response = await fetch(`/api/admin/orders/${orderId}/parcels`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(body.failureReason ? { [ACTOR_INTENT_HEADER]: actorId } : {}) },
+        headers: { 'Content-Type': 'application/json', ...(body.failureReason || body.cause ? { [ACTOR_INTENT_HEADER]: actorId } : {}) },
         body: JSON.stringify({ ...body, requestId: typeof body.requestId === 'string' ? body.requestId : crypto.randomUUID() }),
       });
       const result = (await response.json().catch(() => null)) as { error?: string; code?: string; ok?: boolean } | null;
@@ -155,6 +159,7 @@ export function ParcelControls({
               expense only; customer total and seller settlement are unchanged.
             </p>
             <ParcelForm parcel={p} busy={busy} send={send} isSuperAdmin={isSuperAdmin}
+              cancellationCause={cancellationCausesBySeller && (cancellationCausesBySeller[p.sellerId] ?? null)}
               recordFailureReason={failureReasonsAvailable && p.method === 'courier' && p.riderUserId === null} />
             {records
               .filter((r) => r.jobId === p.id)
@@ -246,11 +251,13 @@ function ParcelForm({
   busy,
   send,
   recordFailureReason,
+  cancellationCause,
 }: {
   parcel: Parcel;
   isSuperAdmin: boolean;
   busy: boolean;
   recordFailureReason: boolean;
+  cancellationCause?: CancellationCause | null;
   send: (body: Record<string, unknown>) => Promise<{ response: Response; code?: string; confirmed: boolean } | null>;
 }) {
   const [action, setAction] = useState('assign');
@@ -287,6 +294,7 @@ function ParcelForm({
       trackingCode: value('trackingCode'),
       trackingUrl: value('trackingUrl'),
       reference: value('reference'),
+      ...(action === 'cancel' && value('cause') ? { cause: value('cause') } : {}),
       ...(action === 'fail' && recordFailureReason ? { failureReason: value('failureReason') } : {}),
       ...(amount ? { amountPaisa: Math.round(Number(amount) * 100) } : {}),
       ...configured,
@@ -345,6 +353,7 @@ function ParcelForm({
         </select>
       </label>
       {action === 'fail' && recordFailureReason ? <DeliveryFailureReasonField /> : null}
+      {action === 'cancel' && cancellationCause !== undefined ? <CancellationCauseField inferred={cancellationCause} /> : null}
       {action === 'assign' ? (
         <>
           <label htmlFor={field('method')}>

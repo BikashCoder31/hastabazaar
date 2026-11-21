@@ -62,7 +62,8 @@ function SellerStanding({ standing }: { standing: Standing }) {
     <dl aria-label="Seller standing" className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
       <StandingScore label="Ready on time" value={onTime === undefined ? null : percentFormat.format(onTime)} meter={onTime}
         note={ready?.recorded ? `${countFormat.format(ready.onTime)} of ${countFormat.format(ready.recorded)} items with a proposed date` : ready ? 'No comparable ready times' : 'Orders access required'} />
-      <StandingScore label="Cancelled by seller" value={standing.cancellations} note="Seller attribution unavailable" />
+      <StandingScore label="Cancelled by seller" value={standing.cancellations === null ? null : countFormat.format(standing.cancellations)}
+        note={standing.cancellations === null ? 'Seller attribution unavailable' : 'Earlier cancellations without a recorded cause are excluded.'} />
       <StandingScore label="Returns" value={returnRate === undefined ? null : percentFormat.format(returnRate)} meter={returnRate}
         note={returns?.orders ? `${countFormat.format(returns.withReturn)} of ${countFormat.format(returns.orders)} delivered orders` : returns ? 'No delivered orders yet' : 'Orders or care access required'} />
       <StandingScore label="Replies to returns"

@@ -8,9 +8,12 @@ import {
   SELLER_SHIPMENT_DELIVERY_POLICY,
   usesSellerShipmentDelivery,
 } from '../returns/seller-shipment-delivery';
+import { cancellationCauseSchemaAvailable, readReturnCancellationCause } from '../cancellation/attribution';
+import type { CancellationCause } from '../cancellation/causes';
 import {
   cancellationPreview,
   cancelSelectedParcels,
+  CancellationConflictError,
   currentReceiptSnapshot,
 } from '../cancellation/repository';
 import {
@@ -163,10 +166,12 @@ function parcelAudit(
   orderId: string,
   action: string,
   reason = 'Parcel operation recorded',
+  returnCause?: CancellationCause,
 ) {
   return db
     .prepare(
-      "INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,request_id,created_at) VALUES (?,?,?,'order',?,?,?,?)",
+      `INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,request_id,created_at${returnCause ? ',next_json' : ''})
+        VALUES (?,?,?,'order',?,?,?,?${returnCause ? ',?' : ''})`,
     )
     .bind(
       crypto.randomUUID(),
@@ -176,6 +181,7 @@ function parcelAudit(
       reason,
       o.requestId + ':audit',
       o.now,
+      ...(returnCause ? [JSON.stringify({ cause: returnCause })] : []),
     );
 }
 async function transact(db: D1Database, statements: D1PreparedStatement[]) {
@@ -533,6 +539,7 @@ export interface ParcelOperation {
   pickupEnd?: number;
   riderReportId?: string;
   failureReason?: string;
+  cause?: string;
   form?: {
     requestId: string;
     versionId: string;
@@ -578,11 +585,15 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
       'Rider confirmation requires the matching report action.',
     );
   const trackFailure = o.action === 'fail' && !o.riderReportId && await deliveryFailureSchemaAvailable(db);
-  const { form, failureReason, ...savedOperation } = o;
+  const trackCause = (o.action === 'cancel' || o.action === 'receive_return') && await cancellationCauseSchemaAvailable(db);
+  const { form, failureReason, cause, ...savedOperation } = o;
   const recordedFailure = trackFailure ? readDeliveryFailureReason(failureReason) : undefined;
   if (trackFailure && failureReason !== undefined && !recordedFailure)
     throw new ParcelConflictError('Choose a delivery failure reason.');
-  const operation = { ...savedOperation, ...(recordedFailure ? { failureReason: recordedFailure } : {}) };
+  const operation = { ...savedOperation,
+    ...(recordedFailure ? { failureReason: recordedFailure } : {}),
+    ...(trackCause && o.action === 'cancel' && cause !== undefined ? { cause } : {}),
+  };
   const catalogFormId = form?.formId ?? 'staff.parcel-control';
   const formDigest = form
     ? await digestFormRequest({
@@ -720,15 +731,21 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
     if (!row) throw new ParcelConflictError('Order not found.');
     const access = { orderNumber: row.number, actorId: o.actorId },
       sellerIds = [p.sellerId];
-    const preview = await cancellationPreview(db, access, sellerIds);
-    await cancelSelectedParcels(db, access, {
-      sellerIds,
-      fingerprint: preview.fingerprint,
-      requestId: o.requestId,
-      note: o.note,
-      now: o.now,
-      parcelContext: { jobId: o.jobId, payload, riderPrivacyRequired: true, ...(form ? { form } : {}) },
-    });
+    try {
+      const preview = await cancellationPreview(db, access, sellerIds);
+      await cancelSelectedParcels(db, access, {
+        sellerIds,
+        fingerprint: preview.fingerprint,
+        requestId: o.requestId,
+        note: o.note,
+        now: o.now,
+        cause,
+        parcelContext: { jobId: o.jobId, payload, riderPrivacyRequired: true, causeSchemaAvailable: trackCause, ...(form ? { form } : {}) },
+      });
+    } catch (error) {
+      if (error instanceof CancellationConflictError) throw new ParcelConflictError(error.message);
+      throw error;
+    }
     return;
   }
   if (o.riderReportId) {
@@ -1273,7 +1290,9 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
         o.now,
       ),
   );
-  statements.push(parcelAudit(db, o, p.orderId, o.action, recordedFailure ? o.note.trim() : undefined));
+  const returnCause = trackCause && o.action === 'receive_return' ? await readReturnCancellationCause(db, o.jobId) : undefined;
+  statements.push(parcelAudit(db, o, p.orderId, o.action,
+    recordedFailure || returnCause ? o.note.trim() : undefined, returnCause));
   if (form)
     statements.push(
       buildFormAnswerInsert(db, {

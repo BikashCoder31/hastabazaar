@@ -2,6 +2,7 @@ import {prepareOrderResponseRelease} from '../orders/response-workflow';
 import {preparePaymentException} from './payment-exceptions';
 import {checkoutCommitClock} from '../checkout/commit-policy-guards';
 import {prepareOrderStockSettlement} from '../products/order-stock-settlement';
+import { cancellationCauseSchemaAvailable } from '../cancellation/attribution';
 import {allocateCancellationItems,calculateCancellation} from '../cancellation/accounting';
 import {operationalBusinessNotificationStatements} from '../operations/business-notifications';
 import {readOriginalBuyerLinePricing} from '../db/repositories/order-item-pricing-snapshots';
@@ -58,6 +59,7 @@ export async function expireManualPaymentOrder(db:D1Database,orderId:string){
  const previous = calculateCancellation(allocations, cancelled, deliveryRule, order.serviceFee);
  const next = calculateCancellation(allocations, allSellers, deliveryRule, order.serviceFee);
  const eventId = 'manual-expiry:' + orderId;
+ const causeAvailable = await cancellationCauseSchemaAvailable(db);
  const reason = 'The original manual payment window expired without fully verified funds.';
  const unitClaims = usesSavedShipments && selectedSellers.length > 0
    ? prepareCancellationDeliveryUnitClaims(db, {
@@ -66,14 +68,14 @@ export async function expireManualPaymentOrder(db:D1Database,orderId:string){
    : [];
  const statements=[db.prepare('UPDATE orders SET updated_at=updated_at WHERE id=? AND cancellation_version=?').bind(orderId,order.version),...guard(db,'changes()=1'),...guard(db,`EXISTS(SELECT 1 FROM manual_payment_cutoffs WHERE order_id=? AND revision=? AND paid_at IS NULL AND closed_at IS NULL AND cutoff_at<=${clock})`,[orderId,window.revision]),...await prepareOrderStockSettlement(db,{orderId,itemIds:items.filter(item=>item.status==='confirmed').map(item=>item.id),action:'release',actorId:null,requestId:eventId,reason}),
  db.prepare(`UPDATE manual_payment_windows SET closed_at=${clock},closure_reason='expired',revision=revision+1,last_event_id=? WHERE order_id=? AND revision=? AND paid_at IS NULL AND closed_at IS NULL`).bind(eventId,orderId,window.revision),...guard(db,'changes()=1'),
- db.prepare(`INSERT INTO order_cancellation_events(id,order_id,actor_id,version,seller_ids_json,original_allocations_json,previous_json,next_json,note,wallet_restored_paisa,discount_removed_paisa,item_removed_paisa,created_at) VALUES(?,?,NULL,?,?,?,?,?,?,?,?,?,${clock})`).bind(eventId,orderId,order.version+1,JSON.stringify(selectedSellers),JSON.stringify(allocations),JSON.stringify(previous),JSON.stringify(next),reason,previous.wallet,previous.discount,previous.subtotal),
+ db.prepare(`INSERT INTO order_cancellation_events(id,order_id,actor_id,version,seller_ids_json,original_allocations_json,previous_json,next_json,note,wallet_restored_paisa,discount_removed_paisa,item_removed_paisa,created_at${causeAvailable ? ',cause' : ''}) VALUES(?,?,NULL,?,?,?,?,?,?,?,?,?,${clock}${causeAvailable ? ",'payment'" : ''})`).bind(eventId,orderId,order.version+1,JSON.stringify(selectedSellers),JSON.stringify(allocations),JSON.stringify(previous),JSON.stringify(next),reason,previous.wallet,previous.discount,previous.subtotal),
  ...unitClaims,
  db.prepare(`INSERT INTO order_item_status_events(id,order_item_id,from_status,to_status,note,actor_id,request_id,created_at) SELECT ${eventKey},id,fulfillment_status,'cancelled',?,NULL,${eventKey},${clock} FROM order_items WHERE order_id=? AND fulfillment_status='confirmed'`).bind(eventId+':',reason,eventId+':',orderId),
  db.prepare("UPDATE order_items SET fulfillment_status='cancelled',current_promo_discount_paisa=0,fulfillment_request_id=? WHERE order_id=? AND fulfillment_status='confirmed'").bind(eventId,orderId),
  db.prepare(`UPDATE orders SET status='cancelled',payment_status='cancelled',cancellation_version=cancellation_version+1,current_total_paisa=0,current_subtotal_paisa=0,current_delivery_paisa=0,current_wallet_paisa=0,current_discount_paisa=0,current_promo_discount_paisa=0,cancelled_at=${clock},updated_at=${clock} WHERE id=? AND cancellation_version=?`).bind(orderId,order.version),...guard(db,'changes()=1'),
  db.prepare(`UPDATE payments SET status='cancelled',updated_at=${clock} WHERE order_id=? AND provider='manual_bank' AND status='pending'`).bind(orderId),
  db.prepare(`UPDATE shipments SET status='cancelled',updated_at=${clock} WHERE order_id=?`).bind(orderId),
- db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,request_id,created_at) VALUES(?,NULL,'manual.payment.expired','order',?,?,?,${clock})`).bind(eventId,orderId,reason,eventId)];
+ db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,request_id,created_at${causeAvailable ? ',next_json' : ''}) VALUES(?,NULL,'manual.payment.expired','order',?,?,?,${clock}${causeAvailable ? ',?' : ''})`).bind(eventId,orderId,reason,eventId,...(causeAvailable ? ['{"cause":"payment"}'] : []))];
  // The existing native cancellation ledger restores consumed wallet credit once. Cash allocations remain linked to this closed order.
  statements.push(...await preparePaymentException(db,{sourceKey:eventId,orderId,receiptId:null,kind:'expired_money',reason:'Actual money remains allocated to an expired order. Finance must review its return or an explicitly approved new-order allocation.',ownerId:null,now:window.now,predicate:'EXISTS(SELECT 1 FROM manual_payment_allocations WHERE order_id=?)',values:[orderId]}),...await operationalBusinessNotificationStatements(db,{kind:'payment.order',sourceId:orderId,eventId,actorId:'system',now:window.now,status:'expired'}));
  try{await db.batch(statements);}catch(error){const latest=await db.prepare('SELECT closed_at AS closedAt,paid_at AS paidAt FROM manual_payment_windows WHERE order_id=?').bind(orderId).first<{closedAt:number|null;paidAt:number|null}>();if(latest?.closedAt!==null&&latest?.closedAt!==undefined)return {orderId,state:'expired' as const};if(latest?.paidAt!==null&&latest?.paidAt!==undefined)return {orderId,state:'paid' as const};throw error;}

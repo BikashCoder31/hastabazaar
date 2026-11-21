@@ -23,6 +23,8 @@ export async function POST(request:Request,context:{params:Promise<{id:string}>}
   const db=requireDatabase(env as unknown as {DB?:D1Database}),requestId=text('requestId');
   if(!requestId||requestId.length>150)return reply({error:'Request reference required.'},400);
   const action=text('action')??'';
+  if(body.cause!==undefined&&(action!=='cancel'||typeof body.cause!=='string'||!actorId))
+   return reply({error:'Reopen the current parcel and choose a cancellation cause.'},400);
   if(action==='fail'&&body.failureReason!==undefined&&(!actorId||typeof body.failureReason!=='string'))
    return reply({error:'Reopen the current parcel and choose a delivery failure reason.'},400);
   if(staff.role!=='super_admin'){
@@ -35,7 +37,7 @@ export async function POST(request:Request,context:{params:Promise<{id:string}>}
   if(body.action==='setup')await prepareSellerParcels(db,{orderId:id,actorId:staff.id,requestId,now:Date.now()});
   else{
    const jobId=text('jobId');if(!jobId||!await db.prepare('SELECT id FROM shipping_jobs WHERE id=? AND order_id=?').bind(jobId,id).first())return reply({error:'Parcel not found.'},404);
-   await operateParcel(db,{jobId,actorId:staff.id,requestId,version:Number(body.version),action,note:text('note')??'',now:Date.now(),amountPaisa:typeof body.amountPaisa==='number'?body.amountPaisa:undefined,reference:text('reference'),cashRecordId:text('cashRecordId'),method:text('method'),riderEmail:text('riderEmail'),courierName:text('courierName'),trackingUrl:text('trackingUrl'),trackingCode:text('trackingCode'),failureReason:text('failureReason'),...(form?{form:{requestId,versionId:form.versionId,answers:form.answers}}:{})});
+   await operateParcel(db,{jobId,actorId:staff.id,requestId,version:Number(body.version),action,note:text('note')??'',now:Date.now(),amountPaisa:typeof body.amountPaisa==='number'?body.amountPaisa:undefined,reference:text('reference'),cashRecordId:text('cashRecordId'),method:text('method'),riderEmail:text('riderEmail'),courierName:text('courierName'),trackingUrl:text('trackingUrl'),trackingCode:text('trackingCode'),failureReason:text('failureReason'),cause:text('cause'),...(form?{form:{requestId,versionId:form.versionId,answers:form.answers}}:{})});
   }
   if(body.action!=='record_cost')await sendPendingOrderUpdates({orderId:id});return reply({ok:true});
  }catch(error){
