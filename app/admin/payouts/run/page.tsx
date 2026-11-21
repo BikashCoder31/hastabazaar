@@ -4,6 +4,7 @@ import { adminNavigation } from '@/lib/admin/navigation';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import { can } from '@/lib/marketplace/permissions';
+import { readPayoutBankFileOverview } from '@/lib/payments/payout-bank-file';
 import { readPayoutRun } from './run-data';
 import { PayoutRunWorkspace } from './run-workspace';
 
@@ -13,7 +14,11 @@ export default async function PayoutRunPage() {
   const pathname = '/admin/payouts/run';
   const staff = await requireStaffPage(pathname, ['payout.approve', 'payout.view']);
   const canApprove = can(staff, 'payout.approve');
-  const data = await readPayoutRun(requireDatabase(env as unknown as { DB?: D1Database }), staff.id);
+  const database = requireDatabase(env as unknown as { DB?: D1Database });
+  const data = await readPayoutRun(database, staff.id);
+  const bankFile = staff.role === 'super_admin'
+    ? data.lastRun ? await readPayoutBankFileOverview(database, staff.id, data.lastRun.id) : null
+    : undefined;
   const procedureHref = adminNavigation(staff.role, staff.permissions)
     .find(item => item.href === '/admin/legal-policies/active')?.href;
   const help = {
@@ -29,6 +34,6 @@ export default async function PayoutRunPage() {
   };
   return <AdminPageHelpProvider help={help}>
     <PayoutRunWorkspace {...data} rows={canApprove ? data.rows : data.rows.map(row => ({ ...row, review: null }))}
-      actorId={staff.id} canApprove={canApprove} canViewTransfers={can(staff, 'payout.prepare')} />
+      actorId={staff.id} bankFile={bankFile} canApprove={canApprove} canViewTransfers={can(staff, 'payout.prepare')} />
   </AdminPageHelpProvider>;
 }

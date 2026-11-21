@@ -3,15 +3,13 @@ import { getEffectiveBusinessSetting } from '@/lib/db/repositories/business-sett
 import { PayoutConflictError, preparePayoutOperationStatements, standardLedgerEligibility } from '@/lib/db/repositories/payouts';
 import { FormRuntimeError } from '@/lib/forms/runtime';
 import { digestFormRequest, isValidatedFormVersionStale, validateSellerFormSubmission } from '@/lib/forms/submission';
+import { payoutRunRequestGroupLength as groupLength, payoutRunRequestLength as requestLength, payoutRunRequestPrefix as requestPrefix } from '@/lib/payments/payout-bank-file-scope';
 import { payoutRequestReadySql, sellerPayoutRequestReadiness } from '@/lib/payments/payout-request-readiness';
 import { protectedGuard } from '@/lib/sellers/protected-change-policy';
 import { payoutDate } from '../workspace-data';
 import { payoutRunCalendar } from './run-calendar';
 
 export const payoutRunForm = 'staff.payout-2';
-const requestPrefix = 'payout-run-';
-const groupLength = requestPrefix.length + 36;
-const requestLength = groupLength + 1 + 32;
 
 export type PayoutRunRow = {
   id: string;
@@ -28,7 +26,7 @@ export type PayoutRunData = {
   rows: PayoutRunRow[];
   calendar: ReturnType<typeof payoutRunCalendar>;
   holdDays: number;
-  lastRun: { at: number; count: number; amountPaisa: number } | null;
+  lastRun: { id: string; at: number; count: number; amountPaisa: number } | null;
 };
 
 type RunSource = {
@@ -136,7 +134,8 @@ async function readLastPayoutRun(db: D1Database, actorId: string) {
   const nativeRunEvents = `FROM payout_events e JOIN payouts p ON p.id=e.payout_id
     JOIN seller_profiles s ON s.id=p.seller_id WHERE s.user_id<>? AND e.action='approve'
       AND substr(e.request_id,1,${requestPrefix.length})=? AND length(e.request_id)=${requestLength}`;
-  return db.prepare(`SELECT MAX(e.created_at) AS at, COUNT(*) AS count, SUM(p.amount_paisa) AS amountPaisa
+  return db.prepare(`SELECT MIN(substr(e.request_id,${requestPrefix.length + 1},36)) AS id,
+    MAX(e.created_at) AS at, COUNT(*) AS count, SUM(p.amount_paisa) AS amountPaisa
     ${nativeRunEvents} AND substr(e.request_id,1,${groupLength})=(
       SELECT substr(e.request_id,1,${groupLength}) ${nativeRunEvents} ORDER BY e.created_at DESC, e.id DESC LIMIT 1
     ) GROUP BY substr(e.request_id,1,${groupLength})`)

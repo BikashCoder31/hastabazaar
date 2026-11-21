@@ -11,7 +11,9 @@ import { FormGuide } from '@/components/forms/form-guide';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 import { ACTOR_INTENT_HEADER } from '@/lib/http/actor-intent';
+import type { PayoutBankFileOverview } from '@/lib/payments/payout-bank-file';
 import { payoutAmount, payoutDate } from '../workspace-data';
+import { PayoutBankFileDownload, PayoutBankFileExclusions } from './bank-file-download';
 import type { PayoutRunData, PayoutRunRow } from './run-data';
 
 const formId = 'staff.payout-2';
@@ -30,8 +32,8 @@ function Metric({ label, value, detail, color = 'text-[#14213D]' }: { label: str
 
 type RunResult = { approved: number; uncertain: boolean; failed: { row: PayoutRunRow; error: string }[] };
 
-export function PayoutRunWorkspace(data: PayoutRunData & { actorId: string; canApprove: boolean; canViewTransfers: boolean }) {
-  const { actorId, rows, calendar, lastRun, canApprove, canViewTransfers } = data;
+export function PayoutRunWorkspace(data: PayoutRunData & { actorId: string; bankFile?: PayoutBankFileOverview | null; canApprove: boolean; canViewTransfers: boolean }) {
+  const { actorId, bankFile, rows, calendar, lastRun, canApprove, canViewTransfers } = data;
   const router = useRouter();
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set());
   const [completed, setCompleted] = useState<ReadonlySet<string>>(new Set());
@@ -42,7 +44,6 @@ export function PayoutRunWorkspace(data: PayoutRunData & { actorId: string; canA
   const inFlight = useRef(false);
   const attempt = useRef<string | null>(null);
   const noteId = useId();
-  const bankHelpId = useId();
   const catalog = usePublishedFormConfig(formId, { enabled: canApprove && reviewed !== null, actorId });
   const passing = rows.filter(row => row.blocker === null && !completed.has(row.id));
   const blocked = rows.filter(row => row.blocker !== null);
@@ -193,13 +194,15 @@ export function PayoutRunWorkspace(data: PayoutRunData & { actorId: string; canA
       </ul> : null}
     </section> : null}
 
+    {bankFile ? <PayoutBankFileExclusions blocked={bankFile.blocked} /> : null}
+
     {canApprove ? <footer className="sticky bottom-[calc(var(--workspace-bottom-bar,0rem)+env(safe-area-inset-bottom))] z-10 -mx-3 mt-1 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 bg-[#14213D] px-3 py-3.5 text-white md:bottom-0 md:-mx-6 md:px-6 lg:-mx-8 lg:px-8">
       <div className="min-w-0 flex-1 basis-[15rem] break-words text-[14.5px]" aria-live="polite">
         <strong>{payoutCount(selected.length)} · {selectedTotal}</strong>{' '}
         <span className="text-[#C9D0DD]">Your approval is final. Each one is saved in its payout history.</span>
       </div>
-      <div className="flex max-w-full flex-wrap items-center gap-2.5">
-        <button type="button" disabled className="min-h-11 rounded-lg border border-white/30 px-3 text-sm font-semibold text-white/65" aria-describedby={bankHelpId}>Download bank file</button>
+      <div className="flex min-w-0 max-w-full flex-wrap items-start gap-2.5">
+        {bankFile !== undefined ? <PayoutBankFileDownload key={bankFile?.runId} actorId={actorId} bankFile={bankFile} /> : null}
         <Dialog open={reviewed !== null} onOpenChange={next => {
           if (inFlight.current) return;
           setReviewed(next ? selected : null);
@@ -236,9 +239,9 @@ export function PayoutRunWorkspace(data: PayoutRunData & { actorId: string; canA
           </DialogContent>
         </Dialog>
       </div>
-      <p id={bankHelpId} className="w-full text-[13px] leading-tight text-[#C9D0DD]">
-        Bank file download is unavailable.{canViewTransfers ? <> <Link className="inline-flex min-h-11 items-center font-semibold text-white underline underline-offset-4" href="/admin/payments/payouts?returnTo=%2Fadmin%2Fpayouts%2Frun">Open verified payout transfers</Link></> : null}
-      </p>
+      {canViewTransfers ? <p className="w-full text-[13px] leading-tight text-[#C9D0DD]">
+        <Link className="inline-flex min-h-11 items-center font-semibold text-white underline underline-offset-4" href="/admin/payments/payouts?returnTo=%2Fadmin%2Fpayouts%2Frun">Open verified payout transfers</Link>
+      </p> : null}
     </footer> : null}
   </div>;
 }
