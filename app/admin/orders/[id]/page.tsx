@@ -203,8 +203,8 @@ export default async function AdminOrderPage({
     cancellationCausesAvailable ? Promise.all([...new Set(visibleParcels.map(parcel => parcel.sellerId))].map(async sellerId =>
       [sellerId, await inferCancellationCause(db, id, [sellerId]) ?? null] as const,
     )).then(entries => Object.fromEntries(entries)) : undefined,
-    cancellationCausesAvailable ? db.prepare(`SELECT id,cause,note FROM order_cancellation_events
-      WHERE order_id=? ORDER BY version DESC`).bind(id).all<{ id: string; cause: string | null; note: string }>() : null,
+    cancellationCausesAvailable ? db.prepare(`SELECT id,cause FROM order_cancellation_events
+      WHERE order_id=? ORDER BY version DESC`).bind(id).all<{ id: string; cause: string | null }>() : null,
   ]);
   const adjustmentReasons = can(staff, 'tax_policy.manage')
     ? (
@@ -795,7 +795,6 @@ export default async function AdminOrderPage({
                           {recordedCancellations.results.map(record => (
                             <li key={record.id} className="wrap-anywhere text-sm">
                               <strong>{cancellationCauseLabel(readCancellationCause(record.cause) ?? null)}</strong>
-                              <p>{record.note}</p>
                             </li>
                           ))}
                         </ul>
