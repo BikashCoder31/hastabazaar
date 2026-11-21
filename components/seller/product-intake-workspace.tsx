@@ -6,6 +6,7 @@ import { StepLine } from '@/components/ui/step-line';
 import { WhoseTurn } from '@/components/ui/whose-turn';
 import { calculatePriceGuidance, type PriceScenario } from '@/lib/products/price-guidance';
 import { offerMoney } from '@/lib/products/offer-contracts';
+import { productPreviewPath } from '@/lib/products/preview-path';
 import { sellerDate, sellerMoney } from '@/lib/seller/presentation';
 import { phaseOneMarketplacePolicy } from '@/lib/marketplace/policy';
 import { ProductReviewReadiness, readinessChecks } from './product-review-readiness';
@@ -46,7 +47,7 @@ function ProductIntakeWorkspaceBody({categories,occasions,materialSuggestions=[]
  const publishedForm=usePublishedFormConfig('seller.product-submission'),nameDisplay=fieldDisplay(publishedForm.config,'nameEn'),descriptionDisplay=fieldDisplay(publishedForm.config,'descriptionEn');
  const actor=actorId??initial?.actorId,actorHeaders:Record<string,string>=actor?{'X-Hastabazaar-Actor':actor}:{};
  const editor=useProductIntake(initial,actorId??initial?.actorId),[step,setStep]=useState(0),[requestedField,setRequestedField]=useState<{key:ProductDetailKey;token:number}|null>(null),[category,setCategory]=useState(initialCategoryModel),[categoryMessage,setCategoryMessage]=useState(''),[selectedOffer,setSelectedOffer]=useState(initialOfferId??initial?.offers.offers[0]?.id??''),[photoOffer,setPhotoOffer]=useState<string|null>(null),[uploads,setUploads]=useState<UploadJob[]>([]),[help,setHelp]=useState<{workspace:ProductWorkspace;intent:'help'|'review'}|null>(null),[message,setMessage]=useState(''),[operating,setOperating]=useState(false),[pendingAction,setPendingAction]=useState<Record<string,unknown>|null>(null);
- const coverIntent=useRef<string|null>(null),uploading=useRef(new Set<string>()),actionFlight=useRef(false),helpSection=useRef<HTMLDivElement>(null),photosSection=useRef<HTMLElement>(null),offersSection=useRef<HTMLDivElement>(null),previewSection=useRef<HTMLElement>(null);
+ const coverIntent=useRef<string|null>(null),uploading=useRef(new Set<string>()),actionFlight=useRef(false),helpSection=useRef<HTMLDivElement>(null),photosSection=useRef<HTMLElement>(null),offersSection=useRef<HTMLDivElement>(null);
  const draft=editor.draft,offer=draft.offers.offers.find(row=>row.id===selectedOffer)??draft.offers.offers.find(row=>row.included)??draft.offers.offers[0],serverUploads=editor.saved?.uploads??[];
  const categoryModel=category.categoryId===draft.categoryId?category:{...category,categoryId:draft.categoryId,status:'unknown' as const,contract:null,groups:productDetailGroups.map(group=>({...group,recommended:false}))};
  const checks=readinessChecks(draft,categoryModel,editor.saved,!editor.dirty);
@@ -71,6 +72,10 @@ function ProductIntakeWorkspaceBody({categories,occasions,materialSuggestions=[]
   if(field){field.scrollIntoView({block:'center'});field.focus({preventScroll:true});}
   else offersSection.current?.scrollIntoView({block:'start',behavior:'smooth'});
  });}
+ async function openPreview(){
+  const work=await editor.flush();
+  if(work?.versionId)window.location.assign(productPreviewPath(work.id,'draft',offer?.included?offer.id:undefined));
+ }
  async function openHelp(intent:'help'|'review'){
   if(pendingAction){setMessage('Retry or reconcile the existing action before preparing another request.');return;}
   if(intent==='review'&&!ready)return;
@@ -113,7 +118,7 @@ function ProductIntakeWorkspaceBody({categories,occasions,materialSuggestions=[]
       <h1 className="min-w-0 break-words font-heading text-[1.65rem] font-semibold">{detailText(draft.answers,'nameEn')||'Add product'}</h1>
       <WhoseTurn status={changeNote||!inReview&&!reviewedVersionInShop?'your-turn':inReview?'with-hastabazaar':'done'} label={changeNote?'Needs changes':inReview?'In review':reviewedVersionInShop?'Published':'Private draft'} />
     </div>
-    <div className="flex min-w-0 flex-wrap items-center gap-2"><span className="text-sm text-[#46536F]">{editor.saved&&!editor.dirty?'Saved as you type':editor.status}</span><button type="button" onClick={()=>{setStep(2);requestAnimationFrame(()=>{previewSection.current?.scrollIntoView({block:'start'});previewSection.current?.focus({preventScroll:true});});}} className={buttonClass+' inline-flex items-center gap-2'}><Eye className="size-4" /> Preview</button></div>
+    <div className="flex min-w-0 flex-wrap items-center gap-2"><span className="text-sm text-[#46536F]">{editor.saved&&!editor.dirty?'Saved as you type':editor.status}</span><button type="button" onClick={()=>void openPreview()} disabled={editor.busy||operating||!!pendingAction} className={buttonClass+' inline-flex items-center gap-2'}><Eye className="size-4" aria-hidden="true" /> Preview</button></div>
   </header>:null}
   <div className={studio?'grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(0,1.9fr)_minmax(17.5rem,1fr)]':''}>
   <div className="min-w-0 space-y-5">
@@ -204,7 +209,7 @@ function ProductIntakeWorkspaceBody({categories,occasions,materialSuggestions=[]
       ]} />
       <button type="button" className="min-h-11 text-left text-sm font-semibold text-[#A8232E] underline underline-offset-4 disabled:opacity-50" disabled={editor.busy||operating||!!pendingAction} onClick={()=>void openHelp('help')}>Stuck? Ask Hastabazaar to help fill this in</button>
     </section>
-    <section ref={previewSection} tabIndex={-1} className={panelClass+' scroll-mt-24'} aria-labelledby="customer-preview-heading">
+    <section className={panelClass} aria-labelledby="customer-preview-heading">
       <h2 id="customer-preview-heading" className="font-bold">How customers will see it</h2>
       <ProductIntakePreview snapshot={draft} offer={offer} uploads={serverUploads} tradingName={tradingName} compact={studio} showProposedPricing={!studio} />
     </section>

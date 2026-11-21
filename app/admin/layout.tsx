@@ -14,6 +14,8 @@ import { AdminWorkspaceReady } from '@/components/admin/admin-workspace-ready';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { AdminSessionActivity } from '@/components/security/session-activity';
 import { adminNavigation } from '@/lib/admin/navigation';
+import { ADMIN_RETURN_TO_HEADER } from '@/lib/admin/return-context';
+import { isProductPreviewPage } from '@/lib/products/preview-path';
 import { localStaffMfaFlagEnabled } from '@/lib/security/local-simulation';
 import type { SecurityPolicyBindings } from '@/lib/security/runtime-policy';
 import AdminLoading from './loading';
@@ -21,13 +23,17 @@ import './workspace.css';
 
 export const dynamic = 'force-dynamic';
 export default async function AdminLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const requestHeaders = await headers();
+  // Middleware overwrites this header with the actual path. The preview has its own
+  // read-only seller/staff authorization and uses the storefront layout.
+  if (isProductPreviewPage(requestHeaders.get(ADMIN_RETURN_TO_HEADER) ?? '')) return children;
   const staff = await requireStaffPage('/admin');
   const access = { role: staff.role, permissions: staff.permissions };
   const destinations = adminNavigation(staff.role, staff.permissions);
   const procedure = destinations.find(item => item.href === '/admin/legal-policies/active')?.href;
   const bindings = env as SecurityPolicyBindings & { DB?: D1Database };
   const local = bindings.HASTABAZAAR_RUNTIME_ENV === 'local_staging';
-  const localMfaNotice = local && localStaffMfaFlagEnabled(bindings, (await headers()).get('host') ?? '');
+  const localMfaNotice = local && localStaffMfaFlagEnabled(bindings, requestHeaders.get('host') ?? '');
   const counts = bindings.DB ? await readAdminSidebarCounts(bindings.DB, staff).catch(() => ({})) : {};
   const account = { name: staff.displayName, role: staff.role, signOut: signOutPath('/'), procedure };
   return (

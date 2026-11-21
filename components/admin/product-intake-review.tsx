@@ -22,6 +22,7 @@ import {CategoryDetailGroups} from '@/components/seller/category-detail-groups';
 import {VariantEditor} from '@/components/seller/variant-editor';
 
 import {ProductIntakePreview} from '@/components/seller/product-intake-preview';
+import {productPreviewPath} from '@/lib/products/preview-path';
 
 import {usePublicationCommand} from '@/components/products/use-publication-command';
 import {useProductScope} from '@/components/products/use-product-scope';
@@ -76,6 +77,7 @@ function ProductIntakeReviewBody({initial,category,categories,sellerName,onRecor
    if(detailsSection.current)detailsSection.current.open=true;
    offersSection.current?.scrollIntoView({block:'start'});
   };
+  const preview=work.canReviewProducts&&work.state!=='resolved'?<a href={productPreviewPath(work.id,'case')} className={button+' inline-flex items-center text-sm font-semibold'}>Open preview</a>:null;
   const outcome=status&&<div className="rounded-xl border p-4"><output className="block">{status}</output><ProductOutcomeCheck command={command}/>{pending&&<button type="button" className="mt-3 min-h-11 underline" disabled={busy} onClick={()=>void command.retry()}>Retry same staff action</button>}</div>;
   const assistanceDetails=<>
  <section className="space-y-3 rounded-xl border bg-card p-5"><h2 className="font-heading text-2xl">{detailText(work.snapshot.answers,'nameEn')||'Incomplete product information'}</h2><p className="text-sm">{work.state.replaceAll('_',' ')} · First assistance response due {new Date(work.triageDueAt).toLocaleString('en-NP')}{work.triagedAt?' · First response recorded':''}</p>{work.reviewDueAt!==null&&<p className="text-sm">First complete-candidate review due {new Date(work.reviewDueAt).toLocaleString('en-NP')}</p>}<p className="text-sm text-muted-foreground">Review the frozen submitted facts. Changes below are proposals for the owner; they do not alter the owner’s draft or publish a listing.</p><button type="button" className={button} disabled={busy} onClick={()=>void compare()}>Compare current case</button></section>
@@ -107,7 +109,7 @@ function ProductIntakeReviewBody({initial,category,categories,sellerName,onRecor
 
  {work.proposals.length>0&&<details className="space-y-3 rounded-xl border p-4"><summary className="cursor-pointer font-medium">Recorded factual proposals and owner responses</summary><ol className="space-y-3 text-sm">{work.proposals.map(proposal=><li key={proposal.id} className="rounded border p-3"><p className="font-medium">{proposal.state} · {new Date(proposal.createdAt).toLocaleString('en-NP')}</p><p className="whitespace-pre-wrap break-words">Source: {proposal.sourceNote}</p>{Object.entries(proposal.patch.answers??{}).map(([key,value])=><p key={key} className="whitespace-pre-wrap break-words">{productDetailGroups.flatMap(group=>group.fields).find(field=>field.key===key)?.label??'Product detail'}: {Array.isArray(value)?value.join(', '):value||'Cleared'}</p>)}{proposal.patch.offers&&<p>Includes proposed offer changes; the retained proposal keeps their exact values.</p>}</li>)}</ol></details>}
  </>;
- if(sellerName===undefined) return <div className="min-w-0 space-y-6">{assistanceDetails}{outcome}</div>;
+ if(sellerName===undefined) return <div className="min-w-0 space-y-6">{preview}{assistanceDetails}{outcome}</div>;
  return <div className="min-w-0 space-y-4">
   <section aria-label="Product help request" className="min-w-0 space-y-3.5 rounded-[14px] border border-[#E4DACA] bg-white p-[22px] text-[#14213D]">
    <header className="flex min-w-0 items-center gap-3.5">
@@ -117,6 +119,7 @@ function ProductIntakeReviewBody({initial,category,categories,sellerName,onRecor
      <h2 className="font-heading text-[24px] font-medium leading-[1.12]">{detailText(work.snapshot.answers,'nameEn')||detailText(work.snapshot.answers,'nameNe')||'Incomplete product information'}</h2>
     </div>
    </header>
+   {preview}
    {submittedQuestion.note&&<blockquote className="whitespace-pre-wrap rounded-xl border border-[#E4DACA] px-3.5 py-3 text-sm [overflow-wrap:anywhere]">
     <span className="block text-xs text-[#46536F]">The seller asked</span>“{submittedQuestion.note}”
    </blockquote>}

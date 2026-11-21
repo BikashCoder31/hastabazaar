@@ -11,11 +11,13 @@ import {
   mediaSizes,
 } from '@/lib/media/responsive-media';
 
+type GalleryItem = { id: string; altEn: string; mimeType?: string; src?: string };
+
 export function ProductGallery({
   media: allMedia,
   productName,
 }: {
-  media: readonly { id: string; altEn: string; mimeType?: string }[];
+  media: readonly GalleryItem[];
   productName: string;
 }) {
   const media = allMedia.filter((item) => item.mimeType !== 'video/mp4');
@@ -35,7 +37,7 @@ export function ProductGallery({
               'aspect-video max-h-96 rounded-2xl border bg-black',
             )}
             aria-label={'Product demonstration of ' + productName}
-            src={'/api/product-media/' + video.id}
+            src={video.src ?? '/api/product-media/' + video.id}
           >
             Your browser cannot play this product video.
           </video>
@@ -47,7 +49,7 @@ export function ProductGallery({
       ))}
 </div>;
 }
-function ScopedProductPhotos({media,productName,selectedMedia}:{media:readonly {id:string;altEn:string;mimeType?:string}[];productName:string;selectedMedia?:string|null}){
+function ScopedProductPhotos({media,productName,selectedMedia}:{media:readonly GalleryItem[];productName:string;selectedMedia?:string|null}){
   const [activeIndex,setActiveIndex]=useState(()=>Math.max(0,media.findIndex(row=>row.id===selectedMedia)));
   const active = media[activeIndex] ?? media[0];
   return (
@@ -62,7 +64,7 @@ function ScopedProductPhotos({media,productName,selectedMedia}:{media:readonly {
         >
           <Image
             key={active.id}
-            src={'/api/product-media/' + active.id}
+            src={active.src ?? '/api/product-media/' + active.id}
             alt={active.altEn || productName}
             data-media-mode="contain"
             fill
@@ -107,7 +109,7 @@ function ScopedProductPhotos({media,productName,selectedMedia}:{media:readonly {
               )}
             >
               <Image
-                src={'/api/product-media/' + photo.id}
+                src={photo.src ?? '/api/product-media/' + photo.id}
                 alt=""
                 data-media-mode="cover"
                 fill

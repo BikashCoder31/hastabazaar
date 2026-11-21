@@ -11,6 +11,7 @@ import {formatPaisaExact} from '@/lib/marketplace/money-display';
 import type {getProductPublicationReview,PublicationDecisionInput} from '@/lib/products/publication';
 import {publicPublicationSnapshot} from '@/lib/products/publication-view';
 import {offerMoney} from '@/lib/products/offer-contracts';
+import {productPreviewPath} from '@/lib/products/preview-path';
 import {ProductPublicationFacts} from '@/components/products/product-publication-facts';
 import {usePublicationCommand} from '@/components/products/use-publication-command';
 import {useProductScope} from '@/components/products/use-product-scope';
@@ -40,6 +41,7 @@ function ProductPublicationReviewBody({caseId,initial=null,blocked=false,onRecor
  const observations=(view.priceHistory??[]).filter(row=>row.offerId===selected?.id),observation=observations.find(row=>row.id===observationId);
  async function observePrice(offerId:string,reason:string){if(!view||!view.currentVersionId)return;await command.run({action:'observe_price',requestId:crypto.randomUUID(),expectedRevision:String(view.offerRevision),caseId,versionId:view.candidate.versionId,expectedCaseRevision:String(view.caseRevision),publicVersionId:view.currentVersionId,offerId,reason},'The current genuinely orderable price observation is retained for review.');}
  async function recordPrice(){if(!view||!selected||disabled)return;await command.run({action:'price_reference',requestId:crypto.randomUUID(),expectedRevision:String(view.offerRevision),caseId,versionId:view.candidate.versionId,expectedCaseRevision:String(view.caseRevision),offerId:selected.id,decision:priceDecision,evidence:{kind:priceKind,reference:priceKind==='platform_orderable'?observation?.id:reference,...(priceKind==='platform_orderable'?{checkedPriceHistory:historyChecked,historyBasis,historyThroughId:observations[0]?.id,historyCount:observations.length}:{}),offeredFrom:priceKind==='review_finding'?null:priceKind==='platform_orderable'?observation?.observedAt:new Date(from).getTime(),offeredTo:priceKind==='review_finding'?null:priceKind==='platform_orderable'?observation?.observedAt:new Date(to).getTime(),checkedSameSellerOffer:priceKind==='review_finding'?false:sameOffer},reason},'The exact original-price evidence decision is recorded. Selling prices are unchanged.');}
+ const preview=view.canReview&&view.currentVersionId!==view.candidate.versionId?<a href={productPreviewPath(caseId,'publication')} className={button}>Open preview</a>:null;
  if(approval){
   const published=view.currentVersionId===view.candidate.versionId;
   const held=view.availability.ownerWithdrawn||view.availability.staffWithdrawn||view.availability.ownerPaused;
@@ -71,7 +73,7 @@ function ProductPublicationReviewBody({caseId,initial=null,blocked=false,onRecor
     <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold">Preview approved details</summary>
     <div className="min-w-0 pb-3.5"><ProductPublicationFacts title="Approved product details" snapshot={view.candidate.snapshot} uploads={view.uploads} caseId={caseId} priceReferences={view.priceReferences}/></div>
    </details>
-   <a className={button} href={'/admin/products/publications/'+encodeURIComponent(caseId)}>Open publication record</a>
+   <div className="flex flex-wrap gap-2">{preview}<a className={button} href={'/admin/products/publications/'+encodeURIComponent(caseId)}>Open publication record</a></div>
    <div className="flex flex-wrap gap-2">
     {command.pending&&<button type="button" className={button} disabled={command.busy||blocked} onClick={()=>void command.retry()}>Retry same publication decision</button>}
     {loadError&&<p role="alert" className="text-sm">{loadError}</p>}
@@ -81,6 +83,7 @@ function ProductPublicationReviewBody({caseId,initial=null,blocked=false,onRecor
   </section>;
  }
  return <section aria-label="Exact product publication review" className="min-w-0 space-y-5 rounded-xl border bg-card p-5"><header className="space-y-2"><h2 className="font-heading text-2xl">Review the exact product version</h2><p className="text-sm text-muted-foreground">Check the seller’s submitted photos, product details and prices before you decide.</p><p className="text-sm">{view.currentVersionId===view.candidate.versionId?(view.availability.ownerWithdrawn||view.availability.staffWithdrawn?'This exact version is recorded; the listing remains withdrawn.':view.availability.ownerPaused?'This exact version is published; new orders remain paused.':'This exact version is published.'):view.caseState==='resolved'?'This case is closed; its submitted facts remain available.':view.approvedDecisionId?'Approved; a separate publication action is pending.':'Awaiting a review decision.'}</p>{view.categoryChanged&&<p className="text-sm text-amber-800">The category policy changed after submission. Ask the owner to compare the guidance and explicitly resubmit this candidate.</p>}</header>
+ {preview}
  <div className="grid min-w-0 items-start gap-5 lg:grid-cols-2">
  <div className="min-w-0 [&>section>div:first-of-type>figure:only-child]:col-span-2 [&>section>div:first-of-type>figure:only-child_img]:h-auto [&>section>div:first-of-type>figure:only-child_img]:aspect-square">
   <ProductPublicationFacts title={view.canReview?'Frozen submitted facts':'Approved facts for publication'} snapshot={view.candidate.snapshot} uploads={view.uploads} caseId={caseId} priceReferences={view.priceReferences}/>

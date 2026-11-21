@@ -1,4 +1,4 @@
-import {ProductOfferProvider,ProductOfferPrice} from '@/components/catalog/product-offer-selection';
+import { StorefrontProductDetail } from '../../../components/catalog/storefront-product-detail';
 import {OfferAddToCart} from '@/components/commerce/offer-add-to-cart';
 import {getDeliveryRates} from '@/lib/db/repositories/delivery-rates';
 
@@ -10,17 +10,10 @@ import { notFound } from 'next/navigation';
 import {
   ArrowLeft,
   PackageCheck,
-  RotateCcw,
-  ShieldCheck,
   Star,
-  Store,
 } from 'lucide-react';
 
 
-import { ProductDelivery } from '@/components/commerce/product-delivery';
-import { phaseOneMarketplacePolicy } from '@/lib/marketplace/policy';
-import { productReturnDisclosure } from '@/lib/returns/presentation';
-import { ProductGallery } from '@/components/catalog/product-gallery';
 import { SiteFooter } from '@/components/layout/site-footer';
 import { SiteHeader } from '@/components/layout/site-header';
 import { requireDatabase } from '@/lib/db/d1';
@@ -37,7 +30,6 @@ import {ReviewPhotos,PublicSellerReply} from '@/components/commerce/review-attac
 import {getReviewExtras} from '@/lib/db/repositories/review-extras';
 import { signInPath } from '@/app/auth';
 import { RecentlyViewed } from '@/components/catalog/recently-viewed';
-import { formatNepalDateOnly } from '@/lib/dates/nepal-calendar';
 
 export const dynamic = 'force-dynamic';
 
@@ -105,7 +97,6 @@ export default async function ProductPage({
     publishedRating(database,product.id),
   ]);
   const extras=await getReviewExtras(database,reviews.map(r=>r.id));
-  const returns = productReturnDisclosure(Boolean(product.returnEligible), product.returnConditions, phaseOneMarketplacePolicy.value.returns);
   return (
     <div className="min-h-screen bg-background">
       <script type="application/ld+json" dangerouslySetInnerHTML={{__html:safeJsonLd(productStructuredData(product,rating))}} />
@@ -117,189 +108,23 @@ export default async function ProductPage({
         >
           <ArrowLeft className="size-4" /> Back to collection
         </Link>
-        <ProductOfferProvider productId={product.id} offerSet={product.offerSet}>
-          <div className="min-w-0 lg:sticky lg:top-40 lg:self-start">
-            <ProductGallery
-              key={product.id}
-              media={product.media}
-              productName={product.nameEn}
-            />
-          </div>
-          <div className="min-w-0">
-            <p className="eyebrow">{product.categoryName}</p>
-            <h1 className="mt-3 font-heading text-3xl leading-tight tracking-tight sm:text-4xl">
-              {product.nameEn}
-            </h1>
-            <ProductOfferPrice pricePaisa={product.pricePaisa} compareAtPricePaisa={product.compareAtPricePaisa} priceFrom={product.priceFrom} purchasable={product.purchasable} inventoryQuantity={product.inventoryQuantity}/>
-            <div className="mt-5">
-              <Link
-                href={`/makers/${product.sellerId}`}
-                className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline"
-              >
-                <Store className="size-4" />
-                {product.participationRoute === 'managed_maker' ? 'Supplied by' : 'Sold by'} {product.makerName ?? product.tradingName}
-              </Link>
-              {reviews.length ? (
-                <Link
-                  href="#reviews"
-                  className="ml-5 inline-flex text-sm font-semibold text-primary hover:underline"
-                >
-                  Read reviews
-                </Link>
-              ) : null}
-            </div>
-            <section aria-label="Returns and conditions" className="mt-5 rounded-2xl border bg-secondary/30 p-4 sm:p-5">
-              <div className="text-sm leading-6">
-                <h3 className="flex items-center gap-2 font-semibold"><RotateCcw className="size-4 text-primary" aria-hidden="true" />Returns & conditions</h3>
-                <p className="mt-2 font-medium">{returns.eligibility}</p>
-                <p className="mt-2 whitespace-pre-line break-words text-muted-foreground">{returns.conditions}</p>
-                <details className="mt-2">
-                  <summary className="cursor-pointer font-medium text-primary">Item problems, exclusions & how to request</summary>
-                  <p className="mt-2 text-muted-foreground">{returns.protection}</p>
-                  <p className="mt-2 text-muted-foreground">After delivery, request a return for this item from your secure receipt or My orders. Requests are reviewed under the policy saved with your order.</p>
-                  <Link href="/returns" className="mt-2 inline-block font-semibold text-primary underline">Return policy & help</Link>
-                </details>
+        <StorefrontProductDetail
+          product={product}
+          deliveryRates={deliveryRates}
+          hasReviews={reviews.length > 0}
+          purchaseActions={
+            <>
+              <OfferAddToCart productId={product.id} available={product.inventoryQuantity} purchasable={product.purchasable}/>
+              <div className="mt-3">
+                <WishlistButton
+                  productId={product.id}
+                  initialSaved={saved}
+                  signInPath={authenticated ? undefined : signInPath(`/products/${product.slug}`)}
+                />
               </div>
-            </section>
-            <OfferAddToCart productId={product.id} available={product.inventoryQuantity} purchasable={product.purchasable}/>
-            <div className="mt-3">
-              <WishlistButton
-                productId={product.id}
-                initialSaved={saved}
-                signInPath={
-                  authenticated
-                    ? undefined
-                    : signInPath(`/products/${product.slug}`)
-                }
-              />
-            </div>
-            {product.purchasable ? <section aria-label="Delivery estimate" className="mt-5 rounded-2xl border bg-secondary/30 p-4 sm:p-5">
-              <ProductDelivery rates={deliveryRates} preparationDays={product.preparationDays} madeToOrder={Boolean(product.madeToOrder)} />
-            </section> : null}
-            <h2 className="mt-8 border-t pt-7 font-heading text-2xl">
-              Product description
-            </h2>
-            <p className="mt-4 whitespace-pre-line text-base leading-8 text-muted-foreground">
-              {product.descriptionEn}
-            </p>
-            <dl className="mt-6 grid gap-5 rounded-2xl border bg-card p-5 text-base sm:grid-cols-2">
-              <div>
-                <dt className="font-semibold">{product.participationRoute === 'managed_maker' ? 'Maker and company seller' : product.producer ? 'Maker or brand' : 'Seller'}</dt>
-                <dd className="mt-1 text-muted-foreground">
-                  {product.participationRoute === 'managed_maker' ? 'Supplied by ' : product.producer ? product.producer + ' · sold by ' : 'Sold by '}
-                  <Link
-                    href={`/makers/${product.sellerId}`}
-                    className="font-semibold text-primary hover:underline"
-                  >
-                    {product.makerName ?? product.tradingName}
-                  </Link>
-                  {product.participationRoute === 'managed_maker' ? <span className="mt-2 block">{product.legalSellerName ? `Sold and invoiced by ${product.legalSellerName}` : 'Seller and invoice identity require review'}</span> : <span className="mt-2 block">Through Hastabazaar</span>}
-                </dd>
-              </div>
-              <div>
-                <dt className="font-semibold">Platform SKU</dt>
-                <dd className="mt-1 break-all text-muted-foreground">{product.sku || '—'}</dd>
-              </div>
-
-              <div>
-                <dt className="font-semibold">Origin</dt>
-                <dd className="mt-1 text-muted-foreground">{product.originDisclosure}</dd>
-              </div>
-              {product.materials ? <div>
-                <dt className="font-semibold">Materials</dt>
-                <dd className="mt-1 text-muted-foreground">
-                  {product.materials}
-                </dd>
-              </div> : null}
-              {product.dimensions ? (
-                <div>
-                  <dt className="font-semibold">Dimensions</dt>
-                  <dd className="mt-1 text-muted-foreground">
-                    {product.dimensions}
-                  </dd>
-                </div>
-              ) : null}
-              {product.size ? (
-                <div><dt className="text-sm text-muted-foreground">Size</dt><dd className="mt-1 font-medium">{product.size}</dd></div>
-              ) : null}
-              {product.colour ? (
-                <div><dt className="text-sm text-muted-foreground">Colour</dt><dd className="mt-1 font-medium">{product.colour}</dd></div>
-              ) : null}
-              {product.variations ? (
-                <div><dt className="text-sm text-muted-foreground">Variations</dt><dd className="mt-1 whitespace-pre-wrap font-medium">{product.variations}</dd></div>
-              ) : null}
-              {product.specifications ? (
-                <div><dt className="text-sm text-muted-foreground">Specifications</dt><dd className="mt-1 whitespace-pre-wrap font-medium">{product.specifications}</dd></div>
-              ) : null}
-              <div>
-                <dt className="font-semibold">Preparation</dt>
-                <dd className="mt-1 text-muted-foreground">
-                  {!product.purchasable ? 'Ordering is not available yet.' : <>{product.madeToOrder ? 'Made to order · ' : ''}
-                  {product.preparationDays === 0
-                    ? 'Ready to dispatch'
-                    : `${product.preparationDays} day${product.preparationDays === 1 ? '' : 's'} before dispatch`}</>}
-                </dd>
-              </div>
-              {product.careInstructions ? (
-                <div>
-                  <dt className="font-semibold">Care</dt>
-                  <dd className="mt-1 text-muted-foreground">
-                    {product.careInstructions}
-                  </dd>
-                </div>
-              ) : null}
-              {product.safetyInformation ? (
-                <div>
-                  <dt className="font-semibold">Safe use</dt>
-                  <dd className="mt-1 text-muted-foreground">
-                    {product.safetyInformation}
-                  </dd>
-                </div>
-              ) : null}
-              {product.warranty ? (
-                <div>
-                  <dt className="font-semibold">Warranty or guarantee</dt>
-                  <dd className="mt-1 text-muted-foreground">
-                    {product.warranty}
-                  </dd>
-                </div>
-              ) : null}
-              {product.manufacturedAt != null ? (
-                <div>
-                  <dt className="font-semibold">Manufactured</dt>
-                  <dd className="mt-1 text-muted-foreground">
-                    {formatNepalDateOnly(product.manufacturedAt)}
-                  </dd>
-                </div>
-              ) : null}
-              {product.expiresAt != null ? (
-                <div>
-                  <dt className="font-semibold">Expiry</dt>
-                  <dd className="mt-1 text-muted-foreground">
-                    {formatNepalDateOnly(product.expiresAt)}
-                  </dd>
-                </div>
-              ) : null}
-
-              {([['brand','Brand'],['model','Model'],['condition','Condition'],['unitContents','What one purchase contains'],['packQuantity','Pieces in one sales unit'],['sizeGuide','Size guide'],['warrantyProvider','Warranty provider'],['warrantyDuration','Warranty duration'],['warrantyTerms','Warranty terms']] as const).map(([key,label])=>{const value=product.offerSet?.details?.[key];return value?<div key={key}><dt className="font-semibold">{label}</dt><dd className="mt-1 whitespace-pre-line text-muted-foreground">{Array.isArray(value)?value.join(', '):value}</dd></div>:null;})}
-            </dl>
-            {product.originStory ? <section className="mt-7 rounded-2xl border bg-secondary/20 p-6"><h2 className="font-heading text-2xl">The story behind this product</h2><p className="mt-3 whitespace-pre-line leading-7 text-muted-foreground">{product.originStory}</p></section> : null}
-            <div className="mt-6 grid gap-3 text-sm text-muted-foreground sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-              <p className="flex items-center gap-2">
-                <ShieldCheck className="size-4 text-primary" /> Marketplace seller
-              </p>
-              <p className="flex items-center gap-2">
-                <PackageCheck className="size-4 text-primary" /> Reviewed
-                listing
-              </p>
-              {product.returnEligible ? (
-                <p className="flex items-center gap-2">
-                  <RotateCcw className="size-4 text-primary" /> Standard returns
-                </p>
-              ) : null}
-            </div>
-          </div>
-        </ProductOfferProvider>
+            </>
+          }
+        />
         <section id="reviews" className="mt-14 border-t pt-10">
           <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_24rem]">
             <div>
