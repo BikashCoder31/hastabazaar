@@ -233,7 +233,7 @@ void test('pending COD emails and tracking presentation explicitly await confirm
     },
     'https://cod.test',
   );
-  assert.match(email.subject, /Awaiting COD confirmation/);
+  assert.equal(email.subject, 'Hastabazaar · We will call to confirm · FICTIONAL-1');
   assert.match(email.text, /before.*packing|before.*preparing/i);
   assert.doesNotMatch(email.html, />Confirmed</);
   assert.equal(

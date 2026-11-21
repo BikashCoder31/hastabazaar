@@ -3,7 +3,10 @@ import { sellerNotificationEmail } from '../sellers/registration-email';
 import {independentProductStaffSql,independentProductIntakeStaffSql} from '../products/party-scope';
 import {emailApplicationOrigin} from '../email/origin';
 import { catalogNotificationRequestId, isCurrentCatalogNotice, operationalNotificationChannels, hasOperationalNoticeSource, isCurrentOperationalNotice, isCurrentCaseNotice } from './event-catalog';
-import { companyDetails } from '../content/company-details';
+import { businessEmailLayout, type BusinessEmailData } from '../email/business-message';
+import { addBusinessEmailDetails } from '../email/business-message-details';
+import { marketplaceSubject, renderMarketplaceEmail } from '../email/message-layout';
+import { courierBookedTemplate, missedDeliveryTemplate } from './courier-email-notices';
 import { riderNotificationSourceSql } from './rider-notification-access';
 import {
   can,
@@ -207,19 +210,6 @@ export async function businessNotificationStatements(
   }
   return statements;
 }
-interface BusinessEmailData {
-  template?: string;
-  guestOrderId?: string | null;
-  orderNumber?: string | null;
-  productStatus?: string | null;
-  requiredPermission?: string | null;
-  email: string;
-  subject: string;
-  body: string;
-  audience: string;
-  relatedType: string | null;
-  relatedId: string | null;
-}
 export function buildBusinessEmail(data: BusinessEmailData, origin: string,options:{transport?:'provider'|'capture';isolatedCaptureOrigin?:string}={}) {
   const base = emailApplicationOrigin(origin,options.transport,options.isolatedCaptureOrigin);
   if (
@@ -244,48 +234,11 @@ export function buildBusinessEmail(data: BusinessEmailData, origin: string,optio
   if (!destination) throw new Error('Authorized destination unavailable.');
   const link = new URL(destination, base);
   if (link.origin !== base.origin) throw new Error('Invalid destination.');
-  const escape = (s: string) =>
-    s.replace(
-      /[&<>"']/g,
-      (c) =>
-        ({
-          '&': '&amp;',
-          '<': '&lt;',
-          '>': '&gt;',
-          '"': '&quot;',
-          "'": '&#39;',
-        })[c]!,
-    );
-  const instructions = deliveryAuthorization
-    ? 'This single-use code authorizes only this parcel handover. It does not provide account, invoice, or order-history access. Contact the purchaser or support if the delivery details are wrong.'
-    : data.relatedType?.startsWith('account_status_')
-    ? 'Contact support if you have questions about this account update. Opening the support page does not change your account.'
-    : data.guestOrderId
-      ? 'Use the checkout email to track your order. To review or respond to the case, open your order receipt in the original checkout browser. Contact support if that receipt is unavailable.'
-      : 'Sign in to open this record. Opening the link does not approve or change anything.';
-  const text = [
-    data.subject,
-    data.body,
-    instructions,
-    link.toString(),
-    `Need help? ${companyDetails.supportEmail}`,
-  ].join('\n\n');
+  const layout = businessEmailLayout(data, link);
   return {
     to: data.email,
-    subject: 'Hastabazaar Â· ' + data.subject,
-    text,
-    html:
-      '<!doctype html><html><body><h1>' +
-      escape(data.subject) +
-      '</h1><p>' +
-      escape(data.body) +
-      '</p><p>' +
-      escape(instructions) +
-      '</p><p><a href="' +
-      escape(link.toString()) +
-      '">Open record</a></p><p>Need help? ' +
-      escape(companyDetails.supportEmail) +
-      '</p></body></html>',
+    subject: marketplaceSubject(layout.subject, data.orderNumber ?? data.reference),
+    ...renderMarketplaceEmail(layout),
   };
 }
 const supportedTemplates = [
@@ -326,6 +279,8 @@ const supportedTemplates = [
   'business.payment.return_satisfied',
   'business.order.response',
   'business.order.preparation_update',
+  courierBookedTemplate,
+  missedDeliveryTemplate,
   'business.fee.policy',
   'business.fee.terms',
   'business.fee.followup',
@@ -416,7 +371,7 @@ export async function deliverBusinessEmails(
           `SELECT n.recipient_user_id AS userId,u.auth_subject AS authSubject,u.status AS userStatus,COALESCE(u.email,n.guest_email) AS email,
           (SELECT i.answers_json FROM seller_registration_intakes i WHERE i.user_id=n.recipient_user_id
             AND (n.audience_role='seller' OR (n.audience_role='customer' AND n.related_type='seller_application'))) AS sellerEmailAnswers,
-          n.guest_order_id AS guestOrderId,n.subject_en AS subject,n.body_en AS body,n.audience_role AS audience,n.related_type AS relatedType,n.related_id AS relatedId,
+          n.guest_order_id AS guestOrderId,n.subject_en AS subject,n.subject_ne AS subjectNe,n.body_en AS body,n.body_ne AS bodyNe,n.audience_role AS audience,n.related_type AS relatedType,n.related_id AS relatedId,
           n.required_permission AS requiredPermission,n.template_key AS template,n.request_id AS requestId,n.delivery_attempts AS attempts
           FROM notification_messages n LEFT JOIN users u ON u.id=n.recipient_user_id WHERE n.id=? AND n.delivery_claim_token=? AND n.delivery_lease_until>?`,
         )
@@ -527,6 +482,7 @@ export async function deliverBusinessEmails(
                 ? source.orderId === row.guestOrderId && !source.customerId
                 : source.customerId === row.userId);
         row.orderNumber = source?.orderNumber;
+        row.currentStatus = source?.status;
         if (authorized) authorized = await isCurrentCaseNotice(db, { ...row, channel: 'email' });
         if (
           source &&
@@ -704,6 +660,7 @@ export async function deliverBusinessEmails(
         if(gate.deferUntil){await db.prepare("UPDATE notification_messages SET status='queued',delivery_attempts=delivery_attempts-1,delivery_next_attempt_at=?,delivery_claim_token=NULL,delivery_lease_until=0 WHERE id=? AND delivery_claim_token=?").bind(gate.deferUntil,job.id,token).run();continue;}
         feeRoutineClaimed=!!gate.claimed;
       }
+      if (validMailRecipient(row.email)) await addBusinessEmailDetails(db, row, clock());
       const message=validMailRecipient(row.email)?buildBusinessEmail(row,origin,{transport:mail.transport,isolatedCaptureOrigin}):{to:row.email,subject:'',text:'',html:''};
       const outcome=await deliverDurably(db,mail,message,{
         queueKind:'business',queueId:job.id,claimToken:token,attemptNumber,
@@ -782,13 +739,13 @@ export async function businessEmailQueue(db: D1Database, now = Date.now(), optio
     const delivery=await readDeliveryStatus(db,'business',row.id);
     const durable=['accepted','captured','uncertain'].includes(delivery.status)?delivery.status:['queued','failed'].includes(row.status)&&row.attempts>row.accountedAttempts?'uncertain':delivery.status;
     const displayStatus = durable==='accepted' ? 'Sent to mail service'
-      : durable==='captured' ? 'Captured locally â€” not sent'
+      : durable==='captured' ? 'Captured locally — not sent'
       : row.status==='cancelled' ? 'No longer needed'
       : durable==='uncertain' ? row.leaseUntil>now ? 'Sending' : 'Outcome uncertain'
       : durable==='intervention' ? 'Needs intervention'
       : row.leaseUntil>now ? 'Sending'
       : durable==='retrying' ? 'Retrying automatically'
-      : row.status==='sent' ? 'Sent record â€” transport not confirmed'
+      : row.status==='sent' ? 'Sent record — transport not confirmed'
       : 'Scheduled / waiting';
     const {recipientEmail: accountEmail,sellerEmailAnswers,...safeRow}=row;
     const recipientEmail = sellerNotificationEmail(accountEmail, sellerEmailAnswers);
@@ -962,7 +919,7 @@ export async function operationalBusinessNotificationStatements(
     relatedType='payment_exception';subject='Finance review: '+(e.status??'payment exception').replaceAll('_',' ');staffPermission=e.status==='fulfillment_release'?'order.manage':'payment.receipt.verify';
     guard="EXISTS(SELECT 1 FROM manual_payment_exceptions WHERE id=? AND last_event_id=? AND state<>'resolved')";guardValues=[e.sourceId,e.eventId];
   }else if(e.kind==='payment.order'){
-    relatedType='order_payment';subject=({reconciliation_required:'Payment correction under review',issued:'Bank payment instructions ready',claim_received:'Payment claim received for review',late_claim_received:'Late payment claim received for review',partial_payment_received:'Partial payment verified',paid_review_release:'Payment verified',expired:'Payment window expired'} as Record<string,string>)[e.status??'']??'Order payment updated';
+    relatedType='order_payment';subject=({reconciliation_required:'Payment correction under review',issued:'Bank payment instructions ready',claim_received:'Payment claim received for review',late_claim_received:'Late payment claim received for review',partial_payment_received:'Partial payment verified',paid_review_release:'Payment verified',released:'Payment received',expired:'Payment window expired'} as Record<string,string>)[e.status??'']??'Order payment updated';
     guard='EXISTS(SELECT 1 FROM manual_payment_windows WHERE order_id=? AND last_event_id=?)';guardValues=[e.sourceId,e.eventId];ownerSql='SELECT customer_id FROM orders WHERE id=?';ownerValues=[e.sourceId];audience='customer';staffPermission=e.status==='issued'?null:'payment.receipt.verify';
   }else if(e.kind==='product.priority'){
     relatedType='product_priority';subject=e.status==='resolved'?'Product concern resolved':e.status==='reported'?'Priority product concern received':'Priority product review update';staffPermission='product.review';

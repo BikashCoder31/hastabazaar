@@ -4,6 +4,8 @@ import { readParcelFailureTarget, readParcelProblems } from '../app/admin/shippi
 import { readDispatchParcels } from '../app/admin/orders/dispatch/read-dispatch';
 import { readCustomerWorkspace } from '../lib/admin/customers';
 import { operateParcel, type ParcelOperation } from '../lib/operations/parcels';
+import { deliverBusinessEmails } from '../lib/operations/business-notifications';
+import { courierBookedTemplate, missedDeliveryTemplate } from '../lib/operations/courier-email-notices';
 import { completeVersionFixture } from './helpers/complete-version-fixture';
 
 const reasons = ['refused', 'not_reached', 'wrong_address', 'courier_problem', 'other'] as const;
@@ -54,6 +56,63 @@ const fail = (jobId: string, now: number, failureReason?: string) => ({
   actorId: 'reviewer', requestId: jobId + '-failed', jobId, action: 'fail', now, version: 0,
   note: 'Fictional courier explained this delivery attempt.', failureReason,
 } satisfies ParcelOperation);
+
+void test('native courier operations queue current, scoped emails and matching notifications once', async () => {
+  const f = await fixture(true);
+  try {
+    const booked = addParcel(f, 'booked-email', { status: 'pickup_requested' });
+    const assign = {
+      actorId: 'reviewer', requestId: 'booked-fixture-assign', jobId: booked.jobId, action: 'assign',
+      version: 0, method: 'courier', courierName: 'Fictional courier',
+      trackingCode: 'FIX-BOOKED-EMAIL', note: 'Courier pickup was booked for this fictional parcel.',
+      pickupStart: f.now + 1000, pickupEnd: f.now + 2000, now: f.now,
+    } satisfies ParcelOperation;
+    await operateParcel(f.db, assign);
+    await operateParcel(f.db, assign);
+
+    const missed = addParcel(f, 'missed-email');
+    const failure = fail(missed.jobId, f.now, 'not_reached');
+    await operateParcel(f.db, failure);
+    await operateParcel(f.db, failure);
+
+    const stale = addParcel(f, 'stale-missed-email');
+    await operateParcel(f.db, fail(stale.jobId, f.now, 'refused'));
+    await operateParcel(f.db, { ...fail(stale.jobId, f.now + 1), action: 'retry', version: 1, requestId: 'stale-failure-retried' });
+
+    const guest = addParcel(f, 'guest-missed-email');
+    f.sqlite.prepare("UPDATE orders SET customer_id=NULL,customer_email='guest-courier@example.test' WHERE id=?").run(guest.orderId);
+    await operateParcel(f.db, fail(guest.jobId, f.now, 'courier_problem'));
+
+    for (const [id, template, audience] of [[booked.orderId, courierBookedTemplate, 'seller'], [missed.orderId, missedDeliveryTemplate, 'customer']]) {
+      assert.deepEqual(f.sqlite.prepare('SELECT channel,audience_role FROM notification_messages WHERE related_id=? AND template_key=? ORDER BY channel')
+        .all(id, template).map(row => [row.channel, row.audience_role]), [['email', audience], ['in_app', audience]]);
+    }
+    const messages: Array<{ to: string; text: string; subject: string }> = [];
+    await deliverBusinessEmails(f.db, {
+      transport: 'capture', transportKey: 'fictional-courier-capture', handoffAware: true,
+      send: async (message, context) => {
+        await context?.beforeHandoff?.();
+        messages.push(message);
+        return { outcome: 'captured', transport: 'capture', receipt: 'fictional-only' };
+      },
+    }, 'http://localhost:3018', { now: f.now + 2, limit: 20 });
+    const pickup = messages.find(m => m.subject === 'Hastabazaar · Courier pickup booked · FIX-booked-email');
+    assert.ok(pickup);
+    assert.match(pickup.text, /Fictional courier/);
+    assert.match(pickup.text, /\/seller\/orders\/booked-email-order/);
+    const delivery = messages.find(m => m.subject === 'Hastabazaar · Delivery missed · FIX-missed-email');
+    assert.ok(delivery);
+    assert.match(delivery.text, /Customer could not be reached/);
+    assert.match(delivery.text, /\/orders\/FIX-missed-email/);
+    assert.doesNotMatch(delivery.text, /Fictional courier explained this delivery attempt/);
+    const guestDelivery = messages.find(m => m.to === 'guest-courier@example.test');
+    assert.ok(guestDelivery);
+    assert.match(guestDelivery.text, /\/track\?order=FIX-guest-missed-email/);
+    assert.ok(!messages.some(m => m.subject.includes('stale-missed')));
+  } finally {
+    f.dispose();
+  }
+});
 
 void test('all five reasons are saved with their courier operation, note and audit and can filter the queue', async () => {
   const f = await fixture(true);

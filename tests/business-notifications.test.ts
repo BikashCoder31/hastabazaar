@@ -3,6 +3,20 @@ import { fakeProviderMail } from './helpers/fake-provider-mail';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildBusinessEmail } from '../lib/operations/business-notifications';
+void test('business email subjects encode the middle dot as UTF-8', () => {
+  const message = buildBusinessEmail({
+    email: 'test@example.test',
+    subject: 'Review needed',
+    body: 'Open the authorized record.',
+    audience: 'staff',
+    relatedType: 'product',
+    relatedId: 'product-1',
+  }, 'https://example.test');
+  assert.deepEqual(Buffer.from(message.subject, 'utf8'), Buffer.concat([
+    Buffer.from('Hastabazaar '), Buffer.from([0xc2, 0xb7]), Buffer.from(' Review needed'),
+  ]));
+});
+
 void test('business email rejects untrusted link origins and header injection', () => {
   const message = {
     email: 'test@example.test',

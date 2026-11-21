@@ -36,6 +36,7 @@ import type { OrderDocumentSnapshot } from '../db/repositories/orders';
 import { receiptNumberStatements,withLiveInvoiceReferences } from '../db/repositories/billing-documents';
 import { getEffectiveBusinessSetting } from '../db/repositories/business-settings';
 import { deliveryFailureSchemaAvailable, readDeliveryFailureReason } from '../shipping/delivery-failure';
+import { courierBookedTemplate, courierEmailNoticeStatements, missedDeliveryTemplate } from './courier-email-notices';
 import {
   addKathmanduBusinessDays,
   buildRiderAssignmentPolicySnapshot,
@@ -1280,6 +1281,13 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
         o.now,
       ),
   );
+  const courierNotice = o.action === 'assign' && o.method === 'courier' ? courierBookedTemplate
+    : o.action === 'fail' && p.method === 'courier' && !o.riderReportId ? missedDeliveryTemplate : null;
+  if (courierNotice) {
+    statements.push(...await courierEmailNoticeStatements(db, {
+      orderId: p.orderId, eventId: o.requestId, now: o.now, template: courierNotice,
+    }));
+  }
   const returnCause = trackCause && o.action === 'receive_return' ? await readReturnCancellationCause(db, o.jobId) : undefined;
   statements.push(parcelAudit(db, o, p.orderId, o.action,
     recordedFailure || returnCause ? o.note.trim() : undefined, returnCause));

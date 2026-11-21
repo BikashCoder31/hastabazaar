@@ -1,4 +1,5 @@
 import {independentProductStaffSql,independentProductIntakeStaffSql} from '../products/party-scope';
+import { isCourierNoticeTemplate, readCourierEmailNoticeSource } from './courier-email-notices';
 /** Source adapters keep their own transaction guards; this catalogue owns shared
  * channel identity and current-version suppression for implemented families. */
 export const operationalNotificationChannels = ['in_app', 'email'] as const;
@@ -57,7 +58,7 @@ const operationalSources: Readonly<Record<string, string>> = {
 };
 
 const dynamicOperationalSources=new Set(['business.workflow.assignment','business.team.governance','business.team.handoff','business.system.incident','business.programme.updated','business.finance.refund','business.finance.payout','business.finance.fee_refund_authorized','business.finance.invoice_adjustment','business.finance.funding_verified','business.seller.live_clearance','business.company.live_financial_scope','business.workflow.reminder','business.system.email_health']);
-export const hasOperationalNoticeSource = (template: string) => Object.hasOwn(operationalSources, template)||dynamicOperationalSources.has(template);
+export const hasOperationalNoticeSource = (template: string) => Object.hasOwn(operationalSources, template)||dynamicOperationalSources.has(template)||isCourierNoticeTemplate(template);
 dynamicOperationalSources.add('business.gift.issued');dynamicOperationalSources.add('business.gift.redeemed');
 
 export async function isCurrentCaseNotice(db: D1Database, notice: {
@@ -82,6 +83,7 @@ export async function operationalNotificationRequestId(template: string, eventId
 export async function isCurrentOperationalNotice(db: D1Database, notice: {
   template: string; relatedId: string | null; relatedType?: string | null; userId: string | null; audience: string; channel: string; requestId: string;
 },now=Date.now()): Promise<boolean> {
+  if (isCourierNoticeTemplate(notice.template)) return Boolean(await readCourierEmailNoticeSource(db, notice, now));
   if(notice.template==='business.gift.issued'||notice.template==='business.gift.redeemed')return(await import('../gift-cards/notice-sources')).isCurrentGiftNotice(db,notice);
   if(notice.template==='business.workflow.assignment')return(await import('./review-task-assignment-notices')).isCurrentReviewAssignmentNotice(db,notice,now);
   if(notice.template==='business.team.governance'||notice.template==='business.team.handoff')return(await import('./team-notice-sources')).isCurrentTeamNotice(db,notice,now);
