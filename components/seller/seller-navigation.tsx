@@ -109,7 +109,12 @@ export function SellerNavigationView({
             {sections.flatMap(section => [{ href: section.href, label: section.id === 'home' ? 'Today' : section.label }, ...section.links]).map(link =>
               <li key={link.href}><Link href={link.href} onClick={close} aria-current={isCurrent(pathname, link.href) ? 'page' : undefined} className={linkClass}>{link.label}</Link></li>)}
             <li><Link href={productHref} onClick={close} className={linkClass}><Plus aria-hidden="true" className="size-4" />Add product</Link></li>
-            <li><Link href="/account" prefetch={false} onClick={close} className={linkClass}><UserRound aria-hidden="true" className="size-4" />Customer dashboard</Link></li>
+            <li className="min-w-0">
+              <p className="wrap-anywhere px-3 pt-2 text-xs font-semibold text-[#465573]">
+                Seller Studio{tradingName ? ' · ' + tradingName : ''}
+              </p>
+              <Link href="/account" prefetch={false} onClick={close} className={linkClass}><UserRound aria-hidden="true" className="size-4 shrink-0" />Switch to customer dashboard</Link>
+            </li>
             <li><Link href="/security?return_to=%2Fseller" onClick={close} className={linkClass}><ShieldCheck aria-hidden="true" className="size-4" />Account security</Link></li>
             <li><Link href="/shop" onClick={close} className={linkClass}>Marketplace</Link></li>
             <li className="min-w-0 px-3 py-2">{shopLink}{reviewHelp}</li>

@@ -80,7 +80,12 @@ export default async function SellerLayout({
           </Link>
         }
         desktopActions={<>
-          <Link href="/account" prefetch={false} className="header-action">Switch to customer dashboard</Link>
+          <div className="flex min-w-0 items-center gap-1">
+            <p className="max-w-48 wrap-anywhere text-xs font-semibold text-[#465573]">
+              Seller Studio{seller.tradingName ? ' · ' + seller.tradingName : ''}
+            </p>
+            <Link href="/account" prefetch={false} className="header-action shrink-0">Switch to customer dashboard</Link>
+          </div>
           <Link href="/shop" className="header-action">
             Marketplace <ArrowUpRight className="size-4" aria-hidden="true" />
           </Link>

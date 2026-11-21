@@ -150,8 +150,10 @@ The refreshed 22 November account references were present. Work started from `a9
 
 | Task | Status | Commit | Checks |
 | --- | --- | --- | --- |
-| A1 · Clear account sections | Done | This task commit | Typecheck and lint passed. 23 focused tests passed. Chrome checked 12 routes at 390, 768, 1024 and 1440 px. |
-| A2 · Account switching | In progress | — | — |
+| A1 · Clear account sections | Done | `7d2aa29` | Typecheck and lint passed. 23 focused tests passed. Chrome checked 12 routes at 390, 768, 1024 and 1440 px. |
+| A2 · Account switching | Done | This task commit | Typecheck and lint passed. 17 focused tests passed. Buyer, Seller and Super Admin role checks passed at all four widths. |
 | A3 · Final check | Pending | — | — |
 
 The account layout supplies the white panel and card styles. Chrome verified the warm border, soft shadow, filled active menu item, and absence of sideways scroll in 48 route and viewport checks. The Buyer account displayed the caught-up strip and empty parcel card. The phone account menu opened with Enter and reached Privacy. The phone footer cleared the tab bar.
+
+The Seller testing account showed the trading name from its approved profile. The switch appeared inside the desktop panel and above the greeting on phones and tablets. The Seller Studio header or phone menu showed the same name next to the link back to the customer account. The Buyer had a Customer account label and no role switch. Back to Super Admin opened the admin workspace with the authorized account.

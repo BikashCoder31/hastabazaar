@@ -1,6 +1,7 @@
 import { isRiderPortalEnabled } from '@/lib/riders/availability';
 import { getSellerUser } from '@/lib/auth/seller';
 import { env } from 'cloudflare:workers';
+import { ArrowRight, ShieldCheck, Store, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { signOutPath } from '@/app/auth';
 import { AccountNavigation } from '@/components/account/account-navigation';
@@ -12,6 +13,27 @@ import { requireDatabase } from '@/lib/db/d1';
 import { riderProfile } from '@/lib/riders/repository';
 
 export const dynamic = 'force-dynamic';
+
+function AccountSwitchLink({ href, label, detail, icon: Icon }: {
+  href: '/seller' | '/admin';
+  label: string;
+  detail?: string;
+  icon: LucideIcon;
+}) {
+  return (
+    <Link href={href} prefetch={href === '/admin' ? false : undefined}
+      className="flex min-h-11 min-w-0 items-center gap-3 rounded-xl bg-[#14213D] p-3 text-white hover:bg-[#1E2F55] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#14213D]">
+      <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-white/15">
+        <Icon className="size-4" aria-hidden="true" />
+      </span>
+      <span className="min-w-0 flex-1 wrap-anywhere">
+        <span className="block text-sm font-semibold leading-tight">{label}</span>
+        {detail ? <span className="mt-0.5 block text-xs leading-snug text-[#C9D3E6]">{detail}</span> : null}
+      </span>
+      <ArrowRight className="size-4 shrink-0" aria-hidden="true" />
+    </Link>
+  );
+}
 
 export default async function AccountLayout({
   children,
@@ -25,28 +47,27 @@ export default async function AccountLayout({
       ? riderProfile(requireDatabase(env as unknown as { DB?: D1Database }), customer.userId)
       : Promise.resolve(null),
   ]);
+  const switches = customer.isSuperAdmin === 1 || seller ? (
+    <div className="grid gap-2">
+      {customer.isSuperAdmin === 1 ? <AccountSwitchLink href="/admin" label="Back to Super Admin" icon={ShieldCheck} /> : null}
+      {seller ? <AccountSwitchLink href="/seller" label="Switch to Seller Studio"
+        detail={`You also sell as ${seller.tradingName}`} icon={Store} /> : null}
+    </div>
+  ) : null;
   return (
     <div className="min-h-screen bg-[#F5EFE3] text-[#14213D]">
       <SiteHeader />
       <div className="mx-auto w-full max-w-[1264px] px-4 py-6 md:px-12 md:py-9 min-[1360px]:px-0!">
         <AccountAccessBoundary actorId={customer.userId}><div className="customer-account grid items-start gap-5 lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-10">
           <aside className="min-w-0">
-            {customer.isSuperAdmin === 1 ? (
-              <Link
-                href="/admin"
-                prefetch={false}
-                className="mb-3 flex min-h-11 items-center justify-center rounded-xl border bg-card px-4 py-3 text-sm font-semibold text-primary"
-              >
-                Back to Super Admin
-              </Link>
-            ) : null}
-            {seller ? <Link href="/seller" className="mb-3 flex min-h-11 items-center justify-center rounded-xl border bg-card px-4 py-3 text-sm font-semibold text-primary">Switch to seller dashboard</Link> : null}
+            {switches ? <div className="mb-3 lg:hidden">{switches}</div> : null}
             {isRiderPortalEnabled() && (!seller || rider) ? <Link href="/rider" className="mb-3 flex min-h-11 items-center justify-center rounded-xl border bg-card px-4 py-3 text-sm font-semibold text-primary">{rider ? rider.status === 'approved' ? 'Rider dashboard' : 'Rider application status' : 'Rider dashboard / apply'}</Link> : null}
             <AccountNavigation
               displayName={customer.displayName}
               email={customer.email}
               signOutPath={signOutPath('/')}
               showAssignedDeliveries={rider?.status === 'approved'}
+              desktopSwitches={switches}
             />
           </aside>
           <main tabIndex={-1} id="main-content" className="min-w-0 pb-10">

@@ -10,6 +10,7 @@ import {
   MapPin,
   Package,
   ShieldCheck,
+  ShoppingBag,
   Undo2,
   UserRound,
   UsersRound,
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import type { ReactNode } from 'react';
 import { isRiderPortalEnabled } from '@/lib/riders/availability';
 
 const groups = [
@@ -40,11 +42,12 @@ const groups = [
 
 const baseLink = 'flex min-h-11 min-w-0 items-center gap-3 rounded-[10px] px-3 text-left text-sm text-[#344766] hover:bg-[#F6F1E8] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#14213D] aria-[current=page]:bg-[#F3ECDF] aria-[current=page]:font-semibold aria-[current=page]:text-[#14213D]';
 
-export function AccountNavigation({ displayName, email, signOutPath, showAssignedDeliveries = false }: {
+export function AccountNavigation({ displayName, email, signOutPath, showAssignedDeliveries = false, desktopSwitches }: {
   displayName: string;
   email: string;
   signOutPath: string;
   showAssignedDeliveries?: boolean;
+  desktopSwitches?: ReactNode;
 }) {
   const pathname = usePathname() ?? '';
   const initial = Array.from(displayName.trim())[0]?.toUpperCase() || 'H';
@@ -60,10 +63,14 @@ export function AccountNavigation({ displayName, email, signOutPath, showAssigne
             <p className="text-xs text-[#655848]">{email}</p>
           </div>
         </div>
+        <p className="mx-3 mb-3 mt-1 inline-flex min-h-[26px] max-w-[calc(100%-1.5rem)] items-center gap-1.5 rounded-full bg-[#E3E9F4] px-2.5 text-xs font-semibold text-[#1E3566]">
+          <ShoppingBag className="size-3.5 shrink-0" aria-hidden="true" />Customer account
+        </p>
+        {desktopSwitches ? <div className="mx-1 mb-3.5">{desktopSwitches}</div> : null}
         <AccountLinks pathname={pathname} signOutPath={signOutPath} showRiderLink={showRiderLink} />
       </div>
       <details className="account-menu-panel lg:hidden">
-        <summary className="min-h-11 cursor-pointer content-center rounded-xl px-4 text-sm font-semibold text-[#14213D] focus-visible:outline-2 focus-visible:outline-[#14213D]">Account menu</summary>
+        <summary aria-label="Customer account menu" className="min-h-11 cursor-pointer content-center rounded-xl px-4 text-sm font-semibold text-[#14213D] focus-visible:outline-2 focus-visible:outline-[#14213D]">Customer account</summary>
         <div className="px-2 pb-2">
           <AccountLinks pathname={pathname} signOutPath={signOutPath} showRiderLink={showRiderLink} />
         </div>
