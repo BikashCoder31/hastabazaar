@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {build} from 'esbuild';
+import {stubFixtureLink} from './helpers/browser-fixture-link';
 import type {Route,Response as BrowserResponse} from 'playwright-core';
 
 // Component ownership only. All transport is intercepted; no application or database is launched.
@@ -11,7 +12,7 @@ void test('Finance component state belongs to its mounted actor and source',asyn
  import{ManualPaymentClaim}from'./components/commerce/manual-payment-claim';
  import{PaidOrderRelease}from'./components/admin/paid-order-release';
  const payment=id=>({orderId:id,orderNumber:id,state:'awaiting_payment',receivedPaisa:0,duePaisa:10000,remainingPaisa:10000,deadlineAt:100000,cutoffAt:100000,claim:null,instruction:{amountPaisa:10000,reference:id,account:{holder:'Fictional company',bank:'Fictional bank',branch:'Test',accountNumber:'TEST-ACCOUNT'}}});
- function App(){const[id,setId]=useState('a');const mode=location.hash.slice(1);return <><button onClick={()=>setId('b')}>Replace source</button>{mode==='invoice'?<LiveInvoiceAdjustmentForm actorId={id} invoiceId={id}/>:mode==='claim'?<ManualPaymentClaim actorId={id} payment={payment(id)}/>:<PaidOrderRelease actorId={id} review={{orderId:id,orderNumber:id,revision:1,paid:true,closed:false,released:false,holds:[]}}/>}</>};createRoot(document.getElementById('root')).render(<App/>);`},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"production"'},plugins:[{name:'framework-only',setup(builder){builder.onResolve({filter:/^next\/navigation$/},()=>({path:'router',namespace:'fixture'}));builder.onLoad({filter:/.*/,namespace:'fixture'},()=>({loader:'js',contents:'export const useRouter=()=>({refresh(){window.dispatchEvent(new Event("fixture-refresh"))}})'}));}}]});
+ function App(){const[id,setId]=useState('a');const mode=location.hash.slice(1);return <><button onClick={()=>setId('b')}>Replace source</button>{mode==='invoice'?<LiveInvoiceAdjustmentForm actorId={id} invoiceId={id}/>:mode==='claim'?<ManualPaymentClaim actorId={id} payment={payment(id)}/>:<PaidOrderRelease actorId={id} review={{orderId:id,orderNumber:id,revision:1,paid:true,closed:false,released:false,holds:[]}}/>}</>};createRoot(document.getElementById('root')).render(<App/>);`},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"production"'},plugins:[{name:'framework-only',setup(builder){stubFixtureLink(builder);builder.onResolve({filter:/^next\/navigation$/},()=>({path:'router',namespace:'fixture'}));builder.onLoad({filter:/.*/,namespace:'fixture'},()=>({loader:'js',contents:'export const useRouter=()=>({refresh(){window.dispatchEvent(new Event("fixture-refresh"))}})'}));}}]});
  const {chromium}=await import(process.env.PLAYWRIGHT_MODULE??'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs');
  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH??'C:/Program Files/Google/Chrome/Application/chrome.exe'});
  try{

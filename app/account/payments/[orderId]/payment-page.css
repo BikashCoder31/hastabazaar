@@ -1,0 +1,14 @@
+/* The payment page has its own breadcrumb and support column. */
+div:has(> #main-content > [data-bank-payment-page]) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+div:has(> #main-content > [data-bank-payment-page]) > aside {
+  display: none;
+}
+
+@media (min-width: 1360px) {
+  div:has(> div > #main-content > [data-bank-payment-page]) {
+    padding-inline: 0;
+  }
+}
