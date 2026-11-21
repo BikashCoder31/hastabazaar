@@ -151,9 +151,38 @@ The refreshed 22 November account references were present. Work started from `a9
 | Task | Status | Commit | Checks |
 | --- | --- | --- | --- |
 | A1 · Clear account sections | Done | `7d2aa29` | Typecheck and lint passed. 23 focused tests passed. Chrome checked 12 routes at 390, 768, 1024 and 1440 px. |
-| A2 · Account switching | Done | This task commit | Typecheck and lint passed. 17 focused tests passed. Buyer, Seller and Super Admin role checks passed at all four widths. |
-| A3 · Final check | Pending | — | — |
+| A2 · Account switching | Done | `524244c` | Typecheck and lint passed. 17 focused tests passed. Buyer, Seller and Super Admin role checks passed at all four widths. |
+| A3 · Final check | Done | This task commit | Typecheck, lint and all 48 affected tests passed. Final Chrome walkthroughs and visual comparisons completed. |
 
 The account layout supplies the white panel and card styles. Chrome verified the warm border, soft shadow, filled active menu item, and absence of sideways scroll in 48 route and viewport checks. The Buyer account displayed the caught-up strip and empty parcel card. The phone account menu opened with Enter and reached Privacy. The phone footer cleared the tab bar.
 
 The Seller testing account showed the trading name from its approved profile. The switch appeared inside the desktop panel and above the greeting on phones and tablets. The Seller Studio header or phone menu showed the same name next to the link back to the customer account. The Buyer had a Customer account label and no role switch. Back to Super Admin opened the admin workspace with the authorized account.
+
+### Final checks and remaining differences
+
+- Chrome walked the Buyer, Seller and Super Admin paths at 390, 768, 1024 and 1440 px. All 12 account sections fit across those widths. The mobile footer cleared the tab bar on every section, and the measured primary controls and role switches met the 44 px minimum.
+- The populated disposable fixture verified the actual current parcel, seller question, My orders and bank payment surfaces at all four widths. The real Buyer verified the caught-up copy, empty parcel card and Browse the shop destination. Wallet's gift-card form loaded at both 390 and 1440 px.
+- Phones and tablets keep a compact Customer account disclosure for the account links and sign out. The existing storefront header and footer appear in the checked preview.
+- Names, order details, counts, saved products, balances and verification labels reflect the active test accounts. The reference includes sample sidebar badges, membership details, products and a filled order history. My orders shows positive counts when available and omits zero badges. Existing Wallet and Settings forms include their help, verification and recovery controls.
+
+### Files changed in Account polish
+
+- `app/account/layout.tsx`
+- `app/account/orders/page.tsx`
+- `app/account/page.tsx`
+- `app/account/payments/[orderId]/page.tsx`
+- `app/account/referrals/page.tsx`
+- `app/globals.css`
+- `app/seller/layout.tsx`
+- `components/account/account-navigation.tsx`
+- `components/account/account-sections.tsx`
+- `components/account/order-list.tsx`
+- `components/account/saved-product-grid.tsx`
+- `components/commerce/customer-request-presentation.ts`
+- `components/commerce/manual-payment-claim.tsx`
+- `components/seller/seller-navigation.tsx`
+- `components/storefront/customer-your-turn-card.tsx`
+- `docs/review-fixes-board.md`
+- `tests/account-role-navigation.test.ts`
+
+Account polish complete — ready for your review
