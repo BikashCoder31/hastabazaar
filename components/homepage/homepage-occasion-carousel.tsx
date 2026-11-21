@@ -230,7 +230,7 @@ export function HomepageOccasionCarousel({
                         className={styles.card}
                         data-theme={card.theme}
                       >
-                        <span data-media-frame="cover" className={mediaFrameClass('cover', styles.photo)}>
+                        <span data-media-frame="cover" className={mediaFrameClass('cover', `aspect-square ${styles.photo}`)}>
                           <Image
                             src={occasionCardPhoto(card.destination)}
                             alt=""

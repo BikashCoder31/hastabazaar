@@ -263,9 +263,11 @@ Browser evidence for the two purchase journeys and the 96-state responsive rerun
 | Task | Owner | Waits for | Status | Commit | Checks |
 | --- | --- | --- | --- | --- | --- |
 | H1 · Restore the storefront header | Main agent | Batch 4 | Done | `28bd9da` | Typecheck, lint, 14 focused tests, 13 viewport checks, mobile menu and tracking paths passed. |
-| H2 · Homepage | Homepage helper | H1 | Done | This task commit | Typecheck, lint, focused suites, four-width Buyer and guest checks, and both native Homepage editor publications passed. |
+| H2 · Homepage | Homepage helper | H1 | Done | `74e0f07` | Typecheck, lint, focused suites, four-width Buyer and guest checks, and both native Homepage editor publications passed. |
 | H3 · Categories, occasions and makers | Discovery helper | H1 | Done | `e5b395d` | Typecheck, lint, 19 focused checks, 12 checked-preview and 12 populated fixture measurements passed. |
-| H4 · Final check | Main agent | H1–H3 | Queued | | |
+| H4 · Final check | Main agent | H1–H3 | Done | This task commit | Typecheck, lint, 107-form preflight, full suite with both failures corrected and rerun, and checked browser journeys passed. |
+
+Batch 4b complete — ready for your review
 
 ### For the owner
 
@@ -293,3 +295,82 @@ The checked catalogue contains one active category and occasion, both named Othe
 The checked homepage passed at 390, 768, 1024 and 1440 px, including carousel pause and play, reduced motion, keyboard selection and the Buyer welcome strip. At 1024 and 1440 px the category panel overlaps the hero image by 72 px. Both Homepage editors saved and published through their existing staff controls in a disposable fixture. The corresponding public headings appeared at the saved effective time.
 
 The return badge reads the shared versioned marketplace policy that checkout snapshots. There is no separate global return-window field in Business settings. Both saved offer availability and popularity ranks come from the catalogue. With no eligible promotions or ranked products in the checked data, those sections do not appear. The promoted fallback uses “Featured finds” when no popularity ranking is available.
+
+#### Final browser checks
+
+The checked preview passed 24 discovery-to-bag measurements across 390, 768, 1024 and 1440 px. The full path passed at 390 and 1440 px, including waiting for the hero carousel to advance, pausing it, opening Categories and a category, opening a Maker page, following Gifts by occasion and an occasion, then opening a product and the bag. Reduced motion kept the active story fixed. The storefront reported zero sideways scroll, browser script errors or undersized measured phone controls.
+
+The checked catalogue’s product was unavailable to order. A separate purchase fixture added the same published offer to the bag at 390 and 1440 px, opened the bag from both views and confirmed the saved selection, prices and quantities with the existing cart API.
+
+The phone footer sweep covered 48 routes. All 44 routes that showed the tab bar and footer kept the last footer line above the fixed bar, with at least 19 px of measured clearance. The two cancellation cards used their own right-aligned price rows at 390 px. Each seller title had 262 px in a 324 px card. The native fixture completed cancellation for only the selected parcel and preserved the other parcel and recorded totals.
+
+#### Reference comparison
+
+| Reference | Remaining differences in the checked storefront |
+| --- | --- |
+| 00 · Homepage | The checked catalogue has one category and product, two approved sellers and sparse merchandising data. Sections space themselves around the longest published hero slide, with a larger gap above the controls on tablet and phone. Occasion cards use the saved theme colours and existing editorial photos. The slides currently store no per-card photo. The existing floating Help control is visible. |
+| 00b · Categories | The single checked category has no photo or Nepali name. It uses the existing empty-media treatment. The populated layout uses translated names and counts only where real data supports them. |
+| 00c · Gifts by occasion | The checked database uses the ungrouped view before 0169. Its one budget chip uses the actual visible catalogue price. The populated view follows the recorded occasion groups, order and season, with catalogue-derived caps and the existing editorial gift photo. |
+| 00d · Maker | The reviewer fixture shows the workshop presentation with approved content. The checked maker has no published workshop photos, video, specialties or experience bands. Profiles and collections vary with reviewed data. |
+| 13 · Cancel a parcel | Seller names use the available width and each price is on its own line. The existing cancellation form guidance, required reason, item descriptions, review amounts and staff review stay in the flow. The parcel choices use item text. |
+
+Typecheck, lint, six final focused tests and the 107-form launch check passed. A separate Super Admin session opened the Homepage editor on the checked preview. The full suite started at 15:11 Nepal time on 21 November with the Batch 3 and Batch 4b owner-applied SQL excluded from generic fixture setup.
+
+The full suite’s form scan found the Categories search needed a registered form ID. It now shares the published search presentation and submits to the existing shop query. The corrected form scan and nine related focused tests passed, along with fresh typecheck and lint.
+
+The full suite’s media scan also found missing frame bounds and fit settings. The affected photos and workshop player now use explicit responsive frames. New Arrivals photos use contain to show the whole product. The corrected media and form checks passed together, and 23 homepage editor, motion and media checks passed. The checked browser path passed again at every requested width, and the populated fixture replayed the approved video at 390 and 1440 px.
+
+The full run finished at 16:43 Nepal time after about 92 minutes. It reported 5,794 tests, with 5,754 passes, 38 skips and two failures. Both failures and 13 related checks passed together on the corrected source after the full run. The final 390 px footer sweep again measured at least 19 px of clearance on all 44 tested pages with the bar and footer. Generated test artifacts were archived outside the checkout.
+
+#### Files changed in Batch 4b
+
+- `app/account/account-overview-data.ts`
+- `app/account/orders/page.tsx`
+- `app/categories/page.tsx`
+- `app/makers/[id]/page.tsx`
+- `app/occasions/page.tsx`
+- `app/page.tsx`
+- `components/catalog/maker-workshop-video.tsx`
+- `components/catalog/taxonomy-directory.tsx`
+- `components/commerce/customer-order-cancellation.tsx`
+- `components/homepage/craft-details.module.css`
+- `components/homepage/craft-details.tsx`
+- `components/homepage/homepage-hero-carousel.tsx`
+- `components/homepage/homepage-hero-copy.tsx`
+- `components/homepage/homepage-hero.module.css`
+- `components/homepage/homepage-occasion-carousel.tsx`
+- `components/homepage/homepage-occasion.module.css`
+- `components/homepage/homepage-products.tsx`
+- `components/homepage/homepage.module.css`
+- `components/layout/mobile-navigation.tsx`
+- `components/layout/rewards-shortcut.module.css`
+- `components/layout/site-header.module.css`
+- `components/layout/site-header.tsx`
+- `deployment/babal/mariadb-occasion-discovery.sql`
+- `docs/redesign-customer-board.md`
+- `drizzle/0169_occasion_discovery.sql`
+- `lib/catalog/taxonomy-discovery.ts`
+- `lib/db/repositories/customers.ts`
+- `lib/db/repositories/products.ts`
+- `lib/homepage/hero-autoplay.ts`
+- `lib/homepage/homepage-storefront-data.ts`
+- `lib/homepage/slider-autoplay.ts`
+- `lib/operations/runtime-schema-readiness.mjs`
+- `scripts/header-single-row-check.mjs`
+- `tests/frontend-recovery-controls.test.ts`
+- `tests/helpers/incentive-report-database.ts`
+- `tests/hero-autoplay-mounted.test.ts`
+- `tests/hero-dots-layout.test.ts`
+- `tests/homepage-content-browser.test.ts`
+- `tests/homepage-craft-details.test.ts`
+- `tests/homepage-hero-carousel.test.ts`
+- `tests/homepage-hero-presentation.test.ts`
+- `tests/homepage-occasion-carousel.test.ts`
+- `tests/homepage-products.test.ts`
+- `tests/homepage-truthfulness.test.ts`
+- `tests/maker-original-video-access.test.ts`
+- `tests/release-manifest-completeness.test.ts`
+- `tests/responsive-media-geometry.test.ts`
+- `tests/responsive-media-public.test.ts`
+- `tests/seller-registration-panel.test.ts`
+- `tests/taxonomy-discovery.test.ts`

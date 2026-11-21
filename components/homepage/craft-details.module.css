@@ -18,8 +18,7 @@
   background: #fdfaf5;
 }
 
-.photo { aspect-ratio: 16 / 9; background: #e7dbbf; }
-.card:first-child .photo { aspect-ratio: 1; }
+.photo { background: #e7dbbf; }
 
 .caption { padding: clamp(1rem, 2vw, 1.4rem); }
 .caption h3 { font-family: var(--font-heading); font-size: clamp(1.5rem, 2vw, 1.75rem); line-height: 1.2; }
@@ -36,6 +35,4 @@
 @media (width >= 1024px) {
   .mosaic { grid-template-columns: minmax(0, 1.25fr) repeat(2, minmax(0, 1fr)); }
   .card:first-child { grid-column: 1; grid-row: span 2; grid-template-rows: 1fr auto; }
-  .card:first-child .photo { min-height: 18rem; aspect-ratio: auto; }
-  .photo { aspect-ratio: 2; }
 }

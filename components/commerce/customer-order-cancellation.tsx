@@ -176,7 +176,7 @@ function ScopedCustomerOrderCancellation({orderNumber,actorId,viewerScope,isCurr
           {!page ? <p>Select whole seller parcels. Packed, custom and payment cases may need a staff review.</p> : null}
           {!choices.length ? <p className="rounded-xl bg-white p-4">There are no parcels left to cancel. Open the order for the current status.</p> : null}
           {choices.map((c, index) => (
-            <label key={c.id} className={`flex min-h-11 cursor-pointer items-start gap-3 rounded-[14px] border bg-white p-4 has-focus-visible:outline-2 has-focus-visible:outline-[#14213D] ${selected.includes(c.id) ? 'border-[#A8232E]' : 'border-[#D4C1A6]'}`}>
+            <label key={c.id} className={`grid min-h-11 cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-2 rounded-[14px] border bg-white p-4 has-focus-visible:outline-2 has-focus-visible:outline-[#14213D] sm:grid-cols-[auto_minmax(0,1fr)_auto] ${selected.includes(c.id) ? 'border-[#A8232E]' : 'border-[#D4C1A6]'}`}>
               <input
                 type="checkbox"
                 className="mt-1 size-4 shrink-0 accent-[#14213D]"
@@ -191,7 +191,7 @@ function ScopedCustomerOrderCancellation({orderNumber,actorId,viewerScope,isCurr
                   setPreview(null);
                 }}
               />
-              <span className="min-w-0 flex-1">
+              <span className="min-w-0">
                 <strong className="block">{page ? `Parcel ${index + 1} · ` : ''}{c.name}</strong>
                 {c.items?.map(i=><span className="block text-sm text-[#465573]" key={i.id}>{i.name} × {i.quantity}</span>)}
                 <span className="block text-sm text-[#465573]">{!c.eligible
@@ -200,7 +200,11 @@ function ScopedCustomerOrderCancellation({orderNumber,actorId,viewerScope,isCurr
                     ? 'Staff cancellation or delivery review required'
                     : 'Available to cancel'}</span>
               </span>
-              {parcelCash?.[c.id] !== undefined ? <strong className="shrink-0 text-sm tabular-nums">{formatPaisaExact(parcelCash[c.id])}</strong> : null}
+              {parcelCash?.[c.id] !== undefined ? (
+                <strong className="col-span-2 border-t border-[#E3D6C3] pt-2 text-right text-sm tabular-nums sm:col-span-1 sm:border-t-0 sm:pt-0">
+                  {formatPaisaExact(parcelCash[c.id])}
+                </strong>
+              ) : null}
             </label>
           ))}
           <label className="block">

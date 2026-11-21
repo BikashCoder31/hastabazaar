@@ -2,6 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 import { mediaFrameClass, mediaObjectClass } from '@/lib/media/responsive-media';
+import { cn } from '@/lib/utils';
 import { ParallaxImage } from './parallax-image';
 import home from './homepage.module.css';
 import styles from './craft-details.module.css';
@@ -60,26 +61,26 @@ export function CraftDetails() {
           <Link href="#craft-materials" className={home.more}>Read the full craft guide <ArrowRight size={17} aria-hidden="true" /></Link>
         </div>
         <div className={styles.mosaic} id="craft-materials">
-          {materials.map(({ title, image, alt, description, notes }, index) => {
-            const photo = <Image data-media-mode="cover" src={image} alt={alt} fill sizes="(min-width: 1024px) 34vw, (min-width: 640px) 45vw, calc(100vw - 32px)"
-              className={mediaObjectClass('cover')} />;
-            return (
-              <figure key={title} className={styles.card}>
-                <div data-media-frame="cover" className={mediaFrameClass('cover', styles.photo)}>
-                  {index === 0 ? <ParallaxImage kind="maker" maxOffset={12}>{photo}</ParallaxImage> : photo}
-                </div>
-                <figcaption className={styles.caption}>
-                  <h3>{title}</h3>
-                  <p>{description}</p>
-                  <dl>
-                    {notes.map(([label, detail]) => (
-                      <div key={label}><dt>{label}</dt><dd>{detail}</dd></div>
-                    ))}
-                  </dl>
-                </figcaption>
-              </figure>
-            );
-          })}
+          {materials.map(({ title, image, alt, description, notes }, index) => (
+            <figure key={title} className={styles.card}>
+              <div data-media-frame="cover" className={mediaFrameClass('cover', cn(styles.photo,
+                index === 0 ? 'aspect-square lg:aspect-auto lg:min-h-72' : 'aspect-video lg:aspect-[2/1]'))}>
+                <ParallaxImage kind="maker" maxOffset={12} enabled={index === 0}>
+                  <Image data-media-mode="cover" src={image} alt={alt} fill sizes="(min-width: 1024px) 34vw, (min-width: 640px) 45vw, calc(100vw - 32px)"
+                    className={mediaObjectClass('cover')} />
+                </ParallaxImage>
+              </div>
+              <figcaption className={styles.caption}>
+                <h3>{title}</h3>
+                <p>{description}</p>
+                <dl>
+                  {notes.map(([label, detail]) => (
+                    <div key={label}><dt>{label}</dt><dd>{detail}</dd></div>
+                  ))}
+                </dl>
+              </figcaption>
+            </figure>
+          ))}
         </div>
       </div>
     </section>

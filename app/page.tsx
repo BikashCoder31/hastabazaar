@@ -167,7 +167,7 @@ export default async function Home() {
                   const photo = categoryImage(category);
                   return (
                     <Link key={category.id} href={'/shop?category=' + encodeURIComponent(category.slug)} className={styles.category}>
-                      <div data-media-frame="cover" className={mediaFrameClass('cover')}>
+                      <div data-media-frame="cover" className={mediaFrameClass('cover', 'aspect-[4/5]')}>
                         {photo ? (
                           <Image data-media-mode="cover" src={photo.src} alt={photo.alt} fill
                             sizes="(min-width: 1440px) 190px, (min-width: 1024px) 16vw, (min-width: 640px) 29vw, 132px"
@@ -290,7 +290,7 @@ export default async function Home() {
                   return (
                     <li key={maker.id}>
                       <Link href={'/makers/' + encodeURIComponent(maker.id)} className={styles.maker}>
-                        <div data-media-frame="cover" className={mediaFrameClass('cover', styles.makerPhoto)}>
+                        <div data-media-frame="cover" className={mediaFrameClass('cover', `aspect-[4/3] ${styles.makerPhoto}`)}>
                           {maker.image ? (
                             <Image data-media-mode="cover" src={maker.image.src} alt={maker.image.alt} fill sizes="(min-width: 1024px) 25vw, 280px" unoptimized
                               className={mediaObjectClass('cover')} />

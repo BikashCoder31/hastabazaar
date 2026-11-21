@@ -17,6 +17,7 @@ import { formatPaisaExact } from '@/lib/marketplace/money-display';
 import { mediaFrameClass, mediaObjectClass, mediaSizes } from '@/lib/media/responsive-media';
 import { managedMakerDisplayName, type CraftExperienceBand } from '@/lib/sellers/participation';
 import { getReviewedPublicProfileExtras } from '@/lib/sellers/public-profile-media';
+import { cn } from '@/lib/utils';
 
 const shell = 'mx-auto w-[calc(100%-2rem)] max-w-[1264px] md:w-[calc(100%-6rem)]';
 const sectionHeading = 'font-heading text-[clamp(2rem,3.5vw,2.5rem)] font-medium leading-[1.1] tracking-tight';
@@ -40,7 +41,7 @@ function WorkshopPhoto({ photo, makerName, lead = false }: {
 }) {
   return (
     <figure className="min-w-0">
-      <div data-media-frame="cover" className={`relative overflow-hidden rounded-[20px] bg-[#E8DDCB] ${lead ? 'aspect-[5/4]' : 'h-56 md:h-[300px]'}`}>
+      <div data-media-frame="cover" className={mediaFrameClass('cover', cn('rounded-[20px] bg-[#E8DDCB]', lead ? 'aspect-[5/4]' : 'h-56 md:h-[300px]'))}>
         <Image src={profileMediaHref(photo.id)} alt={photo.caption ? '' : `Workshop photo from ${makerName}`} fill
           unoptimized priority={lead} data-media-mode="cover"
           sizes="(min-width: 1360px) 610px, (min-width: 1024px) 50vw, 100vw" className="object-cover" />

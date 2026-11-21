@@ -67,7 +67,6 @@
   z-index: -1;
   inset: -.15rem -.65rem auto auto;
   width: min(50%, 11rem);
-  aspect-ratio: 1;
   overflow: hidden;
   border: .5rem solid #ffffff55;
   border-radius: 50%;

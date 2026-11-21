@@ -2,8 +2,10 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowRight, CalendarDays, Gift, Heart, Package, Sparkles } from 'lucide-react';
 import { categoryImage } from '@/lib/catalog/category-presentation';
+import { queryFieldPresentation } from '@/lib/catalog/shop-query';
 import type { DiscoveryCategory, OccasionGroup } from '@/lib/catalog/taxonomy-discovery';
 import type { OccasionRow } from '@/lib/db/repositories/products';
+import type { PublishedFormConfig } from '@/lib/forms/types';
 import { formatPaisaExact } from '@/lib/marketplace/money-display';
 
 const shell = 'mx-auto w-[calc(100%-2rem)] max-w-[1264px] md:w-[calc(100%-6rem)]';
@@ -32,8 +34,8 @@ function CategoryCards({ entries }: { entries: readonly DiscoveryCategory[] }) {
         const wide = largeGrid && (index === 0 || index === 5 || index === 6);
         const tall = largeGrid && index === 0;
         return (
-          <Link key={entry.id} href={shopTaxonomyHref('category', entry.slug)}
-            className={`group relative isolate flex min-w-0 flex-col justify-end overflow-hidden rounded-[22px] bg-[#e6d8c4] text-white ${wide || entries.length === 1 ? 'col-span-2' : ''} ${tall ? 'lg:row-span-2' : ''} ${entries.length === 1 ? 'lg:col-span-3' : ''} ${focus}`}>
+          <Link key={entry.id} href={shopTaxonomyHref('category', entry.slug)} data-media-frame="cover"
+            className={`group relative isolate flex min-h-[11.875rem] min-w-0 flex-col justify-end overflow-hidden rounded-[22px] bg-[#e6d8c4] text-white ${wide || entries.length === 1 ? 'col-span-2' : ''} ${tall ? 'lg:row-span-2' : ''} ${entries.length === 1 ? 'lg:col-span-3' : ''} ${focus}`}>
             {image ? (
               <Image data-media-mode="cover" src={image.src} alt="" fill
                 unoptimized={Boolean(entry.imageId)}
@@ -68,7 +70,16 @@ function CategoryCards({ entries }: { entries: readonly DiscoveryCategory[] }) {
   );
 }
 
-function CategoryNextSteps({ occasions }: { occasions: readonly OccasionRow[] }) {
+type CategorySearchPresentation = { config: PublishedFormConfig | null; unavailable: boolean };
+
+function CategoryNextSteps({ occasions, search }: {
+  occasions: readonly OccasionRow[];
+  search?: CategorySearchPresentation;
+}) {
+  const field = queryFieldPresentation('catalog.header-search', search?.config, 'q', {
+    label: 'Search the shop',
+    placeholder: 'e.g. dhaka shawl, brass, Thimi',
+  });
   return (
     <div className="mt-12 grid gap-[18px] lg:mt-[72px] lg:grid-cols-2">
       <section className="min-w-0 rounded-[22px] bg-[#14213D] p-7 text-white sm:p-[30px]" aria-labelledby="discover-by-occasion">
@@ -89,12 +100,15 @@ function CategoryNextSteps({ occasions }: { occasions: readonly OccasionRow[] })
       <section className="min-w-0 rounded-[22px] border border-[#E4DACA] bg-white p-7 sm:p-[30px]" aria-labelledby="discover-by-search">
         <h2 id="discover-by-search" className={panelTitle}>Know what you want?</h2>
         <p className="mt-2 text-sm text-[#465573]">Search by product, material or maker.</p>
-        <form action="/shop" className="mt-3 flex flex-wrap gap-2">
-          <label htmlFor="category-discovery-search" className="sr-only">Search the shop</label>
-          <input id="category-discovery-search" name="q" type="search" maxLength={100} placeholder="e.g. dhaka shawl, brass, Thimi"
+        <form data-form-id="catalog.header-search" action="/shop" method="get" className="mt-3 flex flex-wrap gap-2">
+          <label htmlFor="category-discovery-search" className="sr-only">{field.label}</label>
+          <input id="category-discovery-search" name="q" type="search" maxLength={100} placeholder={field.placeholder}
+            aria-describedby={field.helpText ? 'category-discovery-search-help' : undefined}
             className="min-h-11 min-w-0 flex-1 rounded-[10px] border border-[#D7C7AD] px-3 text-sm placeholder:text-[#736656]" />
           <button type="submit" className="min-h-11 rounded-[10px] bg-[#A8232E] px-5 text-sm font-semibold text-white hover:bg-[#8F1E27]">Search</button>
         </form>
+        {field.helpText ? <p id="category-discovery-search-help" className="mt-2 text-sm text-[#465573]">{field.helpText}</p> : null}
+        {search?.unavailable ? <output className="mt-2 block text-sm text-[#465573]">Search settings couldn’t load. You can still search.</output> : null}
       </section>
     </div>
   );
@@ -126,7 +140,7 @@ function OccasionCards({ entries }: { entries: readonly OccasionRow[] }) {
 function InSeason({ occasion }: { occasion: OccasionRow }) {
   return (
     <section aria-labelledby="in-season-title" className="grid overflow-hidden rounded-[24px] bg-[#14213D] text-white lg:min-h-[360px] lg:grid-cols-[1.1fr_1fr]">
-      <div className="relative h-[260px] lg:h-auto" data-media-frame="cover">
+      <div className="relative min-h-[260px] overflow-hidden lg:min-h-[360px]" data-media-frame="cover">
         <Image src="/homepage/meaningful-gifts-hero.webp" alt="" fill data-media-mode="cover"
           sizes="(min-width: 1440px) 662px, (min-width: 1024px) 50vw, 100vw" className="object-cover" />
       </div>
@@ -182,6 +196,7 @@ export function TaxonomyDirectory({
   occasionGroups = [],
   featuredOccasion = null,
   priceCaps = [],
+  categorySearch,
 }: {
   kind: 'category' | 'occasion';
   entries: readonly DiscoveryCategory[];
@@ -189,6 +204,7 @@ export function TaxonomyDirectory({
   occasionGroups?: readonly OccasionGroup[];
   featuredOccasion?: OccasionRow | null;
   priceCaps?: readonly number[];
+  categorySearch?: CategorySearchPresentation;
 }) {
   const categories = kind === 'category';
   const breadcrumb = categories ? 'Categories' : 'Gifts by occasion';
@@ -222,7 +238,7 @@ export function TaxonomyDirectory({
           </p>
         ) : null}
       </div>
-      {categories ? <CategoryNextSteps occasions={occasionLinks} /> : null}
+      {categories ? <CategoryNextSteps occasions={occasionLinks} search={categorySearch} /> : null}
     </section>
   );
 }

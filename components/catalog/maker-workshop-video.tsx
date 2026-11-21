@@ -17,8 +17,10 @@ export function MakerWorkshopVideo({ src, poster, caption, inline }: {
     <>
       {poster ? (
         <>
-          <Image src={poster} alt="" fill unoptimized data-media-mode="cover"
-            sizes="(min-width: 1360px) 310px, (min-width: 768px) 46vw, 100vw" className="-z-20 object-cover" />
+          <span data-media-frame="cover" className="absolute inset-0 -z-20 h-56 overflow-hidden md:h-[300px]">
+            <Image src={poster} alt="" fill unoptimized data-media-mode="cover"
+              sizes="(min-width: 1360px) 310px, (min-width: 768px) 46vw, 100vw" className="object-cover" />
+          </span>
           <span aria-hidden="true" className="absolute inset-0 -z-10 bg-[#14213D]/60" />
         </>
       ) : null}
@@ -31,18 +33,21 @@ export function MakerWorkshopVideo({ src, poster, caption, inline }: {
   return (
     <figure className="min-w-0">
       {playing ? (
-        <video
-          ref={player => { player?.focus({ preventScroll: true }); }}
-          src={src}
-          poster={poster}
-          controls
-          autoPlay
-          muted
-          playsInline
-          tabIndex={0}
-          aria-label={caption || 'Maker workshop video'}
-          className="h-56 w-full rounded-[20px] bg-[#14213D] object-contain focus-visible:outline-[#14213D] md:h-[300px]"
-        />
+        <div data-media-frame="contain" className="h-56 overflow-hidden rounded-[20px] bg-[#14213D] md:h-[300px]">
+          <video
+            ref={player => { player?.focus({ preventScroll: true }); }}
+            src={src}
+            poster={poster}
+            controls
+            autoPlay
+            muted
+            playsInline
+            tabIndex={0}
+            aria-label={caption || 'Maker workshop video'}
+            data-media-mode="contain"
+            className="size-full object-contain focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-white"
+          />
+        </div>
       ) : inline ? (
         <button type="button" className={stage} onClick={() => setPlaying(true)}>{cover}</button>
       ) : (

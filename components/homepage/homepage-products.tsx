@@ -42,13 +42,19 @@ export function HomepageProductCard({
   return (
     <article aria-label={product.name} className={styles.product + (rank ? ' ' + styles.ranked : '')}>
       <Link href={'/products/' + encodeURIComponent(product.slug)} className={styles.productLink}>
-        <div data-media-frame="cover" className={mediaFrameClass('cover', styles.photo)}>
-          <Image data-media-mode="cover" src={product.image} alt={product.imageAlt} fill sizes={rank ? rankedSizes : arrivedSizes}
-            unoptimized={product.image.startsWith('/api/')} className={mediaObjectClass('cover')} />
-          {rank ? <span className={styles.rank} aria-hidden="true">{rank}</span> : tag.label ? (
-            <span className={styles.tag} data-label={tag.tone}>{tag.label}</span>
-          ) : null}
-        </div>
+        {rank ? (
+          <div data-media-frame="cover" className={mediaFrameClass('cover', `aspect-[3/4] ${styles.photo}`)}>
+            <Image data-media-mode="cover" src={product.image} alt={product.imageAlt} fill sizes={rankedSizes}
+              unoptimized={product.image.startsWith('/api/')} className={mediaObjectClass('cover')} />
+            <span className={styles.rank} aria-hidden="true">{rank}</span>
+          </div>
+        ) : (
+          <div data-media-frame="contain" className={mediaFrameClass('contain', `aspect-square ${styles.photo}`)}>
+            <Image data-media-mode="contain" src={product.image} alt={product.imageAlt} fill sizes={arrivedSizes}
+              unoptimized={product.image.startsWith('/api/')} className={mediaObjectClass('contain')} style={{ objectFit: 'contain' }} />
+            {tag.label ? <span className={styles.tag} data-label={tag.tone}>{tag.label}</span> : null}
+          </div>
+        )}
         <h3>{product.name}</h3>
         {rank ? (
           <p>{price}{product.tradingName ? ' · ' + (product.makerName ?? product.tradingName) : null}</p>
