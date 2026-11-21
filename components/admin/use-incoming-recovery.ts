@@ -14,8 +14,8 @@ function decode(raw:string|null|undefined){if(raw===null||raw===undefined)return
 function readOutcome(value:unknown,reference:IncomingReference):IncomingOutcome|null{
  if(!object(value)||!Object.hasOwn(value,'outcome'))throw new Error('The original outcome response could not be verified.');
  if(value.outcome===null)return null;const outcome=value.outcome;if(!object(outcome)||!Number.isSafeInteger(outcome.recordedAt)||!object(outcome.entity)||typeof outcome.entity.id!=='string'||!outcome.entity.id||!['receipt','allocation','claim','order','reversal','parcel','exception'].includes(String(outcome.entity.kind)))throw new Error('The original outcome response could not be verified.');
- const expected=reference.action==='record_bank'||reference.action==='record_cash'?'receipt':reference.action==='allocate'?'allocation':reference.action==='review_claim'?'claim':reference.action==='release'?'order':reference.action==='record_reversal'?'reversal':reference.action==='reconcile_cod'?'parcel':'exception';
- if(outcome.entity.kind!==expected||['release','reconcile_cod','triage_exception'].includes(reference.action)&&outcome.entity.id!==reference.sourceId)throw new Error('The original outcome does not match its retained source.');
+ const expected=reference.action==='record_bank'||reference.action==='record_cash'?'receipt':reference.action==='allocate'?'allocation':reference.action==='review_claim'?'claim':reference.action==='release'||reference.action==='close_expired'?'order':reference.action==='record_reversal'?'reversal':reference.action==='reconcile_cod'?'parcel':'exception';
+ if(outcome.entity.kind!==expected||['release','close_expired','reconcile_cod','triage_exception'].includes(reference.action)&&outcome.entity.id!==reference.sourceId)throw new Error('The original outcome does not match its retained source.');
  return{recordedAt:Number(outcome.recordedAt),entity:{kind:expected,id:outcome.entity.id}};
 }
 /** Only opaque references survive reload. Drafts and unchanged request bodies remain in their actor-owned page memory. */

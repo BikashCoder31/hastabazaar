@@ -18,7 +18,7 @@ const icons = {
 };
 const mobileSections: readonly AdminSectionId[] = ['today', 'orders', 'sellers', 'money'];
 
-export type AdminNavigationCounts = Partial<Record<AdminSectionId, { value: number; label: string }>>;
+export type AdminNavigationCounts = Partial<Record<AdminSectionId, { value: number; label: string }>> & { bankTransfers?: number };
 
 function useAdminSections({ role, permissions }: AdminStaffAccess) {
   const pathname = usePathname();

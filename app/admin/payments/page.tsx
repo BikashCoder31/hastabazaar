@@ -4,13 +4,14 @@ import {env} from 'cloudflare:workers';
 import {requireStaffPage} from '@/lib/auth/staff';
 import {requireDatabase} from '@/lib/db/d1';
 import {getManualPaymentWorkspace,readCourierCashWorkspace} from '@/lib/payments/manual-payment-workspace';
+import {readBankTransferQueue} from '@/lib/payments/bank-transfer-queue';
 import {ManualPaymentReview} from '@/components/admin/manual-payment-review';
 import {CourierCashWorkspace} from '@/components/admin/cod-courier-cash';
 import {notFound} from 'next/navigation';
 import {safeAdminReturnTo,withAdminReturnTo} from '@/lib/admin/return-context';
 import {ManualPaymentError} from '@/lib/payments/manual-receipts';
 export const dynamic='force-dynamic';
-export default async function PaymentsPage({searchParams}:{searchParams:Promise<{order?:string;parcel?:string;remittance?:string;returnTo?:string;view?:string}>}){
+export default async function PaymentsPage({searchParams}:{searchParams:Promise<{order?:string;parcel?:string;remittance?:string;returnTo?:string;view?:string;lane?:string}>}){
  const params=await searchParams;
  if(['order','parcel','remittance'].some(key=>{const value=params[key as keyof typeof params];return value!==undefined&&typeof value!=='string';})||params.remittance&&!params.parcel||params.parcel&&!params.order)notFound();
  const focus=params.parcel!==undefined?{parcelId:params.parcel,...params.remittance!==undefined?{remittanceId:params.remittance}:{}}:undefined;
@@ -29,6 +30,11 @@ export default async function PaymentsPage({searchParams}:{searchParams:Promise<
  }
  let workspace:Awaited<ReturnType<typeof getManualPaymentWorkspace>>;
  try{workspace=await getManualPaymentWorkspace(db,viewer.id,params.order??null,focus);}catch(error){if(error instanceof ManualPaymentError&&(error.status===400||error.status===404))notFound();throw error;}
+ const queue=focus?undefined:await readBankTransferQueue(db,viewer.id,params.order);
+ if(queue&&(params.view==='incoming'||queue.orders.length>0)){
+  return <ManualPaymentReview workspace={workspace} actorId={viewer.id} superAdmin={viewer.role==='super_admin'}
+   returnTo={returnTo} bankTransfer={queue} exact={params.order!==undefined} initialLane={params.lane} canRelease={can(viewer,'order.manage')}/>;
+ }
  const query=new URLSearchParams();for(const key of ['order','parcel','remittance'] as const)if(params[key])query.set(key,params[key]!);
  if(params.view==='incoming')query.set('view','incoming');
  const currentHref=withAdminReturnTo('/admin/payments'+(query.size?'?'+query.toString():'')+(params.parcel?'#cod-parcel-'+encodeURIComponent(params.parcel):''),returnTo);

@@ -31,7 +31,10 @@ export function AdminTaskContext({
   );
   const help = getAdminPageHelp(pathname, { role, permissions }, searchParams);
   const isDetail = pathname !== guide?.href;
+  const isBankTransferWorkspace = (pathname === '/admin/payments' && searchParams.get('view') === 'incoming' && !searchParams.has('parcel'))
+    || /^\/admin\/payments\/orders\/[^/]+$/.test(pathname);
   const showBreadcrumb = !/^\/admin\/orders\/[^/]+$/.test(pathname)
+    && !isBankTransferWorkspace
     && pathname !== '/admin/products/intakes'
     && pathname !== '/admin/products/publications'
     && pathname !== '/admin/analytics'

@@ -1,4 +1,4 @@
-export const incomingActions=['record_bank','allocate','review_claim','release','record_reversal','reconcile_cod','record_cash','triage_exception'] as const;
+export const incomingActions=['record_bank','allocate','review_claim','release','close_expired','record_reversal','reconcile_cod','record_cash','triage_exception'] as const;
 export type IncomingAction=typeof incomingActions[number];
 export interface IncomingReference{version:1;actorId:string;action:IncomingAction;sourceId:string;requestId:string}
 export interface UnclaimedIncomingReference{version:0;requestId:string;claimedActorId?:string;actorMismatch?:true}
@@ -7,7 +7,7 @@ export function sameIncomingReference(left:IncomingReference,right:IncomingRefer
 const opaque=(value:unknown):value is string=>typeof value==='string'&&value.length>0&&value.length<=191&&!/[\p{Cc}]/u.test(value);
 export function isIncomingAction(value:unknown):value is IncomingAction{return incomingActions.some(action=>action===value);}
 export function incomingReference(actorId:string,action:unknown,requestId:unknown,input:Record<string,unknown>):IncomingReference{
- const field=action==='record_bank'?'accountVersionId':action==='allocate'||action==='record_reversal'?'receiptId':action==='review_claim'||action==='release'?'orderId':action==='reconcile_cod'?'jobId':'exceptionId';
+ const field=action==='record_bank'?'accountVersionId':action==='allocate'||action==='record_reversal'?'receiptId':action==='review_claim'||action==='release'||action==='close_expired'?'orderId':action==='reconcile_cod'?'jobId':'exceptionId';
  const sourceId=action==='record_cash'?requestId:input[field];
  if(!opaque(actorId)||!isIncomingAction(action)||typeof requestId!=='string'||!/^[A-Za-z0-9_-]{8,160}$/.test(requestId)||!opaque(sourceId))throw new Error('Keep the original actor, action and source reference.');
  return{version:1,actorId,action,requestId,sourceId:sourceId.trim()};

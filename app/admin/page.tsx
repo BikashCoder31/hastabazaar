@@ -6,7 +6,7 @@ import {readTodaySources,todayDecisionHistory} from '@/components/admin/overview
 import {OverviewHealth,OverviewHealthProvider} from '@/components/admin/overview-health';
 import {overviewHealthChecks} from '@/components/admin/overview-health-model';
 import {OverviewRecentDecisions} from '@/components/admin/overview-recent-decisions';
-import {readAdminReviewTasks} from '@/components/admin/admin-review-data';
+import {readAdminBankTransferCount,readAdminReviewTasks} from '@/components/admin/admin-review-data';
 import {readRecentReviewDecisions} from '@/lib/admin/recent-review-decisions';
 import {readFinanceWorkItems} from '@/lib/admin/finance-work-items';
 import {financeQueueItem,reviewTaskLabels} from '@/lib/admin/review-queue-view';
@@ -330,12 +330,20 @@ export default async function AdminDashboardPage({ searchParams }: {
   const cases = can(staff,'support.manage') ? stats ? stats.returns + stats.complaints : null : undefined;
   const auditHref = tasks.find(task => task.href === '/admin/activity')?.href;
   const checks = health ? overviewHealthChecks(health) : health;
+  const bankTransfers = can(staff, 'payment.receipt.verify') ? await readAdminBankTransferCount(database, staff.id) : null;
   return <div className="space-y-8">
     <OverviewHealthProvider key={staff.id} actorId={staff.id} initial={checks}>
       <TodayOverview actorId={staff.id} firstName={staff.displayName.trim().split(/\s+/)[0]} observedAt={now}
         returnTo={returnTo} tasks={today.rows} partialSources={[...partialSources, ...today.partial]}
         metrics={<TodayWorkSummaries orders={today.orders} courierCash={today.courierCash} cases={cases} checks={checks}/>}
         sidebar={<aside className="today-sidebar" aria-label="Operations updates">
+          {bankTransfers ? <section className="today-panel today-side-panel" aria-labelledby="today-bank-transfer-heading">
+            <div className="today-side-heading">
+              <h2 id="today-bank-transfer-heading">Bank transfers</h2>
+              <Link className="section-link inline-flex min-h-11 items-center" href="/admin/payments?view=incoming">Check bank transfers</Link>
+            </div>
+            <p className="text-sm">{count.format(bankTransfers)} {bankTransfers === 1 ? 'transfer needs' : 'transfers need'} attention.</p>
+          </section> : null}
           <OverviewOrdersByStage orders={today.orders}/>
           <OverviewHealth checks={checks} returnTo={returnTo}/>
           <OverviewRecentDecisions decisions={recentDecisions} partial={reviewDecisions===null||financeAllowed} actorId={staff.id} auditHref={auditHref}/>

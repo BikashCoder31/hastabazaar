@@ -64,6 +64,8 @@ const definitions = [
   ] },
   { id: 'money', label: 'Money', tabs: [
     { href: '/admin/payments', label: 'Courier cash' },
+    { href: '/admin/payments?view=incoming', label: 'Bank transfers', access: '/admin/payments',
+      anyPermission: ['payment.receipt.verify'], detailRoutes: ['/admin/payments/orders'] },
     { href: '/admin/payouts', label: 'Payouts', routes: ['/admin/payments/payouts'] },
     { href: '/admin/payouts/run', label: 'Payout run' },
     { href: '/admin/payments/refunds', label: 'Refunds & recoveries', fallback: '/admin/payments/recoveries',

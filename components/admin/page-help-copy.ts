@@ -44,6 +44,13 @@ const tabHelp: Readonly<Record<string, HelpCopy>> = {
     ],
   },
   '/admin/notifications?view=money-notices': moneyNoticeHelp,
+  '/admin/payments?view=incoming': {
+    title: 'How bank transfers work',
+    sentences: [
+      'Check the company bank statement for actual credit and compare it with the order and its saved deadline.',
+      'Match the money to the order and release it when the readiness checks pass. Review short, extra or unmatched credits in Problems.',
+    ],
+  },
   '/admin/sellers?workspace=directory': {
     title: 'How to use the seller directory',
     sentences: [
@@ -189,7 +196,7 @@ export function getAdminPageHelp(
   const procedureHref = permitted.find(({ href }) => href === '/admin/legal-policies/active')?.href;
 
   const current = activeAdminSection(adminSections(role, permissions), pathname, searchParams);
-  const tabCopy = current?.queryMatch ? tabHelp[current.tab.href] : undefined;
+  const tabCopy = current && (current.queryMatch || current.tab.href === '/admin/payments?view=incoming') ? tabHelp[current.tab.href] : undefined;
   if (tabCopy) return { ...tabCopy, pathname, procedureHref };
 
   const workflow = Object.keys(workflowHelp)

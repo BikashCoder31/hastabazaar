@@ -3,7 +3,7 @@ import { headers } from 'next/headers';
 import { ArrowUpRight } from 'lucide-react';
 import { env } from 'cloudflare:workers';
 import { signOutPath } from '@/app/auth';
-import { AdminAccountMenu, AdminBrand, AdminBrandMark, AdminMobileNavigation, AdminNavigation, AdminSearch } from '@/components/admin/admin-navigation';
+import { AdminAccountMenu, AdminBrand, AdminBrandMark, AdminMobileNavigation, AdminNavigation, AdminSearch, type AdminNavigationCounts } from '@/components/admin/admin-navigation';
 import { AdminSectionTabs } from '@/components/admin/admin-section-tabs';
 import { CommandSearch } from '@/components/admin/command-search';
 import { readAdminSidebarCounts } from '@/components/admin/admin-review-data';
@@ -34,7 +34,7 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
   const bindings = env as SecurityPolicyBindings & { DB?: D1Database };
   const local = bindings.HASTABAZAAR_RUNTIME_ENV === 'local_staging';
   const localMfaNotice = local && localStaffMfaFlagEnabled(bindings, requestHeaders.get('host') ?? '');
-  const counts = bindings.DB ? await readAdminSidebarCounts(bindings.DB, staff).catch(() => ({})) : {};
+  const counts: AdminNavigationCounts = bindings.DB ? await readAdminSidebarCounts(bindings.DB, staff).catch(() => ({})) : {};
   const account = { name: staff.displayName, role: staff.role, signOut: signOutPath('/'), procedure };
   return (
     <div className="admin-shell">
@@ -72,7 +72,7 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
             <AdminMobileNavigation {...access} counts={counts} account={account} />
           </header>
           <CommandSearch key={staff.id} actorId={staff.id} />
-          <AdminSectionTabs {...access} />
+          <AdminSectionTabs {...access} bankTransfers={counts.bankTransfers} />
           <main
             key={`${staff.id}:${staff.role}:${staff.permissions?.slice().sort().join(',') ?? 'default'}`}
             tabIndex={-1}

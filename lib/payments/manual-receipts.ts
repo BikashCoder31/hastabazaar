@@ -2,7 +2,7 @@ import {actualManualReceiptUseSql} from './receipt-use-accounting';
 import {actualRecoveryAllocationSql} from './recovery-receipt-accounting';
 import {prepareInitialResponseNotices} from '../orders/response-notifications';
 import {preparePaymentException} from './payment-exceptions';
-import {preparePaidManualRelease,expireManualPaymentOrder} from './manual-payment-lifecycle';
+import {preparePaidManualRelease,expireManualPaymentOrder,guidedReleaseKey,prepareManualPaymentExpiry} from './manual-payment-lifecycle';
 import {getCompanyPaymentInstruction} from './company-accounts';
 import {staffMutationGuard} from '../db/repositories/staff-mutation-guard';
 import {commandReceipt,type CommandContext} from '../workflows/contracts';
@@ -20,8 +20,8 @@ const id=(value:string)=>text(value,1,160,'record identity');
 function guard(db:D1Database,predicate:string,values:unknown[]=[]){const key=crypto.randomUUID();return[db.prepare(`INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN ${predicate} THEN 1 ELSE 0 END`).bind(key,...values),db.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(key)];}
 function changed(db:D1Database){return guard(db,'changes()=1');}
 async function owner(db:D1Database,actorId:string,orderId:string){const predicate="EXISTS(SELECT 1 FROM orders o JOIN users u ON u.id=o.customer_id WHERE o.id=? AND u.id=? AND u.status='active')";if(!(await db.prepare('SELECT 1 WHERE '+predicate).bind(orderId,actorId).first()))throw new PaymentAuthorityError('Only the signed-in order owner can access this payment claim.');return guard(db,predicate,[orderId,actorId]);}
-async function command(db:D1Database,context:ClaimReleaseContext,action:string,subjectId:string,payload:unknown,authority:D1PreparedStatement[]){
- const source={action:'manual.payment.'+action,subjectType:'manual_payment',subjectId},receipt=await commandReceipt(db,context,source,payload);
+async function command(db:D1Database,context:ClaimReleaseContext,action:string,subjectId:string,payload:unknown,authority:D1PreparedStatement[],auditReason?:string){
+ const source={action:'manual.payment.'+action,subjectType:'manual_payment',subjectId,auditReason},receipt=await commandReceipt(db,context,source,payload);
  const scoped=action==='claim.submitted'?'claim':action==='fulfillment.released'?'release':null;
  if(scoped){authority.push(...await claimReleaseAuthority(db,context,subjectId,scoped));if(receipt.replayed&&context.authSubject!==undefined)await requireClaimReleaseProof(db,context,subjectId,scoped);}
  return {receipt,async commit<T>(statements:D1PreparedStatement[],result:T):Promise<T>{if(receipt.replayed)return receipt.result as T;const proof=scoped?await claimReleaseProofStatement(db,context,subjectId,scoped):[];try{await db.batch([...authority,...statements,receipt.insert(result),...proof]);return result;}catch(error){const replay=await commandReceipt(db,context,source,payload);if(replay.replayed){if(scoped&&context.authSubject!==undefined)await requireClaimReleaseProof(db,context,subjectId,scoped);return replay.result as T;}if(/constraint|manual_.*(?:required|changed|closed|exceeded|immutable)|staff_permission_guards/i.test(String(error)))throw new ManualPaymentError('The current authority, receipt balance or order changed. Keep the original request and check its saved outcome.');throw error;}}};
@@ -53,11 +53,27 @@ export async function reviewPaymentClaim(db:D1Database,context:CommandContext,in
 }
 export async function releasePaidManualOrder(db:D1Database,context:ClaimReleaseContext,input:{orderId:string;reason:string}){return withClaimReleaseAuthority(db,context,input.orderId,'release',()=>releasePaidManualOrderNative(db,context,input));}
 async function releasePaidManualOrderNative(db:D1Database,context:ClaimReleaseContext,input:{orderId:string;reason:string}){
- const authority=await staffMutationGuard(db,context.actorId,'order.manage',PaymentAuthorityError),cmd=await command(db,context,'fulfillment.released',id(input.orderId),input,authority.statements);if(cmd.receipt.replayed)return cmd.receipt.result as {orderId:string};text(input.reason,10,1000,'release reason');
+ const authority=await staffMutationGuard(db,context.actorId,'order.manage',PaymentAuthorityError),reason=text(input.reason,10,1000,'release reason'),cmd=await command(db,context,'fulfillment.released',id(input.orderId),input,authority.statements,reason);if(cmd.receipt.replayed)return cmd.receipt.result as {orderId:string};
  const row=await windowRow(db,input.orderId);if(context.expectedRevision!==String(row.revision)||row.paidAt===null||row.releasedAt!==null||row.closedAt!==null)throw new ManualPaymentNotAppliedError('Refresh the current paid-order release state.');
  if(context.actorId===row.customerId)throw new PaymentAuthorityError('An independent eligible operator must release your order.');
- const [release,confirm]=preparePaidManualRelease(db,row.orderId),eventId=crypto.randomUUID(),clock=checkoutCommitClock(db);
- return cmd.commit([db.prepare('UPDATE orders SET updated_at=updated_at WHERE id=?').bind(row.orderId),...changed(db),...guard(db,'EXISTS(SELECT 1 FROM manual_payment_windows WHERE order_id=? AND revision=?)',[row.orderId,row.revision]),release,...changed(db),confirm,db.prepare('UPDATE manual_payment_windows SET revision=revision+1,last_event_id=? WHERE order_id=?').bind(eventId,row.orderId),db.prepare(`UPDATE manual_payment_exceptions SET state='resolved',revision=revision+1,last_event_id=?,updated_at=${clock} WHERE source_key=? AND state<>'resolved'`).bind(eventId,'release:'+row.orderId),...await notice(db,context,row.orderId,eventId,'released')],{orderId:row.orderId});
+ const [release,...followup]=preparePaidManualRelease(db,row.orderId,true),eventId=crypto.randomUUID(),clock=checkoutCommitClock(db);
+ return cmd.commit([db.prepare('UPDATE orders SET updated_at=updated_at WHERE id=?').bind(row.orderId),...changed(db),...guard(db,'EXISTS(SELECT 1 FROM manual_payment_windows WHERE order_id=? AND revision=?)',[row.orderId,row.revision]),release,...changed(db),...followup,...await prepareInitialResponseNotices(db,row.orderId),db.prepare('UPDATE manual_payment_windows SET revision=revision+1,last_event_id=? WHERE order_id=?').bind(eventId,row.orderId),db.prepare(`UPDATE manual_payment_exceptions SET state='resolved',revision=revision+1,last_event_id=?,updated_at=${clock} WHERE source_key IN (?,?) AND state<>'resolved'`).bind(eventId,'release:'+row.orderId,guidedReleaseKey(row.orderId)),...await notice(db,context,row.orderId,eventId,'released')],{orderId:row.orderId});
+}
+
+export async function closeExpiredBankOrder(db:D1Database,context:CommandContext,input:{orderId:string;reason:string}){
+ const authority=await staffMutationGuard(db,context.actorId,'payment.receipt.verify',PaymentAuthorityError,'super_admin');
+ const orderId=id(input.orderId),reason=text(input.reason,10,1000,'closure reason');
+ const cmd=await command(db,context,'window.closed',orderId,input,authority.statements,reason);
+ if(cmd.receipt.replayed)return cmd.receipt.result as {orderId:string};
+ const row=await windowRow(db,orderId),clock=checkoutCommitClock(db);
+ if(context.expectedRevision!==String(row.revision)||row.closedAt!==null||row.paidAt!==null||row.receivedPaisa!==0)
+  throw new ManualPaymentNotAppliedError('Refresh the original order and verified money before closing it.');
+ const expiry=await prepareManualPaymentExpiry(db,orderId,{actorId:context.actorId,reason});
+ if(expiry.state!=='ready')throw new ManualPaymentNotAppliedError('The original payment window has not expired or its state changed.');
+ return cmd.commit([
+  ...guard(db,`EXISTS(SELECT 1 FROM manual_payment_cutoffs w JOIN manual_payment_balances b ON b.order_id=w.order_id WHERE w.order_id=? AND w.revision=? AND w.cutoff_at<=${clock} AND w.paid_at IS NULL AND w.closed_at IS NULL AND b.received_paisa=0)`,[orderId,row.revision]),
+  ...expiry.statements,
+ ],{orderId});
 }
 export async function submitPaymentClaim(db:D1Database,context:ClaimReleaseContext,input:PaymentClaimInput){return withClaimReleaseAuthority(db,context,input.orderId,'claim',()=>submitPaymentClaimNative(db,context,input));}
 async function submitPaymentClaimNative(db:D1Database,context:ClaimReleaseContext,input:PaymentClaimInput){
@@ -94,9 +110,10 @@ export async function recordBankReceipt(db:D1Database,context:CommandContext,inp
  return cmd.commit(statements,{id:receiptId,revision:0});
 }
 
-export interface AllocateReceiptInput{receiptId:string;orderId:string;amountPaisa:number;expectedWindowRevision:number;matchingBasis:string;exceptionApproval:null|{reason:string;evidenceReference:string;customerAuthorityConfirmed?:boolean};}
+export interface AllocateReceiptInput{receiptId:string;orderId:string;amountPaisa:number;expectedWindowRevision:number;matchingBasis:string;exceptionApproval:null|{reason:string;evidenceReference:string;customerAuthorityConfirmed?:boolean};deferRelease?:true;}
 export async function allocateBankReceipt(db:D1Database,context:CommandContext,input:AllocateReceiptInput){
- const authority=await staffMutationGuard(db,context.actorId,'payment.receipt.verify',PaymentAuthorityError,input.exceptionApproval?'super_admin':undefined),cmd=await command(db,context,'receipt.allocated',id(input.receiptId),input,authority.statements);if(cmd.receipt.replayed)return cmd.receipt.result as {id:string;orderId:string;receiptId:string};
+ if(input.deferRelease!==undefined&&input.deferRelease!==true)throw new ManualPaymentNotAppliedError('Choose a supported release option.',400);
+ const authority=await staffMutationGuard(db,context.actorId,'payment.receipt.verify',PaymentAuthorityError,input.exceptionApproval||input.deferRelease?'super_admin':undefined),cmd=await command(db,context,'receipt.allocated',id(input.receiptId),input,authority.statements);if(cmd.receipt.replayed)return cmd.receipt.result as {id:string;orderId:string;receiptId:string};
  const amount=money(input.amountPaisa),basis=text(input.matchingBasis,10,1000,'independent matching rationale');if(!/[A-Za-z\p{L}]/u.test(basis))throw new ManualPaymentError('Matching requires independent context, not the amount alone.',400);
  const row=await windowRow(db,id(input.orderId)),clock=checkoutCommitClock(db);if(row.revision!==input.expectedWindowRevision||row.paidAt!==null||row.closedAt!==null||context.now>=row.cutoffAt)throw new ManualPaymentError('The payment window changed or closed. Retain the actual receipt for exception review; do not reopen this order.');
  if(amount>row.duePaisa-row.receivedPaisa)throw new ManualPaymentError('Allocate only the remaining order balance; retain any excess as unallocated company money.');
@@ -114,7 +131,8 @@ export async function allocateBankReceipt(db:D1Database,context:CommandContext,i
  if(!input.exceptionApproval)statements.push(...guard(db,"EXISTS(SELECT 1 FROM company_payment_account_current c JOIN company_payment_account_versions v ON v.id=c.version_id WHERE c.version_id=? AND v.status='verified')",[row.accountVersionId]));
  statements.push(db.prepare(`INSERT INTO manual_receipt_uses(id,receipt_id,kind,target_id,amount_minor,state,created_by,created_at) VALUES(?,?,'order',?,?,'allocated',?,${clock})`).bind(useId,input.receiptId,row.orderId,amount,context.actorId),db.prepare(`INSERT INTO manual_payment_allocations(id,receipt_use_id,receipt_id,order_id,amount_paisa,allocated_at,actor_id,matching_basis,exception_json) VALUES(?,?,?,?,?,${clock},?,?,?)`).bind(allocationId,useId,input.receiptId,row.orderId,amount,context.actorId,basis,input.exceptionApproval?JSON.stringify(input.exceptionApproval):null),db.prepare(`UPDATE manual_payment_windows SET revision=revision+1,last_event_id=?${fullyPaid?`,paid_at=${clock}`:''} WHERE order_id=? AND revision=?`).bind(eventId,row.orderId,row.revision),...changed(db));
  if(fullyPaid)statements.push(db.prepare(`UPDATE orders SET payment_status='paid',updated_at=${clock} WHERE id=? AND payment_status='unpaid'`).bind(row.orderId),...changed(db),db.prepare(`UPDATE payments SET status='captured',updated_at=${clock} WHERE order_id=? AND provider='manual_bank' AND status='pending'`).bind(row.orderId),...changed(db));
- if(fullyPaid)statements.push(...preparePaidManualRelease(db,row.orderId),...await prepareInitialResponseNotices(db,row.orderId),...await preparePaymentException(db,{sourceKey:'release:'+row.orderId,orderId:row.orderId,receiptId:input.receiptId,kind:'fulfillment_release',reason:'Funds are verified. Review existing-order readiness without asking the customer to pay again.',ownerId:context.actorId,now:context.now,predicate:'EXISTS(SELECT 1 FROM manual_payment_windows WHERE order_id=? AND paid_at IS NOT NULL AND released_at IS NULL)',values:[row.orderId]}));
+ if(fullyPaid&&!input.deferRelease)statements.push(...preparePaidManualRelease(db,row.orderId),...await prepareInitialResponseNotices(db,row.orderId));
+ if(fullyPaid)statements.push(...await preparePaymentException(db,{sourceKey:input.deferRelease?guidedReleaseKey(row.orderId):'release:'+row.orderId,orderId:row.orderId,receiptId:input.receiptId,kind:'fulfillment_release',reason:'Funds are verified. Review existing-order readiness without asking the customer to pay again.',ownerId:context.actorId,now:context.now,predicate:'EXISTS(SELECT 1 FROM manual_payment_windows WHERE order_id=? AND paid_at IS NOT NULL AND released_at IS NULL)',values:[row.orderId]}));
  statements.push(db.prepare(`UPDATE manual_payment_exceptions SET state='resolved',revision=revision+1,last_event_id=?,updated_at=${clock} WHERE source_key=? AND state<>'resolved' AND EXISTS(SELECT 1 FROM company_money_receipts r WHERE r.id=? AND r.amount_minor-COALESCE((SELECT SUM(reversed.amount_minor) FROM company_receipt_reversals reversed WHERE reversed.receipt_id=r.id),0)=(COALESCE((SELECT SUM(${actualManualReceiptUseSql('u')}) FROM manual_receipt_uses u WHERE u.receipt_id=r.id AND u.state IN('allocated','returned')),0)+COALESCE((SELECT SUM(${actualRecoveryAllocationSql('recovery_use')}) FROM seller_recovery_allocations recovery_use WHERE recovery_use.receipt_id=r.id),0)))`).bind(eventId,'receipt:'+input.receiptId,input.receiptId));
  // The previously committed cutoff is authoritative. This allocation cannot create its own buffer if the batch crosses that cutoff.
  statements.push(...guard(db,`${clock}<?`,[row.cutoffAt]),...await notice(db,context,row.orderId,eventId,fullyPaid?'paid_review_release':'partial_payment_received'));
