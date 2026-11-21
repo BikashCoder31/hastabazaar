@@ -12,9 +12,11 @@ import type {ProductPublication} from './publication-contract';
 import type {ProductPriceRevisionInput} from './price-revision';
 import {maximumProductSubmissionBytes} from './submission';
 import {operationalBusinessNotificationStatements} from '../operations/business-notifications';
+import { isPackedWeightGrams, packedWeightRange } from '../shipping/packed-weight';
+import { packedWeightSchemaAvailable } from '../shipping/packed-weight-storage';
 
-export interface IntakeSnapshot{priceRequest?:{requestId:string;expectedRevision:string|null;input:ProductPriceRevisionInput};formContext?:IntakeFormContext|null;categoryId:string|null;answers:ProductDetailAnswers;offers:OfferMatrix;mediaIds:string[];privateReview:Partial<Record<'originEvidenceReference'|'licenceReference'|'note',string>>}
-export interface WorkspaceInput extends Omit<IntakeSnapshot,'answers'|'offers'|'privateReview'|'formContext'|'priceRequest'>{draftId:string|null;sellerId:string;answers:unknown;offers:unknown;privateReview:unknown;formContext?:unknown}
+export interface IntakeSnapshot{priceRequest?:{requestId:string;expectedRevision:string|null;input:ProductPriceRevisionInput};formContext?:IntakeFormContext|null;categoryId:string|null;answers:ProductDetailAnswers;offers:OfferMatrix;mediaIds:string[];privateReview:Partial<Record<'originEvidenceReference'|'licenceReference'|'note',string>>;packedWeightGrams?:number|null}
+export interface WorkspaceInput extends Omit<IntakeSnapshot,'answers'|'offers'|'privateReview'|'formContext'|'priceRequest'|'packedWeightGrams'>{draftId:string|null;sellerId:string;answers:unknown;offers:unknown;privateReview:unknown;formContext?:unknown;packedWeightGrams?:unknown}
 type WorkspaceResult={id:string;revision:number;versionId:string};
 function privateReview(raw:unknown):IntakeSnapshot['privateReview']{
  if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.entries(raw).some(([key,value])=>!['originEvidenceReference','licenceReference','note'].includes(key)||typeof value!=='string'||value.length>4000))throw new CategoryContractError('Keep only supported product-review notes here. Private pricing uses its separate owner controls.',400);return structuredClone(raw) as IntakeSnapshot['privateReview'];
@@ -35,13 +37,22 @@ async function readiness(db:D1Database,snapshot:IntakeSnapshot,draftId:string){
  const publication=[...result.publication,...offerIssues];return {...result,categoryVersionId:category.versionId,publication,publicationReady:publication.length===0,reviewReady:publication.every(issue=>issue.code==='eligibility'),orderingFactsReady:publication.length===0&&result.ordering.length===0};
 }
 export async function prepareProductWorkspace(db:D1Database,ctx:CommandContext,input:WorkspaceInput){
- if(!input||Object.keys(input).some(key=>!['draftId','sellerId','categoryId','answers','offers','mediaIds','privateReview','formContext'].includes(key)))throw new CategoryContractError('Use supported product workspace fields only.',400);
+ if(!input||Object.keys(input).some(key=>!['draftId','sellerId','categoryId','answers','offers','mediaIds','privateReview','formContext','packedWeightGrams'].includes(key)))throw new CategoryContractError('Use supported product workspace fields only.',400);
  const offers=retainOfferMatrix(input.offers),mediaIds=retainedMediaIds(input.mediaIds),review=privateReview(input.privateReview),details=await prepareProductIntakeDraft(db,{...ctx,requestId:await digestFormRequest(['workspace-details',ctx.requestId])},{draftId:input.draftId,sellerId:input.sellerId,categoryId:input.categoryId,answers:input.answers});
  const form=await retainProductFormContext(db,input.formContext);
  const payload={...input,offers,mediaIds,privateReview:review},source={action:'product.workspace.saved',subjectType:'product_intake',subjectId:input.draftId??'new'},receipt=await commandReceipt(db,ctx,source,payload);
  if(receipt.replayed)return {result:receipt.result as WorkspaceResult,statements:[] as D1PreparedStatement[],replayed:true,source,payload};
  if(details.replayed)throw new CategoryContractError('The paired workspace outcome needs reconciliation; keep and retry the original request.',503);
- const snapshot:IntakeSnapshot={formContext:form.context,categoryId:input.categoryId,answers:details.payload.answers,offers,mediaIds,privateReview:review},versionId=crypto.randomUUID(),result={...details.result,versionId},existing=await db.prepare('SELECT version_id FROM product_intake_workspace_heads WHERE draft_id=?').bind(result.id).first();
+ const versionId=crypto.randomUUID(),result={...details.result,versionId};
+ const existing=await db.prepare('SELECT v.snapshot_json AS snapshot FROM product_intake_workspace_heads h JOIN product_intake_workspace_versions v ON v.id=h.version_id WHERE h.draft_id=?').bind(result.id).first<{snapshot:string}>();
+ const earlier=existing?JSON.parse(existing.snapshot) as IntakeSnapshot:null;
+ let packedWeightGrams=earlier?.packedWeightGrams;
+ if(input.packedWeightGrams!==undefined && await packedWeightSchemaAvailable(db)){
+  if(input.packedWeightGrams!==null&&!isPackedWeightGrams(input.packedWeightGrams))throw new CategoryContractError(packedWeightRange,400);
+  packedWeightGrams=input.packedWeightGrams;
+ }
+ const snapshot:IntakeSnapshot={formContext:form.context,categoryId:input.categoryId,answers:details.payload.answers,offers,mediaIds,privateReview:review,
+  ...(packedWeightGrams===undefined?{}:{packedWeightGrams})};
  const statements=[...details.statements,...form.statements,...await mediaGuard(db,result.id,ctx.actorId,mediaIds),db.prepare('INSERT INTO product_intake_workspace_versions(id,draft_id,revision,snapshot_json,created_by,created_at) VALUES(?,?,?,?,?,?)').bind(versionId,result.id,result.revision,JSON.stringify(snapshot),ctx.actorId,ctx.now),existing?db.prepare('UPDATE product_intake_workspace_heads SET version_id=? WHERE draft_id=?').bind(versionId,result.id):db.prepare('INSERT INTO product_intake_workspace_heads(draft_id,version_id) VALUES(?,?)').bind(result.id,versionId),receipt.insert(result)];
  return {result,statements,replayed:false,source,payload};
 }
@@ -52,7 +63,7 @@ export async function saveProductWorkspace(db:D1Database,ctx:CommandContext,inpu
 const caseColumns='id AS caseId,cycle_number AS cycleNumber,version_id AS versionId,revision,state,first_requested_at AS firstRequestedAt,triage_due_at AS triageDueAt,triaged_at AS triagedAt,first_complete_at AS firstCompleteAt,review_due_at AS reviewDueAt,first_reviewed_at AS firstReviewedAt,last_event_id AS lastEventId,active_proposal_id AS activeProposalId';
 type IntakeCase={caseId:string;cycleNumber:number;versionId:string;revision:number;state:string;firstRequestedAt:number;triageDueAt:number;triagedAt:number|null;firstCompleteAt:number|null;reviewDueAt:number|null;firstReviewedAt:number|null;lastEventId:string;activeProposalId:string|null};
 export async function getProductWorkspace(db:D1Database,actorId:string,id:string){
- const draft=await getProductIntakeDraft(db,actorId,id),head=await db.prepare('SELECT v.id,v.revision,v.created_at AS savedAt,v.snapshot_json AS snapshot FROM product_intake_workspace_heads h JOIN product_intake_workspace_versions v ON v.id=h.version_id WHERE h.draft_id=?').bind(id).first<{id:string;revision:number;savedAt:number;snapshot:string}>(),saved=head?JSON.parse(head.snapshot) as IntakeSnapshot:null,snapshot:IntakeSnapshot={formContext:saved?.formContext??null,categoryId:draft.categoryId,answers:draft.answers,offers:saved?.offers??{axes:[],offers:[]},mediaIds:saved?.mediaIds??[],privateReview:saved?.privateReview??{}};
+ const draft=await getProductIntakeDraft(db,actorId,id),head=await db.prepare('SELECT v.id,v.revision,v.created_at AS savedAt,v.snapshot_json AS snapshot FROM product_intake_workspace_heads h JOIN product_intake_workspace_versions v ON v.id=h.version_id WHERE h.draft_id=?').bind(id).first<{id:string;revision:number;savedAt:number;snapshot:string}>(),saved=head?JSON.parse(head.snapshot) as IntakeSnapshot:null,snapshot:IntakeSnapshot={formContext:saved?.formContext??null,categoryId:draft.categoryId,answers:draft.answers,offers:saved?.offers??{axes:[],offers:[]},mediaIds:saved?.mediaIds??[],privateReview:saved?.privateReview??{},...(saved?.packedWeightGrams===undefined?{}:{packedWeightGrams:saved.packedWeightGrams})};
  const work=await db.prepare(`SELECT ${caseColumns} FROM product_intake_cases WHERE draft_id=? ORDER BY cycle_number DESC LIMIT 1`).bind(id).first<IntakeCase>(),frozen=work?await db.prepare('SELECT snapshot_json AS snapshot,kind FROM product_intake_workspace_versions WHERE id=? AND draft_id=?').bind(work.versionId,id).first<{snapshot:string;kind:'private'|'review_only'}>():null;
  const uploads=(await db.prepare('SELECT id,mime_type AS mimeType,size_bytes AS sizeBytes,original_name AS originalName,request_id AS requestId,state,completed_at AS completedAt FROM product_intake_media WHERE draft_id=? AND owner_id=? ORDER BY created_at,id').bind(id,actorId).all<{id:string;mimeType:string;sizeBytes:number;originalName:string;requestId:string;state:'uploading'|'ready';completedAt:number|null}>()).results;
  const proposal=work?.activeProposalId?await db.prepare("SELECT id,base_version_id AS baseVersionId,patch_json AS patch,source_note AS sourceNote,created_at AS createdAt FROM product_intake_proposals WHERE id=? AND case_id=? AND state='pending'").bind(work.activeProposalId,work.caseId).first<{id:string;baseVersionId:string;patch:string;sourceNote:string;createdAt:number}>():null;

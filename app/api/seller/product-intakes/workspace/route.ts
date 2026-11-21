@@ -22,9 +22,9 @@ export async function POST(request:Request){
  try{const owner=await requireSellerCenterApi();if(!owner.sellerId)throw new CategoryContractError('Save the registration information you have first so this private draft has its owner reference.');
  const body=await readBoundedJsonObject(request),ctx=intakeCommand(body,owner.userId,request),db=requireDatabase(env as unknown as {DB?:D1Database});
  if(body.action==='save'){
-  closedIntakeFields(body,['action','requestId','expectedRevision','draftId','categoryId','answers','offers','mediaIds','privateReview','formContext']);
+  closedIntakeFields(body,['action','requestId','expectedRevision','draftId','categoryId','answers','offers','mediaIds','privateReview','formContext','packedWeightGrams']);
   if(!(body.draftId===null||intakeId(body.draftId))||!(body.categoryId===null||typeof body.categoryId==='string'&&body.categoryId.length<=160)||!Array.isArray(body.mediaIds))throw new CategoryContractError('Use the saved draft and supported category/media references.',400);
-  return intakeReply(await saveProductWorkspace(db,ctx,{draftId:body.draftId,sellerId:owner.sellerId,categoryId:body.categoryId,answers:body.answers,offers:body.offers,mediaIds:body.mediaIds as string[],privateReview:body.privateReview,...(body.formContext!==undefined?{formContext:body.formContext}:{})}));
+  return intakeReply(await saveProductWorkspace(db,ctx,{draftId:body.draftId,sellerId:owner.sellerId,categoryId:body.categoryId,answers:body.answers,offers:body.offers,mediaIds:body.mediaIds as string[],privateReview:body.privateReview,...(body.formContext!==undefined?{formContext:body.formContext}:{}),...(body.packedWeightGrams!==undefined?{packedWeightGrams:body.packedWeightGrams}:{})}));
  }
  if(body.action==='send'){
   closedIntakeFields(body,['action','requestId','expectedRevision','draftId','versionId','intent','note','replaceVersionId','expectedCaseRevision','expectedCaseId']);

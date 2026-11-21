@@ -1,4 +1,5 @@
 import type { NepalAddress } from '@/lib/shipping/provider';
+import { packedWeightSchemaAvailable } from '@/lib/shipping/packed-weight-storage';
 
 export const dispatchLanes = [
   { id: 'ready', label: 'Ready for pickup' },
@@ -25,6 +26,7 @@ type DispatchRow = {
   jobId: string | null;
   version: number | null;
   codDuePaisa: number | null;
+  packedWeightGrams?: number | null;
   paymentMode: string;
   courierName: string | null;
   trackingNumber: string | null;
@@ -47,6 +49,7 @@ export type DispatchParcel = Pick<
   | 'jobId'
   | 'version'
   | 'codDuePaisa'
+  | 'packedWeightGrams'
   | 'courierName'
   | 'trackingNumber'
   | 'pickupStart'
@@ -90,6 +93,7 @@ export async function readDispatchParcels(
   db: D1Database,
   target?: { orderId: string; sellerId: string },
 ) {
+  const weightsAvailable = await packedWeightSchemaAvailable(db);
   const rows = await db
     .prepare(`WITH portions AS (
     SELECT i.order_id,i.seller_id,MIN(i.id) AS firstItem,COUNT(*) AS itemCount,
@@ -109,6 +113,7 @@ export async function readDispatchParcels(
       o.shipping_address_json AS addressJson,a.id AS pickupAddressId,a.locality AS pickupLocality,
       a.municipality AS pickupMunicipality,a.district AS pickupDistrict,
       j.id AS jobId,p.version,p.cod_due_paisa AS codDuePaisa,o.payment_mode AS paymentMode,o.placed_at AS placedAt,
+      ${weightsAvailable ? 'w.weight_grams AS packedWeightGrams,' : ''}
       COALESCE(p.courier_name,d.courier_name) AS courierName,
       COALESCE(j.tracking_code,d.tracking_reference,s.tracking_code) AS trackingNumber,
       j.pickup_window_start AS pickupStart,j.pickup_window_end AS pickupEnd,
@@ -137,6 +142,7 @@ export async function readDispatchParcels(
     LEFT JOIN seller_operational_addresses a ON a.seller_id=portion.seller_id AND a.purpose='pickup'
     LEFT JOIN shipping_jobs j ON j.order_id=o.id AND j.seller_id=portion.seller_id AND j.direction='outbound'
     LEFT JOIN shipping_parcels p ON p.shipping_job_id=j.id
+    ${weightsAvailable ? 'LEFT JOIN seller_parcel_weights w ON w.order_id=o.id AND w.seller_id=portion.seller_id AND w.item_count=portion.itemCount' : ''}
     LEFT JOIN delivery_assignments d ON d.order_id=o.id AND p.shipping_job_id IS NULL
     LEFT JOIN shipments s ON j.id IS NULL AND s.id=(SELECT legacy.id FROM shipments legacy
       WHERE legacy.order_id=o.id ORDER BY legacy.updated_at DESC,legacy.id DESC LIMIT 1)

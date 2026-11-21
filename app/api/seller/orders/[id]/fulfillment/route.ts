@@ -9,6 +9,7 @@ import { requireSellerApi, SellerAuthorizationError, type SellerUser } from '@/l
 import { requireDatabase } from '@/lib/db/d1';
 import {
   FulfillmentConflictError,
+  PackedParcelWeightError,
   transitionSellerFulfillment,
   type SellerFulfillmentAction,
 } from '@/lib/db/repositories/fulfillment';
@@ -34,7 +35,7 @@ export async function POST(
     if(hasActorIntentMismatch(request,seller.userId))throw new SellerAuthorizationError('The signed-in seller changed. Reopen this order.',403);
     const { id } = await context.params;
     const body = await readBoundedJsonObject(request);
-    if(Object.keys(body).some(k=>!['action','note','requestId','itemIds'].includes(k))||typeof body.requestId!=='string'||!/^[a-zA-Z0-9:_-]{1,150}$/.test(body.requestId)||!Array.isArray(body.itemIds)||body.itemIds.some(id=>typeof id!=='string'))return json({error:'Refresh and keep the exact selected items and request reference.'},400);
+    if(Object.keys(body).some(k=>!['action','note','requestId','itemIds','packedParcelWeightGrams'].includes(k))||typeof body.requestId!=='string'||!/^[a-zA-Z0-9:_-]{1,150}$/.test(body.requestId)||!Array.isArray(body.itemIds)||body.itemIds.some(id=>typeof id!=='string'))return json({error:'Refresh and keep the exact selected items and request reference.'},400);
     const action = body.action as SellerFulfillmentAction;
     if (!['start_packing', 'ready_for_pickup'].includes(action)) return json({ error: 'Invalid fulfilment action.' }, 400);
     const note = typeof body.note === 'string' ? body.note.trim() : '';
@@ -54,6 +55,7 @@ export async function POST(
         note,
         requestId: body.requestId,
         itemIds:body.itemIds as string[],
+        packedParcelWeightGrams: body.packedParcelWeightGrams,
         now: Date.now(), originalProof:original.atomic,
       },
     );
@@ -64,6 +66,7 @@ export async function POST(
   } catch (error) {
     if(originalActor)try{await confirmActor(request,originalActor);}catch{ return json({error:'Seller access changed. Reopen this order.'},403);}
     if (error instanceof SellerAuthorizationError) return json({ error: error.message }, error.status);
+    if (error instanceof PackedParcelWeightError) return json({ error: error.message, ...reference, recorded: false, phase: 'before_write' }, 400);
     if (error instanceof FulfillmentConflictError) return json({ error: error.message, ...(reference?{...reference,recorded:false,...(beforeWrite?{phase:'before_write'}:{})}:{}) }, 409);
     if(error instanceof Error&&(/constraint|order_.*held|Request reference was already used/.test(error.message)))return json({error:'The selected scope, hold or saved request changed. Keep your selection and refresh the current order.'},409);
     if (error instanceof SyntaxError) return json({ error: 'Invalid request.' }, 400);

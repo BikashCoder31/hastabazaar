@@ -25,6 +25,8 @@ import { buildFormAnswerInsert } from './form-answers';
 import { digestFormRequest } from '@/lib/forms/submission';
 import type { FormAnswerSnapshot } from '@/lib/forms/types';
 import { companyDetails } from '@/lib/content/company-details';
+import { isPackedWeightGrams, packedWeightRange } from '@/lib/shipping/packed-weight';
+import { packedParcelWeightStatement, packedWeightSchemaAvailable } from '@/lib/shipping/packed-weight-storage';
 
 export type ItemFulfillmentStatus =
   | 'confirmed'
@@ -38,6 +40,7 @@ export type SellerFulfillmentAction = 'start_packing' | 'ready_for_pickup';
 export type AdminFulfillmentAction = 'dispatch' | 'deliver' | 'cancel';
 
 export class FulfillmentConflictError extends Error {}
+export class PackedParcelWeightError extends Error {}
 
 export interface FulfillmentItem {
   offerSnapshot?:OrderOfferSnapshot|null;
@@ -307,6 +310,7 @@ const sellerActions: Record<
 type PreparationInput = {
   orderId: string; sellerId: string; actorId: string; action: SellerFulfillmentAction;
   note: string; requestId: string; now: number; itemIds?:readonly string[]; originalProof?:AtomicActionProof;
+  packedParcelWeightGrams?: unknown;
 };
 
 export async function transitionSellerFulfillment(database: D1Database, options: PreparationInput): Promise<void> {
@@ -377,23 +381,22 @@ export async function transitionCompanyPreparation(database: D1Database, options
 
 async function transitionPreparation(
   database: D1Database,
-  options: {
-    orderId: string;
-    sellerId: string;
-    actorId: string;
-    action: SellerFulfillmentAction;
-    note: string;
-    requestId: string;
-    now: number;
-    itemIds?:readonly string[];
-    originalProof?:AtomicActionProof;
-  },
+  options: PreparationInput,
   company?: { guards: readonly D1PreparedStatement[]; action: string; catalogDigest: string },
 ): Promise<void> {
   const definition=sellerActions[options.action];if(!definition||!/^[a-zA-Z0-9:_-]{1,150}$/.test(options.requestId)||options.note.length>500||options.itemIds&&(!options.itemIds.length||options.itemIds.length>100||new Set(options.itemIds).size!==options.itemIds.length||options.itemIds.some(id=>typeof id!=='string'||id.length>160)))throw new FulfillmentConflictError('Review the exact items and request reference.');
   const authoritySql="EXISTS(SELECT 1 FROM seller_profiles s JOIN users u ON u.id=s.user_id WHERE s.id=? AND u.id=? AND u.status='active')";
   if(!company&&!await database.prepare('SELECT 1 WHERE '+authoritySql).bind(options.sellerId,options.actorId).first())throw new FulfillmentConflictError('Only the active owner of this seller portion can prepare these items.');
-  const receipt=company?null:await commandReceipt(database,{actorId:options.actorId,requestId:options.requestId,expectedRevision:null,now:options.now},{action:'order.preparation.command',subjectType:'order',subjectId:options.orderId},{sellerId:options.sellerId,action:options.action,note:options.note.trim(),itemIds:options.itemIds?[...options.itemIds].sort():null});if(receipt?.replayed){if(options.originalProof)throw new FulfillmentConflictError('Original authenticated action proof is unavailable; keep this attempt unconfirmed.');return;}
+  const receiptContext={actorId:options.actorId,requestId:options.requestId,expectedRevision:null,now:options.now};
+  const receiptSource={action:'order.preparation.command',subjectType:'order',subjectId:options.orderId};
+  const receiptPayload={sellerId:options.sellerId,action:options.action,note:options.note.trim(),itemIds:options.itemIds?[...options.itemIds].sort():null,
+    ...(options.packedParcelWeightGrams!==undefined?{packedParcelWeightGrams:options.packedParcelWeightGrams}:{})};
+  const receipt=company?null:await commandReceipt(database,receiptContext,receiptSource,receiptPayload);if(receipt?.replayed){if(options.originalProof)throw new FulfillmentConflictError('Original authenticated action proof is unavailable; keep this attempt unconfirmed.');return;}
+  let packedParcelWeightGrams: number | null = null;
+  if (!company && options.action === 'ready_for_pickup' && await packedWeightSchemaAvailable(database)) {
+    if (!isPackedWeightGrams(options.packedParcelWeightGrams)) throw new PackedParcelWeightError(packedWeightRange);
+    packedParcelWeightGrams = options.packedParcelWeightGrams;
+  }
   const selected=options.itemIds?[...options.itemIds].sort():(await database.prepare("SELECT i.id FROM order_items i WHERE i.order_id=? AND i.seller_id=? AND i.fulfillment_status=? AND NOT EXISTS(SELECT 1 FROM order_fulfillment_holds h WHERE h.order_item_id=i.id AND h.ended_at IS NULL AND h.prevents_preparation=1) ORDER BY i.id").bind(options.orderId,options.sellerId,definition.from).all<{id:string}>()).results.map(i=>i.id);
   if(!selected.length)throw new FulfillmentConflictError('No selected items can take this action now. Review the current progress and holds.');const marks=selected.map(()=>'?').join(','),authorityGuard=crypto.randomUUID();
   await assertFirstCodFulfillmentAllowed(
@@ -526,12 +529,14 @@ async function transitionPreparation(
         options.orderId,
         note,
         JSON.stringify({ itemStatus: transition.from }),
-        JSON.stringify({ itemStatus: transition.to, ...(company ? { sellerId: options.sellerId, catalogDigest: company.catalogDigest } : {}) }),
+        JSON.stringify({ itemStatus: transition.to, ...(company ? { sellerId: options.sellerId, catalogDigest: company.catalogDigest } : {}),
+          ...(packedParcelWeightGrams === null ? {} : { packedParcelWeightGrams, sellerId: options.sellerId }) }),
         options.requestId,
         options.now,
         options.orderId,
         options.requestId,
       ),
+    ...(packedParcelWeightGrams === null ? [] : [packedParcelWeightStatement(database, options, packedParcelWeightGrams)]),
     ...(transition.to === 'ready_for_pickup'
       ? await operationalBusinessNotificationStatements(database, {
           kind: 'order.pickup_ready',
@@ -548,7 +553,7 @@ async function transitionPreparation(
     ...(company?.guards ?? []),...(options.originalProof?.statements??[]),
   ]);}catch(error){
     if(!company&&await database.prepare('SELECT 1 WHERE '+authoritySql).bind(options.sellerId,options.actorId).first()){
-      const recovered=await commandReceipt(database,{actorId:options.actorId,requestId:options.requestId,expectedRevision:null,now:options.now},{action:'order.preparation.command',subjectType:'order',subjectId:options.orderId},{sellerId:options.sellerId,action:options.action,note:options.note.trim(),itemIds:options.itemIds?[...options.itemIds].sort():null});if(recovered.replayed&&!options.originalProof)return;
+      const recovered=await commandReceipt(database,receiptContext,receiptSource,receiptPayload);if(recovered.replayed&&!options.originalProof)return;
     }
     throw error;
   }

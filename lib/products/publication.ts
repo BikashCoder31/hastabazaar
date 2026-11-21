@@ -16,6 +16,8 @@ import {prepareDiscountPublicationStatements} from './discount-advisory-store';
 import {publicationSellerEligibility} from './eligibility';
 import {productAvailabilityState,availabilityStateGuard} from './availability-state';
 import {mediaGuard,type IntakeSnapshot} from './intake-workspace';
+import { isPackedWeightGrams } from '../shipping/packed-weight';
+import { packedWeightSchemaAvailable } from '../shipping/packed-weight-storage';
 export {rebaseProductWorkspace} from './publication-candidates';
 export {submitProductPriceRevision,getRetainedProductPriceRequests} from './price-revision';
 
@@ -73,13 +75,14 @@ function reviewedChecks(value:PublicationChecks|null,requirements:readonly strin
 }
 function dateValue(raw:string){if(!raw)return null;const value=Date.parse(raw+'T00:00:00.000Z');if(!/^\d{4}-\d{2}-\d{2}$/.test(raw)||!Number.isFinite(value)||new Date(value).toISOString().slice(0,10)!==raw)throw new OfferError('Correct the actual supplied product date before publication.');return value;}
 /** Stock, platform identity, URL, ownership and prior order values are deliberately absent. */
-function publicProductUpdate(db:D1Database,productId:string,publicValue:ProductPublication,snapshot:IntakeSnapshot,ctx:CommandContext){
+function publicProductUpdate(db:D1Database,productId:string,publicValue:ProductPublication,snapshot:IntakeSnapshot,ctx:CommandContext,packedWeightGrams?:number|null){
  const d=publicValue.details,text=(key:keyof typeof d)=>detailText(d,key),preparation=text('preparationDays');
  if(preparation&&(!/^\d+$/.test(preparation)||!Number.isSafeInteger(Number(preparation))))throw new OfferError('State a whole actual preparation period or leave an unknown ordering fact unresolved.');
  const materialValues=Array.isArray(d.materials)?d.materials:text('materials')?[text('materials')]:[];
  const warranty=text('warrantyOffered')==='yes'?[text('warrantyProvider'),text('warrantyDuration'),text('warrantyTerms')].join('\n'):null;
  const originReference=snapshot.privateReview.originEvidenceReference?.trim()||null;
  const columns:Record<string,string|number|null>={category_id:publicValue.categoryId,name_en:text('nameEn'),name_ne:text('nameNe')||null,description_en:text('descriptionEn'),description_ne:text('descriptionNe')||null,price_paisa:publicValue.pricePaisa,compare_at_price_paisa:publicValue.compareAtPricePaisa,producer:text('producer'),country_of_origin:text('countryOfOrigin'),origin_evidence_reference:originReference,materials:text('materials'),materials_json:JSON.stringify(materialValues),origin_story:text('originStory')||null,dimensions:text('dimensions')||null,size:text('size')||null,colour:text('colour')||null,variations:text('variations')||null,specifications:text('specifications')||null,care_instructions:text('careInstructions')||null,safety_information:text('safetyInformation')||null,return_conditions:text('returnConditions')||null,return_eligible:text('returnEligible')==='no'?0:1,warranty,made_to_order:text('madeToOrder')==='yes'?1:0,preparation_days:preparation?Number(preparation):0,manufactured_at:dateValue(text('manufacturedAt')),expires_at:dateValue(text('expiresAt')),licence_reference:snapshot.privateReview.licenceReference?.trim()||null,status:'published',reviewed_by:ctx.actorId,review_note:null,review_request_id:ctx.requestId,updated_at:ctx.now};
+ if(packedWeightGrams!==undefined)columns.packed_weight_grams=packedWeightGrams;
  return db.prepare(`UPDATE products SET origin_evidence_status=CASE WHEN country_of_origin=? AND producer=? AND origin_evidence_reference IS ? THEN origin_evidence_status WHEN ?<>'' THEN 'seller_declared' ELSE 'unverified' END,${Object.keys(columns).map(key=>key+'=?').join(',')},published_at=COALESCE(published_at,?) WHERE id=?`).bind(text('countryOfOrigin'),text('producer'),originReference,text('countryOfOrigin'),...Object.values(columns),ctx.now,productId);
 }
 export async function reviewProductPublication(db:D1Database,ctx:CommandContext,input:PublicationDecisionInput){
@@ -141,7 +144,12 @@ export async function reviewProductPublication(db:D1Database,ctx:CommandContext,
   for(const old of current)if(!publicValue.offers.some(row=>row.id===old.id))statements.push(db.prepare('UPDATE offer_stock SET needs_reconfirmation=1,revision=revision+1,updated_at=? WHERE offer_id=?').bind(ctx.now,old.id));
   statements.push(db.prepare('DELETE FROM product_offer_current WHERE product_id=?').bind(candidate.productId));
   for(const row of snapshot.offers.offers.filter(row=>row.included))statements.push(db.prepare('INSERT INTO product_offer_current(offer_id,product_id,version_id,offer_json) VALUES(?,?,?,?)').bind(row.id,candidate.productId,candidate.offerVersionId,JSON.stringify(row)));
-  statements.push(db.prepare('UPDATE product_offer_heads SET current_version_id=?,revision=revision+1,updated_at=? WHERE product_id=?').bind(candidate.offerVersionId,ctx.now,candidate.productId),publicProductUpdate(db,candidate.productId,publicValue,snapshot,ctx));
+  const weight=snapshot.packedWeightGrams;
+  const packedWeightGrams=(weight===null||isPackedWeightGrams(weight))&&await packedWeightSchemaAvailable(db)?weight:undefined;
+  if(packedWeightGrams!==undefined)statements.push(db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,next_json,request_id,created_at)
+    SELECT ?,?,'product.packed_weight.published','product',id,?,?,?,? FROM products
+    WHERE id=? AND COALESCE(packed_weight_grams,-1)<>?`).bind(crypto.randomUUID(),ctx.actorId,reason,JSON.stringify({packedWeightGrams}),ctx.requestId,ctx.now,candidate.productId,packedWeightGrams??-1));
+  statements.push(db.prepare('UPDATE product_offer_heads SET current_version_id=?,revision=revision+1,updated_at=? WHERE product_id=?').bind(candidate.offerVersionId,ctx.now,candidate.productId),publicProductUpdate(db,candidate.productId,publicValue,snapshot,ctx,packedWeightGrams));
   // Visibility checks run after the candidate row update inside the same atomic
   // batch; a blocked seller rolls back the entire approval/publication outcome.
   statements.push(...offerGuard(db,`EXISTS(SELECT 1 FROM products p WHERE p.id=? AND ${publicationSellerEligibility('p',ctx.now)})`,[candidate.productId]));

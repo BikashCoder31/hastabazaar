@@ -7,6 +7,8 @@ import { useState } from 'react';
 import type { DispatchParcel } from '@/app/admin/orders/dispatch/read-dispatch';
 import { pickupWindowLabel } from '@/app/admin/orders/dispatch/pickup-window';
 import { withAdminReturnTo } from '@/lib/admin/return-context';
+import { dispatchWeightTotal } from '@/app/admin/orders/dispatch/packing-summary';
+import { packedWeightLabel } from '@/lib/shipping/packed-weight';
 
 const money = new Intl.NumberFormat('en-IN', {
   minimumFractionDigits: 2,
@@ -121,9 +123,8 @@ export function DispatchParcelList({
                   ? ` · pickup ${items[0].pickupAddress}`
                   : ' · Pickup address unavailable'}
               </h3>
-              <span className="shrink-0">
-                {items.length} {items.length === 1 ? 'parcel' : 'parcels'}
-              </span>
+              <span>{items.length} {items.length === 1 ? 'parcel' : 'parcels'}</span>
+              {items.some(item => item.packedWeightGrams !== undefined) ? <span>{dispatchWeightTotal(items)}</span> : null}
             </div>
             <ul>
               {items.map((parcel) => (
@@ -179,6 +180,7 @@ export function DispatchParcelList({
                           ? `COD ${dispatchMoney(parcel.codDuePaisa)}`
                           : 'No cash to collect'}
                     </strong>
+                    {parcel.packedWeightGrams !== undefined ? <p className="text-[#46536F]">{packedWeightLabel(parcel.packedWeightGrams)}</p> : null}
                     <span
                       className={
                         parcel.lane === 'problems'

@@ -11,6 +11,7 @@ import { CommissionRateUnavailableError } from '@/lib/db/repositories/business-s
 import { getManagedTermsOffers } from '@/lib/managed-commerce/accepted-terms';
 import { getProductMaterialSuggestions } from '@/lib/products/material-settings';
 import type { PriceScenario } from '@/lib/products/price-guidance';
+import { packedWeightSchemaAvailable } from '@/lib/shipping/packed-weight-storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,16 +44,17 @@ export default async function NewProductPage({ searchParams }: {
   </div>;
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const { draftId, offer } = await searchParams;
-  const [initial, categories, occasions, materialSuggestions, pricing] = await Promise.all([
+  const [initial, categories, occasions, materialSuggestions, pricing, packedWeightAvailable] = await Promise.all([
     draftId ? getProductWorkspace(database, owner.userId, draftId) : null,
     listActiveCategories(database),
     listActiveOccasions(database),
     getProductMaterialSuggestions(database),
     currentPricing(database, owner.sellerId),
+    packedWeightSchemaAvailable(database),
   ]);
   const initialCategoryModel = initial?.category ?? await getCategoryDetailGroups(database, null);
   return <ProductIntakeWorkspace actorId={owner.userId} key={owner.userId + ':' + (initial?.id ?? 'new')}
     categories={categories} occasions={occasions} materialSuggestions={materialSuggestions} initial={initial}
     initialOfferId={offer} initialCategoryModel={initialCategoryModel} studio
-    pricing={pricing} tradingName={owner.tradingName} />;
+    pricing={pricing} tradingName={owner.tradingName} packedWeightAvailable={packedWeightAvailable} />;
 }

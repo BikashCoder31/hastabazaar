@@ -3,6 +3,7 @@
 import { Bell } from 'lucide-react';
 import { useState, type SyntheticEvent } from 'react';
 import type { DispatchParcel } from '@/app/admin/orders/dispatch/read-dispatch';
+import { courierBookingSummary, dispatchWeightTotal } from '@/app/admin/orders/dispatch/packing-summary';
 import {
   parsePickupTime,
   pickupWindowLabel,
@@ -87,6 +88,7 @@ export function DispatchBookingForm({
   const [customEnd, setCustomEnd] = useState('');
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [copyStatus, setCopyStatus] = useState('');
   const catalog = usePublishedFormConfig(formId, { actorId });
   const disabled = busy || refreshing;
   const chosen = options.find((option) => option.start === slot);
@@ -110,6 +112,16 @@ export function DispatchBookingForm({
   const cash = parcels.every((parcel) => parcel.codDuePaisa !== null)
     ? parcels.reduce((total, parcel) => total + (parcel.codDuePaisa ?? 0), 0)
     : null;
+  const weightSummary = dispatchWeightTotal(parcels);
+
+  async function copySummary() {
+    try {
+      await navigator.clipboard.writeText(courierBookingSummary(parcels));
+      setCopyStatus('Booking summary copied.');
+    } catch {
+      setCopyStatus('Could not copy the booking summary. Try again.');
+    }
+  }
 
   async function submit(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -257,6 +269,11 @@ export function DispatchBookingForm({
                 </>
               )}
             </p>
+            {weightSummary ? <div className="space-y-2">
+              <p className="text-[#46536F]">{weightSummary}</p>
+              <button type="button" className={dispatchChip} disabled={disabled} onClick={() => void copySummary()}>Copy booking summary</button>
+              {copyStatus ? <output className="block text-[#46536F]">{copyStatus}</output> : null}
+            </div> : null}
             <label className="block space-y-1.5 font-semibold">
               <span>Courier</span>
               <select

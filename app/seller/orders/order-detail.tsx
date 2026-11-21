@@ -15,6 +15,7 @@ import { getSellerOrderDetail, type ItemFulfillmentStatus } from '@/lib/db/repos
 import { customerParcel, listParcels } from '@/lib/operations/parcels';
 import { getFirstCodReview } from '@/lib/orders/first-cod-review';
 import { sellerMoney } from '@/lib/seller/presentation';
+import { packedWeightSchemaAvailable, readPackedParcelPrefill } from '@/lib/shipping/packed-weight-storage';
 
 const actionLink = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border bg-card px-3 text-sm font-semibold hover:border-[#14213D]';
 const orderDetailObservedAt = () => Date.now();
@@ -83,6 +84,9 @@ export async function SellerOrderDetail({
   });
   const canAct = active && !codPending && Boolean(payment) && !restriction && seller.approvedSeller && actionableItems.length > 0 &&
     (order.status === 'confirmed' || order.status === 'packing' || order.status === 'dispatched' && parcels.length > 0);
+  const parcelWeight = canAct && status === 'packing' && await packedWeightSchemaAvailable(db)
+    ? { prefilledGrams: await readPackedParcelPrefill(db, id, seller.sellerId) }
+    : undefined;
   const done = status === 'delivered' || status === 'cancelled';
   const turn = done ? 'done' : canAct ? 'your-turn' : 'with-hastabazaar';
   const courier = parcels.find(parcel => parcel.courierName && !['cancelled', 'returned'].includes(parcel.status));
@@ -138,7 +142,7 @@ export async function SellerOrderDetail({
       {bookingMessage && progressText !== bookingMessage ? <p>{bookingMessage}</p> : null}
       {!done && issue?.updateAt ? <p>Next update {dateTime.format(issue.updateAt)}</p> : null}
     </NextStepBox>
-    {seller.approvedSeller ? <SellerOrderFulfillmentActions key={id} actorId={seller.userId} orderId={id} items={canAct ? actionableItems : []} /> : null}
+    {seller.approvedSeller ? <SellerOrderFulfillmentActions key={id} actorId={seller.userId} orderId={id} items={canAct ? actionableItems : []} parcelWeight={parcelWeight} /> : null}
     {detailControl}
     <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
       <dt className="text-muted-foreground">Customer</dt><dd className="break-words font-semibold">{order.address.recipientName}</dd>
