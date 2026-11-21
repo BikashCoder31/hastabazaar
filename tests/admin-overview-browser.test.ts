@@ -29,7 +29,7 @@ function propsOf(node:unknown,name:string):Record<string,unknown>|null{
  return propsOf(element.props.children,name);
 }
 
-void test('Today and the legacy review queue retain authorized navigation and exact assignment retries at both widths',async()=>{
+void test('Today shows its tasks and owners across widths, and preserves authorized links and exact assignment retries',async()=>{
  const f=await productPublicationFixture('',Date.now());try{
   assert.ok(f.sqlite.prepare('PRAGMA database_list').all().every(row=>row.file===''));
   globalThis.overviewBrowserDb=f.db;globalThis.overviewBrowserActor='reviewer';
@@ -104,7 +104,23 @@ void test('Today and the legacy review queue retain authorized navigation and ex
    await page.setViewportSize({width:1440,height:900});
    await page.goto(origin+'/admin');
    await page.getByRole('heading',{name:'Good morning, Fictional',exact:true}).waitFor();
-   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+   for (const width of [390, 768, 1024, 1440]) {
+    await page.setViewportSize({width,height:844});
+    const layout=await page.evaluate(()=>{
+     const metrics=document.querySelector('.today-metrics')!;
+     const columns=getComputedStyle(metrics).gridTemplateColumns.split(' ').length;
+     const firstTask=document.querySelector('.today-task h3')!.getBoundingClientRect();
+     const ownerPills=Array.from(document.querySelectorAll('.today-task .today-owner-pill'));
+     return {columns,firstTaskBottom:firstTask.bottom,hasOverflow:document.documentElement.scrollWidth>innerWidth,
+      ownersVisible:ownerPills.length===document.querySelectorAll('.today-task').length && ownerPills.every(pill=>pill.getBoundingClientRect().height>0)};
+    });
+    assert.equal(layout.hasOverflow,false,`Today fits at ${width}px`);
+    assert.equal(layout.columns,width<640?2:4,`Metric columns at ${width}px`);
+    assert.equal(layout.ownersVisible,true,`Every task shows an owner pill at ${width}px`);
+    if(width===390)assert.ok(layout.firstTaskBottom<844,'First task is readable on the opening phone screen');
+   }
+   const nextToAssign=page.locator('.today-task').filter({has:page.locator('input:enabled')}).first();
+   await nextToAssign.getByText('Unassigned',{exact:true}).waitFor({state:'visible'});
    const oldest=page.getByRole('button',{name:'Take the oldest task',exact:true});
    await oldest.click();
    const oldestDialog=page.getByRole('dialog',{name:'Take the oldest task',exact:true});
@@ -138,6 +154,10 @@ void test('Today and the legacy review queue retain authorized navigation and ex
    assert.deepEqual(bodies[start],bodies[start+2]);
    assert.notEqual(bodies[start].taskId,bodies[start+1].taskId);
    assert.equal(f.sqlite.prepare("SELECT COUNT(*) n FROM audit_logs WHERE action='review_task.assigned'").get()!.n,Number(savedAssignments)+2);
+   await page.getByRole('button',{name:/^Mine /}).click();
+   const assignedOwners=page.locator('.today-task .today-owner-pill');
+   await assignedOwners.first().waitFor({state:'visible'});
+   assert.ok((await assignedOwners.allTextContents()).every((owner:string)=>owner.endsWith('You')));
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
    assert.deepEqual(errors,[]);await context.close();
   }finally{await browser.close();}

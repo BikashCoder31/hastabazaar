@@ -571,7 +571,41 @@
 .today-overdue, .today-check-status { display: inline-block; border-radius: 999px; padding: 0.15rem 0.48rem; font-size: 0.75rem; font-weight: 700; }
 .today-overdue, .today-check-status[data-tone='issue'] { background: #f7dedb; color: #98252a; }
 .today-task-context { margin-top: 0.15rem; color: #46536f; font-size: 0.84rem; }
-.today-owner { grid-column: 3; min-width: 0; color: #46536f; font-size: 0.82rem; overflow-wrap: anywhere; }
+.today-owner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem 0.65rem;
+  grid-column: 3;
+  min-width: 0;
+  color: #46536f;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+.today-owner-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  max-width: 100%;
+  border-radius: 999px;
+  padding: 0.2rem 0.48rem;
+  background: #e1e7f3;
+  color: #14213d;
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+.today-owner-avatar {
+  display: grid;
+  width: 1.2rem;
+  height: 1.2rem;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 50%;
+  background: #14213d;
+  color: #fff;
+  font-size: 0.63rem;
+}
 .today-owner button { text-align: start; font-weight: 650; }
 .today-owner button:hover:not(:disabled) { color: #a8232e; text-decoration: underline; }
 .today-task-action { grid-column: 3; justify-self: start; }
@@ -612,15 +646,28 @@
 .today-filter-fields select, .today-assignment-reason textarea { width: 100%; min-height: 2.5rem; border: 1px solid #d9c8ae; border-radius: 0.45rem; background: #fff; padding: 0.4rem; }
 .today-assignment-reason textarea { min-height: 5rem; resize: vertical; }
 
+@media (width < 64rem) {
+  .today-metrics > div { padding: 0.5rem 0.65rem; }
+  .today-metrics dd { font-size: 1.15rem; }
+  .today-metrics .today-metric-note { margin-top: 0.15rem; font-size: 0.75rem; }
+}
+
 @media (max-width: 639px) {
+  .today-overview { gap: 0.875rem; }
+  .today-heading { gap: 0.6rem; }
+  .today-metrics > div { padding-block: 0.35rem; }
+  .today-metrics dt { line-height: 1.25; }
   .today-button, .today-chips button, .today-owner button { min-height: 2.75rem; }
-  .today-queue-header, .today-task { padding-inline: 0.75rem; }
+  .today-filter-popover :is(button, select, input[type='date']), .today-assignment-dialog button { min-height: 2.75rem; }
+  .today-queue-header, .today-task { padding: 0.6rem 0.75rem; }
   .today-chips { order: 2; width: 100%; }
 }
 @media (min-width: 640px) {
   .today-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .today-metrics > div:nth-child(n+3) { border-top: 0; }
   .today-metrics > div + div { border-inline-start: 1px solid #e3d8c7; }
+}
+@media (min-width: 1024px) {
   .today-metrics > div { padding-inline: 1.35rem; }
   .today-task { grid-template-columns: 1.38rem 2.4rem minmax(0, 1fr) minmax(5.5rem, 0.32fr) max-content; }
   .today-owner, .today-task-action { grid-column: auto; }

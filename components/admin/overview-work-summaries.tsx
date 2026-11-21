@@ -28,9 +28,9 @@ export function TodayWorkSummaries({ orders, courierCash, cases, checks }: {
     health === undefined ? null : { label: 'System checks', value: healthText, detail: 'Recorded observations', warning: health === null || observed.some(row => row.tone !== 'good') },
   ].filter(row => row !== null);
   if (!metrics.length) return null;
-  return <dl className="today-panel today-metrics max-lg:grid-cols-1!" aria-label="Work totals">
-    {metrics.map(row => <div key={row.label} className="max-lg:border-0! max-lg:px-5! max-lg:py-5!">
-      <dt>{row.label}</dt><dd data-warning={row.warning}>{row.value}</dd><dd className="today-metric-note">{row.detail}</dd>
+  return <dl className="today-panel today-metrics" aria-label="Work totals">
+    {metrics.map(row => <div key={row.label}>
+      <dt>{row.label}</dt><dd data-warning={row.warning}>{row.value}</dd><dd className="today-metric-note sr-only sm:not-sr-only">{row.detail}</dd>
     </div>)}
   </dl>;
 }

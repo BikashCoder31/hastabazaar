@@ -279,9 +279,9 @@ export function TodayOverview({ tasks, partialSources, actorId, firstName, obser
                 const anchor = 'today-task-' + encodeURIComponent(task.id);
                 const href = withAdminReturnTo(task.href, todayReturnTo(returnTo, view, filters, anchor, limit));
                 const ownedByMe = task.ownerId === actorId;
-                const owner = ownedByMe ? 'You' : task.ownerName ?? 'Assigned';
+                const owner = ownedByMe ? 'You' : task.ownerId ? task.ownerName ?? 'Assigned' : 'Unassigned';
                 const initials = ownerInitials(task.ownerName ?? (ownedByMe ? firstName : ''));
-                return <li key={task.id} id={'today-task-' + task.id} className="today-task max-lg:grid-cols-[1.38rem_2.4rem_minmax(0,1fr)]!">
+                return <li key={task.id} id={'today-task-' + task.id} className="today-task">
                   <label className="-ms-2.5 grid size-11 place-items-center">
                     <input type="checkbox" aria-label={'Select ' + task.title} disabled={!canAssign}
                       className="size-[1.2rem] accent-[#14213D] disabled:opacity-40"
@@ -296,22 +296,20 @@ export function TodayOverview({ tasks, partialSources, actorId, firstName, obser
                     <h3>{task.title}</h3>
                     <p className="today-task-context">{task.context}</p>
                   </div>
-                  <div className="today-owner hidden lg:block">
-                    {task.ownerId ? <span className="flex items-center gap-2">
-                      <span aria-hidden="true" className="grid size-7 shrink-0 place-items-center rounded-full bg-[#14213D] text-[0.7rem] font-semibold text-white">
-                        {initials || <UserRound size={14} />}
-                      </span>{owner}
+                  <div className="today-owner">
+                    <span className="today-owner-pill">
+                      {task.ownerId ? <span aria-hidden="true" className="today-owner-avatar">{initials || <UserRound size={12} />}</span> : null}
+                      {owner}
                     </span>
-                      : task.assignment ? <button type="button" className="min-h-11" disabled={!canAssign} onClick={() => startAssignment([task.id])}>Assign to me</button>
-                        : <span>{task.state === 'done' ? 'Completed' : task.ownerKnown === false ? 'See source' : 'No owner'}</span>}
+                    {task.assignment && !task.ownerId ? <button type="button" className="min-h-11" disabled={!canAssign} onClick={() => startAssignment([task.id])}>Assign to me</button> : null}
                   </div>
                   {task.codConfirmationOrderId ? (
-                    <div className="today-task-action flex min-w-0 max-w-52 flex-col items-start gap-2 max-lg:col-start-3! max-lg:justify-self-start!">
+                    <div className="today-task-action flex min-w-0 max-w-52 flex-col items-start gap-2">
                       <FirstCodConfirmation orderId={task.codConfirmationOrderId} actorId={actorId} compact />
                       <AdminOrderFulfillmentActions orderId={task.codConfirmationOrderId} status="confirmed" codNotConfirmedActorId={actorId} />
                     </div>
                   ) : (
-                    <Link className="today-button today-task-action min-h-11! max-lg:col-start-3! max-lg:justify-self-start!" href={href} data-review-open>{task.action}</Link>
+                    <Link className="today-button today-task-action min-h-11!" href={href} data-review-open>{task.action}</Link>
                   )}
                 </li>;
               })}
