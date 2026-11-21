@@ -17,7 +17,10 @@ void test('public help provides accurate written seller guidance and native task
 void test('native started applicant sees written guide outside the actual optional application form',async()=>{
  const f=await sellerRegistrationScopeFixture();try{
   f.select('registration-c');const Page=(await import('../app/sell/apply/page')).default,html=renderToStaticMarkup(await Page());
-  assert.match(html,/id="seller-guide"/);assert.ok(html.indexOf('id="seller-guide"')<html.indexOf('<form'),'Guide is outside the actual native form');assert.match(html,/Submit application/);assert.match(html,/Save progress/);assert.match(html,/OTP/);
+  const formEnd = html.indexOf('</form>', html.indexOf('data-form-id="seller.application"'));
+  assert.ok(formEnd >= 0 && html.indexOf('id="seller-guide"') > formEnd, 'Guide is outside the actual native form');
+  assert.match(html, /href="#seller-guide"[^>]*>Written seller guide/);
+  assert.match(html,/Submit application/);assert.match(html,/Save progress/);assert.match(html,/No phone code needed/);
   assert.equal(f.sqlite.prepare("SELECT COUNT(*) n FROM seller_profiles WHERE user_id='registration-c'").get()!.n,0,'Reading guidance does not approve or create a seller');
   assert.equal(f.sqlite.prepare("SELECT COUNT(*) n FROM account_phone_verifications WHERE user_id='registration-c'").get()!.n,0,'Guide does not introduce phone verification');
  }finally{f.dispose();}

@@ -25,10 +25,11 @@ export default async function SellerRegistrationPage() {
   return <div className="min-w-0 space-y-7 text-[#14213D]">
     {applicant ? <SellerRegistrationApplicationOverview db={db} viewer={viewer} record={record} documents={documents} /> : (
       <header>
-        <h1 className="section-title">{viewer.sellerId ? 'Registration & documents' : 'Start your application'}</h1>
+        <h1 className="section-title">Registration &amp; documents</h1>
         <p className="mt-3 text-[#465573]">Complete registration and send documents for review. Payouts require completed registration and verified receiving details.</p>
       </header>
     )}
+    {!viewer.sellerId ? <RegistrationGuide /> : null}
     <section className="space-y-4" aria-labelledby="seller-registration-details">
       {applicant ? <header>
         <h2 id="seller-registration-details" className="font-heading text-3xl">Registration &amp; documents</h2>
@@ -44,6 +45,6 @@ export default async function SellerRegistrationPage() {
     </section>
     {documents ? <SellerDocumentHistory workspace={documents} /> : null}
     {viewer.sellerId ? <Link className="section-link text-[#A8232E] underline" href="/sell/application" prefetch={false}>Application, agreements and answer history →</Link> : null}
-    <RegistrationGuide />
+    {viewer.sellerId ? <RegistrationGuide /> : null}
   </div>;
 }

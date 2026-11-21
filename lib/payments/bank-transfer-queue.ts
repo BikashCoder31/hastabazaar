@@ -138,7 +138,7 @@ export async function readBankTransferQueue(db: D1Database, actorId: string, exa
   const [counts, rows, unmatched] = await Promise.all([
     laneCounts(db, query, today, now),
     db.prepare(query + `, displayed AS (
-      SELECT q.*, ROW_NUMBER() OVER (PARTITION BY lane ORDER BY cutoffAt,id) AS position
+      SELECT q.*, ROW_NUMBER() OVER (PARTITION BY lane ORDER BY deadlineAt,id) AS position
       FROM queue q WHERE ${exactOrder ? '(q.id=? OR q.orderNumber=?)' : "q.lane<>'history'"}
     ) SELECT q.*,
       (SELECT p.product_name_snapshot FROM order_items p WHERE p.order_id=q.id AND p.fulfillment_status<>'cancelled' ORDER BY p.id LIMIT 1) AS itemName,
@@ -146,7 +146,7 @@ export async function readBankTransferQueue(db: D1Database, actorId: string, exa
       (SELECT COUNT(*) FROM order_items p WHERE p.order_id=q.id AND p.fulfillment_status<>'cancelled') AS itemCount,
       (SELECT COUNT(DISTINCT p.seller_id) FROM order_items p WHERE p.order_id=q.id AND p.fulfillment_status<>'cancelled') AS sellerCount
       FROM displayed q WHERE q.position<=50
-      ORDER BY q.cutoffAt, q.id`).bind(today, now, ...exactOrder ? [exactOrder, exactOrder] : []).all<QueueRow>(),
+      ORDER BY q.deadlineAt, q.id`).bind(today, now, ...exactOrder ? [exactOrder, exactOrder] : []).all<QueueRow>(),
     db.prepare(`SELECT e.id, r.id AS receiptId, r.transaction_identity AS reference, r.bank_at AS bankAt, COUNT(*) OVER() AS count
       ${unmatchedReceipts} ORDER BY r.bank_at,e.id LIMIT 100`).all<UnmatchedCredit>(),
   ]);

@@ -62,12 +62,15 @@ for (const [registered,managed] of [[true,false],[false,true],[true,true],[false
       if(registered)await publish(f,'independent_seller_commission_bps');
       if(managed)await publish(f,'managed_sale_linked_platform_retention_bps');
       const html=await page(f.db);
-      assert.match(html,/Seller registration/);
+      assert.match(html,/<h1[^>]*>Seller application<\/h1>/);
       assert.match(html,/data-form-id="seller.application"/);
       const terms = await loadSellerApplicationTerms(f.db, now);
       assert.equal(terms.registered.status, registered ? 'ready' : 'unavailable');
       assert.equal(terms.managed.status, managed ? 'ready' : 'unavailable');
-      assert.match(html,/<option[^>]*value="no" selected="">/);
+      const routes = html.match(/<input\b[^>]*>/g)?.filter(input =>
+        /\btype="radio"/.test(input) && /\bname="hasBusinessTaxRegistration"/.test(input));
+      assert.deepEqual(routes?.map(route => route.match(/\bvalue="([^"]+)"/)?.[1]), ['no', 'yes']);
+      assert.ok(routes?.every(route => !/\bchecked=/.test(route)));
       if(managed) {
         assert.match(html,/12%/);
         assert.match(html,/name="managedAgreementContext" value="[a-f0-9]{64}"/);

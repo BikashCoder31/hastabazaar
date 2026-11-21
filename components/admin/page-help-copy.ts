@@ -48,7 +48,8 @@ const tabHelp: Readonly<Record<string, HelpCopy>> = {
     title: 'How bank transfers work',
     sentences: [
       'Check the company bank statement for actual credit and compare it with the order and its saved deadline.',
-      'Match the money to the order and release it when the readiness checks pass. Review short, extra or unmatched credits in Problems.',
+      'Check readiness and release the order to the seller once the full amount is matched.',
+      'Review short, extra or unmatched credits in Problems.',
     ],
   },
   '/admin/sellers?workspace=directory': {

@@ -12,6 +12,8 @@ const fixture = {
   permissions: ['audit_log.view'],
   privateReads: 0,
   databaseReads: 0,
+  bankTransferReads: 0,
+  bankTransferCount: 0,
   periods: [] as string[],
   topSellers: [
     {
@@ -45,6 +47,8 @@ registerHooks({
         'export async function staffMutationGuard(){const f=globalThis.marketplaceDashboardFixture;return {role:f.role,permissions:f.permissions,statements:[]}}',
       '@/lib/db/repositories/admin-workspace':
         'export async function getAdminWorkSummary(){return {sellers:0,products:0,readyOrders:0,returns:0,complaints:0,payoutRequests:0,approvals:null}}',
+      '@/lib/payments/bank-transfer-queue':
+        'export async function readBankTransferWorkCount(){const f=globalThis.marketplaceDashboardFixture;f.bankTransferReads++;return f.bankTransferCount}',
       '@/lib/db/repositories/admin-marketplace-summary':
         'export async function getSuperAdminMarketplaceSummary(db,role,now,period){const f=globalThis.marketplaceDashboardFixture;f.privateReads++;f.periods.push(period);if(role!=="super_admin")throw Error("Private summary queried by Admin");return {users:{total:12},sellers:{total:7,approved:3,pendingReview:2},topSellers:f.topSellers}}',
     };
@@ -91,7 +95,9 @@ void test('Super Admin sees account totals and a clearly labelled, escaped selle
 
 void test('Today puts operational metrics before the task board and keeps the marketplace report reachable',async()=>{
  const {default:Dashboard}=await import('../app/admin/page');fixture.role='super_admin';fixture.topSellers=[];
+ fixture.bankTransferCount=2;
  const html=renderToStaticMarkup(await Dashboard());
+ fixture.bankTransferCount=0;
  assert.match(html,/<h1[^>]*>Good morning, Local<\/h1>/);assert.match(html,/with no owner yet/);
  for(const label of ['Orders today','Courier cash due','Returns &amp; complaints','System checks','Needs action','Refresh checks'])assert.ok(html.includes(label),label);
  assert.ok(html.indexOf('aria-label="Work totals"')<html.indexOf('id="seller-review-queue"'));
@@ -100,6 +106,7 @@ void test('Today puts operational metrics before the task board and keeps the ma
  assert.doesNotMatch(html,/<details[^>]*data-operational-summary="true"[^>]*\sopen(?:=|>)/);
  assert.match(html,/System health is unknown/);assert.doesNotMatch(html,/All clear/);
  assert.match(html,/Recent decisions/);assert.ok(html.indexOf('recent-decisions-heading')<html.indexOf('data-operational-summary'));
+ assert.match(html,/2 transfers need attention/);assert.match(html,/href="\/admin\/payments\?view=incoming"/);
 });
 
 void test('Admin with report access receives no private summary markup or reads', async () => {
@@ -121,10 +128,12 @@ void test('narrowly scoped staff can enter Overview without private reports or f
   fixture.permissions = [];
   fixture.privateReads = 0;
   fixture.databaseReads = 0;
+  fixture.bankTransferReads = 0;
   const html=renderToStaticMarkup(await Dashboard());
   assert.match(html,/Good morning/);
-  assert.doesNotMatch(html,/Marketplace summary|Top 5 sellers|href="\/admin\/analytics"|href="\/admin\/activity"/);
+  assert.doesNotMatch(html,/Marketplace summary|Top 5 sellers|href="\/admin\/analytics"|href="\/admin\/activity"|Check bank transfers/);
   assert.equal(fixture.privateReads, 0);
+  assert.equal(fixture.bankTransferReads, 0);
   assert.equal(fixture.databaseReads, 1);
 });
 

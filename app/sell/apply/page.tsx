@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { SiteHeader } from '@/components/layout/site-header';
+import { RegistrationGuide } from '@/components/seller/registration-guide';
 import { SellerRegistrationIntakeForm } from '@/components/seller/seller-registration-intake-form';
 import { requireAuthenticatedUser } from '@/app/auth';
 import { companyDetails, companyPublicContacts } from '@/lib/content/company-details';
@@ -46,6 +47,7 @@ export default async function SellerRegistrationPage() {
         <SellerRegistrationIntakeForm wizard accountId={owner.userId} accountEmail={owner.email} verifiedEmails={verifiedEmails}
           managedTerms={managed.status === 'ready' ? managed.terms : undefined}
           registeredTerms={registered.status === 'ready' ? { percent: registered.terms.percent, context: registered.terms.context } : undefined} />
+        <div className="mt-8"><RegistrationGuide /></div>
       </main>
       <footer className="border-t border-[#E4DACA] bg-[#FCF9F4] text-sm text-[#665B4D]">
         <div className={shell + ' flex flex-wrap items-center justify-between gap-x-5 py-3'}>

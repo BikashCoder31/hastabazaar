@@ -37,12 +37,16 @@ function fixture() {
     CREATE TABLE staff_permission_profiles(user_id TEXT,permissions_json TEXT,version INTEGER,updated_by TEXT,updated_at INTEGER);
     CREATE TABLE seller_profiles (id TEXT PRIMARY KEY, user_id TEXT, status TEXT,seller_agreement_version TEXT,seller_agreement_accepted_at INTEGER,updated_at INTEGER,trading_name TEXT);
     CREATE TABLE seller_participation_profiles(seller_id TEXT PRIMARY KEY);
+    CREATE TABLE seller_application_drafts(user_id TEXT PRIMARY KEY,revision TEXT,attempt_id TEXT,form_version INTEGER,answers_json TEXT,files_json TEXT,updated_at INTEGER,expires_at INTEGER);
+    CREATE TABLE account_email_verifications(user_id TEXT,email TEXT,verified_at INTEGER);
     CREATE TABLE audit_logs (id TEXT PRIMARY KEY,actor_id TEXT,action TEXT,subject_type TEXT,subject_id TEXT,reason TEXT,previous_json TEXT,next_json TEXT,request_id TEXT,ip_hash TEXT,created_at INTEGER);
     CREATE TABLE business_setting_versions (id TEXT PRIMARY KEY,setting_key TEXT,version INTEGER,value_json TEXT,status TEXT,revision INTEGER,change_control TEXT,effective_from INTEGER,effective_until INTEGER,reason TEXT,created_by TEXT,created_at INTEGER,submitted_by TEXT,submitted_at INTEGER,approved_by TEXT,approved_at INTEGER,published_by TEXT,published_at INTEGER,decision_note TEXT,supersedes_id TEXT,last_request_id TEXT);
     CREATE TABLE operation_transaction_guards (id TEXT PRIMARY KEY, valid INTEGER CHECK(valid=1));
     CREATE TABLE seller_agreement_acceptance_history (id TEXT PRIMARY KEY,seller_id TEXT,agreement_version TEXT,language_presented TEXT,commission_setting_version_id TEXT,commission_bps INTEGER,acceptance_request_id TEXT,accepted_by TEXT,accepted_at INTEGER,simulation_label TEXT,UNIQUE(acceptance_request_id),UNIQUE(seller_id,agreement_version,language_presented,commission_setting_version_id));
     CREATE TABLE order_items(id TEXT PRIMARY KEY,commission_bps INTEGER,commission_paisa INTEGER);
     INSERT INTO users (id,auth_subject,display_name,status) VALUES ('customer','customer-subject','Fictional Customer','active'),('other','other-subject','Other Customer','active'),('seller','seller-subject','Fictional Seller','active'),('super','super-subject','Super Admin','active'),('disabled','disabled-subject','Disabled','suspended');
+    UPDATE users SET email=id||'@example.test';
+    UPDATE users SET email='staff@example.test' WHERE id='super';
     INSERT INTO user_roles VALUES ('customer','customer'),('other','customer'),('seller','seller'),('super','super_admin'),('disabled','customer');
     INSERT INTO seller_profiles(id,user_id,status) VALUES ('store','seller','approved');
     INSERT INTO order_items VALUES ('past',900,9000);
@@ -131,16 +135,17 @@ void test('financial acceptance rolls back if the accepting account is suspended
 
 async function loadBoundary(entry: string, state: { database: Database; identity: {userId:string;email:string;displayName:string;fullName:null} | null; customer: {userId:string;email:string} | null }) {
   const compiled=await build({entryPoints:[entry],bundle:true,write:false,platform:'node',format:'cjs',external:['react','react/*','react-dom','react-dom/*'],plugins:[{name:'seller-terms-provider-boundaries',setup(b){
-    b.onResolve({filter:/^(cloudflare:workers|@\/app\/auth|@\/lib\/auth\/customer|@\/lib\/auth\/seller|next\/navigation|next\/link)$/},args=>({path:args.path,namespace:'seller-terms-fixture'}));
+    b.onResolve({filter:/^(cloudflare:workers|@\/app\/auth|@\/lib\/auth\/customer|@\/lib\/auth\/seller|next\/navigation|next\/link|next\/image)$/},args=>({path:args.path,namespace:'seller-terms-fixture'}));
     b.onResolve({filter:/(?:^@\/components\/layout\/|^\.\/)(site-header|site-footer)$/},args=>({path:args.path.includes('header')?'header':'footer',namespace:'seller-terms-fixture'}));
     b.onLoad({filter:/.*/,namespace:'seller-terms-fixture'},args=>{
       const source: Record<string,string>={
         'cloudflare:workers':'exports.env={get DB(){return __fixture.database}};',
-        '@/app/auth':`exports.getAuthenticatedUser=async()=>__fixture.identity;exports.requireAuthenticatedUser=async(path)=>{if(!__fixture.identity)throw new Error('REDIRECT:/login');return __fixture.identity};`,
+        '@/app/auth':`exports.getAuthenticatedUser=async()=>__fixture.identity;exports.requireAuthenticatedUser=async(path)=>{if(!__fixture.identity)throw new Error('REDIRECT:/login');return __fixture.identity};exports.signInPath=(path)=>'/login?return_to='+encodeURIComponent(path);`,
         '@/lib/auth/customer':`exports.CustomerAuthorizationError=class extends Error{};exports.getCustomerUser=async()=>__fixture.customer;`,
         '@/lib/auth/seller':`exports.SellerAuthorizationError=class extends Error{constructor(message,status){super(message);this.status=status}};exports.requireSellerApi=async()=>{const row=await __fixture.database.prepare("SELECT u.id AS userId,s.id AS sellerId,s.seller_agreement_version AS sellerAgreementVersion FROM users u JOIN seller_profiles s ON s.user_id=u.id WHERE u.auth_subject=? AND u.status='active' AND s.status='approved' AND EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role='seller')").bind(__fixture.identity?.userId??'').first();if(!row)throw new exports.SellerAuthorizationError('Active seller required.',403);return row};`,
         'next/navigation':`exports.redirect=(path)=>{throw new Error('REDIRECT:'+path)};exports.useRouter=()=>({push(){},refresh(){}});`,
         'next/link':`module.exports=function Link(props){return require('react').createElement('a',props)};`,
+        'next/image':`module.exports=function Image({fill,priority,...props}){return require('react').createElement('img',props)};`,
         header:`exports.SiteHeader=()=>null;`,footer:`exports.SiteFooter=()=>null;`,
       };
       return {contents:source[args.path],loader:'js'};
@@ -172,23 +177,29 @@ void test('real commercial terms API requires sign-in and explicit start before 
   } finally { f.sqlite.close(); }
 });
 
-void test('public seller landing reads no rates; private form and agreement are gated and show the effective 10% after start', async () => {
+void test('public seller landing shows published terms while private form and agreement require an explicit start', async () => {
   const f=fixture();
   try {
     f.publish('ten',1,1000,1);
+    f.sqlite.prepare(`INSERT INTO business_setting_versions VALUES ('payout-day','payout_processing_weekday',1,?,'published',3,'controlled',1,NULL,'Isolated payout day','super',1,'super',1,'super',1,'super',1,'Approved',NULL,'payout-day-request')`).run(JSON.stringify('thursday'));
     const state={database:f.database,identity:null as {userId:string;email:string;displayName:string;fullName:null}|null,customer:null as {userId:string;email:string}|null};
     const landing=await loadBoundary('app/sell/page.tsx',state);
     const apply=await loadBoundary('app/sell/apply/page.tsx',state);
     const agreement=await loadBoundary('app/seller-agreement/page.tsx',state);
     const render=async(page:Record<string,unknown>)=>renderToStaticMarkup(await (page.default as ()=>Promise<ReactElement>)());
-    const anonymous=await render(landing);assert.match(anonymous,/Sign in to start seller registration/);assert.doesNotMatch(anonymous,/9%|10%|sellerAgreementContext/);assert.equal(f.database.rateReads,0);
-    await assert.rejects(render(apply),/REDIRECT:\/login/);await assert.rejects(render(agreement),/REDIRECT:\/login/);assert.equal(f.database.rateReads,0);
+    const anonymous=await render(landing);
+    assert.match(anonymous,/href="\/login\?return_to=%2Fsell"[^>]*>Start your application/);
+    assert.match(anonymous,/10%/);assert.match(anonymous,/Thursdays/);
+    assert.doesNotMatch(anonymous,/9%|commission is NPR|[a-z]AgreementContext/i);
+    const readsAfterPublicLanding=f.database.rateReads;
+    await assert.rejects(render(apply),/REDIRECT:\/login/);await assert.rejects(render(agreement),/REDIRECT:\/login/);assert.equal(f.database.rateReads,readsAfterPublicLanding);
     state.identity={userId:'customer-subject',email:'customer@example.test',displayName:'Fictional Customer',fullName:null};state.customer={userId:'customer',email:'customer@example.test'};
-    const buyer=await render(landing);assert.match(buyer,/Start seller registration/);assert.doesNotMatch(buyer,/9%|10%|sellerAgreementContext/);
-    await assert.rejects(render(apply),/REDIRECT:\/sell/);await assert.rejects(render(agreement),/REDIRECT:\/sell/);assert.equal(f.database.rateReads,0);
+    const buyer=await render(landing);assert.match(buyer,/<button[^>]*>Start your application<\/button>/);assert.doesNotMatch(buyer,/9%|[a-z]AgreementContext/i);
+    const readsAfterBuyerLanding=f.database.rateReads;
+    await assert.rejects(render(apply),/REDIRECT:\/sell/);await assert.rejects(render(agreement),/REDIRECT:\/sell/);assert.equal(f.database.rateReads,readsAfterBuyerLanding);
     const access=await import('../lib/db/repositories/seller-commercial-access');
     await access.startSellerRegistration(f.database as unknown as D1Database,{userId:'customer',requestId:'page-start',now:101});
-    const application=await render(apply);assert.match(application,/Seller registration/);assert.match(application,/data-form-id="seller.application"/);
+    const application=await render(apply);assert.match(application,/Seller application/);assert.match(application,/data-form-id="seller.application"/);
     const terms=await settings.getRegisteredSellerTerms(f.database as unknown as D1Database,101);assert.equal(terms.percent,10);assert.ok(terms.context);
     assert.match(application,/name="managedAgreementContext"/);
     const document=await render(agreement);assert.match(document,/10% commission/);assert.match(document,/commission is NPR 100/);assert.doesNotMatch(document,/9% commission/);
@@ -204,14 +215,15 @@ void test('staff with a customer account must explicitly start before continuing
     const apply=await loadBoundary('app/sell/apply/page.tsx',state);
     const render=async(page:Record<string,unknown>)=>renderToStaticMarkup(await (page.default as ()=>Promise<ReactElement>)());
     const before=await render(landing);
-    assert.match(before,/<button[^>]*>Start seller registration<\/button>/);
-    assert.doesNotMatch(before,/Continue seller registration/);
+    assert.match(before,/<button[^>]*>Start your application<\/button>/);
+    assert.doesNotMatch(before,/Continue your application/);
+    const readsAfterPublicLanding=f.database.rateReads;
     await assert.rejects(render(apply),/^Error: REDIRECT:\/sell$/);
-    assert.equal(f.database.rateReads,0);
+    assert.equal(f.database.rateReads,readsAfterPublicLanding);
 
     const {startSellerRegistration}=await import('../lib/db/repositories/seller-commercial-access');
     await startSellerRegistration(f.database as unknown as D1Database,{userId:'super',requestId:'staff-page-start',now:101});
-    assert.match(await render(landing),/Continue seller registration/);
+    assert.match(await render(landing),/href="\/sell\/apply"[^>]*>Continue your application/);
     assert.match(await render(apply),/data-form-id="seller.application"/);
   } finally {f.sqlite.close();}
 });

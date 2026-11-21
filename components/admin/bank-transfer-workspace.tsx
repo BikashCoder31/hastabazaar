@@ -52,13 +52,15 @@ function readAmount(value: string) {
 function StatusPill({ order, now }: { order: BankTransferOrder; now: number }) {
   const partial = order.paidAt === null && order.receivedPaisa > 0 && order.receivedPaisa < order.payablePaisa;
   const expired = order.paidAt === null && order.cutoffAt <= now;
-  const remainingMinutes = Math.ceil(Math.max(0, order.cutoffAt - now) / 60_000);
+  const inReview = order.deadlineAt <= now && now < order.cutoffAt;
+  const until = inReview ? order.cutoffAt : order.deadlineAt;
+  const remainingMinutes = Math.ceil(Math.max(0, until - now) / 60_000);
   const remainingHours = Math.floor(remainingMinutes / 60);
   const timeLeft = remainingHours ? `${remainingHours} h ${remainingMinutes % 60} min left` : `${remainingMinutes} min left`;
   const label = order.orderStatus === 'cancelled' ? order.closureReason === 'expired' ? 'Expired' : 'Closed'
     : order.releasedAt !== null ? 'Released'
       : expired ? 'Expired' : partial ? `Short ${money(order.payablePaisa - order.receivedPaisa)}`
-        : order.paidAt !== null ? 'Paid' : timeLeft;
+        : order.paidAt !== null ? 'Paid' : inReview ? `Review · ${timeLeft}` : timeLeft;
   const tone = expired || partial ? 'bg-[#A8232E] text-white' : order.paidAt !== null ? 'bg-[#E1EEE5] text-[#205B3D]' : 'bg-[#EDE3CF] text-[#435371]';
   return <span className={`inline-block w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${tone}`}>{label}</span>;
 }
@@ -88,7 +90,10 @@ function ClaimAndOrder({ order }: { order: BankTransferOrder }) {
       <dl className="mt-2 grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">
         <dt className="text-[#655846]">Total</dt><dd>{money(order.payablePaisa)}</dd>
         <dt className="text-[#655846]">Reference</dt><dd className="break-all font-mono text-xs">{order.orderNumber}</dd>
-        <dt className="text-[#655846]">Deadline</dt><dd>{dateTime.format(order.cutoffAt)} Nepal time</dd>
+        <dt className="text-[#655846]">Payment deadline</dt><dd>{dateTime.format(order.deadlineAt)} Nepal time</dd>
+        {order.cutoffAt > order.deadlineAt ? <>
+          <dt className="text-[#655846]">Bank review ends</dt><dd>{dateTime.format(order.cutoffAt)} Nepal time</dd>
+        </> : null}
         {order.receivedPaisa > 0 ? <><dt className="text-[#655846]">Matched</dt><dd>{money(order.receivedPaisa)}</dd></> : null}
         {order.receivedPaisa > 0 && order.receivedPaisa < order.payablePaisa ? <>
           <dt className="text-[#655846]">Still due</dt><dd>{money(order.payablePaisa - order.receivedPaisa)}</dd>

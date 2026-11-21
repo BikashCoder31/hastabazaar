@@ -73,7 +73,7 @@ function ApplicationAction({ signedIn, started, sellerId, secondary = false }: {
   }
   const href = sellerId ? '/seller' : started ? '/sell/apply' : signInPath('/sell');
   return <Link href={href} className={style}>
-    {sellerId ? 'Open Seller Center' : 'Start your application'} <ArrowRight className="size-4 shrink-0" aria-hidden="true" />
+    {sellerId ? 'Open Seller Center' : started ? 'Continue your application' : 'Start your application'} <ArrowRight className="size-4 shrink-0" aria-hidden="true" />
   </Link>;
 }
 
@@ -114,16 +114,16 @@ export default async function SellPage() {
               sizes="(min-width: 1024px) 50vw, 100vw" data-media-mode="cover" className={mediaObjectClass('cover')} />
           </div>
           <div className="min-w-0 py-9 pr-4 pl-4 sm:py-12 md:pr-8 md:pl-6 lg:py-16 lg:pr-[clamp(2rem,4vw,3.5rem)] lg:pl-[max(3rem,calc((100vw-1264px)/2))]">
-            <h1 id="sell-title" className="max-w-[13ch] font-heading text-[clamp(2.75rem,5.2vw,4.5rem)] font-medium leading-[1.02] tracking-tight">
-              Bring your craft <em className="block text-[#E8BD6A] lg:inline">to all of Nepal.</em>
+            <h1 id="sell-title" className="font-heading text-[clamp(2.75rem,5.2vw,4.5rem)] font-medium leading-[1.02] tracking-tight">
+              Bring your craft <em className="block text-[#E8BD6A] md:inline lg:block">to all of Nepal.</em>
             </h1>
             <p className="mt-5 max-w-[33rem] text-base leading-relaxed text-[#D6DEED] md:text-lg">Apply with the details you have today. Hastabazaar reviews every seller and every product, couriers collect parcels from you, and cash on delivery is collected for you.</p>
             <div className="mt-6 flex flex-wrap items-start gap-3 max-[480px]:flex-col">
               <ApplicationAction {...apply} />
               <Link href="#how-it-works" className={button + ' border border-white/35 hover:border-white hover:bg-white/5'}>How it works</Link>
             </div>
-            <dl className="mt-6 flex flex-wrap gap-x-5 gap-y-5 border-t border-white/20 pt-5 sm:gap-x-7">
-              {commission ? <div><dt className="font-heading text-3xl">{commission.percent}%</dt><dd className="mt-1 text-sm text-[#D6DEED]">commission on registered<br className="sm:hidden" /> seller sales</dd></div> : null}
+            <dl className="mt-6 grid grid-cols-2 gap-x-3 gap-y-5 border-t border-white/20 pt-5 sm:grid-cols-[repeat(3,minmax(0,max-content))] md:gap-x-5">
+              {commission ? <div><dt className="font-heading text-3xl">{commission.percent}%</dt><dd className="mt-1 text-sm text-[#D6DEED]">commission on registered seller sales</dd></div> : null}
               {payoutDay ? <div><dt className="font-heading text-3xl">{payoutDay}</dt><dd className="mt-1 text-sm text-[#D6DEED]">payouts to your bank</dd></div> : null}
               <div><dt className="font-heading text-3xl">Pickup</dt><dd className="mt-1 text-sm text-[#D6DEED]">couriers collect from you</dd></div>
             </dl>

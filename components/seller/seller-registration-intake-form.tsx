@@ -408,11 +408,12 @@ function OwnedSellerRegistrationIntakeForm({ accountId, accountEmail, managedTer
                   </datalist> : null}
                 </div>
                 {registrationFields.filter(([name]) => name === 'pickupAddress' || name === 'returnAddress').map(([name, label, maximum]) =>
-                  <label key={name} className="space-y-1.5 text-sm font-medium" hidden={wizard && sameAddress && name === 'returnAddress'}>
-                    {wizard && name === 'pickupAddress' ? 'Pickup address' : label}
-                    <Input name={name} className={fieldStyle} defaultValue={value(name)} maxLength={maximum} onInput={event => syncAddress(event.currentTarget)} />
-                    {name === 'pickupAddress' ? <span className="block font-normal text-[#665B4D]">Couriers collect parcels from here.</span> : null}
-                  </label>
+                  <div key={name} className="space-y-1.5 text-sm font-medium" hidden={wizard && sameAddress && name === 'returnAddress'}>
+                    <label htmlFor={controlId + name} className="block">{wizard && name === 'pickupAddress' ? 'Pickup address' : label}</label>
+                    <Input id={controlId + name} name={name} className={fieldStyle} defaultValue={value(name)} maxLength={maximum}
+                      aria-describedby={name === 'pickupAddress' ? controlId + 'pickup-help' : undefined} onInput={event => syncAddress(event.currentTarget)} />
+                    {name === 'pickupAddress' ? <p id={controlId + 'pickup-help'} className="font-normal text-[#665B4D]">Couriers collect parcels from here.</p> : null}
+                  </div>
                 )}
                 <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm">
                   <input type="checkbox" className="size-4 shrink-0 accent-[#14213D]" checked={sameAddress} onChange={event => toggleSameAddress(event.target.checked)}
@@ -513,7 +514,7 @@ function OwnedSellerRegistrationIntakeForm({ accountId, accountEmail, managedTer
           </fieldset>
         </div>
 
-        {wizard ? <aside id="seller-guide" className={panel + ' scroll-mt-40 space-y-4 text-sm lg:col-start-2 xl:col-auto'}>
+        {wizard ? <aside className={panel + ' space-y-4 text-sm lg:col-start-2 xl:col-auto'}>
           <div>
             <h2 className="font-semibold">Submit now, finish later</h2>
             <p className="mt-2 leading-relaxed text-[#465573]">Only your choice of how to sell, a verified email and the agreements are needed to submit. Everything else can be added from your seller dashboard.</p>
@@ -521,7 +522,7 @@ function OwnedSellerRegistrationIntakeForm({ accountId, accountEmail, managedTer
           <div className="border-t border-[#E4DACA] pt-4">
             <h2 className="font-semibold">After you submit</h2>
             <p className="mt-2 leading-relaxed text-[#465573]">Hastabazaar reviews your application by hand. You can draft products while you wait. Each is reviewed before it goes live.</p>
-            <Link href="/help#seller-guide" className="inline-flex min-h-11 items-center font-semibold text-[#A8232E] underline">Written seller guide</Link>
+            <Link href="#seller-guide" className="inline-flex min-h-11 items-center font-semibold text-[#A8232E] underline">Written seller guide</Link>
           </div>
         </aside> : null}
       </div>
