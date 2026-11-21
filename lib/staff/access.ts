@@ -1,4 +1,5 @@
 import {
+  moneyViewPermissions,
   validateAdminPermissions,
   type Permission,
 } from '../marketplace/permissions';
@@ -88,6 +89,21 @@ export const STAFF_ACCESS_RIGHTS: readonly StaffAccessRight[] = [
       'Prepare seller payouts and review payout requests. A Super Admin approves payouts and records payment.',
   },
   {
+    permission: 'payout.view',
+    label: 'View seller payouts and the business report',
+    description: 'Read payout balances, history and the payout run. Bank instructions and payout actions stay protected.',
+  },
+  {
+    permission: 'cod.view',
+    label: 'View courier cash',
+    description: 'Read delivered cash balances, matched credits and differences. Matching money needs separate access.',
+  },
+  {
+    permission: 'refund.view',
+    label: 'View refunds and recoveries',
+    description: 'Read refund and recovery progress. Bank details and finance actions stay protected.',
+  },
+  {
     permission: 'audit_log.view',
     label: 'View reports and recorded work',
     description:
@@ -149,6 +165,13 @@ export const BUILT_IN_STAFF_ACCESS_TEMPLATES: readonly StaffAccessTemplate[] = [
     description:
       'Prepare seller payouts. Approval and payment recording require a Super Admin.',
     permissions: ['payout.prepare'],
+    source: 'built-in',
+  },
+  {
+    id: 'money-view-only',
+    name: 'Money (view only)',
+    description: 'View payouts, the payout run, courier cash, refunds, recoveries and the business report.',
+    permissions: moneyViewPermissions,
     source: 'built-in',
   },
   {

@@ -1,4 +1,4 @@
-import {staffMutationGuard} from '../db/repositories/staff-mutation-guard';
+import {staffMutationGuard,staffReadGuard} from '../db/repositories/staff-mutation-guard';
 import {ensureReviewTask,listReviewTasks} from '../workflows/review-tasks';
 import {checkoutCommitClock} from '../checkout/commit-policy-guards';
 import {ManualPaymentError} from './manual-receipts';
@@ -116,7 +116,8 @@ type CourierCashDifference = {
 
 /** Read-only courier view. Historical own-rider and unrelated bank credits stay in the original workspace. */
 export async function readCourierCashWorkspace(db: D1Database, actorId: string) {
-  const authority = await staffMutationGuard(db, actorId, 'payment.receipt.verify', FinanceAccessError);
+  const cashView = ['payment.receipt.verify', 'cod.view'] as const;
+  const authority = await staffReadGuard(db, actorId, cashView, FinanceAccessError);
   const nowStatement = db.prepare(`SELECT ${checkoutCommitClock(db)} AS now`);
   const totalsStatement = db.prepare(`
     WITH courier_parcels AS (
@@ -182,7 +183,7 @@ export async function readCourierCashWorkspace(db: D1Database, actorId: string) 
     ORDER BY c.created_at,c.id`).bind(...parcelIds).all<{
       id: string; jobId: string; evidenceReference: string; remainingPaisa: number;
     }>()).results : [];
-  await staffMutationGuard(db, actorId, 'payment.receipt.verify', FinanceAccessError,
+  await staffReadGuard(db, actorId, cashView, FinanceAccessError,
     authority.role === 'super_admin' ? 'super_admin' : undefined);
   const blockedReceipts = new Set(receiptConflicts?.results.map(receipt => receipt.id));
   const receipts = allReceipts

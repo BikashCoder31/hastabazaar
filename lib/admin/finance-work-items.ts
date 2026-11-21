@@ -1,4 +1,4 @@
-import {staffMutationGuard} from '../db/repositories/staff-mutation-guard';
+import {staffMutationGuard,staffReadGuard} from '../db/repositories/staff-mutation-guard';
 import {listPayoutRequests,type PayoutRequestRow} from '../db/repositories/payouts';
 import {getPayoutFinanceWorkspace,payoutFinanceScopeGuards,type PayoutPacketSummary} from '../payments/payout-workspace';
 import {getRefundFinanceWorkspace} from '../payments/refund-workspace';
@@ -29,8 +29,10 @@ type RequestSource={id:string;sellerId:string;status:string;payoutId:string|null
 /** Existing native request reader, with current staff and retained original-party scope.
  * The private request text is available only to the protected native detail page;
  * Overview projects none of it. */
-async function requestScope(db:D1Database,actorId:string,limit:number,requestId?:string){
- const authority=await staffMutationGuard(db,actorId,'payout.prepare',FinanceScopeError);
+async function requestScope(db:D1Database,actorId:string,limit:number,requestId?:string,allowReadOnly=false){
+ const authority=allowReadOnly
+  ?await staffReadGuard(db,actorId,['payout.prepare','payout.view'],FinanceScopeError)
+  :await staffMutationGuard(db,actorId,'payout.prepare',FinanceScopeError);
  const sources=await db.prepare(`SELECT r.id,r.seller_id sellerId,r.status,r.payout_id payoutId,r.created_at createdAt,r.updated_at updatedAt,a.id originalEventId,a.actor_id originalOwnerId,s.user_id currentOwnerId
   FROM payout_requests r JOIN seller_profiles s ON s.id=r.seller_id JOIN audit_logs a ON a.id=(${originalRequestEvent(db)})
   WHERE s.user_id<>? AND a.actor_id IS NOT NULL AND a.actor_id<>? ${requestId?'AND r.id=?':"AND r.status='submitted'"} ORDER BY r.created_at,r.id LIMIT ?`)
@@ -45,9 +47,9 @@ async function requestScope(db:D1Database,actorId:string,limit:number,requestId?
  await db.batch(guards);
  return{rows,guards,complete:complete&&!legacy,authority};
 }
-export async function readPayoutRequestFinanceScope(db:D1Database,actorId:string,requestId:string):Promise<PayoutRequestRow|null>{
+export async function readPayoutRequestFinanceScope(db:D1Database,actorId:string,requestId:string,{allowReadOnly=false}:{allowReadOnly?:boolean}={}):Promise<PayoutRequestRow|null>{
  if(typeof requestId!=='string'||!requestId||requestId.length>191)return null;
- return(await requestScope(db,actorId,1,requestId)).rows[0]??null;
+ return(await requestScope(db,actorId,1,requestId,allowReadOnly)).rows[0]??null;
 }
 
 function nativeTable(model:PayoutModel){return model==='registered'?'payouts':model==='managed'?'managed_payouts':'managed_supplier_payments';}

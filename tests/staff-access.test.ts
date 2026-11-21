@@ -22,6 +22,7 @@ void test('job templates grant only their supported work and keep account access
     ['Seller reviewer', ['seller.application.review']],
     ['Finance assistant', ['payout.prepare']],
     ['Reports only', ['audit_log.view']],
+    ['Money (view only)', ['payout.view', 'cod.view', 'refund.view']],
     ['Work access off', []],
   ] as const;
   for (const [name, expected] of bundles) {

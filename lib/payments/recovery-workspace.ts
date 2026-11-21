@@ -7,7 +7,7 @@ import {readRecoveryArrangement} from './recovery-arrangements';
 import {readOwnedSellerRecovery,getSellerRecoveryReview,getSellerRecoveryPlanTerms,SellerRecoveryError,type SellerRecoverySource} from './seller-recovery';
 import {readRecoveryFollowup,readRecoveryContactHistory} from './recovery-followup';
 import {getRecoveryRepaymentView,readRecoveryRepaymentClaims} from './recovery-repayments';
-import {staffMutationGuard} from '../db/repositories/staff-mutation-guard';
+import {staffReadGuard} from '../db/repositories/staff-mutation-guard';
 
 class AccessError extends SellerRecoveryError {constructor(message:string){super(message,403);}}
 const ownerSql=`EXISTS(SELECT 1 FROM seller_recovery_cases c JOIN seller_profiles s ON s.id=c.seller_id JOIN users u ON u.id=s.user_id WHERE c.id=? AND u.id=? AND u.status='active')`;
@@ -44,13 +44,13 @@ export async function listSellerRecoveries(db:D1Database,actorId:string){
 
 /** Private Finance view. Personal seller/customer cases are excluded before loading their sources. */
 export async function getRecoveryFinanceWorkspace(db:D1Database,actorId:string,caseId?:string){
- const authority=await staffMutationGuard(db,actorId,'payout.prepare',AccessError);
+ const authority=await staffReadGuard(db,actorId,['payout.prepare','refund.view'],AccessError);
  const ids=await db.prepare(`SELECT c.id,s.trading_name AS sellerName,c.state,c.payout_model AS model,c.next_action_at AS nextActionAt,lead.display_name AS ownerName,backup.display_name AS backupName FROM seller_recovery_cases c JOIN seller_profiles s ON s.id=c.seller_id JOIN users lead ON lead.id=c.owner_id LEFT JOIN users backup ON backup.id=c.backup_id LEFT JOIN refunds r ON r.id=c.refund_id LEFT JOIN orders o ON o.id=r.order_id
   WHERE s.user_id<>? AND (o.customer_id IS NULL OR o.customer_id<>?) AND COALESCE(json_extract(c.original_source_json,'$.ownerId'),'')<>? AND COALESCE(json_extract(c.original_source_json,'$.customerId'),'')<>? ${caseId?'AND c.id=?':''} ORDER BY c.next_action_at,c.id LIMIT 100`).bind(actorId,actorId,actorId,actorId,...caseId?[caseId]:[]).all<{id:string;sellerName:string;state:string;model:string;nextActionAt:number;ownerName:string;backupName:string|null}>();
  if(caseId&&!ids.results.length)throw new AccessError('This private recovery is unavailable to an operator with a personal interest.');
  const cases=[];
  for(const item of caseId?ids.results:[]){
-  const review=await getSellerRecoveryReview(db,actorId,item.id),followup=await readRecoveryFollowup(db,item.id);
+  const review=await getSellerRecoveryReview(db,actorId,item.id,{allowReadOnly:true}),followup=await readRecoveryFollowup(db,item.id);
   const proposals=await db.prepare(`SELECT id,case_revision AS caseRevision,amount_paisa AS amountPaisa,installments_json AS installmentsJson,netting_authorized AS nettingAuthorized,contact_details AS contactDetails,next_review_at AS nextReviewAt,accepted_at AS acceptedAt FROM seller_recovery_proposals WHERE case_id=? ORDER BY accepted_at DESC,id LIMIT 20`).bind(item.id).all<{id:string;caseRevision:number;amountPaisa:number;installmentsJson:string;nettingAuthorized:number;contactDetails:string;nextReviewAt:number;acceptedAt:number}>();
   const receipts=authority.role==='super_admin'?await db.prepare(`SELECT r.id,c.revision,r.amount_minor AS amountPaisa,r.account_version_id AS accountVersionId,r.amount_minor-COALESCE((SELECT SUM(bank_reversal.amount_minor) FROM company_receipt_reversals bank_reversal WHERE bank_reversal.receipt_id=r.id),0)-COALESCE((SELECT SUM(${actualManualReceiptUseSql('u')}) FROM manual_receipt_uses u WHERE u.receipt_id=r.id AND u.state<>'released'),0)-COALESCE((SELECT SUM(${actualRecoveryAllocationSql('a')}) FROM seller_recovery_allocations a WHERE a.receipt_id=r.id),0) AS remainingPaisa
    FROM company_money_receipts r JOIN company_receipt_controls c ON c.receipt_id=r.id WHERE r.payer_user_id=? AND r.kind='bank_credit' AND r.status='verified' AND r.currency='NPR'

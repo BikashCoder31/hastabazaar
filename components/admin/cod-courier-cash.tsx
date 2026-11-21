@@ -17,7 +17,7 @@ type Props = {
   cash: Cash;
   actorId: string;
   superAdmin: boolean;
-  incomingHref: string;
+  incomingHref?: string;
   returnTo?: string;
   payoutHref?: string;
   refundsHref?: string;
@@ -87,7 +87,7 @@ function ParcelGroups({
   toggle: (parcels: Parcel[], checked: boolean) => void;
   superAdmin: boolean;
   locked: boolean;
-  currentHref: string;
+  currentHref?: string;
 }) {
   const groups = new Map<string | null, Parcel[]>();
   for (const parcel of cash.parcels) {
@@ -118,7 +118,14 @@ function ParcelGroups({
           {parcels.map(parcel => {
             const days = parcel.deliveredAt === null ? null : daysSince(cash.now, parcel.deliveredAt);
             const checked = selected.has(parcel.id);
-            const detailHref = incomingParcelHref(parcel.orderId, parcel.id, undefined, currentHref);
+            const detailHref = currentHref && incomingParcelHref(parcel.orderId, parcel.id, undefined, currentHref);
+            const reference = <>
+              {parcel.orderNumber}
+              <span className="font-sans text-[13px] font-normal text-muted-foreground break-words">
+                {[parcel.sellerName, parcel.deliveredAt === null ? 'Delivery date unrecorded' : `Delivered ${deliveryDate.format(parcel.deliveredAt)}`].filter(Boolean).join(' · ')}
+              </span>
+            </>;
+            const referenceClass = 'inline-flex min-h-11 min-w-0 max-w-full flex-col justify-center rounded-sm font-mono text-sm font-bold break-words';
             return <li id={'courier-parcel-' + parcel.id} key={parcel.id}
               className={`grid items-center gap-x-2 gap-y-1 border-t px-4 py-2.5 sm:px-[18px] ${superAdmin && canSelect(parcel)
                 ? 'grid-cols-[36px_minmax(0,1fr)_auto] sm:grid-cols-[36px_minmax(0,1fr)_auto_auto]'
@@ -128,12 +135,8 @@ function ParcelGroups({
                   checked={checked} disabled={locked} onChange={event => toggle([parcel], event.target.checked)} />
               </label> : null}
               <div className="min-w-0">
-                <Link href={detailHref} className="inline-flex min-h-11 min-w-0 max-w-full flex-col justify-center rounded-sm font-mono text-sm font-bold break-words hover:underline">
-                  {parcel.orderNumber}
-                  <span className="font-sans text-[13px] font-normal text-muted-foreground break-words">
-                    {[parcel.sellerName, parcel.deliveredAt === null ? 'Delivery date unrecorded' : `Delivered ${deliveryDate.format(parcel.deliveredAt)}`].filter(Boolean).join(' · ')}
-                  </span>
-                </Link>
+                {detailHref ? <Link href={detailHref} className={referenceClass + ' hover:underline'}>{reference}</Link>
+                  : <span className={referenceClass}>{reference}</span>}
                 {parcel.correctionHeld ? <p className="text-xs font-semibold text-destructive">Bank correction under review</p> : null}
                 {parcel.personalInterest ? <p className="text-xs text-muted-foreground">Another eligible Super Admin can match this parcel.</p> : null}
               </div>
@@ -148,7 +151,7 @@ function ParcelGroups({
       </section>;
     })}
     {Number(cash.totals.outstanding) > cash.parcels.length ? (
-      <p className="text-sm text-muted-foreground">Showing the first {cash.parcels.length} parcels. Search by exact order number in Incoming payments to review older records.</p>
+      <p className="text-sm text-muted-foreground">Showing the first {cash.parcels.length} parcels.{currentHref ? ' Search by exact order number in Incoming payments to review older records.' : null}</p>
     ) : null}
   </div>;
 }
@@ -159,21 +162,25 @@ const differenceLabels = {
   unallocated_credit: 'Unallocated courier bank credit',
 } as const;
 
-function Differences({ cash, reviewHref }: { cash: Cash; reviewHref: string }) {
+function Differences({ cash, reviewHref }: { cash: Cash; reviewHref?: string }) {
   return <section className={`${card} p-4 sm:p-5`} aria-labelledby="courier-cash-differences">
     <h2 id="courier-cash-differences" className="font-semibold">Differences to check</h2>
     {cash.differences.length ? <ul className="mt-2 divide-y">
-      {cash.differences.map(entry => <li key={entry.id}>
-        <Link href={reviewHref + '#' + encodeURIComponent(entry.id)}
-          className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 py-2 break-all hover:underline">
+      {cash.differences.map(entry => {
+        const details = <>
           <span className="font-semibold">{differenceLabels[entry.kind]}</span>
           <span className="text-sm text-muted-foreground">{[
             entry.orderNumber, entry.receiptReference,
             entry.remainingPaisa ? money(entry.remainingPaisa) + ' outstanding' : null,
             deliveryDate.format(entry.createdAt),
           ].filter(Boolean).join(' · ')}</span>
-        </Link>
-      </li>)}
+        </>;
+        const classes = 'flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 py-2 break-all';
+        return <li key={entry.id}>{reviewHref
+          ? <Link href={reviewHref + '#' + encodeURIComponent(entry.id)} className={classes + ' hover:underline'}>{details}</Link>
+          : <div className={classes}>{details}</div>}
+        </li>;
+      })}
     </ul> : <p className="mt-2 text-sm text-muted-foreground">No courier cash differences are open for review.</p>}
   </section>;
 }
@@ -195,10 +202,21 @@ function typedText(value: string, min: number, max: number) {
 }
 
 export function CourierCashWorkspace(props: Props) {
-  return <CourierCashView key={props.actorId} {...props} />;
+  if (props.incomingHref) return <CourierCashView key={props.actorId} {...props} incomingHref={props.incomingHref} />;
+  const { cash, refundsHref, returnTo } = props;
+  return <div className="space-y-[18px]">
+    <AdminPageTitle><h1 className="text-[28px]">Courier cash</h1></AdminPageTitle>
+    <CashTotals cash={cash} />
+    <ParcelGroups cash={cash} selected={new Set()} toggle={() => {}} superAdmin={false} locked />
+    <Differences cash={cash} />
+    {refundsHref || returnTo ? <nav aria-label="Payment workspace links" className="flex flex-wrap gap-2">
+      {refundsHref ? <Link className={action} href={refundsHref}>Refunds and funding</Link> : null}
+      {returnTo ? <Link className={action} href={returnTo}>Back to previous view</Link> : null}
+    </nav> : null}
+  </div>;
 }
 
-function CourierCashView({ cash, actorId, superAdmin, incomingHref, returnTo, payoutHref, refundsHref }: Props) {
+function CourierCashView({ cash, actorId, superAdmin, incomingHref, returnTo, payoutHref, refundsHref }: Props & { incomingHref: string }) {
   const router = useRouter();
   const { receipts } = cash;
   const [selection, setSelection] = useState(() => new Set<string>());

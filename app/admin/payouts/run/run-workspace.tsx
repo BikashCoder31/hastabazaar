@@ -30,8 +30,8 @@ function Metric({ label, value, detail, color = 'text-[#14213D]' }: { label: str
 
 type RunResult = { approved: number; uncertain: boolean; failed: { row: PayoutRunRow; error: string }[] };
 
-export function PayoutRunWorkspace(data: PayoutRunData & { actorId: string; canViewTransfers: boolean }) {
-  const { actorId, rows, calendar, lastRun, canViewTransfers } = data;
+export function PayoutRunWorkspace(data: PayoutRunData & { actorId: string; canApprove: boolean; canViewTransfers: boolean }) {
+  const { actorId, rows, calendar, lastRun, canApprove, canViewTransfers } = data;
   const router = useRouter();
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set());
   const [completed, setCompleted] = useState<ReadonlySet<string>>(new Set());
@@ -43,8 +43,8 @@ export function PayoutRunWorkspace(data: PayoutRunData & { actorId: string; canV
   const attempt = useRef<string | null>(null);
   const noteId = useId();
   const bankHelpId = useId();
-  const catalog = usePublishedFormConfig(formId, { enabled: reviewed !== null, actorId });
-  const passing = rows.filter(row => row.review && !completed.has(row.id));
+  const catalog = usePublishedFormConfig(formId, { enabled: canApprove && reviewed !== null, actorId });
+  const passing = rows.filter(row => row.blocker === null && !completed.has(row.id));
   const blocked = rows.filter(row => row.blocker !== null);
   const selected = passing.filter(row => !excluded.has(row.id));
   const selectedTotal = payoutAmount(sumPaisa(selected));
@@ -63,7 +63,7 @@ export function PayoutRunWorkspace(data: PayoutRunData & { actorId: string; canV
 
   async function approve(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (inFlight.current || !catalog.config || !catalog.canSubmit || !reviewed?.length) return;
+    if (!canApprove || inFlight.current || !catalog.config || !catalog.canSubmit || !reviewed?.length) return;
     const submittedNote = new FormData(event.currentTarget).get('note');
     const note = typeof submittedNote === 'string' ? submittedNote.trim() : '';
     let configured: ReturnType<typeof configuredJsonPayload>;
@@ -123,16 +123,16 @@ export function PayoutRunWorkspace(data: PayoutRunData & { actorId: string; canV
     <div className="flex min-w-0 flex-wrap items-end justify-between gap-4">
       <div className="min-w-0 flex-1 basis-[26rem]">
         <AdminPageTitle><h1 className="break-words font-heading text-2xl leading-tight font-semibold tracking-tight lg:text-[28px]">Payout run · {calendar.runDay}</h1></AdminPageTitle>
-        <p className="mt-1 text-[#46536F]">Approve everything that passed its checks in one go. Cut-off {calendar.cutoffTime} Nepal time.</p>
+        <p className="mt-1 text-[#46536F]">{canApprove ? 'Approve everything that passed its checks in one go.' : 'View payouts that are ready for the run.'} Cut-off {calendar.cutoffTime} Nepal time.</p>
       </div>
       <span className="inline-flex min-h-7 max-w-full items-center gap-2 rounded-full bg-[#F7E9C9] px-2.5 py-1 text-[13.5px] font-semibold text-[#754B08]">
         <Clock3 aria-hidden="true" className="size-4 shrink-0" /> Cut-off {calendar.cutoffDay}, {calendar.cutoffTime}
       </span>
     </div>
 
-    <dl className="grid min-w-0 gap-3.5 lg:grid-cols-4">
+    <dl className={`grid min-w-0 gap-3.5 ${canApprove ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
       <Metric label="Ready and passing checks" value={passing.length} detail={payoutAmount(sumPaisa(passing))} />
-      <Metric label="Selected to approve" value={selected.length} detail={selectedTotal} color="text-[#A8232E]" />
+      {canApprove ? <Metric label="Selected to approve" value={selected.length} detail={selectedTotal} color="text-[#A8232E]" /> : null}
       <Metric label="Need a look first" value={blocked.length} detail="Won’t be included" color="text-[#815406]" />
       <Metric label="Last run" value={lastRun ? payoutDate(lastRun.at) : '—'}
         detail={lastRun ? payoutCount(lastRun.count) + ' · ' + payoutAmount(lastRun.amountPaisa) : 'No run approvals recorded'} />
@@ -141,24 +141,29 @@ export function PayoutRunWorkspace(data: PayoutRunData & { actorId: string; canV
     <section className={panel} aria-labelledby="ready-payout-run">
       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 px-4 py-2 sm:px-[18px]">
         <h2 id="ready-payout-run" className="font-bold">Ready and passing all checks</h2>
-        <button type="button" className={'min-h-11 rounded-full border border-[#D3C5AD] px-3 text-[13.5px] font-semibold text-[#46536F] hover:border-[#14213D] disabled:opacity-60 ' + buttonFocus}
+        {canApprove ? <button type="button" className={'min-h-11 rounded-full border border-[#D3C5AD] px-3 text-[13.5px] font-semibold text-[#46536F] hover:border-[#14213D] disabled:opacity-60 ' + buttonFocus}
           disabled={!passing.length || pending} onClick={() => setExcluded(new Set(allSelected ? passing.map(row => row.id) : []))}>
           {allSelected ? 'Clear all' : 'Select all'}
-        </button>
+        </button> : null}
       </div>
       {passing.length ? <ul className="divide-y divide-[#E4DACA] border-t border-[#E4DACA]">
-        {passing.map(row => <li key={row.id}>
-          <label className="grid min-h-[71px] min-w-0 cursor-pointer grid-cols-[22px_minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-3.5 gap-y-2 px-4 py-3 has-[:disabled]:cursor-default sm:px-[18px] md:grid-cols-[22px_minmax(0,1fr)_auto_minmax(7rem,auto)]">
-            <input className="peer sr-only" type="checkbox" checked={!excluded.has(row.id)} onChange={() => toggleRow(row.id)} disabled={pending} aria-label={'Include ' + row.reference + ' for ' + row.seller} />
-            <span aria-hidden="true" className="inline-grid size-[22px] place-items-center rounded-md border border-[#B9AC96] bg-white text-transparent peer-checked:border-[#14213D] peer-checked:bg-[#14213D] peer-checked:text-white peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[#A8232E]"><Check className="size-4" /></span>
-            <span className="col-span-2 min-w-0 break-words md:col-span-1">
-              <strong className="block">{row.seller}</strong>
-              <span className="block text-[13px] text-[#46536F]"><span className="font-mono text-[12px]">{row.reference}</span> · {row.orderCount} {row.orderCount === 1 ? 'order' : 'orders'} · {row.bankLabel}</span>
-            </span>
-            <span className="col-span-2 col-start-1 row-start-2 inline-flex min-h-6 w-fit items-center gap-1.5 rounded-full bg-[#E1EEE5] px-2.5 py-0.5 text-[13px] font-semibold text-[#236548] md:col-span-1 md:col-start-3 md:row-start-1"><Check aria-hidden="true" className="size-4 shrink-0" />4 checks passed</span>
-            <strong className="col-start-3 row-start-2 ml-auto min-w-0 break-words text-right tabular-nums md:col-start-4 md:row-start-1">{payoutAmount(row.amountPaisa)}</strong>
-          </label>
-        </li>)}
+        {passing.map(row => {
+          const Row = canApprove ? 'label' : 'div';
+          return <li key={row.id}>
+            <Row className={'grid min-h-[71px] min-w-0 grid-cols-[22px_minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-3.5 gap-y-2 px-4 py-3 sm:px-[18px] md:grid-cols-[22px_minmax(0,1fr)_auto_minmax(7rem,auto)]' + (canApprove ? ' cursor-pointer has-[:disabled]:cursor-default' : '')}>
+              {canApprove ? <>
+                <input className="peer sr-only" type="checkbox" checked={!excluded.has(row.id)} onChange={() => toggleRow(row.id)} disabled={pending} aria-label={'Include ' + row.reference + ' for ' + row.seller} />
+                <span aria-hidden="true" className="inline-grid size-[22px] place-items-center rounded-md border border-[#B9AC96] bg-white text-transparent peer-checked:border-[#14213D] peer-checked:bg-[#14213D] peer-checked:text-white peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[#A8232E]"><Check className="size-4" /></span>
+              </> : <span aria-hidden="true" />}
+              <span className="col-span-2 min-w-0 break-words md:col-span-1">
+                <strong className="block">{row.seller}</strong>
+                <span className="block text-[13px] text-[#46536F]"><span className="font-mono text-[12px]">{row.reference}</span> · {row.orderCount} {row.orderCount === 1 ? 'order' : 'orders'} · {row.bankLabel}</span>
+              </span>
+              <span className="col-span-2 col-start-1 row-start-2 inline-flex min-h-6 w-fit items-center gap-1.5 rounded-full bg-[#E1EEE5] px-2.5 py-0.5 text-[13px] font-semibold text-[#236548] md:col-span-1 md:col-start-3 md:row-start-1"><Check aria-hidden="true" className="size-4 shrink-0" />4 checks passed</span>
+              <strong className="col-start-3 row-start-2 ml-auto min-w-0 break-words text-right tabular-nums md:col-start-4 md:row-start-1">{payoutAmount(row.amountPaisa)}</strong>
+            </Row>
+          </li>;
+        })}
       </ul> : <p className="border-t border-[#E4DACA] px-4 py-4 text-sm text-[#46536F] sm:px-[18px]">No prepared payouts are ready for this run.</p>}
     </section>
 
@@ -188,7 +193,7 @@ export function PayoutRunWorkspace(data: PayoutRunData & { actorId: string; canV
       </ul> : null}
     </section> : null}
 
-    <footer className="sticky bottom-[calc(var(--workspace-bottom-bar,0rem)+env(safe-area-inset-bottom))] z-10 -mx-3 mt-1 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 bg-[#14213D] px-3 py-3.5 text-white md:bottom-0 md:-mx-6 md:px-6 lg:-mx-8 lg:px-8">
+    {canApprove ? <footer className="sticky bottom-[calc(var(--workspace-bottom-bar,0rem)+env(safe-area-inset-bottom))] z-10 -mx-3 mt-1 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 bg-[#14213D] px-3 py-3.5 text-white md:bottom-0 md:-mx-6 md:px-6 lg:-mx-8 lg:px-8">
       <div className="min-w-0 flex-1 basis-[15rem] break-words text-[14.5px]" aria-live="polite">
         <strong>{payoutCount(selected.length)} · {selectedTotal}</strong>{' '}
         <span className="text-[#C9D0DD]">Your approval is final. Each one is saved in its payout history.</span>
@@ -234,6 +239,6 @@ export function PayoutRunWorkspace(data: PayoutRunData & { actorId: string; canV
       <p id={bankHelpId} className="w-full text-[13px] leading-tight text-[#C9D0DD]">
         Bank file download is unavailable.{canViewTransfers ? <> <Link className="inline-flex min-h-11 items-center font-semibold text-white underline underline-offset-4" href="/admin/payments/payouts?returnTo=%2Fadmin%2Fpayouts%2Frun">Open verified payout transfers</Link></> : null}
       </p>
-    </footer>
+    </footer> : null}
   </div>;
 }

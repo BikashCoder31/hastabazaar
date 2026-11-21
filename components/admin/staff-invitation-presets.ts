@@ -6,8 +6,8 @@ export const STAFF_INVITATION_PRESETS = [
   { name: 'Catalog & Sellers', templates: ['product-reviewer', 'seller-reviewer'] },
   {
     name: 'Money (view only)',
-    templates: ['reports-only'],
-    scope: 'Reports only. Payouts, courier cash and refunds require separate access.',
+    templates: ['money-view-only'],
+    scope: 'View payouts, courier cash, refunds, recoveries and the business report.',
   },
 ].map(({ name, templates, scope }) => ({
   name,

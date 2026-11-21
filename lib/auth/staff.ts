@@ -257,7 +257,7 @@ export async function getStaffUser(): Promise<StaffUser | null> {
 
 export async function requireStaffPage(
   returnTo: string,
-  permission?: Permission,
+  permission?: Permission | readonly Permission[],
 ): Promise<StaffUser> {
   const identity = await requireAuthenticatedUser(returnTo);
   const database = databaseFromEnvironment();
@@ -265,7 +265,8 @@ export async function requireStaffPage(
     (await findStaffBySubject(database, identity.userId)) ??
     (await acceptMatchingInvitation(database, identity));
 
-  if (!staff || (permission && !can(staff, permission))) {
+  const allowed = permission === undefined ? [] : typeof permission === 'string' ? [permission] : permission;
+  if (!staff || (permission !== undefined && !allowed.some(right => can(staff, right)))) {
     redirect('/staff-access-denied');
   }
   // Invitation acceptance can promote an identity during this request. Run the

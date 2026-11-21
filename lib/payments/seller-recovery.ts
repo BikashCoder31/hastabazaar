@@ -19,7 +19,7 @@ import {recoveryLiabilityCorrection} from './recovery-liability-correction';
 import {readRecoveryArrangement} from './recovery-arrangements';
 import {recoverySourceDispositionSql,recoveryDispositionBindings} from './recovery-source-disposition';
 import type {PayoutModel} from './payout-transfer-types';
-import {staffMutationGuard} from '../db/repositories/staff-mutation-guard';
+import {staffMutationGuard,staffReadGuard} from '../db/repositories/staff-mutation-guard';
 import {commandReceipt,type CommandContext} from '../workflows/contracts';
 import {paymentGuard} from './manual-receipts';
 import {checkoutCommitClock} from '../checkout/commit-policy-guards';
@@ -305,8 +305,11 @@ async function assertIndependent(db:D1Database,source:SellerRecoverySource,actor
   const retained=await db.prepare(`SELECT json_extract(original_source_json,'$.ownerId') AS ownerId,json_extract(original_source_json,'$.customerId') AS customerId FROM seller_recovery_cases WHERE source_kind=? AND source_id=?`).bind(source.kind,source.id).first<{ownerId:string;customerId:string|null}>();
   if([source.ownerId,source.customerId,source.originalCustomerId,retained?.ownerId,retained?.customerId].includes(actorId))throw new RecoveryAuthorityError('An eligible operator without a personal interest must handle this recovery.');
 }
-export async function getSellerRecoveryReview(db:D1Database,actorId:string,id:string){
-  const authority=await staffMutationGuard(db,actorId,'payout.prepare',RecoveryAuthorityError),row=await caseRow(db,id);
+export async function getSellerRecoveryReview(db:D1Database,actorId:string,id:string,options:{allowReadOnly?:boolean}={}){
+  const authority=options.allowReadOnly
+    ?await staffReadGuard(db,actorId,['payout.prepare','refund.view'],RecoveryAuthorityError)
+    :await staffMutationGuard(db,actorId,'payout.prepare',RecoveryAuthorityError);
+  const row=await caseRow(db,id);
   const source=await readSellerRecoverySource(db,{kind:row.kind,id:row.sourceId});await assertIndependent(db,source,actorId);
   await db.batch(authority.statements);
   const uncertain=await db.prepare(`SELECT COALESCE(SUM(a.amount_paisa),0) AS amount FROM seller_recovery_allocations a JOIN company_money_receipts r ON r.id=a.receipt_id

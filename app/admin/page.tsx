@@ -16,10 +16,11 @@ import {readSystemHealthWorkspace} from '@/lib/operations/system-health-workspac
 import {readEmailHealthRuntimeConfig} from '@/lib/operations/email-delivery-overview';
 import {ReviewTaskConflict} from '@/lib/workflows/review-tasks';
 import {staffMutationGuard} from '@/lib/db/repositories/staff-mutation-guard';
-import { can } from '@/lib/marketplace/permissions';
+import { can, isMoneyViewOnly } from '@/lib/marketplace/permissions';
 import { adminNavigation } from '@/lib/admin/navigation';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import {
   ArrowRight,
   ChevronDown,
@@ -47,6 +48,7 @@ export default async function AdminDashboardPage({ searchParams }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 } = {}) {
   let staff = await requireStaffPage('/admin','account.self.manage');
+  if (isMoneyViewOnly(staff)) redirect('/admin/payments');
   const params = await searchParams;
   const contextParams=new URLSearchParams();for(const [key,value] of Object.entries(params??{}))if(typeof value==='string')contextParams.set(key,value);
   const returnTo='/admin'+(contextParams.size?'?'+contextParams.toString():'');

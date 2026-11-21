@@ -1,7 +1,7 @@
 import {bankSatisfiedReceiptReturnSql} from './receipt-return-bank-satisfaction';
 import {actualManualReceiptUseSql} from './receipt-use-accounting';
 import {actualRecoveryAllocationSql} from './recovery-receipt-accounting';
-import {staffMutationGuard} from '../db/repositories/staff-mutation-guard';
+import {staffReadGuard} from '../db/repositories/staff-mutation-guard';
 import {responseScopeContains} from '../orders/response-sql';
 import {checkoutCommitClock} from '../checkout/commit-policy-guards';
 import {fundingAvailableSql} from './refund-funding';
@@ -134,7 +134,7 @@ function readCursor(value:string|undefined,source=false):QueueCursor|null{
 }
 const writeCursor=(cursor:QueueCursor)=>encodeURIComponent(JSON.stringify(cursor));
 export async function getRefundFinanceWorkspace(db:D1Database,actorId:string,caseId?:string,obligationId?:string,options:RefundWorkspacePageOptions={}){
- const authority=await staffMutationGuard(db,actorId,'refund.approve.standard',AccessError),superAdmin=authority.role==='super_admin';
+ const authority=await staffReadGuard(db,actorId,['refund.approve.standard','refund.view'],AccessError),superAdmin=authority.role==='super_admin';
  const limit=options.limit??100;
  if(!Number.isSafeInteger(limit)||limit<1||limit>100||options.search!==undefined&&(typeof options.search!=='string'||options.search.length>160))throw new RefundObligationError('Use a search of up to 160 characters and a page of 1–100 records.',400);
  const search=options.search?.trim()??'',cursor=readCursor(options.cursor),sourceCursor=readCursor(options.sourceCursor,true);
@@ -249,7 +249,7 @@ export async function getCustomerRefundWorkspace(db:D1Database,actorId:string){
 
 /** Resolve only committed receipt-return notices after current Finance authority. */
 export async function resolveReceiptReturnFinanceNotice(db:D1Database,actorId:string,kind:'loss'|'satisfaction',sourceId:string){
- const authority=await staffMutationGuard(db,actorId,'refund.approve.standard',AccessError);
+ const authority=await staffReadGuard(db,actorId,['refund.approve.standard','refund.view'],AccessError);
  if(!['loss','satisfaction'].includes(kind)||typeof sourceId!=='string'||!sourceId||sourceId.length>191)throw new RefundObligationError('Open the exact retained Finance notification.',400);
  const table=kind==='loss'?'receipt_return_bank_losses':'receipt_return_bank_satisfactions';
  const source=await db.prepare(`SELECT item.obligation_id obligationId FROM ${table} item JOIN seller_recovery_receipt_reversal_reviews review ON review.id=item.review_id WHERE item.id=? AND review.state='completed'`).bind(sourceId).first<{obligationId:string}>();

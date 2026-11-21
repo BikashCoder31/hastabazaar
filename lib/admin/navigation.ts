@@ -1,4 +1,4 @@
-import { can, type Permission } from '@/lib/marketplace/permissions';
+import { can, isMoneyViewOnly, type Permission } from '@/lib/marketplace/permissions';
 
 export const adminNavigationGroups = [
   'Overview & work queue',
@@ -244,21 +244,23 @@ const destinations: readonly {
     icon: 'reviews',
     permission: 'product.review',
   },
-  {href:'/admin/payments',label:'Courier cash',icon:'payouts',permission:'payment.receipt.verify'},
-  { href: '/admin/payments/refunds', label: 'Refunds & recoveries', icon: 'payouts', permission: 'refund.approve.standard' },
-  { href: '/admin/payments/recoveries', label: 'Recoveries', icon: 'payouts', permission: 'payout.prepare' },
-  { href: '/admin/payouts/run', label: 'Payout run', icon: 'payouts', permission: 'payout.approve', role: 'super_admin' },
+  { href: '/admin/payments', label: 'Courier cash', icon: 'payouts', permission: 'payment.receipt.verify', alternativePermission: 'cod.view' },
+  { href: '/admin/payments/refunds', label: 'Refunds & recoveries', icon: 'payouts', permission: 'refund.approve.standard', alternativePermission: 'refund.view' },
+  { href: '/admin/payments/recoveries', label: 'Recoveries', icon: 'payouts', permission: 'payout.prepare', alternativePermission: 'refund.view' },
+  { href: '/admin/payouts/run', label: 'Payout run', icon: 'payouts', permission: 'payout.approve', alternativePermission: 'payout.view' },
   {
     href: '/admin/payouts',
     label: 'Payouts',
     icon: 'payouts',
     permission: 'payout.prepare',
+    alternativePermission: 'payout.view',
   },
   {
     href: '/admin/analytics',
     label: 'Business report',
     icon: 'analytics',
     permission: 'audit_log.view',
+    alternativePermission: 'payout.view',
   },
   {
     href: '/admin/privacy',
@@ -704,6 +706,7 @@ export function adminNavigation(
   query = '',
 ) {
   if (role !== 'admin' && role !== 'super_admin') return [];
+  const moneyViewOnly = isMoneyViewOnly({ role, permissions });
   const terms = query
     .trim()
     .toLowerCase()
@@ -713,6 +716,7 @@ export function adminNavigation(
   return destinations
     .filter(
       (item) =>
+        (!moneyViewOnly || item.permission !== 'account.self.manage') &&
         (!item.role || item.role === role) &&
         (can({ role, permissions }, item.permission) ||
           (item.alternativePermission && can({ role, permissions }, item.alternativePermission))),

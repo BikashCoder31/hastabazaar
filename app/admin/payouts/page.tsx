@@ -40,7 +40,8 @@ const minimumPattern = /^\d{1,9}(?:\.\d{1,2})?$/;
 const actionLink = 'inline-flex min-h-11 w-fit max-w-full items-center text-sm font-semibold underline underline-offset-4';
 
 export default async function PayoutsPage({ searchParams }: { searchParams?: Promise<PayoutQuery> } = {}) {
-  const staff = await requireStaffPage('/admin/payouts', 'payout.prepare');
+  const staff = await requireStaffPage('/admin/payouts', ['payout.prepare', 'payout.view']);
+  const canPrepare = can(staff, 'payout.prepare');
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const query = await searchParams ?? {};
   if (query.sellerId !== undefined && typeof query.sellerId !== 'string') notFound();
@@ -48,7 +49,7 @@ export default async function PayoutsPage({ searchParams }: { searchParams?: Pro
   const returnTo = safeAdminReturnTo(query.returnTo);
 
   if (query.request !== undefined) {
-    const request = await readPayoutRequestFinanceScope(database, staff.id, query.request);
+    const request = await readPayoutRequestFinanceScope(database, staff.id, query.request, { allowReadOnly: true });
     if (!request || (sellerId && request.sellerId !== sellerId)) notFound();
     const requestHref = '/admin/payouts?request=' + encodeURIComponent(request.id);
     return (
@@ -59,8 +60,10 @@ export default async function PayoutsPage({ searchParams }: { searchParams?: Pro
         <p>Originally submitted {payoutDate(request.createdAt, true)}{request.firstFinanceDueAt !== null ? ' · Original Finance review target ' + payoutDate(request.firstFinanceDueAt, true) : ' · Original target needs reconciliation'}</p>
         {request.sellerNote ? <p>Submitted request note · {request.sellerNote}</p> : null}
         {request.processingNote ? <p>Recorded decision note · {request.processingNote}</p> : null}
-        {request.status === 'submitted' ? <PayoutRequestActions id={request.id} actorId={staff.id} role={staff.role} /> : null}
-        {request.payoutId ? <Link className={actionLink} href={withAdminReturnTo('/admin/payments/payouts?model=registered&payout=' + encodeURIComponent(request.payoutId), requestHref)}>Open exact original payout instruction</Link> : null}
+        {canPrepare && request.status === 'submitted' ? <PayoutRequestActions id={request.id} actorId={staff.id} role={staff.role} /> : null}
+        {request.payoutId ? <Link className={actionLink} href={canPrepare
+          ? withAdminReturnTo('/admin/payments/payouts?model=registered&payout=' + encodeURIComponent(request.payoutId), requestHref)
+          : '/admin/payouts/' + encodeURIComponent(request.payoutId)}>{canPrepare ? 'Open exact original payout instruction' : 'Open payout record'}</Link> : null}
       </div>
     );
   }
@@ -120,11 +123,11 @@ export default async function PayoutsPage({ searchParams }: { searchParams?: Pro
         readUnallocatedPayoutLines(database, row.sellerId, now, candidate ? (heldBalance ? 'both' : 'available') : 'held'),
       ]);
       return <PayoutDetailPanel {...base} bank={bank} lines={lines}
-        actions={candidate ? <PreparePayoutButton sellerId={candidate.sellerId} sellerName={candidate.tradingName} amount={payoutAmount(candidate.amountPaisa)} role={staff.role} /> : null} />;
+        actions={canPrepare && candidate ? <PreparePayoutButton sellerId={candidate.sellerId} sellerName={candidate.tradingName} amount={payoutAmount(candidate.amountPaisa)} role={staff.role} /> : null} />;
     }
 
     if (row.status === 'submitted') {
-      const request = await readPayoutRequestFinanceScope(database, staff.id, recordId);
+      const request = await readPayoutRequestFinanceScope(database, staff.id, recordId, { allowReadOnly: true });
       if (!request || request.status !== 'submitted') return null;
       const candidate = candidates.find(item => item.sellerId === row.sellerId);
       const [bank, readiness, currentLines] = await Promise.all([
@@ -189,14 +192,14 @@ export default async function PayoutsPage({ searchParams }: { searchParams?: Pro
       {sellerId ? <p className="break-words text-sm text-muted-foreground">Showing records for one seller. <Link className={actionLink} href="/admin/payouts">All sellers</Link></p> : null}
       <PayoutWorkspace stage={stage} selected={selected?.id ?? null} filters={filters} sellers={sellers} months={months}
         metrics={metrics} rows={rows} approvedRows={approvedRows} baseQuery={baseQuery.toString()} observedAt={now}
-        holdDays={hold.value} detail={detail} />
+        holdDays={hold.value} canExport={canPrepare} detail={detail} />
       <details className="rounded-xl border border-border bg-[#FFFCF7] px-4">
         <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold">Payout history and tools</summary>
         <div className="grid min-w-0 gap-4 pb-4">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          {canPrepare ? <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <Link className={actionLink} href={withAdminReturnTo('/admin/payments/payouts', boardHref)}>Verified funding and bank transfers</Link>
             <AccrueEarningsButton />
-          </div>
+          </div> : null}
           <section className="min-w-0" aria-label="Payout history">
             <h2 className="font-semibold">Payout history</h2>
             {filteredHistory.length ? <ul className="divide-y">{filteredHistory.map(row => <li key={row.id} className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 py-1">

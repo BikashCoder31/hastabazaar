@@ -4,6 +4,7 @@ import { AdminPageTitle } from '@/components/admin/page-help';
 import { adminNavigation } from '@/lib/admin/navigation';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
+import { can } from '@/lib/marketplace/permissions';
 import { AnalyticsDetails } from './analytics-details';
 import { readBusinessReport } from './business-report-data';
 import { businessReportRange } from './business-report-range';
@@ -17,11 +18,12 @@ export default async function AdminAnalyticsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const staff = await requireStaffPage('/admin/analytics', 'audit_log.view');
+  const staff = await requireStaffPage('/admin/analytics', ['audit_log.view', 'payout.view']);
   const params = await searchParams;
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const range = businessReportRange(params.period, analyticsObservedAt());
-  const details = params.view === 'details';
+  const canViewDetails = can(staff, 'audit_log.view');
+  const details = canViewDetails && params.view === 'details';
   const destinations = new Set(adminNavigation(staff.role, staff.permissions).map(item => item.href));
 
   return (
@@ -40,7 +42,7 @@ export default async function AdminAnalyticsPage({
         />
       )}
       <nav className="flex flex-wrap gap-2" aria-label="Detailed reports">
-        {!details ? <Link href={`/admin/analytics?view=details&period=${range.period}`} prefetch={false} className="admin-button">Commerce, customers & traffic</Link> : null}
+        {canViewDetails && !details ? <Link href={`/admin/analytics?view=details&period=${range.period}`} prefetch={false} className="admin-button">Commerce, customers & traffic</Link> : null}
         {[
           ['/admin/commission', 'Commission report'],
           ['/admin/promo-codes', 'Promo code reports'],

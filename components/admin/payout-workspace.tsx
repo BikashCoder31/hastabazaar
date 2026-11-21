@@ -88,7 +88,7 @@ function exportPayouts(rows: readonly PayoutBoardRow[]) {
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-export function PayoutWorkspace({ stage, selected, filters, sellers, months, metrics, rows, approvedRows, baseQuery, observedAt, holdDays, detail }: {
+export function PayoutWorkspace({ stage, selected, filters, sellers, months, metrics, rows, approvedRows, baseQuery, observedAt, holdDays, canExport = true, detail }: {
   stage: PayoutStage;
   selected: string | null;
   filters: PayoutFilters;
@@ -100,6 +100,7 @@ export function PayoutWorkspace({ stage, selected, filters, sellers, months, met
   baseQuery: string;
   observedAt: number;
   holdDays: number;
+  canExport?: boolean;
   detail: ReactNode;
 }) {
   const router = useRouter();
@@ -203,9 +204,9 @@ export function PayoutWorkspace({ stage, selected, filters, sellers, months, met
             <RefreshCw className={cn('size-4', pending && 'motion-safe:animate-spin')} aria-hidden="true" />
             {pending ? 'Refreshing…' : 'Updated ' + ageLabel}
           </button>
-          <button className={button} type="button" disabled={!allVisible.length} onClick={() => exportPayouts(allVisible)}>
+          {canExport ? <button className={button} type="button" disabled={!allVisible.length} onClick={() => exportPayouts(allVisible)}>
             <Download className="size-4" aria-hidden="true" /> Export
-          </button>
+          </button> : null}
         </div>
         {pending ? <progress className="absolute inset-x-0 -bottom-1 h-0.5 w-full appearance-none rounded bg-[#A8232E] [&::-webkit-progress-bar]:bg-[#A8232E]" aria-label="Refreshing payouts" /> : null}
       </div>

@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function PayoutDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const staff = await requireStaffPage(`/admin/payouts/${id}`, 'payout.prepare');
+  const staff = await requireStaffPage(`/admin/payouts/${id}`, ['payout.prepare', 'payout.view']);
   const db = requireDatabase(env as unknown as { DB?: D1Database });
   const payout = await getPayoutDetail(db, id);
   if (!payout) notFound();
@@ -94,10 +94,10 @@ export default async function PayoutDetailPage({ params }: { params: Promise<{ i
               <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold">Reject payout</summary>
               <PayoutWorkflowActions {...workflow} decisionOnly="reject" />
             </details>
-          ) : (
+          ) : can(staff, 'payout.prepare') ? (
             <Link href={`/admin/staff-form-history?kind=${canApprove || canProcess ? 'payout-action' : 'payout-preparation'}&id=${encodeURIComponent(id)}`}
               className="inline-flex min-h-11 items-center text-sm underline">View payout form history</Link>
-          )}
+          ) : null}
         </section>
       </div>
     </div>

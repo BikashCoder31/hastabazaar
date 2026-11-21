@@ -11,7 +11,8 @@ export const dynamic = 'force-dynamic';
 
 export default async function PayoutRunPage() {
   const pathname = '/admin/payouts/run';
-  const staff = await requireStaffPage(pathname, 'payout.approve');
+  const staff = await requireStaffPage(pathname, ['payout.approve', 'payout.view']);
+  const canApprove = can(staff, 'payout.approve');
   const data = await readPayoutRun(requireDatabase(env as unknown as { DB?: D1Database }), staff.id);
   const procedureHref = adminNavigation(staff.role, staff.permissions)
     .find(item => item.href === '/admin/legal-policies/active')?.href;
@@ -19,13 +20,15 @@ export default async function PayoutRunPage() {
     pathname,
     title: 'The ' + data.calendar.weekday + ' payout run',
     sentences: [
-      'Payouts are ticked when their items were delivered, their delivery hold has passed, there are no open returns, and the bank account is verified.',
+      'Payouts pass when their items were delivered, their delivery hold has passed, there are no open returns, and the bank account is verified.',
       'The current delivery hold is ' + data.holdDays + (data.holdDays === 1 ? ' day.' : ' days.') + ' Each payout uses the hold saved with its earnings.',
-      'Untick any you want to hold. Anything with a problem is listed below and stays out of the run.',
+      canApprove ? 'Untick any you want to hold. Anything with a problem is listed below and stays out of the run.'
+        : 'Payouts with a problem are listed separately.'
     ],
     procedureHref,
   };
   return <AdminPageHelpProvider help={help}>
-    <PayoutRunWorkspace {...data} actorId={staff.id} canViewTransfers={can(staff, 'payout.prepare')} />
+    <PayoutRunWorkspace {...data} rows={canApprove ? data.rows : data.rows.map(row => ({ ...row, review: null }))}
+      actorId={staff.id} canApprove={canApprove} canViewTransfers={can(staff, 'payout.prepare')} />
   </AdminPageHelpProvider>;
 }

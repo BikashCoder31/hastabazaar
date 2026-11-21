@@ -40,13 +40,14 @@ export function refundDestination(row: Obligation, destination?: Destination) {
   return [wallet, cash, bankReturn].filter(Boolean).join(' and ') || 'See the original refund record';
 }
 
-export function RefundReviewSummary({ row, destinations, live, funding, canOpenOrder, superAdmin, currentHref }: {
+export function RefundReviewSummary({ row, destinations, live, funding, canOpenOrder, superAdmin, canManageRefunds = true, currentHref }: {
   row: Obligation;
   destinations: Destination[];
   live?: RefundPacketSummary;
   funding: Workspace['funding'];
   canOpenOrder: boolean;
   superAdmin: boolean;
+  canManageRefunds?: boolean;
   currentHref: string;
 }) {
   const destination = destinations.find(item => item.current);
@@ -67,6 +68,8 @@ export function RefundReviewSummary({ row, destinations, live, funding, canOpenO
 
   if (completed) {
     next = 'The original refund is recorded as complete. See the payment and any later bank return below.';
+  } else if (!canManageRefunds) {
+    next = 'This refund is waiting for Finance to confirm the next step.';
   } else if (live && ['processing', 'uncertain'].includes(live.state)) {
     next = live.state === 'uncertain'
       ? 'Reconcile this attempt with the bank before considering another payment.'
