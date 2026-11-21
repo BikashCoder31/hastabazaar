@@ -34,7 +34,7 @@ export default async function RateOrderItems({ params }: { params: Promise<{ ord
       <p className="text-sm text-[#465573]">Honest reviews help other shoppers and tell makers what to keep doing.</p>
       {items.length ? items.map(item => (
         <article key={item.id} className={accountSurface + ' grid min-w-0 gap-4 p-4 sm:grid-cols-[7rem_minmax(0,1fr)] sm:p-5'}>
-          {item.mediaId ? <Image src={`/api/product-media/${encodeURIComponent(item.mediaId)}`} alt="" width={112} height={112} unoptimized className="size-28 rounded-xl border border-[#e3d8c7] bg-white object-contain" /> :
+          {item.mediaId ? <Image src={`/api/product-media/${encodeURIComponent(item.mediaId)}`} alt="" width={112} height={112} data-media-mode="contain" unoptimized className="size-28 rounded-xl border border-[#e3d8c7] bg-white object-contain" /> :
             <span className="grid size-28 place-items-center rounded-xl border bg-white"><Package className="size-6" aria-hidden="true" /></span>}
           <div className="min-w-0">
             <h2 className="text-base font-semibold">{item.name}</h2>

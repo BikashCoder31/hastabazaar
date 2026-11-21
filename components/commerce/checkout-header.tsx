@@ -8,7 +8,7 @@ export function CheckoutHeader() {
     <header className="border-b border-[#e3d6c3] bg-white shadow-sm">
       <div className="mx-auto flex min-h-20 w-full max-w-[1264px] items-center justify-between gap-3 px-4 md:px-12 min-[1360px]:px-0">
         <Link href="/" aria-label="Hastabazaar home" className="inline-flex min-h-11 min-w-0 items-center gap-2 rounded-lg focus-visible:outline-2 focus-visible:outline-[#14213d] md:gap-3.5">
-          <Image src="/brand/hastabazaar-mark-96.png" alt="" priority width={56} height={56} sizes="(min-width: 768px) 56px, 36px"
+          <Image src="/brand/hastabazaar-mark-96.png" alt="" priority data-media-mode="contain" width={56} height={56} sizes="(min-width: 768px) 56px, 36px"
             className="size-9 shrink-0 rounded-xl border border-[#e3d6c3] bg-[#fdfaf5] p-0.5 object-contain md:size-14 md:p-1" />
           <span className="min-w-0">
             <BrandWordmark className="text-[clamp(1rem,5.8vw,1.45rem)] md:text-[2rem]" />

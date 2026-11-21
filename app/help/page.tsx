@@ -84,7 +84,7 @@ export default async function HelpPage({ searchParams }: { searchParams?: Promis
               const state = customerParcelState({ status: parcel?.status ?? order.status,
                 proposedDate: Boolean(question), bankDue: order.bankAction, bankReview: order.bankReview, codPending: order.firstCodPending });
               return <li key={order.id} className={accountSurface + ' flex min-w-0 items-start gap-3 p-3'}>
-                {photo ? <Image src={'/api/product-media/' + encodeURIComponent(photo)} alt="" width={48} height={48} unoptimized className="size-11 shrink-0 rounded-lg object-cover" /> :
+                {photo ? <Image src={'/api/product-media/' + encodeURIComponent(photo)} alt="" width={48} height={48} data-media-mode="cover" unoptimized className="size-11 shrink-0 rounded-lg object-cover" /> :
                   <span className="grid size-11 shrink-0 place-items-center rounded-lg bg-[#ebe1d1]"><Package className="size-5" aria-hidden="true" /></span>}
                 <div className="min-w-0 flex-1">
                   <p className="break-words text-sm font-semibold">{order.orderNumber}</p>

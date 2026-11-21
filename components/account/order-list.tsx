@@ -135,7 +135,7 @@ function OrderCard({ order }: { order: CustomerOrderSummary }) {
           return (
             <li key={parcel.sellerId} className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-3 p-4 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:p-5">
               {preview?.mediaId ? (
-                <Image src={`/api/product-media/${encodeURIComponent(preview.mediaId)}`} alt="" width={54} height={54} unoptimized className="size-12 rounded-[9px] border border-[#E3D6C3] object-cover sm:size-14" />
+                <Image src={`/api/product-media/${encodeURIComponent(preview.mediaId)}`} alt="" width={54} height={54} data-media-mode="cover" unoptimized className="size-12 rounded-[9px] border border-[#E3D6C3] object-cover sm:size-14" />
               ) : <div className="grid size-12 place-items-center rounded-[9px] bg-[#F1E4C5] sm:size-14"><Package className="size-5" aria-hidden="true" /></div>}
               <div className="min-w-0">
                 <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-bold">{state.label} <CustomerActingChip actor={state.actor} yourTurn={state.actor === 'you'} /></p>

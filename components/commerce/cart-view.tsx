@@ -374,7 +374,7 @@ export function CartView({ serviceFee, customerId, savedProducts = [], walletBal
                 {saved.slice(0, 4).map(item => (
                   <div key={item.id} className="flex min-w-0 flex-wrap items-center gap-3 rounded-xl border border-[#e3d6c3] bg-white p-3">
                     {item.primaryMediaId ? (
-                      <Image src={`/api/product-media/${item.primaryMediaId}`} alt="" width={56} height={56} sizes="56px" unoptimized className="size-14 shrink-0 rounded-lg object-cover" />
+                      <Image src={`/api/product-media/${item.primaryMediaId}`} alt="" width={56} height={56} data-media-mode="cover" sizes="56px" unoptimized className="size-14 shrink-0 rounded-lg object-cover" />
                     ) : null}
                     <div className="min-w-24 flex-1 wrap-anywhere">
                       <Link href={`/products/${item.slug}`} className="text-sm font-semibold hover:underline">{item.nameEn}</Link>

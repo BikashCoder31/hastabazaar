@@ -981,7 +981,7 @@ function ScopedCheckoutForm({
                         {parcel.items.map(item => (
                           <li key={item.id} className="grid min-w-0 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-2 text-sm">
                             <span className="relative grid size-11 place-items-center overflow-hidden rounded-lg border border-[#e3d6c3] bg-white">
-                              {item.primaryMediaId ? <Image src={`/api/product-media/${item.primaryMediaId}`} alt="" width={44} height={44} sizes="44px" unoptimized className="size-11 object-cover" /> : <Package className="size-4 text-muted-foreground" aria-hidden="true" />}
+                              {item.primaryMediaId ? <Image src={`/api/product-media/${item.primaryMediaId}`} alt="" width={44} height={44} data-media-mode="cover" sizes="44px" unoptimized className="size-11 object-cover" /> : <Package className="size-4 text-muted-foreground" aria-hidden="true" />}
                             </span>
                             <div className="min-w-0 wrap-anywhere">
                               <span>{item.nameEn}{item.quantity > 1 ? ` × ${item.quantity}` : ''}</span>

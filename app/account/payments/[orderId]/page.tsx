@@ -23,6 +23,7 @@ function PaymentOrderSummary({ receipt }: { receipt: OrderReceipt }) {
               <Image
                 src={`/api/product-media/${encodeURIComponent(item.offerSnapshot.mediaId)}`}
                 alt=""
+                data-media-mode="cover"
                 width={56}
                 height={56}
                 unoptimized

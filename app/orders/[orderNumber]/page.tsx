@@ -262,7 +262,7 @@ export default async function OrderReceiptPage({
                       const saved = itemDetails.get(item.id);
                       return (
                         <li key={item.id} className="flex min-w-0 flex-wrap items-center gap-3 py-3">
-                          {item.mediaId ? <Image src={`/api/product-media/${encodeURIComponent(item.mediaId)}`} alt="" width={52} height={52} unoptimized className="size-12 shrink-0 rounded-[9px] border border-[#E3D6C3] object-cover sm:size-13" />
+                          {item.mediaId ? <Image src={`/api/product-media/${encodeURIComponent(item.mediaId)}`} alt="" width={52} height={52} data-media-mode="cover" unoptimized className="size-12 shrink-0 rounded-[9px] border border-[#E3D6C3] object-cover sm:size-13" />
                             : <span className="grid size-12 shrink-0 place-items-center rounded-[9px] bg-[#F1E4C5]"><Package className="size-5" aria-hidden="true" /></span>}
                           <div className="min-w-0 flex-1 basis-36 wrap-anywhere">
                             <p className="font-bold">{item.name}</p>

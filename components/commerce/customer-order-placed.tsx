@@ -148,7 +148,7 @@ export async function CustomerOrderPlaced({ database, receipt, orderId, customer
                 <ul className="my-4 flex flex-wrap gap-2" aria-label={`Items in parcel ${index + 1}`}>
                   {parcel.items.map(item => (
                     <li key={item.id}>
-                      {item.mediaId ? <Image src={'/api/product-media/' + item.mediaId} alt={item.name} width={56} height={56} sizes="56px" unoptimized className="size-14 rounded-lg border border-[#e3d6c3] bg-white object-cover" />
+                      {item.mediaId ? <Image src={'/api/product-media/' + item.mediaId} alt={item.name} width={56} height={56} data-media-mode="cover" sizes="56px" unoptimized className="size-14 rounded-lg border border-[#e3d6c3] bg-white object-cover" />
                         : <span className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-[#e3d6c3] bg-white px-2 text-sm"><Package className="size-4" aria-hidden="true" />{item.name}</span>}
                     </li>
                   ))}

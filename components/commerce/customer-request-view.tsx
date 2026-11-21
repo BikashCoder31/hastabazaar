@@ -50,7 +50,7 @@ export function CustomerRequestView({ record, context, actorId, viewerScope, own
 
   return <article id={`case-${row.id}`} className="min-w-0 scroll-mt-36 space-y-5" aria-labelledby={titleId}>
     <header className="flex min-w-0 items-center gap-4">
-      {facts?.photoId ? <Image src={`/api/product-media/${encodeURIComponent(facts.photoId)}`} alt="" width={88} height={88}
+      {facts?.photoId ? <Image src={`/api/product-media/${encodeURIComponent(facts.photoId)}`} alt="" width={88} height={88} data-media-mode="contain"
         className="size-[72px] shrink-0 rounded-xl border border-[#E7DCCB] bg-white object-contain sm:size-[88px]" unoptimized/> : null}
       <div className="min-w-0 space-y-1">
         {ownAccountView ? <h1 id={titleId} className={`${headerClass} break-words font-semibold text-[#14213D]`}>{title}</h1> :
@@ -110,7 +110,7 @@ export function CustomerRequestView({ record, context, actorId, viewerScope, own
             {photos.map(photo => <li key={photo.id} className="max-w-full">
               <a href={`/api/return-evidence/${encodeURIComponent(photo.id)}`} className="inline-flex min-h-11 max-w-full min-w-11 items-center rounded-xl border border-[#E7DCCB] bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#14213D]"
                 target="_blank" rel="noreferrer" aria-label={`Open evidence ${photo.name}`}>
-                {photo.mimeType.startsWith('image/') ? <Image alt="" width={64} height={64} unoptimized
+                {photo.mimeType.startsWith('image/') ? <Image alt="" width={64} height={64} data-media-mode="cover" unoptimized
                   src={`/api/return-evidence/${encodeURIComponent(photo.id)}`} className="size-16 rounded-xl object-cover"/> :
                   <span className="break-all px-2 text-sm underline">{photo.name}</span>}
               </a>

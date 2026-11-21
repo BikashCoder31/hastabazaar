@@ -36,7 +36,7 @@ function remember(value: string) {
 
 function choiceIcon(choice: Choice) {
   if (choice.kind === 'product' && choice.imageId) return (
-    <Image src={`/api/product-media/${encodeURIComponent(choice.imageId)}`} alt="" width={36} height={36}
+    <Image src={`/api/product-media/${encodeURIComponent(choice.imageId)}`} alt="" width={36} height={36} data-media-mode="cover"
       className="size-9 rounded-md border bg-white object-cover" unoptimized />
   );
   const Icon = choice.kind === 'product' ? Package : choice.kind === 'category' ? Tag : choice.kind === 'maker' ? Store : Clock3;

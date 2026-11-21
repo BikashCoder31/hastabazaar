@@ -21,13 +21,13 @@ export const mediaSizes = {
     '(min-width: 1360px) 301px, (min-width: 1024px) calc((100vw - 156px) / 4), (min-width: 768px) calc((100vw - 116px) / 2), calc((100vw - 48px) / 2)',
   // Use the full gallery width for a product with a single photo.
   productGallery:
-    '(min-width: 1360px) 642px, (min-width: 1280px) calc((100vw - 160px) * 23 / 43), (min-width: 768px) calc((100vw - 128px) * 23 / 43), calc(100vw - 32px)',
+    '(min-width: 1360px) calc(1200px * 23 / 43), (min-width: 1280px) calc((100vw - 160px) * 23 / 43), (min-width: 768px) calc((100vw - 128px) * 23 / 43), calc(100vw - 32px)',
   galleryThumbnail:
     '(min-width: 1280px) 84px, (min-width: 768px) 64px, calc((100vw - 64px) / 5)',
-  // Account reserves a 248px navigation rail and a 32px gap at lg.
+  // Account reserves 280px for navigation and its gap at lg. Saved cards use four columns at xl.
   savedProduct:
-    '(min-width: 1440px) calc(1024px / 3), (min-width: 1280px) calc((100vw - 416px) / 3), (min-width: 1024px) calc(50vw - 198px), (min-width: 640px) calc(50vw - 42px), (min-width: 300px) calc(100vw - 2 * clamp(12px, 5vw, 32px)), calc(100vw - 24px)',
-  cartThumbnail: '(min-width: 640px) 128px, 80px',
+    '(min-width: 1360px) 234px, (min-width: 1280px) 210px, (min-width: 1264px) 436px, (min-width: 1024px) calc((100vw - 392px) / 2), (min-width: 768px) calc((100vw - 112px) / 2), (min-width: 640px) calc((100vw - 48px) / 2), calc((100vw - 44px) / 2)',
+  cartThumbnail: '(min-width: 640px) 88px, 72px',
   reviewAttachment: '96px',
   adminThumbnail: '96px',
   brandMark: '48px',

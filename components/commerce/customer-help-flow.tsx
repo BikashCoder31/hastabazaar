@@ -63,7 +63,7 @@ function Choice({ name, value, selected, change, title, description, image, icon
   return <label className={`flex min-h-16 min-w-0 items-center gap-3 rounded-xl border bg-white px-4 py-3 ${selected ? 'border-[#14213D] ring-1 ring-[#14213D]' : 'border-[#D6C5AB]'} ${unavailable ? 'cursor-not-allowed' : 'cursor-pointer'} focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#14213D]`}>
     <input className="size-5 shrink-0 accent-[#14213D]" type="radio" name={name} value={value}
       checked={selected} onChange={change} disabled={unavailable}/>
-    {image ? <Image src={image} alt="" width={56} height={56} unoptimized
+    {image ? <Image src={image} alt="" width={56} height={56} data-media-mode="contain" unoptimized
       className="size-14 shrink-0 rounded-lg border border-[#E7DCCB] object-contain"/> : icon}
     <span className="min-w-0 break-words"><strong className="block text-sm leading-snug text-[#14213D]">{title}</strong>
       {description ? <span className="mt-1 block text-sm leading-snug text-[#46536F]">{description}</span> : null}</span>

@@ -92,7 +92,7 @@ export default async function AccountPage() {
           return (
             <li key={orderNumber + ':' + parcel.sellerId}>
               <Link href={orderPath(orderNumber)} className="flex min-h-11 min-w-0 items-center gap-3 rounded-lg px-1 py-3 focus-visible:outline-2 focus-visible:outline-[#a8232e]">
-                {photo ? <Image src={'/api/product-media/' + encodeURIComponent(photo)} alt="" width={50} height={50} className="size-12 shrink-0 rounded-lg object-cover" unoptimized /> : <span className="grid size-12 shrink-0 place-items-center rounded-lg bg-[#f0e7d8]"><Package className="size-5" aria-hidden="true" /></span>}
+                {photo ? <Image src={'/api/product-media/' + encodeURIComponent(photo)} alt="" width={50} height={50} data-media-mode="cover" className="size-12 shrink-0 rounded-lg object-cover" unoptimized /> : <span className="grid size-12 shrink-0 place-items-center rounded-lg bg-[#f0e7d8]"><Package className="size-5" aria-hidden="true" /></span>}
                 <span className="min-w-0 flex-1 break-words">
                   <span className="block text-sm font-semibold">{state.label} · {parcel.sellerName}</span>
                   <span className="block text-sm text-[#465573]">{orderNumber}{parcel.courierName ? ' · ' + parcel.courierName : ''}</span>

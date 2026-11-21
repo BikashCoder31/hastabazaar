@@ -61,7 +61,7 @@ function Question({ question, actorId, item, isCurrent }: { question: CustomerDe
   const cancel = `/orders/${encodeURIComponent(question.orderNumber)}?cancel=1&parcel=${encodeURIComponent(question.sellerId)}`;
   return (
     <section aria-label="Seller question" className="min-w-0 rounded-[15px] border-2 border-[#14213D] bg-[#FDFAF5] p-5 sm:p-6">
-      {item?.mediaId ? <Image src={`/api/product-media/${encodeURIComponent(item.mediaId)}`} alt="" width={72} height={72} unoptimized
+      {item?.mediaId ? <Image src={`/api/product-media/${encodeURIComponent(item.mediaId)}`} alt="" width={72} height={72} data-media-mode="cover" unoptimized
         className="mb-3 size-18 rounded-xl border border-[#E3D6C3] object-cover sm:float-right sm:mb-2 sm:ml-4" /> : null}
       <CustomerActingChip actor={acted ? 'seller' : 'you'} yourTurn={!acted} />
       <h2 className="mt-2 text-xl font-bold text-[#14213D]">{question.sellerName} needs until {date} to get your parcel ready</h2>
