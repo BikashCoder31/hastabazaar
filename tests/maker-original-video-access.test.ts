@@ -4,7 +4,7 @@ import { build } from 'esbuild';
 import { createRequire } from 'node:module';
 import { compileFunction } from 'node:vm';
 
-void test('reviewed maker media retains original video access and its caption while video development is deferred', async () => {
+void test('a retained workshop clip keeps original file access and its caption', async () => {
   const modules: Record<string, string> = {
     'cloudflare:workers': 'export const env={};',
     '@/lib/db/d1': 'export function requireDatabase(){return {}}',

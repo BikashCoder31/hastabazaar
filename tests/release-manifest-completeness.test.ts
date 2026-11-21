@@ -34,10 +34,11 @@ const orderRefundOptIn = new Set([
   'mariadb-refund-route-reservations.sql',
   'mariadb-priced-order-acceptance-lock.sql',
 ]);
-const ownerAppliedBatch3 = [
+const ownerAppliedMigrations = [
   'mariadb-cancellation-cause.sql',
   'mariadb-customer-cod-confirmation.sql',
   'mariadb-delivery-failure-reasons.sql',
+  'mariadb-occasion-discovery.sql',
   'mariadb-packed-parcel-weight.sql',
   'mariadb-seller-staff-notes.sql',
 ];
@@ -77,7 +78,7 @@ void test('historical release generation covers its maintained non-reset SQL inv
     const manifest = JSON.parse(first) as Manifest;
     const names = manifest.migrations.map(({ path }) => path);
     const expectedPaths = sqlNames
-      .filter((name) => name !== 'mariadb-reset-empty-import.sql' && !orderRefundOptIn.has(name) && !ownerAppliedBatch3.includes(name))
+      .filter((name) => name !== 'mariadb-reset-empty-import.sql' && !orderRefundOptIn.has(name) && !ownerAppliedMigrations.includes(name))
       .map((name) => 'deployment/babal/' + name);
 
     await t.test(
@@ -118,7 +119,7 @@ void test('historical release generation covers its maintained non-reset SQL inv
     );
 
     await t.test('owner-applied SQL is retained without adding it to automated release maintenance', () => {
-      for (const name of ownerAppliedBatch3) {
+      for (const name of ownerAppliedMigrations) {
         assert.ok(sqlNames.includes(name), `${name} must be available for the owner`);
         assert.ok(!names.includes('deployment/babal/' + name), `${name} requires owner application`);
       }

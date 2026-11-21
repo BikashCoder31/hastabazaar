@@ -262,9 +262,9 @@ Browser evidence for the two purchase journeys and the 96-state responsive rerun
 
 | Task | Owner | Waits for | Status | Commit | Checks |
 | --- | --- | --- | --- | --- | --- |
-| H1 · Restore the storefront header | Main agent | Batch 4 | Done | This task commit | Typecheck, lint, 14 focused tests, 13 viewport checks, mobile menu and tracking paths passed. |
-| H2 · Homepage | Homepage helper | H1 | Queued | | |
-| H3 · Categories, occasions and makers | Discovery helper | H1 | Queued | | |
+| H1 · Restore the storefront header | Main agent | Batch 4 | Done | `28bd9da` | Typecheck, lint, 14 focused tests, 13 viewport checks, mobile menu and tracking paths passed. |
+| H2 · Homepage | Homepage helper | H1 | In progress | | |
+| H3 · Categories, occasions and makers | Discovery helper | H1 | Done | This task commit | Typecheck, lint, 19 focused checks, 12 checked-preview and 12 populated fixture measurements passed. |
 | H4 · Final check | Main agent | H1–H3 | Queued | | |
 
 ### For the owner
@@ -272,3 +272,20 @@ Browser evidence for the two purchase journeys and the 96-state responsive rerun
 Batch 4b uses the updated customer references and the storefront header from `c1fe210`.
 
 The checked launcher passed with 107/107 forms. Header checks used the checked preview and separate guest and Buyer contexts. At 390, 768, 1024 and 1440 px the header fit with zero sideways scroll. The desktop menu and the mobile sheet follow the original link order. Desktop Sell with us measures 34 px, and the invitation row and sheet links measure at least 44 px on phones. The search suggestions keep keyboard focus. The original tablet search uses its icon button where the tablet picture shows a text button. Tracking is reachable through You → My orders for buyers, and You → sign-in tracking for guests.
+
+The local launcher uses `CHECKOUT_CONTACT_POLICY=email_only`. Buyer checkout continues to use verified email and accepts a delivery phone number. Local settings were preserved.
+
+#### Owner-applied discovery schema
+
+Migration 0169 adds optional occasion group names, display order and season dates. Before it is applied, the page shows one occasion grid and omits category counts and the seasonal feature. Once it is applied, counts come from published listings. Groups and the in-season feature appear when the corresponding occasion metadata is recorded.
+
+Apply only to an approved copy through the same review process as Batch 3.
+
+- D1 `test -f "$HASTABAZAAR_REVIEW_D1" && sqlite3 -bail "$HASTABAZAAR_REVIEW_D1" < drizzle/0169_occasion_discovery.sql`
+- MariaDB `mariadb --defaults-extra-file="$HASTABAZAAR_REVIEW_MARIADB_CONFIG" --database="$HASTABAZAAR_REVIEW_MARIADB_DB" < deployment/babal/mariadb-occasion-discovery.sql`
+
+An early focused test used the Batch 3 exclusion list and loaded 0169 while initializing its disposable in-memory fixture. Its missing-schema assertion caught the mistake. The corrected fixture excludes 0169 from historical setup and declares the applied shape independently. Both states passed with the corrected guard. The checked preview and retained databases kept their original schema.
+
+The long-running preview returned a worker runner error. The checked launcher restarted using the same local data and passed the 107-form check. Home, local sign-in, Categories and Gifts by occasion then returned HTTP 200.
+
+The checked catalogue contains one active category and occasion, both named Others, and one catalogue-derived budget cap. Its maker profile has no reviewed workshop media. A populated fixture verified published category counts, occasion groups and season windows, approved maker details, photos and captions, catalogue links, a missing maker’s 404, and native inline MP4 playback at 390 and 1440 px. Workshop video starts muted and offers the original file link. The existing profile workflow accepts up to two attachments and has no timed subtitle track.

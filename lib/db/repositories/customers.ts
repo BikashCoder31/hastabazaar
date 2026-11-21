@@ -117,18 +117,28 @@ export async function getPublicMakerProfile(database: D1Database, sellerId: stri
   ).bind(sellerId).first<PublicMakerProfile>()) ?? null;
 }
 
-export async function listPublishedProductsByMaker(database: D1Database, sellerId: string): Promise<readonly WishlistProductRow[]> {
+export type MakerProductRow = WishlistProductRow & {
+  categorySlug: string;
+  categoryName: string;
+  madeToOrder: number;
+  preparationDays: number;
+};
+
+export async function listPublishedProductsByMaker(database: D1Database, sellerId: string): Promise<readonly MakerProductRow[]> {
   const catalogue=await publicCatalogueQuery(database);
   const result = await database.prepare(
     `${catalogue.withClause} SELECT ${publicOfferQueryColumns(catalogue)}, CASE WHEN ${catalogue.purchasable()} THEN 1 ELSE 0 END AS purchasable, products.id, products.slug, products.name_en AS nameEn, products.name_ne AS nameNe,
       ${catalogue.price()} AS pricePaisa, ${catalogue.stock()} AS inventoryQuantity,
+      categories.slug AS categorySlug, categories.name_en AS categoryName,
+      products.made_to_order AS madeToOrder, products.preparation_days AS preparationDays,
       ${publicProfileFieldSql('publicName')} AS tradingName, products.published_at AS savedAt,
       (SELECT product_media.id FROM product_media WHERE product_media.product_id = products.id AND ${currentProductMediaSql('product_media')} ORDER BY ${currentProductMediaOrder('product_media')} LIMIT 1) AS primaryMediaId
      FROM products INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
+     INNER JOIN categories ON categories.id=products.category_id
      LEFT JOIN seller_participation_profiles participation ON participation.seller_id = seller_profiles.id
      WHERE products.seller_id = ? AND ${publicProductVisibility()}
      ORDER BY products.published_at DESC`,
-  ).bind(sellerId).all<WishlistProductRow & PublicOfferQueryFields>();
+  ).bind(sellerId).all<MakerProductRow & PublicOfferQueryFields>();
   return attachPublicOfferRows(database,result.results.map(item=>({...item,nameEn:publicProductName(item.nameEn)})),catalogue.now);
 }
 
