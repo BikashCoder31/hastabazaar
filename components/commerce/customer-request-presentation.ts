@@ -3,7 +3,7 @@ import type { ComplaintRow } from '@/lib/db/repositories/complaints';
 import type { ReturnCaseRow } from '@/lib/db/repositories/returns';
 import type { CustomerRequestEvent, CustomerRequestKind } from '@/lib/returns/customer-aftercare-context';
 
-export const aftercareBox = 'min-w-0 rounded-2xl border border-[#E4DACA] bg-[#FDFAF5] p-5 sm:p-6';
+export const aftercareBox = 'account-surface min-w-0 rounded-2xl border border-[#E4DACA] bg-[#FDFAF5] p-5 sm:p-6';
 export const aftercarePrimary = 'inline-flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-xl bg-[#14213D] px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-[#233652] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#14213D] disabled:opacity-60';
 export const aftercareSecondary = 'inline-flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-xl border border-[#CFBB9E] px-4 py-2.5 text-center text-sm font-semibold text-[#14213D] hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#14213D] disabled:opacity-60';
 export const aftercareLink = 'inline-flex min-h-11 items-center gap-2 rounded text-sm font-semibold text-[#A8232E] underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#14213D]';

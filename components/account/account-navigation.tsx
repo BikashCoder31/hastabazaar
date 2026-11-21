@@ -38,7 +38,7 @@ const groups = [
   ] },
 ] as const;
 
-const baseLink = 'flex min-h-11 min-w-0 items-center gap-3 rounded-xl border px-3 text-left text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#14213D]';
+const baseLink = 'flex min-h-11 min-w-0 items-center gap-3 rounded-[10px] px-3 text-left text-sm text-[#344766] hover:bg-[#F6F1E8] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#14213D] aria-[current=page]:bg-[#F3ECDF] aria-[current=page]:font-semibold aria-[current=page]:text-[#14213D]';
 
 export function AccountNavigation({ displayName, email, signOutPath, showAssignedDeliveries = false }: {
   displayName: string;
@@ -52,8 +52,8 @@ export function AccountNavigation({ displayName, email, signOutPath, showAssigne
 
   return (
     <>
-      <div className="hidden lg:block">
-        <div className="mb-7 flex items-center gap-3 px-3">
+      <div className="account-menu-panel hidden px-2 py-3 lg:block">
+        <div className="flex items-center gap-3 px-3 py-2">
           <span aria-hidden="true" className="grid size-11 shrink-0 place-items-center rounded-full bg-[#F1E4C5] font-semibold text-[#704D15]">{initial}</span>
           <div className="min-w-0 wrap-anywhere">
             <p className="font-semibold text-[#14213D]">{displayName}</p>
@@ -62,9 +62,9 @@ export function AccountNavigation({ displayName, email, signOutPath, showAssigne
         </div>
         <AccountLinks pathname={pathname} signOutPath={signOutPath} showRiderLink={showRiderLink} />
       </div>
-      <details className="rounded-xl border border-[#E3D6C3] bg-[#FDFAF5] lg:hidden">
+      <details className="account-menu-panel lg:hidden">
         <summary className="min-h-11 cursor-pointer content-center rounded-xl px-4 text-sm font-semibold text-[#14213D] focus-visible:outline-2 focus-visible:outline-[#14213D]">Account menu</summary>
-        <div className="border-t border-[#E3D6C3] p-3">
+        <div className="px-2 pb-2">
           <AccountLinks pathname={pathname} signOutPath={signOutPath} showRiderLink={showRiderLink} />
         </div>
       </details>
@@ -78,9 +78,9 @@ function AccountLinks({ pathname, signOutPath, showRiderLink }: {
   showRiderLink: boolean;
 }) {
   return (
-    <nav aria-label="Customer account" className="space-y-5">
+    <nav aria-label="Customer account">
       {groups.map(({ title, links }) => (
-        <div key={title}>
+        <div key={title} className="mt-2 border-t border-[#EFE7D9] pt-3.5">
           <p className="mb-1 px-3 text-xs font-semibold text-[#655848]">{title}</p>
           <ul>
             {links.map(({ href, label, icon: Icon }) => {
@@ -88,16 +88,16 @@ function AccountLinks({ pathname, signOutPath, showRiderLink }: {
               return (
                 <li key={href}>
                   <Link href={href} aria-current={active ? 'page' : undefined}
-                    className={`${baseLink} ${active ? 'border-[#E3D6C3] bg-white font-semibold text-[#14213D]' : 'border-transparent text-[#344766] hover:bg-white/75'}`}>
+                    className={baseLink}>
                     <Icon className={`size-4 shrink-0 ${active ? 'text-[#A8232E]' : ''}`} aria-hidden="true" />{label}
                   </Link>
                   {href === '/account/wallet' && (active || pathname === '/account/rewards') ? (
-                    <Link href="/account/rewards" aria-current={pathname === '/account/rewards' ? 'page' : undefined} className={`${baseLink} ml-3 border-transparent text-[#344766] hover:bg-white/75 aria-[current=page]:font-semibold`}>
+                    <Link href="/account/rewards" aria-current={pathname === '/account/rewards' ? 'page' : undefined} className={`${baseLink} ml-3`}>
                       <Gift className="size-4 shrink-0" aria-hidden="true" />My Rewards
                     </Link>
                   ) : null}
-                  {href === '/account/profile' && active ? (
-                    <Link href="/account/security" className={`${baseLink} ml-3 border-transparent text-[#344766] hover:bg-white/75`}>
+                  {href === '/account/profile' && (active || pathname === '/account/security') ? (
+                    <Link href="/account/security" aria-current={pathname === '/account/security' ? 'page' : undefined} className={`${baseLink} ml-3`}>
                       <ShieldCheck className="size-4 shrink-0" aria-hidden="true" />Sign-in & security
                     </Link>
                   ) : null}
@@ -107,17 +107,17 @@ function AccountLinks({ pathname, signOutPath, showRiderLink }: {
           </ul>
         </div>
       ))}
-      <div>
+      <div className="mt-2">
         {showRiderLink ? (
-          <Link href="/rider" className={`${baseLink} border-transparent text-[#344766] hover:bg-white/75`}>
+          <Link href="/rider" className={baseLink}>
             <Package className="size-4 shrink-0" aria-hidden="true" />Assigned deliveries
           </Link>
         ) : null}
-        <Link href="/help" className={`${baseLink} border-transparent text-[#344766] hover:bg-white/75`}>
+        <Link href="/help" className={baseLink}>
           <CircleHelp className="size-4 shrink-0" aria-hidden="true" />Help centre
         </Link>
         <form data-form-id="identity.logout" method="POST" action={signOutPath} target="_top">
-          <button type="submit" className={`${baseLink} w-full border-transparent text-[#344766] hover:bg-white/75`}>
+          <button type="submit" className={`${baseLink} w-full`}>
             <LogOut className="size-4 shrink-0" aria-hidden="true" />Sign out
           </button>
         </form>

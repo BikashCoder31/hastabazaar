@@ -15,7 +15,7 @@ export const metadata = { title: 'Bank payment' };
 
 function PaymentOrderSummary({ receipt }: { receipt: OrderReceipt }) {
   return (
-    <section aria-label="Order items and delivery" className="min-w-0 rounded-2xl border border-[#E3D6C3] bg-[#FDFAF5] p-5">
+    <section aria-label="Order items and delivery" className="account-surface min-w-0 rounded-2xl border border-[#E3D6C3] bg-[#FDFAF5] p-5">
       <ul className="divide-y divide-[#E9DECE]">
         {receipt.items.map(item => (
           <li key={item.id} className="flex min-w-0 items-center gap-3 py-3 first:pt-0 last:pb-0">

@@ -2077,3 +2077,22 @@
     bottom: calc(1rem + var(--workspace-bottom-bar) + env(safe-area-inset-bottom));
   }
 }
+
+.customer-account {
+  --account-surface-border: #e2d6c2;
+  --account-surface-shadow: 0 1px 2px rgba(20, 33, 61, 0.05), 0 8px 22px -18px rgba(20, 33, 61, 0.3);
+}
+
+.customer-account :is(.account-surface, :where(article, aside, details, div, fieldset, form, section, ul).border.bg-card) {
+  border-color: var(--account-surface-border);
+  border-style: solid;
+  background-color: #fff;
+  box-shadow: var(--account-surface-shadow);
+}
+
+.customer-account .account-menu-panel {
+  border: 1px solid var(--account-surface-border);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(20, 33, 61, 0.05), 0 10px 28px -20px rgba(20, 33, 61, 0.28);
+}

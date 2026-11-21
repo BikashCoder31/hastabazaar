@@ -70,20 +70,19 @@ export function CustomerOrderList({ orders, tab, query }: {
         <nav aria-label="Order status filters" className="grid grid-cols-2 border-b border-[#E3D6C3] sm:flex sm:flex-wrap">
           {customerOrderTabs.map(([key, label]) => {
             const active = tab === key;
+            const count = selectCustomerOrders(orders, key, '').length;
             const search = new URLSearchParams({ tab: key });
             if (query) search.set('q', query);
             return (
               <Link key={key} href={`/account/orders?${search}`} aria-current={active ? 'page' : undefined}
                 className={`flex min-h-11 items-center gap-2 border-b-2 px-2 py-2 text-sm sm:px-3.5 ${active ? 'border-[#A8232E] font-bold' : 'border-transparent text-[#465573] hover:text-[#A8232E]'}`}>
                 {label}
-                <span className={`rounded-full px-1.5 text-xs font-bold ${active ? 'bg-[#14213D] text-white' : 'bg-[#EBE2D3]'}`}>
-                  {selectCustomerOrders(orders, key, '').length}
-                </span>
+                {count > 0 ? <span className={`rounded-full px-1.5 text-xs font-bold ${active ? 'bg-[#14213D] text-white' : 'bg-[#EBE2D3]'}`}>{count}</span> : null}
               </Link>
             );
           })}
         </nav>
-        <form data-form-id="account.order-search" action="/account/orders" method="get" className="flex min-w-0 items-center gap-2 rounded-[10px] border border-[#D4C1A6] bg-white px-3 focus-within:outline-2 focus-within:outline-[#14213D]">
+        <form data-form-id="account.order-search" action="/account/orders" method="get" className="account-surface flex min-w-0 items-center gap-2 rounded-[10px] border border-[#D4C1A6] bg-white px-3 focus-within:outline-2 focus-within:outline-[#14213D]">
           <input type="hidden" name="tab" value={tab} />
           <Search className="size-4 shrink-0 text-[#655848]" aria-hidden="true" />
           <label htmlFor="my-order-search" className="sr-only">Search by order number, item or seller</label>
@@ -96,7 +95,7 @@ export function CustomerOrderList({ orders, tab, query }: {
           <Link href="/account/refunds" className={outline}>View returns, requests and refunds</Link>
         ) : null}
         {visible.length ? visible.map(order => <OrderCard key={order.id} order={order} />) : (
-          <div className="rounded-[15px] border border-[#E3D6C3] bg-[#FDFAF5] p-5">
+          <div className="account-surface rounded-[15px] border border-[#E3D6C3] bg-[#FDFAF5] p-5">
             <p className="font-semibold">{query ? 'No orders match that search.' : !orders.length ? 'Your orders will appear here.' : 'There are no orders in this view.'}</p>
             <p className="mt-1 text-sm text-[#465573]">{query ? 'Try a different order number, item or seller.' : !orders.length ? 'Check out while signed in to follow each parcel here.' : 'Choose another tab to see your other orders.'}</p>
             {!orders.length ? <Link href="/shop" className={`${outline} mt-3`}>Explore the shop</Link> : null}
@@ -110,7 +109,7 @@ export function CustomerOrderList({ orders, tab, query }: {
 function OrderCard({ order }: { order: CustomerOrderSummary }) {
   const base = orderPath(order);
   return (
-    <article className="min-w-0 overflow-hidden rounded-[15px] border border-[#E3D6C3] bg-[#FDFAF5]">
+    <article className="account-surface min-w-0 overflow-hidden rounded-[15px] border border-[#E3D6C3] bg-[#FDFAF5]">
       <header className="flex flex-wrap items-center gap-x-4 gap-y-0 border-b border-[#E3D6C3] px-4 py-2 text-sm sm:px-5">
         <h3 className="font-bold">{order.orderNumber}</h3>
         <p className="text-[#465573]">Placed {customerDate(order.placedAt)}</p>

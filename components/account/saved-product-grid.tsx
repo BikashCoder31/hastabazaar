@@ -22,7 +22,7 @@ export function SavedProductGrid({ items }: { items: readonly WishlistProductRow
           <article key={item.id} className="flex min-w-0 flex-col gap-2">
             <div className="relative min-w-0">
               <Link href={href} className="group block rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a8232e]" aria-label={item.nameEn}>
-                <div data-media-frame="cover" className={mediaFrameClass('cover', 'aspect-square rounded-xl border border-[#e3d8c7] bg-[#fdfbf7]')}>
+                <div data-media-frame="cover" className={mediaFrameClass('cover', 'account-surface aspect-square rounded-xl border border-[#e3d8c7] bg-[#fdfbf7]')}>
                   {item.primaryMediaId ? (
                     <Image src={`/api/product-media/${item.primaryMediaId}`} alt={item.nameEn} fill unoptimized
                       data-media-mode="cover" sizes={mediaSizes.savedProduct}

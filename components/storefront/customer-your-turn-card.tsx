@@ -9,7 +9,7 @@ export function CustomerYourTurnCard({ title, description, icon, action, showChi
   showChip?: boolean;
 }) {
   return (
-    <article className="grid min-w-0 gap-3.5 rounded-[15px] border border-[#E3D6C3] bg-white p-3.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:p-4">
+    <article className="account-surface grid min-w-0 gap-3.5 rounded-[15px] border border-[#E3D6C3] bg-white p-3.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:p-4">
       <div className="flex min-w-0 items-start gap-3.5 sm:items-center">
         {icon ? <span aria-hidden="true" className="grid size-11 shrink-0 place-items-center rounded-xl bg-[#F1E4C5] text-[#704D15]">{icon}</span> : null}
         <div className="min-w-0 wrap-anywhere">

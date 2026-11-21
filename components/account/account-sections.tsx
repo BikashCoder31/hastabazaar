@@ -16,7 +16,7 @@ const wallet = {
   refunds: { label: 'Refunds', href: '/account/refunds' },
 } as const;
 
-export const accountSurface = 'rounded-2xl border border-[#e3d8c7] bg-[#fdfbf7]';
+export const accountSurface = 'account-surface rounded-2xl border border-[#e3d8c7] bg-[#fdfbf7]';
 export const accountAction = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#d8cbb8] bg-[#fdfbf7] px-3 py-2 text-sm font-semibold text-[#14213d] hover:border-[#14213d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a8232e]';
 
 export const touchTargets = '[&_:is(button,summary,select,input:not([type=hidden],[type=checkbox],[type=radio]))]:min-h-11 [&_button]:min-w-11 [&_summary]:content-center';

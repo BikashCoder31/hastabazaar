@@ -143,3 +143,15 @@ The full run finished at 23:33 Nepal time after 100 minutes. It covered 5,811 te
 </details>
 
 Review fixes complete — ready for your review
+
+## Account polish
+
+The refreshed 22 November account references were present. Work started from `a9080ec` on `admin-redesign`.
+
+| Task | Status | Commit | Checks |
+| --- | --- | --- | --- |
+| A1 · Clear account sections | Done | This task commit | Typecheck and lint passed. 23 focused tests passed. Chrome checked 12 routes at 390, 768, 1024 and 1440 px. |
+| A2 · Account switching | In progress | — | — |
+| A3 · Final check | Pending | — | — |
+
+The account layout supplies the white panel and card styles. Chrome verified the warm border, soft shadow, filled active menu item, and absence of sideways scroll in 48 route and viewport checks. The Buyer account displayed the caught-up strip and empty parcel card. The phone account menu opened with Enter and reached Privacy. The phone footer cleared the tab bar.

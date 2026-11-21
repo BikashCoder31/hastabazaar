@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowRight, Bell, ChevronRight, Clock3, Gift, Heart, Landmark, MapPin, Package, Undo2, UserRound, UsersRound, Wallet } from 'lucide-react';
+import { ArrowRight, Bell, Check, ChevronRight, Clock3, Gift, Heart, Landmark, MapPin, Package, Undo2, UserRound, UsersRound, Wallet } from 'lucide-react';
 import { AccountEmpty } from '@/components/account/account-ui';
 import { accountAction, accountSurface } from '@/components/account/account-sections';
 import { SavedProductGrid } from '@/components/account/saved-product-grid';
@@ -66,20 +66,34 @@ export default async function AccountPage() {
   ];
 
   return (
-    <div className="min-w-0 space-y-8 text-[#14213d]">
+    <div className="min-w-0 space-y-10 text-[#14213d]">
       <header>
-        <h1 className="break-words font-heading text-4xl tracking-tight sm:text-5xl">Namaste, {customer.displayName.trim().split(/\s+/)[0] || 'shopper'}</h1>
+        <h1 className="break-words font-heading text-[2rem] leading-tight tracking-tight md:text-[2.5rem] xl:text-[2.75rem]">Namaste, {customer.displayName.trim().split(/\s+/)[0] || 'shopper'}</h1>
         <p className="mt-2 text-base leading-6 text-[#465573]">Everything about your orders, money and settings, starting with what needs you.</p>
       </header>
       <section aria-labelledby="account-your-turn">
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <CustomerActingChip actor="you" yourTurn />
-          <h2 id="account-your-turn" className="text-lg font-semibold">{actions.length ? `${actions.length} ${actions.length === 1 ? 'thing needs' : 'things need'} you` : 'You’re caught up'}</h2>
-        </div>
+        <h2 id="account-your-turn" className="mb-3 flex flex-wrap items-center gap-2.5 text-lg font-semibold">
+          {actions.length ? <CustomerActingChip actor="you" yourTurn /> : (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#DEEBE2] px-2.5 py-1 text-xs text-[#236548]">
+              <Check className="size-3.5" aria-hidden="true" />All done<span className="sr-only"> · </span>
+            </span>
+          )}
+          {actions.length ? `${actions.length} ${actions.length === 1 ? 'thing needs' : 'things need'} you` : 'Nothing needs you'}
+        </h2>
         {actions.length ? <div className="space-y-2.5">{actions.slice(0, yourTurnLimit).map(action => (
           <CustomerYourTurnCard key={action.key} title={action.title} description={action.description} icon={action.icon}
             action={<Link href={action.href} className={action.className}>{action.label}</Link>} />
-        ))}{actions.length > yourTurnLimit ? <Link href="/account/orders" className={sectionLink}>See orders that need you</Link> : null}</div> : null}
+        ))}{actions.length > yourTurnLimit ? <Link href="/account/orders" className={sectionLink}>See orders that need you</Link> : null}</div> : (
+          <div className={accountSurface + ' flex items-center gap-4 px-[18px] py-4'}>
+            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-[#DEEBE2] text-[#236548]">
+              <Check className="size-5" aria-hidden="true" />
+            </span>
+            <div className="min-w-0 text-sm">
+              <p className="font-semibold">You’re caught up</p>
+              <p className="mt-0.5 leading-relaxed text-[#465573]">When an order needs an answer, a payment or a review, it shows here first.</p>
+            </div>
+          </div>
+        )}
       </section>
 
       <section aria-labelledby="account-on-way">
@@ -103,14 +117,27 @@ export default async function AccountPage() {
               </Link>
             </li>
           );
-        })}</ul> : <p className={accountSurface + ' p-4 text-sm text-[#465573]'}>No parcels on the way.</p>}
+        })}</ul> : (
+          <div className={accountSurface + ' flex flex-wrap items-center justify-between gap-3.5 p-[22px]'}>
+            <div className="flex min-w-0 flex-auto items-center gap-3.5 text-sm sm:flex-1">
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#E3E9F4] text-[#284881]">
+                <Package className="size-5" aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <p className="font-semibold">No parcels on the way</p>
+                <p className="mt-0.5 leading-relaxed text-[#465573]">Parcels you order appear here with their delivery date.</p>
+              </div>
+            </div>
+            <Link href="/shop" className={accountAction}>Browse the shop</Link>
+          </div>
+        )}
       </section>
 
       <section aria-labelledby="account-shortcuts">
         <h2 id="account-shortcuts" className="mb-3 text-xl font-semibold">Your Hastabazaar</h2>
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           {shortcuts.map(({ label, detail, href, Icon }) => (
-            <Link key={href} href={href} className={accountSurface + ' min-w-0 break-words p-3 hover:border-[#a8232e] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a8232e] sm:p-4'}>
+            <Link key={href} href={href} className={accountSurface + ' min-h-[116px] min-w-0 break-words p-3.5 hover:border-[#a8232e] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a8232e] sm:min-h-[132px] sm:p-[18px]'}>
               <Icon className="mb-2 size-5 text-[#a8232e]" aria-hidden="true" />
               <span className="block text-sm font-semibold">{label}</span>
               <span className="mt-1 block text-sm text-[#465573]">{detail}</span>

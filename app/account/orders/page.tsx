@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import { ReceiptText } from 'lucide-react';
 import { CustomerOrderList } from '@/components/account/order-list';
+import { accountSurface } from '@/components/account/account-sections';
 import { AnswerDetails } from '@/components/forms/answer-details';
 import { requireCustomerPage } from '@/lib/auth/customer';
 import { requireDatabase } from '@/lib/db/d1';
@@ -65,7 +66,7 @@ export default async function CustomerOrdersPage({
           ) : null}
         </section>
       ) : null}
-      <div className="mt-6 flex items-start gap-3 rounded-2xl bg-secondary p-5">
+      <div className={accountSurface + ' mt-6 flex items-start gap-3 p-5'}>
         <ReceiptText className="mt-0.5 size-5 shrink-0 text-primary" />
         <div>
           <p className="font-semibold">Bought something as a guest?</p>
@@ -74,8 +75,8 @@ export default async function CustomerOrdersPage({
             that order.
           </p>
           <div className="mt-1 flex flex-wrap gap-x-4">
-            <Link href="/track" className="section-link">Track an order</Link>
-            <Link href="/help#tracking" className="section-link">
+            <Link href="/track" className="section-link inline-flex min-h-11 items-center">Track an order</Link>
+            <Link href="/help#tracking" className="section-link inline-flex min-h-11 items-center">
               Help finding a guest order →
             </Link>
           </div>

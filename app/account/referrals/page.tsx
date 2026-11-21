@@ -4,7 +4,7 @@ import { Gift } from 'lucide-react';
 import { requireCustomerPage } from '@/lib/auth/customer';
 import { requireDatabase } from '@/lib/db/d1';
 import { getWallet } from '@/lib/db/repositories/wallet';
-import { CustomerWallet } from '@/components/account/account-sections';
+import { CustomerWallet, accountSurface } from '@/components/account/account-sections';
 import { ReferralShare } from '@/components/account/referral-share';
 import { referralInvitationLink } from '@/lib/referrals/invitation-link';
 
@@ -32,14 +32,14 @@ export default async function ReferralsPage() {
     .reduce((sum, r) => sum + r.rewardPaisa, 0);
   return (
     <CustomerWallet active="referrals">
-      <section className="rounded-3xl bg-[#17345f] p-6 text-white sm:p-8">
-        <Gift className="size-7 text-[#f4c46b]" aria-hidden="true" />
+      <section className={accountSurface + ' p-6 sm:p-8'}>
+        <Gift className="size-7 text-[#A8232E]" aria-hidden="true" />
         <h2 className="mt-3 font-heading text-3xl">Refer a friend</h2>
         <p className="mt-3 text-xl">
           Give {money(campaign.friendDiscountPaisa)}. Earn{' '}
           {money(campaign.rewardPaisa)}.
         </p>
-        <p className="mt-3 max-w-2xl leading-7 text-white/80">
+        <p className="mt-3 max-w-2xl leading-7 text-muted-foreground">
           Your friend gets a discount on their first qualifying order of{' '}
           {money(campaign.minimumSubtotalPaisa)} or more in products. You earn
           shopping credit after delivery, cash collection and the{' '}

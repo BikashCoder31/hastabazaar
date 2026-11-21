@@ -15,7 +15,7 @@ type Payment = NonNullable<Awaited<ReturnType<typeof getCustomerManualPayment>>>
 type Draft = { amount: string; date: string; reference: string; note: string; files: { id: string; name: string }[] };
 type ClaimProps = { payment: Payment; actorId: string; orderSummary?: ReactNode };
 
-const card = 'min-w-0 rounded-2xl border border-[#E3D6C3] bg-[#FDFAF5] p-6';
+const card = 'account-surface min-w-0 rounded-2xl border border-[#E3D6C3] bg-[#FDFAF5] p-6';
 const control = 'min-h-11 w-full min-w-0 rounded-xl border border-[#D6C3A6] bg-white px-3.5 py-2.5 text-base text-[#14213D] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#14213D]';
 const secondaryButton = 'inline-flex min-h-11 items-center justify-center rounded-lg border border-[#D6C3A6] px-3 text-sm font-semibold text-[#14213D] hover:bg-[#F5EFE3] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#14213D] disabled:opacity-60';
 const primaryButton = 'inline-flex min-h-[50px] w-full items-center justify-center rounded-xl bg-[#14213D] px-5 text-sm font-semibold text-white hover:bg-[#243656] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#14213D] disabled:opacity-60 sm:w-auto sm:min-w-[220px]';

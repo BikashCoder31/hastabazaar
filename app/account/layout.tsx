@@ -28,8 +28,8 @@ export default async function AccountLayout({
   return (
     <div className="min-h-screen bg-[#F5EFE3] text-[#14213D]">
       <SiteHeader />
-      <div className="mx-auto w-full max-w-[1264px] px-4 py-6 md:px-12 md:py-9 min-[1360px]:px-0">
-        <AccountAccessBoundary actorId={customer.userId}><div className="grid items-start gap-5 lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-10">
+      <div className="mx-auto w-full max-w-[1264px] px-4 py-6 md:px-12 md:py-9 min-[1360px]:px-0!">
+        <AccountAccessBoundary actorId={customer.userId}><div className="customer-account grid items-start gap-5 lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-10">
           <aside className="min-w-0">
             {customer.isSuperAdmin === 1 ? (
               <Link
