@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 
-export function StartSellerRegistration() {
+export function StartSellerRegistration({ label = 'Start seller registration', className }: { label?: string; className?: string } = {}) {
   const router=useRouter();
   const [pending,setPending]=useState(false);
   const [error,setError]=useState('');
@@ -17,7 +17,7 @@ export function StartSellerRegistration() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Please try again.'); setPending(false); }
   }
   return <div className="flex flex-col items-start gap-3">
-    <Button type="button" onClick={start} disabled={pending}>{pending?'Starting…':'Start seller registration'}</Button>
+    <Button type="button" className={className} onClick={start} disabled={pending}>{pending?'Starting…':label}</Button>
     {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
   </div>;
 }

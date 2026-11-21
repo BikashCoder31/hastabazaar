@@ -2,12 +2,12 @@ import Link from 'next/link';
 
 /** Written guidance stays available independently of the deferred media update. */
 export function RegistrationGuide() {
-  return <section id="seller-guide" className="scroll-mt-28 rounded-2xl border bg-card p-5 sm:p-6">
+  return <section id="seller-guide" className="scroll-mt-28 rounded-2xl border border-[#E4DACA] bg-[#FCF9F4] p-5 text-[#14213D] sm:p-6">
     <h2 className="font-heading text-2xl">Written seller guide <span lang="ne">· विक्रेताका लागि लिखित सहयोग</span></h2>
     <p className="mt-3 text-sm leading-7">Start with the details you have. Saving, submitting for review, public publication, accepting orders and receiving payouts have separate recorded outcomes.</p>
     <p lang="ne" className="mt-2 text-sm leading-7">अहिले आफूसँग भएका विवरणबाट सुरु गर्नुहोस्। विवरण सुरक्षित हुनु, आवेदन बुझाउनु, उत्पादन सार्वजनिक हुनु, नयाँ अर्डर लिन पाउनु र भुक्तानी पाउनु फरक चरण हुन्।</p>
     <details className="mt-4">
-      <summary className="cursor-pointer py-2 font-semibold">Read the steps / <span lang="ne">चरणहरू पढ्नुहोस्</span></summary>
+      <summary className="min-h-11 cursor-pointer py-3 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2">Read the steps / <span lang="ne">चरणहरू पढ्नुहोस्</span></summary>
       <ol className="mt-4 list-decimal space-y-6 pl-5 text-sm leading-7">
         <li><h3 className="font-semibold">Register with available details</h3><p>Use <Link href="/sell" className="underline">Sell with us</Link> to start, then open <Link href="/sell/apply" className="underline">Seller registration</Link>. Read and tick both acknowledgements for your selling route before you submit. Verify your account email. You can save a draft before accepting and complete missing registration details later.</p><p lang="ne">सुरु गर्न Sell with us खोल्नुहोस्। आवेदन पठाउनुअघि आफूले रोजेको बिक्री तरिकाका दुवै सहमति पढेर चिन्ह लगाउनुहोस्। आफ्नो इमेल प्रमाणित गर्नुहोस्। सहमति दिनुअघि मस्यौदा सुरक्षित गर्न र छुटेका दर्ता विवरण पछि थप्न सक्नुहुन्छ।</p></li>
         <li><h3 className="font-semibold">Check what was actually saved</h3><p>Check the saved-state message or use <strong>Save progress now</strong>. If a save fails or its outcome is uncertain, keep your entries and retry the original action. <strong>Submit application</strong> sends the application for review separately; a saved draft does not submit or approve it.</p><p lang="ne">सुरक्षित भएको सन्देश जाँच्नुहोस् वा Save progress now प्रयोग गर्नुहोस्। समस्या आए आफ्ना विवरण राखेर उही कार्य पुनः प्रयास गर्नुहोस्। Submit application ले आवेदन समीक्षाका लागि पठाउँछ; मस्यौदा सुरक्षित हुँदैमा आवेदन पठाइएको वा स्वीकृत भएको हुँदैन।</p></li>

@@ -2,13 +2,13 @@ import { env } from 'cloudflare:workers';
 import Image from 'next/image';
 import Link from 'next/link';
 import { CalendarDays, Package } from 'lucide-react';
-import { ApplicantSection } from '@/components/seller/applicant-section';
 import { InventoryEditor } from '@/components/seller/inventory-editor';
 import { SellerAgreementAcceptance } from '@/components/seller/seller-agreement-acceptance';
 import { SellerManagedProgramWorkspace } from '@/components/seller/managed-program-workspace';
 import { SellerOnboardingChecklist } from '@/components/seller/onboarding-checklist';
 import { SellerProgramDetails } from '@/components/seller/seller-program-details';
 import { SellerReadinessSummary } from '@/components/seller/readiness-summary';
+import { SellerRegistrationApplicationOverview } from '@/components/seller/registration-application-overview';
 import { SellerActionOverview, type TodayTask } from '@/components/seller/seller-action-overview';
 import { WhoseTurn } from '@/components/ui/whose-turn';
 import { requireSellerCenterPage } from '@/lib/auth/seller-center';
@@ -71,8 +71,8 @@ function readLowStock(db: D1Database, sellerId: string) {
 
 export default async function SellerDashboardPage() {
   const seller = await requireSellerCenterPage('/seller');
-  if (!seller.approvedSeller || !seller.sellerId) return <ApplicantSection viewer={seller} section="home" />;
   const db = requireDatabase(env as unknown as { DB?: D1Database });
+  if (!seller.approvedSeller || !seller.sellerId) return <SellerRegistrationApplicationOverview db={db} viewer={seller} />;
   const now = sellerDashboardObservedAt();
   const [work, readiness, products, stock, earnings, orders, commission, program, payouts, payoutRequests, holdSetting, weekday, cutoff, zone] = await Promise.all([
     readSellerWorkspaceTasks(db, seller.userId, { now, limit: 60 }).catch(() => null),

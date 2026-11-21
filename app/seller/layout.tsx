@@ -38,7 +38,7 @@ export default async function SellerLayout({
   const mfaEnabled = await sellerMfaRequired(database, seller.userId, security.HASTABAZAAR_SECURITY_KEY, await readSecurityInitialization(security));
   const participation = seller.sellerId ? await database.prepare('SELECT participation_route AS route FROM seller_participation_profiles WHERE seller_id=?').bind(seller.sellerId).first<{route:string}>() : null;
   const notices = !seller.approvedSeller || !seller.sellerId || participation?.route === 'managed_maker' ? [] : await getSellerCommissionNotices(database, seller.sellerId);
-  const feeOffers = !seller.sellerId || participation?.route === 'managed_maker' ? null : await currentRegisteredFeeOffers(database,seller.sellerId);
+  const feeOffers = !seller.approvedSeller || !seller.sellerId || participation?.route === 'managed_maker' ? null : await currentRegisteredFeeOffers(database,seller.sellerId);
   const publicShop = seller.sellerId ? await getPublicMakerProfile(database, seller.sellerId) : null;
   const addProductHref = seller.sellerId
     ? seller.approvedSeller ? '/seller/products/new' : '/sell/application/products/new'
