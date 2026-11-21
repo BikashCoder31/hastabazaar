@@ -1,7 +1,8 @@
+import { openCheckoutAddress, openCheckoutPayment } from './helpers/checkout-step-navigation';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { build } from 'esbuild';
-import { stubFixtureLink } from './helpers/browser-fixture-link';
+import { stubFixtureImage, stubFixtureLink } from './helpers/browser-fixture-link';
 import type {
   FixtureBrowser,
   FixtureRoute,
@@ -63,7 +64,7 @@ async function mounted(surface = 'checkout', checkoutContext = false) {
       {
         name: 'fixture',
         setup(b) {
-          stubFixtureLink(b);
+          stubFixtureLink(b);stubFixtureImage(b);
           b.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'fixture' }));
           b.onResolve(
             { filter: /^@\/components\/delivery\/location-picker$/ },
@@ -277,6 +278,7 @@ async function mounted(surface = 'checkout', checkoutContext = false) {
   });
   await page.goto('https://promo-ui.test/');
   await page.addScriptTag({ content: bundle.outputFiles[0].text });
+  if (surface === 'checkout') await openCheckoutPayment(page).catch(async error => { await browser.close(); throw error; });
   return {
     browser,
     page,
@@ -299,6 +301,7 @@ async function mounted(surface = 'checkout', checkoutContext = false) {
         ).fixtureWalletBalance = balance;
       }, walletBalance);
       await page.addScriptTag({ content: bundle.outputFiles[0].text });
+      if (surface === 'checkout') await openCheckoutPayment(page);
     },
     spendWallet() {
       walletBalance = 0;
@@ -409,7 +412,8 @@ void test('newer quote wins; apply/remove and referral exclusion update real che
       contentType: 'application/json',
       body: '{"error":"Old quote failed","code":"stale"}',
     });
-    await h.page.getByLabel('Have a friend’s referral code?').fill('FRIEND');
+    await h.page.getByText('Have a friend’s referral code?', { exact: true }).click();
+    await h.page.getByLabel('Referral code', { exact: true }).fill('FRIEND');
     await h.page.getByText(/cannot be combined/).waitFor();
     assert.equal(
       await h.page
@@ -682,7 +686,7 @@ void test('explicitly accepted changed quote submits the new revision and caps c
       body: JSON.stringify(quote('SAVE10', 2, 9000)),
     });
     await h.page.getByText(/Applied SAVE10/).waitFor();
-    await h.page.getByRole('checkbox').first().press('Space');
+    await h.page.getByRole('switch', { name: 'Use shopping credit', exact: true }).press('Space');
     assert.equal(
       await h.page
         .locator('[data-promo-discount-paisa]')
@@ -785,9 +789,11 @@ void test('lost promo checkout response survives reload and unavailable campaign
       'Fictional personal gift note',
     ])
       assert.ok(!stored.includes(privateValue));
+    await openCheckoutAddress(h.page);
     await h.page
       .getByLabel('Municipality / rural municipality')
       .fill('Changed municipality');
+    await openCheckoutPayment(h.page);
     await retry.click();
     await h.page.getByText(/differs from the prior attempt/).waitFor();
     assert.equal(
@@ -976,7 +982,7 @@ void test('lost promo checkout replays its original credit choice after reload w
   try {
     await apply(h);
     await h.page.getByText(/Applied SAVE10/).waitFor();
-    await h.page.getByRole('checkbox').first().press('Space');
+    await h.page.getByRole('switch', { name: 'Use shopping credit', exact: true }).press('Space');
     h.loseOrder();
     await h.page.getByRole('checkbox').last().press('Space');
     await h.page
@@ -998,7 +1004,7 @@ void test('lost promo checkout replays its original credit choice after reload w
     });
     await retry.waitFor();
     assert.equal(
-      await h.page.getByRole('checkbox').first().getAttribute('aria-disabled'),
+      await h.page.getByRole('switch', { name: 'Use shopping credit', exact: true }).getAttribute('aria-disabled'),
       'true',
     );
     await h.page.getByRole('checkbox').last().press('Space');

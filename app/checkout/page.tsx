@@ -6,9 +6,8 @@ import { cookies } from 'next/headers';
 import { getWallet } from '@/lib/db/repositories/wallet';
 
 import { CheckoutForm } from '@/components/commerce/checkout-form';
-import { CheckoutSteps } from '@/components/commerce/checkout-steps';
+import { CheckoutHeader } from '@/components/commerce/checkout-header';
 import { SiteFooter } from '@/components/layout/site-footer';
-import { SiteHeader } from '@/components/layout/site-header';
 import { getCustomerUser } from '@/lib/auth/customer';
 import { env } from 'cloudflare:workers';
 import { requireDatabase } from '@/lib/db/d1';
@@ -41,19 +40,11 @@ export default async function CheckoutPage() {
     ? await listCustomerAddresses(database, customer.userId)
     : [];
   return (
-    <div className="min-h-screen bg-muted/25">
-      <SiteHeader />
-      <main tabIndex={-1} id="main-content" className="shell py-8 sm:py-12">
-        <CheckoutSteps current={1} />
-        <p className="eyebrow">Delivery within Nepal · Review your payment method</p>
-        <h1 className="mt-3 font-heading text-4xl tracking-tight sm:text-5xl">
-          Let’s bring them home.
-        </h1>
-        <p className="mt-3 max-w-2xl leading-7 text-muted-foreground">
-          Enter a complete Nepal delivery address. Your order is confirmed only
-          after stock is checked.
-        </p>
-        <div className="mt-8">
+    <div className="min-h-screen bg-[#f5efe3] text-[#14213d]">
+      <CheckoutHeader />
+      <main tabIndex={-1} id="main-content" className="mx-auto w-full max-w-[1264px] px-4 pb-16 pt-6 md:px-12 md:pb-20 md:pt-9 min-[1360px]:px-0">
+        <h1 className="font-heading text-4xl leading-none tracking-tight sm:text-5xl">Checkout</h1>
+        <div className="mt-6">
           <CheckoutForm
             cartScope={cartHash??'no-cart'}
             paymentCapabilities={paymentCapabilities}

@@ -5,6 +5,7 @@ import { SellerDisclosure } from './seller-disclosure';
 import { CustomerServiceFeeBreakdown } from './customer-service-fee-breakdown';
 
 import { FormGuide } from '@/components/forms/form-guide';
+import Image from 'next/image';
 import Link from 'next/link';
 import {ContactVerificationPanel} from '@/components/account/contact-verification';
 import type {CheckoutContactPolicy, ContactVerificationStatus} from '@/lib/auth/contact-verification';
@@ -19,7 +20,11 @@ import {
   districtBelongsToProvince,
 } from '@/lib/checkout/nepal-address';
 import { LocationPicker } from '@/components/delivery/location-picker';
-import { Banknote, LockKeyhole, MapPin, Truck } from 'lucide-react';
+import { ArrowRight, Banknote, Check, Landmark, Package, Truck, Wallet } from 'lucide-react';
+import { CheckoutStep, type CheckoutStepNumber } from './checkout-steps';
+import { checkoutParcelCash, formatParcelEstimate, groupCheckoutParcels } from '@/lib/checkout/parcel-display';
+import { formatPaisaExact } from '@/lib/marketplace/money-display';
+import { CustomerParcelCash } from '@/components/storefront/customer-parcel-cash';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
@@ -31,6 +36,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -45,6 +51,7 @@ import {
 } from '@/lib/checkout/validation';
 import { DELIVERY_ESTIMATE_NOTICE } from '@/lib/checkout/delivery-presentation';
 import { COD_CONFIRMATION_NOTICE } from '@/lib/commerce/order-presentation';
+import { companyPublicContacts } from '@/lib/content/company-details';
 import { normalizeNepalMobile } from '@/lib/auth/nepal-phone';
 import type { CustomerAddressRow } from '@/lib/db/repositories/customers';
 import type { CheckoutPromoQuote } from '@/lib/incentives/types';
@@ -65,10 +72,7 @@ const checkoutBaseKeys = [
 const checkoutBuiltInKeys = new Set(checkoutBaseKeys.map(canonicalKey));
 
 function money(paisa: number): string {
-  return new Intl.NumberFormat('en-NP', {
-    style: 'currency',
-    currency: 'NPR',
-  }).format(paisa / 100);
+  return formatPaisaExact(paisa).replace(/\.00$/, '');
 }
 
 import type {CheckoutPaymentCapabilities} from '@/lib/checkout/payment-capabilities';
@@ -186,6 +190,50 @@ function ScopedCheckoutForm({
     CustomerAddressRow | undefined
   >(initialAddress);
   const [deliveryFor, setDeliveryFor] = useState<'self' | 'other'>('self');
+  const [recipient, setRecipient] = useState({ name: initialAddress?.recipientName ?? customerDisplayName ?? '', phone: initialAddress?.phone ?? customerPhone ?? '' });
+  const [activeStep, setActiveStep] = useState<CheckoutStepNumber>(1);
+  const [completedThrough, setCompletedThrough] = useState(0);
+  const [addressSummary, setAddressSummary] = useState('');
+  const [estimateFrom] = useState(() => Date.now());
+  const stepToFocus = useRef<CheckoutStepNumber | null>(null);
+  useLayoutEffect(() => {
+    if (stepToFocus.current !== activeStep) return;
+    stepToFocus.current = null;
+    checkoutFormRef.current?.querySelector<HTMLElement>(`#checkout-step-${activeStep}-title`)?.focus();
+  }, [activeStep]);
+
+  function showStep(step: CheckoutStepNumber) {
+    if (submitting) return;
+    stepToFocus.current = step;
+    setActiveStep(step);
+  }
+
+  function completeStep(step: 1 | 2 | 3) {
+    const form = checkoutFormRef.current;
+    const fields = form?.querySelectorAll(
+      `[data-checkout-fields="${step}"] :is(input,select,textarea)`,
+    );
+    for (const field of fields ?? []) {
+      if ((field instanceof HTMLInputElement || field instanceof HTMLSelectElement || field instanceof HTMLTextAreaElement)
+        && field.getClientRects().length > 0 && !field.reportValidity()) return;
+    }
+    if (form && step === 2) {
+      if (!districtBelongsToProvince(district, province)) {
+        const field = form.querySelector<HTMLInputElement>('#district');
+        field?.focus();
+        return;
+      }
+      const values = new FormData(form);
+      setAddressSummary(['locality', 'ward', 'municipality', 'district', 'province', 'landmark']
+        .flatMap(key => {
+          const value = values.get(key);
+          return typeof value === 'string' && value ? [value] : [];
+        }).join(' · '));
+    }
+    if (step === 3 && !delivery && !retainedAttempt) return;
+    setCompletedThrough(previous => Math.max(previous, step));
+    showStep(step === 1 ? 2 : step === 2 ? 3 : 4);
+  }
   const [recipientEmail, setRecipientEmail] = useState('');
   // Keep these legacy controls available only when reconstructing a retained request.
   const [saveAddressForFuture, setSaveAddressForFuture] = useState(false);
@@ -275,7 +323,7 @@ function ScopedCheckoutForm({
     nativeEvent?: Event;
   },now:()=>number) {
     event.preventDefault();
-    if(!isCurrentScope())return;
+    if(!isCurrentScope() || activeStep !== 4)return;
     const retryPrior = (event.nativeEvent as SubmitEvent | undefined)?.submitter?.hasAttribute('data-checkout-retry') === true;
     if(!retryPrior&&legacyAttempt&&!legacyAcknowledged){setError('Check your orders before explicitly starting a new attempt.');return;}
     if(!retryPrior&&!paymentCapabilities[paymentMethod]){setError('This payment method is currently unavailable. Choose an available method; your cart remains saved.');return;}
@@ -419,7 +467,7 @@ function ScopedCheckoutForm({
         throw new Error('The order result could not be confirmed. Retry this same request to check its result.');
       clearCheckoutRetry(checkoutAttemptKey);
       window.location.assign(
-        `/orders/${encodeURIComponent(result.orderNumber)}`,
+        `/orders/${encodeURIComponent(result.orderNumber)}?placed=1`,
       );
     } catch (reason) {
       if(!stillCurrent.current||!isCurrentScope())return;
@@ -463,46 +511,92 @@ function ScopedCheckoutForm({
       </div>
     );
 
-  const recoveryOnly=cart.items.length===0&&retainedAttempt;
-  return (
-    <form
-      ref={checkoutFormRef}
-      data-form-id="commerce.checkout"
-      onSubmit={event=>void submit(event,Date.now)}
-      className="customer-form grid gap-8 lg:grid-cols-[minmax(0,1fr)_23rem]"
-    >
-      <FormGuide formId="commerce.checkout" />
-      {legacyAttempt&&!legacyAcknowledged?<p role="alert" className="rounded-xl border p-4 lg:col-span-2">A prior order attempt could not be matched safely to this account and cart. Check your orders before explicitly starting a new attempt.</p>:null}
+  const recoveryOnly = cart.items.length === 0 && retainedAttempt;
+  const parcels = groupCheckoutParcels(cart.items);
+  const deliveryBySeller = currentNcmQuote?.quote ? new Map(currentNcmQuote.quote.quotes.map(quote => [quote.sellerId, quote.amountPaisa])) : undefined;
+  const parcelCash = delivery && total !== null && !cart.hasUnavailableItems
+    ? checkoutParcelCash(parcels, {
+      totalPaisa: total, paymentMethod, discountsPaisa: referralDiscount + (currentPromoQuote?.discountPaisa ?? 0) + walletUsed,
+      feePaisa: serviceFee.chargedPaisa,
+      pricedVariant: Boolean(pricingRuleVersion && cart.items.some(item => item.selectedOffer?.pricingRuleVersion === pricingRuleVersion)),
+      deliveryBySeller,
+    }) : null;
+  const recipientSummary = [deliveryFor === 'other' ? 'For someone else' : 'For you', recipient.name, recipient.phone].filter(Boolean).join(' · ');
+  const deliverySummary = delivery
+    ? `${parcels.length} ${parcels.length === 1 ? 'parcel' : 'parcels'} · ${money(delivery.chargePaisa)} delivery`
+    : undefined;
+  const card = 'rounded-2xl border border-[#e3d6c3] bg-[#fdfaf5]';
+  const continueButton = 'min-h-11 rounded-lg bg-[#14213d] px-5 text-white hover:bg-[#24436c]';
 
-      <div className="space-y-6">
-        <ContactVerificationPanel key={`${customerId??'guest'}:${customerEmail??''}:${customerPhone??''}:${contactReload}`}
-          ownerKey={customerId} initialStatus={contactStatus} onStatusChange={setCurrentContacts}
-          contactPolicy={contactPolicy}/>
-        <section className="rounded-2xl border bg-card p-5 sm:p-7">
-          <div className="flex items-center gap-3">
-            <span className="flex size-10 items-center justify-center rounded-xl bg-secondary text-primary">
-              <MapPin className="size-5" />
-            </span>
-            <h2 className="font-heading text-2xl">Where should it go?</h2>
-          </div>
-          <p className="mt-3 text-sm text-muted-foreground">Fields marked required must be completed. Optional fields can be left blank.</p>
-          <fieldset className="mt-5 grid gap-3 sm:grid-cols-2">
-            <legend className="mb-2 text-sm font-medium">Who will receive this order?</legend>
-            {(['self', 'other'] as const).map((value) => (
-              <label key={value} className="flex cursor-pointer items-center gap-3 rounded-xl border p-4 text-sm">
-                <input
-                  type="radio"
-                  name="deliveryFor"
-                  value={value}
-                  checked={deliveryFor === value}
-                  onChange={() => setDeliveryFor(value)}
-                />
-                <span>{value === 'self' ? 'For myself' : 'For someone else'}</span>
-              </label>
-            ))}
-          </fieldset>
+  return (
+    <form ref={checkoutFormRef} data-form-id="commerce.checkout" noValidate
+      onSubmit={event => void submit(event, Date.now)}
+      className="customer-form min-w-0 text-[#14213d] max-md:[&_button[data-slot=button]]:min-h-11">
+      <FormGuide formId="commerce.checkout" />
+      {legacyAttempt && !legacyAcknowledged ? <p role="alert" className="mb-4 rounded-xl border bg-white p-4">A prior order attempt could not be matched safely to this account and cart. Check your orders before explicitly starting a new attempt.</p> : null}
+      {retainedAttempt && activeStep !== 4 ? (
+        <output className="mb-4 block rounded-xl border bg-white p-4 text-sm">A prior order attempt may already have completed. Re-enter its original details, then retry from Payment.</output>
+      ) : null}
+      <div className="grid items-start gap-7 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,31.65%)] lg:gap-10">
+        <div className="min-w-0 space-y-4">
+          <CheckoutStep number={1} title="Who is it for?" active={activeStep === 1} complete={completedThrough >= 1}
+            summary={recipientSummary} onChange={() => showStep(1)}>
+            <fieldset className="grid gap-3 sm:grid-cols-2">
+              <legend className="sr-only">Who will receive this order?</legend>
+              {(['self', 'other'] as const).map(value => (
+                <label key={value} htmlFor={"checkout-for-" + value} aria-label={value === "self" ? "For me" : "For someone else"} className={`flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border bg-white p-3.5 text-sm ${deliveryFor === value ? 'border-[#14213d] ring-1 ring-[#14213d]' : 'border-[#d5c1a5]'}`}>
+                  <input className="mt-1 size-4 shrink-0 accent-[#14213d]" type="radio" name="deliveryFor" id={"checkout-for-" + value} aria-label={value === "self" ? "For me" : "For someone else"} value={value}
+                    checked={deliveryFor === value} onChange={() => setDeliveryFor(value)} />
+                  <span><strong className="block">{value === 'self' ? 'For me' : 'For someone else'}</strong>
+                    <span className="block text-[#465573]">{value === 'self' ? [customerDisplayName, customerPhone].filter(Boolean).join(' · ') || 'Your own delivery' : 'A gift, or family in another town'}</span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field id="recipientName" label="Recipient name" autoComplete="name" value={recipient.name} required
+                onChange={event => setRecipient(previous => ({ ...previous, name: event.target.value }))} />
+              <Field id="recipientPhone" label="Recipient phone" type="tel" autoComplete="tel" placeholder="98XXXXXXXX"
+                value={recipient.phone} required onChange={event => setRecipient(previous => ({ ...previous, phone: event.target.value }))} />
+              {deliveryFor === 'other' ? (
+                <div className="space-y-2 sm:col-span-2">
+                  <Field id="recipientEmail" label="Recipient email (optional)" type="email" autoComplete="email" value={recipientEmail}
+                    onChange={event => setRecipientEmail(event.target.value)} aria-describedby="recipient-email-help" />
+                  <p id="recipient-email-help" className="text-xs leading-relaxed text-[#465573]">Used only for delivery authorization. The recipient does not get access to your account or order history.</p>
+                </div>
+              ) : null}
+            </div>
+            <div className="rounded-xl border border-[#e3d6c3] bg-white p-3.5">
+              {contactsVerified && customerEmail ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-[#344766]">
+                  <span className="flex min-w-0 flex-wrap items-center gap-2 wrap-anywhere"><Check className="size-4 shrink-0 text-[#286649]" aria-hidden="true" />{customerEmail} <span className="text-xs font-semibold text-[#205d42]">Verified</span></span>
+                  <span>{customerPhone} · used by the courier</span>
+                  <Link href="/account/profile" className="inline-flex min-h-11 items-center font-semibold text-[#a8232e] underline">Change contact details</Link>
+                </div>
+              ) : null}
+              <div className={contactsVerified && customerEmail ? 'hidden' : 'grid gap-4 sm:grid-cols-2'}>
+                <Field id="customerEmail" label="Order email" type="email" autoComplete="email" defaultValue={customerEmail} readOnly={Boolean(customerEmail)} required />
+                <div className="space-y-2">
+                  <Field id="customerPhone" label="Contact phone" type="tel" autoComplete="tel" placeholder="98XXXXXXXX" defaultValue={customerPhone ?? ''}
+                    readOnly={Boolean(customerEmail)} aria-describedby="checkout-contact-phone-help" required />
+                  <p id="checkout-contact-phone-help" className="text-xs leading-relaxed text-[#465573]">
+                    {accountPhone ? 'Uses the Nepal mobile saved in your account.' : 'Add a valid Nepal mobile to your account before ordering.'}{' '}
+                    <Link href="/account/profile" className="inline-flex min-h-11 items-center underline">Update contact phone</Link>.
+                  </p>
+                </div>
+              </div>
+              <div hidden={contactsVerified} className="mt-3">
+                <ContactVerificationPanel key={`${customerId ?? 'guest'}:${customerEmail ?? ''}:${customerPhone ?? ''}:${contactReload}`}
+                  ownerKey={customerId} initialStatus={contactStatus} onStatusChange={setCurrentContacts} contactPolicy={contactPolicy} />
+              </div>
+            </div>
+            <Button type="button" className={continueButton} onClick={() => completeStep(1)}>Continue <ArrowRight className="size-4" aria-hidden="true" /></Button>
+          </CheckoutStep>
+          <CheckoutStep number={2} title="Where should it go?" active={activeStep === 2} complete={completedThrough >= 2}
+            summary={addressSummary} onChange={() => showStep(2)}>
+            <p className="text-sm text-[#465573]">Choose a saved address or enter a delivery address in Nepal.</p>
           {savedAddresses.length ? (
-            <div className="mt-5 space-y-2">
+            <div className="space-y-2">
               <Label htmlFor="savedAddress">Saved address</Label>
               <select
                 id="savedAddress"
@@ -513,6 +607,7 @@ function ScopedCheckoutForm({
                     (item) => item.id === event.target.value,
                   );
                   setSelectedAddress(address);
+                  if (address) setRecipient({ name: address.recipientName, phone: address.phone });
                   setProvince(
                     normalizeProvince(address?.province ?? '') ?? '',
                   );
@@ -536,64 +631,6 @@ function ScopedCheckoutForm({
             key={selectedAddress?.id ?? 'new'}
             className="mt-6 grid gap-5 sm:grid-cols-2"
           >
-            <Field
-              id="recipientName"
-              label="Recipient name"
-              autoComplete="name"
-              defaultValue={selectedAddress?.recipientName ?? (deliveryFor === 'self' ? customerDisplayName : '')}
-              required
-            />
-            {deliveryFor === 'other' ? (
-              <div className="space-y-2 sm:col-span-2">
-                <Field
-                  id="recipientEmail"
-                  label="Recipient email (optional)"
-                  type="email"
-                  autoComplete="email"
-                  aria-describedby="recipient-email-help"
-                  value={recipientEmail}
-                  onChange={event => setRecipientEmail(event.target.value)}
-                />
-                <p id="recipient-email-help" className="text-xs leading-5 text-muted-foreground">
-                  Used only for delivery authorization messages. It does not give access to your account, invoice, or order history. A recipient does not need an email account; you can authorize delivery instead.
-                </p>
-              </div>
-            ) : null}
-            <Field
-              id="recipientPhone"
-              label="Recipient phone"
-              type="tel"
-              autoComplete="tel"
-              placeholder="98XXXXXXXX"
-              defaultValue={selectedAddress?.phone ?? customerPhone}
-              required
-            />
-            <Field
-              id="customerEmail"
-              label="Order email"
-              type="email"
-              autoComplete="email"
-              defaultValue={customerEmail}
-              readOnly={Boolean(customerEmail)}
-              required
-            />
-            <div className="space-y-2">
-              <Field
-                id="customerPhone"
-                label="Contact phone"
-                type="tel"
-                autoComplete="tel"
-                placeholder="98XXXXXXXX"
-                defaultValue={customerPhone ?? ''}
-                readOnly={Boolean(customerEmail)}
-                aria-describedby="checkout-contact-phone-help"
-                required
-              />
-              <p id="checkout-contact-phone-help" className="text-xs leading-5 text-muted-foreground">
-                {accountPhone ? 'Uses the Nepal mobile saved in your account.' : 'Add a valid Nepal mobile to your account before ordering.'}{' '}
-                <Link href="/account/profile" className="underline">Update contact phone</Link>.
-              </p>
-            </div>
             <div className="space-y-2">
               <FieldLabel htmlFor="province" required>Province</FieldLabel>
               <Select
@@ -721,23 +758,97 @@ function ScopedCheckoutForm({
               </div>
             ) : null}
           </div>
-        </section>
-        <section className="rounded-2xl border bg-card p-5 sm:p-7">
-          <div className="flex items-center gap-3">
-            <Banknote className="size-5 text-primary" />
-            <h2 className="font-heading text-2xl">Payment</h2>
-          </div>
-          <div className="mt-5 space-y-3">
-            {paymentCapabilities.cod?<label className="block rounded-xl border p-4"><input type="radio" name="paymentMethod" value="cod" checked={paymentMethod==='cod'} onChange={()=>setPaymentMethod('cod')} disabled={submitting}/> <span className="font-semibold">Cash on delivery</span><p className="mt-1 text-sm leading-6 text-muted-foreground">Pay the remaining cash total to the delivery representative for each parcel.</p></label>:null}
-            {paymentCapabilities.manual_bank?<label className="block rounded-xl border p-4"><input type="radio" name="paymentMethod" value="manual_bank" checked={paymentMethod==='manual_bank'} onChange={()=>setPaymentMethod('manual_bank')} disabled={submitting}/> <span className="font-semibold">Manual bank transfer</span><p className="mt-1 text-sm leading-6 text-muted-foreground">Your order will provide original company bank instructions and a 24-hour payment deadline. Submit the amount and payment date after transferring; a reference or image is optional. Preparation starts after verified funds and release checks.</p></label>:null}
-            {paymentCapabilities.cod && paymentMethod === 'cod' && codConfirmationRequired ? <p className="text-sm leading-6 text-muted-foreground">{COD_CONFIRMATION_NOTICE}</p> : null}
-            {!paymentCapabilities.cod&&!paymentCapabilities.manual_bank?<p>New payment methods are currently unavailable for this cart. A retained prior attempt can still be checked below.</p>:null}
-          </div>
-        </section>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <Button type="button" className={continueButton} onClick={() => completeStep(2)}>Continue <ArrowRight className="size-4" aria-hidden="true" /></Button>
+              <a href={companyPublicContacts.whatsappUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center text-sm font-semibold text-[#a8232e] underline underline-offset-2">Get address help on WhatsApp</a>
+            </div>
+          </CheckoutStep>
+          <CheckoutStep number={3} title="Delivery" active={activeStep === 3} complete={completedThrough >= 3}
+            summary={deliverySummary} onChange={() => showStep(3)}>
+            <p className="text-sm leading-relaxed text-[#465573]">Each seller sends their own parcel. A courier will bring it to your delivery address.</p>
+            {delivery ? (
+              <div className="min-w-0 divide-y divide-[#e3d6c3] rounded-xl border border-[#e3d6c3] bg-white">
+                {parcels.map((parcel, index) => {
+                  const quote = currentNcmQuote?.quote?.quotes.find(row => row.sellerId === parcel.sellerId);
+                  const preparation = parcel.preparationDays ?? delivery.preparationDays;
+                  const min = preparation + delivery.transitMinDays, max = preparation + delivery.transitMaxDays;
+                  return (
+                    <div key={parcel.sellerId} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 p-3.5 sm:p-4">
+                      <div className="flex min-w-0 items-start gap-2.5">
+                        <Truck className="mt-0.5 size-5 shrink-0 text-[#344766]" aria-hidden="true" />
+                        <div className="min-w-0 wrap-anywhere">
+                          <p className="font-semibold">Parcel {index + 1} · {parcel.sellerName}</p>
+                          <p className="text-sm text-[#465573]">{quote ? `${quote.originBranch} to ${quote.destinationBranch}` : `Courier delivery to ${district}`}</p>
+                          <p className="text-sm text-[#205d42]">{paymentMethod === 'manual_bank' ? `Estimated ${min}–${max} days after payment is verified` : `Estimated arrival: ${formatParcelEstimate(estimateFrom, min, max)}`}</p>
+                        </div>
+                      </div>
+                      {quote ? <p className="font-semibold">{money(quote.amountPaisa)}</p> : null}
+                    </div>
+                  );
+                })}
+                <p className="flex flex-wrap justify-between gap-2 p-4 text-sm font-semibold"><span>Delivery for this order</span><span>{money(delivery.chargePaisa)}</span></p>
+              </div>
+            ) : null}
+            {ncmQuoteRequest && !currentNcmQuote ? <output className="block text-sm">Checking NCM demo delivery quotes…</output> : null}
+            {currentNcmQuote?.error ? (
+              <div className="space-y-2 text-sm"><p role="alert">{currentNcmQuote.error}</p><Button type="button" variant="outline" className="min-h-11" onClick={() => setNcmQuoteAttempt(attempt => attempt + 1)}>Retry delivery quotes</Button></div>
+            ) : null}
+            {!delivery && !ncmQuoteRequest && !recoveryOnly ? <p className="text-sm text-[#465573]">Choose your address to see delivery charges and estimates.</p> : null}
+            {delivery ? <p className="text-xs leading-relaxed text-[#465573]">{DELIVERY_ESTIMATE_NOTICE}</p> : null}
+            <Button type="button" className={continueButton} disabled={!delivery && !retainedAttempt} onClick={() => completeStep(3)}>Continue to payment <ArrowRight className="size-4" aria-hidden="true" /></Button>
+          </CheckoutStep>
+          <CheckoutStep number={4} title="Payment" active={activeStep === 4} complete={false} onChange={() => showStep(4)}>
+            {!recoveryOnly ? (
+              <div className="space-y-3">
+                {paymentCapabilities.cod ? (
+                  <label htmlFor="checkout-pay-cod" aria-label="Cash on delivery" className={`flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border bg-white p-3.5 ${paymentMethod === 'cod' ? 'border-[#14213d] ring-1 ring-[#14213d]' : 'border-[#d5c1a5]'}`}>
+                    <input className="mt-1 size-4 shrink-0 accent-[#14213d]" type="radio" name="paymentMethod" id="checkout-pay-cod" aria-label="Cash on delivery" value="cod" checked={paymentMethod === 'cod'} onChange={() => setPaymentMethod('cod')} disabled={submitting} />
+                    <span><span className="flex items-center gap-2 font-semibold"><Banknote className="size-4" aria-hidden="true" />Cash on delivery</span>
+                      <span className="mt-1 block text-sm leading-relaxed text-[#465573]">Pay the courier when each parcel arrives. See the cash due for each parcel.</span></span>
+                  </label>
+                ) : null}
+                {paymentCapabilities.manual_bank ? (
+                  <label htmlFor="checkout-pay-bank" aria-label="Manual bank transfer" className={`flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border bg-white p-3.5 ${paymentMethod === 'manual_bank' ? 'border-[#14213d] ring-1 ring-[#14213d]' : 'border-[#d5c1a5]'}`}>
+                    <input className="mt-1 size-4 shrink-0 accent-[#14213d]" type="radio" name="paymentMethod" id="checkout-pay-bank" aria-label="Manual bank transfer" value="manual_bank" checked={paymentMethod === 'manual_bank'} onChange={() => setPaymentMethod('manual_bank')} disabled={submitting} />
+                    <span><span className="flex items-center gap-2 font-semibold"><Landmark className="size-4" aria-hidden="true" />Bank transfer</span>
+                      <span className="mt-1 block text-sm leading-relaxed text-[#465573]">Send the total to Hastabazaar’s bank account after ordering. Preparation starts once your payment is verified.</span></span>
+                  </label>
+                ) : null}
+                {paymentCapabilities.cod && paymentMethod === 'cod' && codConfirmationRequired ? <p className="rounded-xl bg-[#f1e4c5] p-3.5 text-sm leading-relaxed">{COD_CONFIRMATION_NOTICE}</p> : null}
+                {!paymentCapabilities.cod && !paymentCapabilities.manual_bank ? <p className="text-sm">New payment methods are unavailable for this cart. You can still check a retained prior attempt.</p> : null}
+              </div>
+            ) : null}
+            {customerEmail && !recoveryOnly ? (
+              <>
+                <label htmlFor="checkout-use-credit" className="flex min-h-11 cursor-pointer flex-wrap items-center justify-between gap-3 rounded-xl border border-[#e3d6c3] bg-white p-3.5 text-sm">
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#ddece3] text-[#205d42]"><Wallet className="size-4" aria-hidden="true" /></span>
+                    <span><strong id="checkout-use-credit-label" className="block">Use shopping credit</strong>
+                      <span id="checkout-use-credit-help" className="block text-[#465573]">{money(walletBalancePaisa)} available
+                        <span className="mt-1 block text-xs text-[#465573]">Applies to products. {serviceFee.chargedPaisa > 0 ? 'Delivery and the customer service fee remain' : 'Delivery remains'} payable {paymentMethod === 'manual_bank' ? 'by bank transfer' : 'in cash'}.</span></span></span>
+                  </span>
+                  <Switch id="checkout-use-credit" aria-labelledby="checkout-use-credit-label" aria-describedby="checkout-use-credit-help" checked={useWallet} onCheckedChange={setUseWallet} disabled={!walletBalancePaisa || submitting} />
+                </label>
+                <CheckoutPromoControl key={cart.itemSubtotalPaisa} subtotalPaisa={cart.itemSubtotalPaisa} referralCode={referralCode} onQuote={setPromoQuote}
+                  onPending={pending => setPromoPendingFor({ subtotalPaisa: cart.itemSubtotalPaisa, pending })} disabled={submitting} />
+                <details open={initialReferralCode ? true : undefined}>
+                  <summary className="min-h-11 cursor-pointer content-center text-sm font-semibold text-[#a8232e] underline underline-offset-2">Have a friend’s referral code?</summary>
+                  <div className="space-y-2 rounded-xl border border-[#e3d6c3] bg-white p-3.5">
+                    <Label htmlFor="referral-code">Referral code</Label>
+                    <Input id="referral-code" className="h-11 uppercase" value={referralCode} maxLength={16}
+                      onChange={event => setReferralCode(event.target.value.toUpperCase())} placeholder="16-character code" autoComplete="off" />
+                    <p className="text-xs leading-relaxed text-[#465573]">First order only.{' '}
+                      {referralCampaign ? `${money(referralCampaign.friendDiscountPaisa)} off ${money(referralCampaign.minimumSubtotalPaisa)}+ in products. ` : ''}
+                      Eligibility is checked when you order. Clear the code to order without the offer.
+                    </p>
+                  </div>
+                </details>
+              </>
+            ) : null}
         {published.config && published.config.fields.some((field) =>
           field.status === 'active' && !checkoutBuiltInKeys.has(canonicalKey(field.key))) ? (
-          <section className="rounded-2xl border bg-card p-5 sm:p-7">
-            <h2 className="font-heading text-2xl">Order details</h2>
+          <section className="rounded-xl border border-[#e3d6c3] bg-white p-4">
+            <h2 className="text-lg font-semibold">Order details</h2>
             <ConfiguredFields config={published.config} baseKeys={checkoutBaseKeys} />
           </section>
         ) : published.config ? (
@@ -761,140 +872,6 @@ function ScopedCheckoutForm({
             </Button>
           </section>
         ) : null}
-      </div>
-      <aside className="h-fit self-start rounded-2xl border bg-card p-6">
-        <h2 className="font-heading text-2xl">{recoveryOnly?'Check prior order attempt':'Your order'}</h2>
-        <Link href="/cart" className="section-link mt-1">
-          Edit your cart →
-        </Link>
-        {!recoveryOnly?<>
-        <ul className="mt-5 space-y-4">
-          {cart.items.map((item) => (
-            <li key={item.id} className="flex justify-between gap-4 text-sm">
-              <span className="min-w-0">
-                <strong className="block">
-                  {item.nameEn} × {item.quantity}
-                </strong>
-                {item.selectedOffer ? <span className="block text-xs text-muted-foreground">{item.selectedOffer.selection.map(option=>`${option.name}: ${option.value}`).join(' / ')} · {item.selectedOffer.unitsPerOffer} {item.selectedOffer.baseUnit} per offer · {item.selectedOffer.sku}</span> : null}
-                <span className="text-muted-foreground">
-                  {item.tradingName}
-                  <SellerDisclosure managed={item.participationRoute === 'managed_maker'} supplierName={item.makerName ?? item.tradingName} legalSellerName={item.legalSellerName} />
-                </span>
-              </span>
-              <span className="shrink-0 whitespace-nowrap font-semibold">
-                {item.pricePaisa === null ? 'Review price' : money(item.pricePaisa * item.quantity)}
-              </span>
-            </li>
-          ))}
-        </ul>
-        {customerEmail ? (
-          <div className="mt-6 space-y-4 rounded-xl border bg-muted/30 p-4">
-            <CheckoutPromoControl key={cart.itemSubtotalPaisa} subtotalPaisa={cart.itemSubtotalPaisa} referralCode={referralCode} onQuote={setPromoQuote} onPending={pending=>setPromoPendingFor({subtotalPaisa:cart.itemSubtotalPaisa,pending})} disabled={submitting} />
-            <div>
-              <Label htmlFor="referral-code">
-                Have a friend’s referral code?
-              </Label>
-              <Input
-                id="referral-code"
-                className="mt-2 uppercase"
-                value={referralCode}
-                maxLength={16}
-                onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
-                placeholder="16-character code"
-                autoComplete="off"
-              />
-              <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                First order only.{' '}
-                {referralCampaign
-                  ? `Rs. ${referralCampaign.friendDiscountPaisa / 100} off Rs. ${referralCampaign.minimumSubtotalPaisa / 100}+ in products. `
-                  : ''}
-                Eligibility is checked when you place the order. Clear the code
-                to order without the offer.
-              </p>
-            </div>
-            <label className="flex items-start gap-3 text-sm">
-              <Checkbox
-                checked={useWallet}
-                onCheckedChange={(v) => setUseWallet(v === true)}
-                disabled={!walletBalancePaisa}
-              />
-              <span>
-                Use shopping credit · {money(walletBalancePaisa)} available
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  Applies to products. {serviceFee.chargedPaisa > 0 ? 'Delivery and the customer service fee remain' : 'Delivery remains'} payable {paymentMethod === 'manual_bank' ? 'by bank transfer' : 'in cash'}.
-                </span>
-              </span>
-            </label>
-          </div>
-        ) : (
-          <p className="mt-5 text-sm">
-            <Link
-              href="/login?return_to=%2Fcheckout"
-              className="font-semibold text-primary underline"
-            >
-              Sign in
-            </Link>{' '}
-            to use a promo code, referral code or wallet credit.
-          </p>
-        )}
-        <dl data-promo-discount-paisa={currentPromoQuote?.discountPaisa ?? 0} className="mt-6 space-y-3 border-t pt-5 text-sm">
-          {currentPromoQuote ? <div className="flex justify-between"><dt>Promo discount · {currentPromoQuote.code}</dt><dd>−{money(currentPromoQuote.discountPaisa)}</dd></div> : null}
-          {referralDiscount > 0 ? (
-            <div className="flex justify-between">
-              <dt>Referral discount (subject to eligibility)</dt>
-              <dd>−{money(referralDiscount)}</dd>
-            </div>
-          ) : null}
-          {walletUsed > 0 ? (
-            <div className="flex justify-between">
-              <dt>Shopping credit</dt>
-              <dd>−{money(walletUsed)}</dd>
-            </div>
-          ) : null}
-          <div className="flex justify-between">
-            <dt className="text-muted-foreground">Items</dt>
-            <dd>{money(cart.itemSubtotalPaisa)}</dd>
-          </div>
-          <div className="flex justify-between">
-            <dt className="text-muted-foreground">Delivery</dt>
-            <dd>{delivery ? money(delivery.chargePaisa) : ncmDemoQuotesEnabled && quoteChanged ? 'Review delivery quotes' : currentNcmQuote?.error ? 'Quote unavailable' : ncmQuoteRequest ? 'Quote pending' : 'Enter district'}</dd>
-          </div>
-          {currentNcmQuote?.quote?.quotes.map(quote => (
-            <div key={quote.sellerId} className="flex justify-between gap-4 text-sm">
-              <dt className="min-w-0 break-words">{cart.items.find(item => item.sellerId === quote.sellerId)?.tradingName ?? quote.originBranch} · {quote.originBranch} to {quote.destinationBranch}</dt>
-              <dd className="shrink-0 whitespace-nowrap">{money(quote.amountPaisa)}</dd>
-            </div>
-          ))}
-          <div className="flex justify-between border-t pt-4 text-base font-semibold">
-            <dt>
-              {delivery ? paymentMethod==='manual_bank'?'Total by bank transfer':'Total on delivery' : 'Subtotal before delivery'}
-            </dt>
-            <dd>{total===null?'Review updated benefits':money(total)}</dd>
-          </div>
-        </dl>
-        {ncmQuoteRequest && !currentNcmQuote ? <output className="mt-3 block text-sm">Checking NCM demo delivery quotes…</output> : null}
-        {currentNcmQuote?.error ? (
-          <div className="mt-3 space-y-2 text-sm">
-            <p role="alert">{currentNcmQuote.error}</p>
-            <Button type="button" variant="outline" onClick={() => setNcmQuoteAttempt(attempt => attempt + 1)}>Retry delivery quotes</Button>
-          </div>
-        ) : null}
-        <CustomerServiceFeeBreakdown
-          className="mt-3 border-t pt-3"
-          standardPaisa={'standardPaisa' in serviceFee ? serviceFee.standardPaisa : serviceFee.chargedPaisa}
-          waivedPaisa={'waivedPaisa' in serviceFee ? serviceFee.waivedPaisa : 0}
-          netPaisa={serviceFee.chargedPaisa}
-          campaignName={'campaign' in serviceFee ? serviceFee.campaign?.name ?? null : null}
-          source="estimate"
-        />
-        {delivery ? (
-          <p className="mt-4 flex gap-2 text-sm leading-6 text-muted-foreground">
-            <Truck className="mt-1 size-4 shrink-0 text-primary" />
-            {ncmDemoQuotesEnabled ? 'Marketplace arrival estimate' : 'Estimated arrival:'} {delivery.estimatedMinDays}–
-            {delivery.estimatedMaxDays} days {paymentMethod==='manual_bank'?'after verified payment and fulfillment release':'after ordering'}.
-          </p>
-        ) : null}
-        </>:<p className="mt-5 text-sm leading-6">Your cart is currently empty. A prior attempt may have completed. Re-enter its original details and retry the same request to check its result. No new price or arrival estimate is available here.</p>}
         <label
           htmlFor="checkout-terms"
           className="mt-6 flex cursor-pointer items-start gap-3 text-sm leading-6"
@@ -912,7 +889,11 @@ function ScopedCheckoutForm({
               className="font-semibold text-primary underline"
               target="_blank"
             >
-              Terms & Conditions
+              customer terms
+            </Link>
+            {' '}and the{' '}
+            <Link href="/returns" className="font-semibold text-primary underline" target="_blank">
+              returns & refunds policy
             </Link>
             . <span className="text-xs text-muted-foreground">(required)</span>
           </span>
@@ -926,11 +907,7 @@ function ScopedCheckoutForm({
             >
               Privacy Policy
             </Link>{' '}
-          and your purchase is also covered by our{' '}
-          <Link href="/returns" className="font-semibold text-primary underline" target="_blank">
-            Return, Exchange, Cancellation & Refund Policy
-          </Link>{' '}
-          and{' '}
+          . Read our{' '}
           <Link href="/shipping" className="font-semibold text-primary underline" target="_blank">
             Shipping & Delivery Policy
           </Link>
@@ -955,30 +932,96 @@ function ScopedCheckoutForm({
             before placing the order.
           </p>
         ) : null}
+        {!contactsVerified ? (
+          <Button type="button" variant="outline" className="min-h-11" onClick={() => showStep(1)}>Verify contact details</Button>
+        ) : null}
         {quoteChanged ? <Button type="button" variant="outline" className="mt-3 w-full" disabled={submitting} onClick={() => {
           if (submittingRef.current) return;
           clearCheckoutRetry(checkoutAttemptKey);
           window.location.reload();
         }}>Review updated checkout</Button> : null}
         {!recoveryOnly?<Button
+          aria-label={submitting ? 'Placing order…' : paymentMethod === 'manual_bank' ? 'Place bank-transfer order' : 'Place COD order'}
           type="submit"
-          disabled={(legacyAttempt&&!legacyAcknowledged) || !paymentCapabilities[paymentMethod] || submitting || promoPending || cart.items.length === 0 || cart.hasUnavailableItems || !published.canSubmit || !contactsVerified || !accepted || !delivery}
-          className="mt-6 h-12 w-full rounded-full text-base"
+          disabled={(legacyAttempt&&!legacyAcknowledged) || !paymentCapabilities[paymentMethod] || submitting || promoPending || cart.items.length === 0 || cart.hasUnavailableItems || !published.canSubmit || !contactsVerified || !accepted || !delivery || total === null}
+          className="mt-2 min-h-[3.5rem] w-full rounded-lg bg-[#a8232e] px-3 text-base text-white hover:bg-[#8d1b25]"
         >
-          <LockKeyhole /> {submitting ? 'Placing order…' : paymentMethod==='manual_bank'?'Place bank-transfer order':'Place COD order'}
+          {submitting ? 'Placing order…' : paymentMethod === 'manual_bank' ? 'Place bank-transfer order' : 'Place COD order'}
+          {!submitting && total !== null ? <span aria-hidden="true"> · {money(total)}</span> : null}
         </Button>:null}
         {retainedAttempt ? <div className="mt-3 space-y-2 rounded-xl border p-3">
           <p className="text-sm">A prior order attempt may already have completed. Re-enter its original details to check the same request. Retained promo terms are used only for replay and are not a current offer. Retry uses the original shopping-credit choice, even if your current balance changed.</p>
           <Button type="submit" data-checkout-retry className="w-full" variant="outline" disabled={submitting || !published.canSubmit}>Retry prior order attempt</Button>
         </div> : null}
-        <Button type="button" variant="outline" className="mt-3 w-full" disabled={submitting} onClick={() => {
+        {retainedAttempt || legacyAttempt || error ? <Button type="button" variant="outline" className="mt-3 w-full" disabled={submitting} onClick={() => {
           if (!window.confirm("The prior order may already have completed. Check your orders before starting a new attempt to avoid duplicates.")) return;
           setLegacyAcknowledged(true); clearCheckoutRetry(checkoutAttemptKey); freshAttempts.current.clear(); checkoutIntent.current = null; setAttemptRevision(value=>value+1); setError(""); setQuoteChanged(false); published.refresh();
-        }}>Start a new order attempt</Button>
+        }}>Start a new order attempt</Button> : null}
         <p className="mt-3 text-center text-xs leading-5 text-muted-foreground">
           Availability and price are verified again before confirmation.
         </p>
-      </aside>
+
+          </CheckoutStep>
+        </div>
+        <aside className={`${card} min-w-0 p-5 sm:p-6 lg:-mt-[4.5rem]`}>
+          <h2 className="text-lg font-semibold">{recoveryOnly ? 'Check prior order attempt' : `Your order · ${cart.itemCount} ${cart.itemCount === 1 ? 'item' : 'items'}`}</h2>
+          {recoveryOnly ? <p className="mt-3 text-sm leading-relaxed text-[#465573]">Your cart is empty. A prior attempt may have completed. Re-enter the original details and retry the same request to check its result.</p> : (
+            <>
+              <div className="mt-5 space-y-4">
+                {parcels.map((parcel, index) => {
+                  const quoteCharge = deliveryBySeller?.get(parcel.sellerId);
+                  const cash = parcelCash?.get(parcel.sellerId);
+                  return (
+                    <section key={parcel.sellerId} className="min-w-0 space-y-3 border-b border-dashed border-[#e3d6c3] pb-4" aria-labelledby={`checkout-summary-parcel-${index}`}>
+                      <div className="flex flex-wrap justify-between gap-x-2 text-sm text-[#655848]">
+                        <h3 id={`checkout-summary-parcel-${index}`} className="wrap-anywhere">Parcel {index + 1} · {parcel.sellerName}</h3>
+                        {quoteCharge !== undefined ? <span>Delivery {money(quoteCharge)}</span> : null}
+                      </div>
+                      <ul className="space-y-2">
+                        {parcel.items.map(item => (
+                          <li key={item.id} className="grid min-w-0 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-2 text-sm">
+                            <span className="relative grid size-11 place-items-center overflow-hidden rounded-lg border border-[#e3d6c3] bg-white">
+                              {item.primaryMediaId ? <Image src={`/api/product-media/${item.primaryMediaId}`} alt="" width={44} height={44} sizes="44px" unoptimized className="size-11 object-cover" /> : <Package className="size-4 text-muted-foreground" aria-hidden="true" />}
+                            </span>
+                            <div className="min-w-0 wrap-anywhere">
+                              <span>{item.nameEn}{item.quantity > 1 ? ` × ${item.quantity}` : ''}</span>
+                              {item.selectedOffer ? <span className="block text-xs text-muted-foreground">{item.selectedOffer.selection.map(option => `${option.name}: ${option.value}`).join(' / ')} · {item.selectedOffer.unitsPerOffer} {item.selectedOffer.baseUnit} per offer · {item.selectedOffer.sku}</span> : null}
+                              <SellerDisclosure managed={item.participationRoute === 'managed_maker'} supplierName={item.makerName ?? item.tradingName} legalSellerName={item.legalSellerName} />
+                            </div>
+                            <strong className="text-right">{item.pricePaisa === null ? 'Review price' : money(item.pricePaisa * item.quantity)}</strong>
+                          </li>
+                        ))}
+                      </ul>
+                      {cash !== undefined ? <CustomerParcelCash amountPaisa={cash} /> : null}
+                    </section>
+                  );
+                })}
+              </div>
+              {delivery && paymentMethod === 'cod' && !parcelCash ? <p className="mt-3 text-sm text-[#465573]">The exact cash for each parcel will appear after your order is placed.</p> : null}
+              <dl data-promo-discount-paisa={currentPromoQuote?.discountPaisa ?? 0} className="mt-5 space-y-3 text-sm">
+                <div className="flex flex-wrap justify-between gap-x-3"><dt>Items</dt><dd>{money(cart.itemSubtotalPaisa)}</dd></div>
+                <div className="flex flex-wrap justify-between gap-x-3"><dt>Delivery</dt><dd>{delivery ? money(delivery.chargePaisa) : currentNcmQuote?.error ? 'Quote unavailable' : ncmQuoteRequest ? 'Quote pending' : 'Next step'}</dd></div>
+                {currentPromoQuote ? <div className="flex flex-wrap justify-between gap-x-3"><dt>Promo discount · {currentPromoQuote.code}</dt><dd>−{money(currentPromoQuote.discountPaisa)}</dd></div> : null}
+                {referralDiscount > 0 ? <div className="flex flex-wrap justify-between gap-x-3"><dt>Referral discount (subject to eligibility)</dt><dd>−{money(referralDiscount)}</dd></div> : null}
+                {walletUsed > 0 ? <div className="flex flex-wrap justify-between gap-x-3"><dt>Shopping credit</dt><dd>−{money(walletUsed)}</dd></div> : null}
+              </dl>
+              <CustomerServiceFeeBreakdown className="mt-3"
+                standardPaisa={'standardPaisa' in serviceFee ? serviceFee.standardPaisa : serviceFee.chargedPaisa}
+                waivedPaisa={'waivedPaisa' in serviceFee ? serviceFee.waivedPaisa : 0}
+                netPaisa={serviceFee.chargedPaisa}
+                campaignName={'campaign' in serviceFee ? serviceFee.campaign?.name ?? null : null}
+                source="estimate" />
+              <dl className="mt-4 border-t border-[#e3d6c3] pt-4">
+                <div className="flex flex-wrap items-baseline justify-between gap-2 font-semibold">
+                  <dt>{delivery ? paymentMethod === 'manual_bank' ? 'Total by bank transfer' : 'Total on delivery' : 'Subtotal before delivery'}</dt>
+                  <dd className="text-2xl font-bold tabular-nums">{total === null ? 'Review updated benefits' : money(total)}</dd>
+                </div>
+              </dl>
+            </>
+          )}
+          <Link href="/cart" className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-[#a8232e] underline">Edit your bag</Link>
+        </aside>
+      </div>
     </form>
   );
 }

@@ -99,10 +99,11 @@ for (const path of ['app/cart/page.tsx', 'app/checkout/page.tsx'])
     const output=await build({entryPoints:[path],bundle:true,write:false,platform:'node',format:'cjs',external:['react','react/*'],plugins:[{name:'customer-page',setup(b){
       // Exercise the actual corrected wrapper and its default current-time read.
       b.onResolve({filter:/^\.\/customer-service-fees$/},args=>args.importer.endsWith('platform-service-fee.ts')?{path:'@/lib/db/repositories/customer-service-fees',namespace:'fixture'}:undefined);
-      b.onResolve({filter:/^(cloudflare:workers|next\/headers|@\/components\/|@\/lib\/(db\/|auth\/|checkout\/(policy-context|payment-capabilities)|orders\/first-cod-review))/},args=>args.path.endsWith('/platform-service-fee')?undefined:{path:args.path,namespace:'fixture'});
+      b.onResolve({filter:/^(cloudflare:workers|next\/(headers|link)|@\/components\/|@\/lib\/(db\/|auth\/|checkout\/(policy-context|payment-capabilities)|orders\/first-cod-review))/},args=>args.path.endsWith('/platform-service-fee')?undefined:{path:args.path,namespace:'fixture'});
       b.onLoad({filter:/.*/,namespace:'fixture'},args=>{
         const p=args.path;
         const contents=p==='cloudflare:workers'?'export const env={DB:{fixture:true}}'
+          :p==='next/link'?'export default function Link(){}'
           :p==='next/headers'?'export async function cookies(){return {get(){return null}}}'
           :p.endsWith('/d1')?'export const requireDatabase=e=>e.DB'
           :p.endsWith('/customer-service-fees')?'export async function quoteCustomerServiceFee(db,at){if(!db.fixture)throw Error("Wrong database");globalThis.quoteCalls.push(at);return {snapshot:globalThis.snapshot}}'
@@ -111,10 +112,10 @@ for (const path of ['app/cart/page.tsx', 'app/checkout/page.tsx'])
           :p.endsWith('/first-cod-review')?'export async function customerMustConfirmCod(){throw Error("Anonymous checkout must not read COD confirmation settings")}'
           :p.endsWith('/contact-verification')?'export async function getContactVerificationStatus(){return null};export const resolveCheckoutContactPolicy=()=>"email_and_phone"'
           :p.endsWith('/wallet')?'export async function getWallet(){return null}'
-          :p.endsWith('/customers')?'export async function listCustomerAddresses(){return []}'
+          :p.endsWith('/customers')?'export async function listCustomerAddresses(){return []}; export async function listWishlist(){return []}'
           :p.endsWith('/policy-context')?'export async function getCheckoutPolicyContext(){return "reviewed-policy"}'
           :p.endsWith('/payment-capabilities')?'export async function readCheckoutPaymentCapabilities(db,input){if(!db.fixture||input.cartHash!==null)throw Error("Unexpected payment capability scope");return {cod:false,manual_bank:false,state:"empty"}}'
-          :'export function CartView(){};export function CheckoutForm(){};export function CheckoutSteps(){};export function SiteFooter(){};export function SiteHeader(){}';
+          :'export function CartView(){};export function CheckoutForm(){};export function CheckoutHeader(){};export function SiteFooter(){};export function SiteHeader(){}';
         return {loader:'js',contents};
       });
     }}]});

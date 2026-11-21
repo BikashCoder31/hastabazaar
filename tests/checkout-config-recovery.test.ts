@@ -1,8 +1,9 @@
+import { openCheckoutAddress, openCheckoutPayment } from './helpers/checkout-step-navigation';
 import {checkoutClientReadiness} from './helpers/checkout-client-readiness';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { build } from 'esbuild';
-import { stubFixtureLink } from './helpers/browser-fixture-link';
+import { stubFixtureImage, stubFixtureLink } from './helpers/browser-fixture-link';
 import type {
   FixtureBrowser,
   FixtureRoute,
@@ -41,7 +42,7 @@ async function fixtureBundle() {
       {
         name: 'checkout-recovery-fixture',
         setup(bundler) {
-          stubFixtureLink(bundler);
+          stubFixtureLink(bundler);stubFixtureImage(bundler);
           bundler.onResolve(
             {
               filter:
@@ -211,6 +212,7 @@ async function mounted(failure?: ConfigFailure, changedQuote = false) {
   });
   await page.goto('https://checkout-recovery.test/');
   await page.addScriptTag({ content: bundle });
+  await openCheckoutPayment(page).catch(async error => { await browser.close(); throw error; });
   return {
     browser,
     page,
@@ -272,12 +274,14 @@ for (const failure of [404, 503, 'network'] as const) {
             left.localeCompare(right),
           ),
         );
+        await openCheckoutAddress(h.page);
         await h.page
           .getByLabel('Municipality / rural municipality')
           .fill('Edited municipality');
         await h.page
           .getByLabel('Street, tole or locality')
           .fill('Entered locality');
+        await openCheckoutPayment(h.page);
         await h.page.locator('label[for="checkout-terms"]').click();
         assert.equal(
           await h.page

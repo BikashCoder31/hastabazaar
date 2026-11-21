@@ -1,5 +1,6 @@
 import { readyCheckoutSeller, seedVerifiedCheckoutContact } from './helpers/checkout-contact';
 import { stubFixtureImage, stubFixtureLink } from './helpers/browser-fixture-link';
+import { openCheckoutAddress, openCheckoutPayment } from './helpers/checkout-step-navigation';
 import { historicalCommissionFixture } from './helpers/historical-commission-fixture';
 import type { FixtureBrowser } from './helpers/browser-fixture-types';
 import assert from 'node:assert/strict';
@@ -984,6 +985,7 @@ void test('checkout client submits the published answer with the core order payl
     `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'checkout-stubs', setup(bundler) {
+      stubFixtureImage(bundler);
       bundler.onResolve({ filter: /^next\/link$/ }, () => ({ path: 'link', namespace: 'checkout-shim' }));
       bundler.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'checkout-shim' }));
       bundler.onResolve({ filter: /^@\/components\/delivery\/location-picker$/ },
@@ -1030,14 +1032,18 @@ void test('checkout client submits the published answer with the core order payl
     const form = page.locator('form[data-form-id="commerce.checkout"]');
     await form.getByLabel('Recipient name').fill('Maya Buyer');
     await form.getByLabel('Recipient phone').fill('9811111111');
+    await openCheckoutAddress(form);
     await form.getByLabel('District').fill('Dhanusha');
     await form.getByLabel('Municipality / rural municipality').fill('Janakpur');
     await form.getByLabel('Street, tole or locality').fill('Ward 1');
+    await openCheckoutPayment(form);
     await form.getByLabel('Delivery note').fill('Call before delivery');
     await form.locator('label[for="checkout-terms"]').click({ timeout: 3000 });
     await form.getByRole('button', { name: 'Place COD order' }).click();
     await page.getByText('Correct the delivery details.').waitFor();
+    await form.getByRole('button', { name: 'Change: Who is it for?', exact: true }).click();
     await form.getByLabel('Recipient phone').fill('9822222222');
+    await openCheckoutPayment(form);
     await form.getByRole('button', { name: 'Place COD order' }).click();
     await form.getByText(/differs from the prior attempt/).waitFor();
     assert.equal(payloads.length, 1, 'changed intent must not reuse an uncertain order attempt');

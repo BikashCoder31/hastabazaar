@@ -1,9 +1,10 @@
+import { openCheckoutAddress, openCheckoutPayment } from './helpers/checkout-step-navigation';
 import {checkoutClientReadiness} from './helpers/checkout-client-readiness';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { build } from 'esbuild';
 
-import { stubFixtureLink } from './helpers/browser-fixture-link';
+import { stubFixtureImage, stubFixtureLink } from './helpers/browser-fixture-link';
 import { parseCheckoutInput } from '../lib/checkout/validation';
 
 let bundle: Promise<string> | undefined;
@@ -25,7 +26,7 @@ async function componentBundle() {
     }, bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'checkout-address-navigation', setup(b) {
-      stubFixtureLink(b);
+      stubFixtureLink(b);stubFixtureImage(b);
       b.onResolve({ filter: /^next\/navigation$|^@\/components\/delivery\/location-picker$/ }, a => ({ path: a.path, namespace: 'checkout-address-stub' }));
       b.onLoad({ filter: /.*/, namespace: 'checkout-address-stub' }, a => ({ resolveDir:process.cwd(),loader: 'js', contents: a.path === 'next/navigation'
         ? 'export function useRouter(){return {refresh(){}}}'
@@ -61,7 +62,8 @@ async function fixture(query = '') {
   });
   await page.goto('https://checkout-address.test/' + query);
   await page.addScriptTag({ content: await componentBundle() });
-  await page.getByText('Verified', { exact: true }).waitFor();
+  if (query === '?missingPhone') await page.getByLabel('Contact phone').waitFor();
+  else await page.getByRole('link', { name: 'Change contact details', exact: true }).waitFor();
   await page.locator('input[name="formVersion"]').waitFor({ state: 'attached' });
   return { browser, page, posts };
 }
@@ -70,12 +72,15 @@ void test('recipient switches retain edited address fields and optional recipien
   const h = await fixture();
   try {
     const edits = { recipientName: 'Edited recipient', recipientPhone: '9833333333', municipality: 'Edited municipality', locality: 'Edited locality', ward: '12', landmark: 'Edited landmark', postalCode: '12345' };
-    for (const [id, value] of Object.entries(edits)) await h.page.locator('#' + id).fill(value);
+    for (const id of ['recipientName', 'recipientPhone'] as const) await h.page.locator('#' + id).fill(edits[id]);
+    await openCheckoutAddress(h.page);
+    for (const [id, value] of Object.entries(edits).slice(2)) await h.page.locator('#' + id).fill(value);
     await h.page.getByRole('button',{name:'Set fixture map pin'}).click();
+    await h.page.getByRole('button', { name: 'Change: Who is it for?', exact: true }).click();
     await h.page.getByRole('radio', { name: 'For someone else', exact: true }).check();
     for (const [id, value] of Object.entries(edits)) assert.equal(await h.page.locator('#' + id).inputValue(), value, id);
     await h.page.locator('#recipientEmail').fill('recipient@example.test');
-    await h.page.getByRole('radio', { name: 'For myself', exact: true }).check();
+    await h.page.getByRole('radio', { name: 'For me', exact: true }).check();
     for (const [id, value] of Object.entries(edits)) assert.equal(await h.page.locator('#' + id).inputValue(), value, id);
     await h.page.getByRole('radio', { name: 'For someone else', exact: true }).check();
     assert.equal(await h.page.locator('#recipientEmail').inputValue(), 'recipient@example.test');
@@ -98,13 +103,16 @@ void test('checkout labels required and optional fields and explains automatic a
       assert.equal(await h.page.locator('#' + id).getAttribute('required'), null);
       assert.match(await h.page.locator('label[for="' + id + '"]').innerText(), /optional/i);
     }
+    await openCheckoutPayment(h.page);
     assert.equal(await h.page.getByRole('button', { name: 'Place COD order', exact: true }).isDisabled(), true, 'Terms are still unaccepted');
-    await h.page.getByRole('checkbox', { name: /I agree to the Terms/ }).check();
+    await h.page.getByRole('checkbox', { name: /I agree to the customer terms/ }).check();
     assert.equal(await h.page.getByRole('button', { name: 'Place COD order', exact: true }).isEnabled(), true);
+    await openCheckoutAddress(h.page);
     await h.page.getByText(/delivery address.*saved automatically/i).waitFor();
     assert.equal(await h.page.getByRole('checkbox', { name: /Save this address for future orders/ }).count(), 0);
     await h.page.locator('#locality').fill('');
-    await h.page.getByRole('button', { name: 'Place COD order', exact: true }).click();
+    await h.page.locator('[data-checkout-fields="2"]').getByRole('button', { name: 'Continue', exact: true }).click();
+    assert.equal(await h.page.locator('[data-checkout-fields="2"]').isVisible(), true);
     assert.equal(h.posts.length, 0, 'Empty locality must not dispatch checkout');
   } finally { await h.browser.close(); }
 });
@@ -112,14 +120,17 @@ void test('checkout labels required and optional fields and explains automatic a
 void test('new address requires an explicit province and a missing buyer mobile cannot use the recipient phone', async () => {
   const h = await fixture('?newAddress');
   try {
+    await openCheckoutAddress(h.page);
     assert.match(await h.page.locator('#province').innerText(), /select.*province/i);
-    await h.page.getByRole('checkbox', { name: /I agree to the Terms/ }).check();
-    assert.equal(await h.page.getByRole('button', { name: 'Place COD order', exact: true }).isDisabled(), true);
+    await h.page.locator('[data-checkout-fields="2"]').getByRole('button', { name: 'Continue', exact: true }).click();
+    assert.equal(await h.page.locator('[data-checkout-fields="2"]').isVisible(), true);
     await h.page.getByRole('combobox', {name:/Province/}).click();
     await h.page.getByRole('option', {name:'Bagmati',exact:true}).click();
     await h.page.locator('#district').fill('Kathmandu');
     await h.page.locator('#municipality').fill('Kathmandu');
     await h.page.locator('#locality').fill('Sample tole');
+    await openCheckoutPayment(h.page);
+    await h.page.getByRole('checkbox', { name: /I agree to the customer terms/ }).check();
     await h.page.getByRole('button', { name:'Place COD order',exact:true }).click();
     await h.page.getByRole('alert').filter({hasText:'Fixture only; no order created.'}).waitFor();
     assert.equal(h.posts.length,1);
@@ -128,7 +139,8 @@ void test('new address requires an explicit province and a missing buyer mobile 
   const missing = await fixture('?missingPhone');
   try {
     assert.equal(await missing.page.locator('#customerPhone').inputValue(), '');
-    await missing.page.getByRole('checkbox', { name: /I agree to the Terms/ }).check();
+    await openCheckoutPayment(missing.page);
+    await missing.page.getByRole('checkbox', { name: /I agree to the customer terms/ }).check();
     assert.equal(await missing.page.getByRole('button', { name: 'Place COD order', exact: true }).isDisabled(), true);
     assert.equal(missing.posts.length, 0);
   } finally { await missing.browser.close(); }

@@ -1,3 +1,4 @@
+import { openCheckoutAddress, openCheckoutPayment } from './helpers/checkout-step-navigation';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { build } from 'esbuild';
@@ -48,10 +49,15 @@ async function fill(page: FixturePage, mode: string, form: FixtureLocator) {
   } else if (mode.startsWith('gift-'))
     await form.getByLabel(mode === 'gift-issue' ? 'Amount in NPR' : 'Gift card code').fill(mode === 'gift-issue' ? '100' : 'HG-SIMULATED');
   else {
-    for (const [label, value] of [['Recipient name', 'Maya Buyer'], ['Recipient phone', '9811111111'],
-      ['District', 'Dhanusha'],
+    const changeRecipient = page.getByRole('button', { name: 'Change: Who is it for?', exact: true });
+    if (await changeRecipient.isVisible()) await changeRecipient.click();
+    await form.getByLabel('Recipient name').fill('Maya Buyer');
+    await form.getByLabel('Recipient phone').fill('9811111111');
+    await openCheckoutAddress(page);
+    for (const [label, value] of [['District', 'Dhanusha'],
       ['Municipality / rural municipality', 'Janakpur'], ['Street, tole or locality', 'Ward 1']])
       await form.getByLabel(label).fill(value);
+    await openCheckoutPayment(page);
     await form.locator('label[for="checkout-terms"]').click();
   }
   await form.getByLabel('Case context').fill('SIMULATED retained context');
@@ -124,7 +130,7 @@ for (const [mode, formId] of modes) void test(`${formId} retains attempts and in
       if (mode.startsWith('customer-')) {
         for (let step = 1; step < 4; step++) await form.getByRole('button', { name: 'Continue', exact: true }).click();
       }
-      await form.getByLabel('Case context').waitFor();
+      if (mode !== 'checkout') await form.getByLabel('Case context').waitFor();
       await fill(page, mode, form);
       return form;
     };
@@ -208,7 +214,7 @@ for (const [mode, formId] of modes) void test(`${formId} retains attempts and in
           : mode === 'gift-redeem' ? { id: 'gift-1', amountPaisa: 10000, duplicate: false }
             : { orderNumber: 'HK-20260928-ABCDEF' }) };
     await form.getByRole('button', { name: /Send return request|Send complaint|Submit response|Send reply to Hastabazaar|Issue gift card|Redeem into wallet|Place COD order/ }).click();
-    if (mode === 'checkout') await page.waitForFunction(() => location.pathname === '/orders/HK-20260928-ABCDEF');
+    if (mode === 'checkout') await page.waitForFunction(() => location.pathname === '/orders/HK-20260928-ABCDEF' && new URLSearchParams(location.search).get('placed') === '1');
     else await page.waitForFunction(() => (window as unknown as { __refreshes: number }).__refreshes === 1);
     assert.equal(payloads.at(-1)?.id, firstId);
     if (mode !== 'gift-redeem') {

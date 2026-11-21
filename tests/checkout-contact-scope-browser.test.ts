@@ -1,3 +1,4 @@
+import {openCheckoutAddress} from './helpers/checkout-step-navigation';
 import type {Route as BrowserRoute} from 'playwright-core';
 import './helpers/public-checkout-runtime';
 import assert from 'node:assert/strict';
@@ -8,7 +9,7 @@ import {publicCheckoutFixture} from './helpers/public-checkout-fixture';
 import {seedCheckoutBuyer} from './helpers/checkout-contact';
 import {getContactVerificationStatus} from '../lib/auth/contact-verification';
 import {readCheckoutPaymentCapabilities} from '../lib/checkout/payment-capabilities';
-import {stubFixtureLink} from './helpers/browser-fixture-link';
+import {stubFixtureImage,stubFixtureLink} from './helpers/browser-fixture-link';
 
 void test('actual Contact status403 hides the matching checkout private draft before new account props arrive',{timeout:45000},async()=>{
  const f=await publicCheckoutFixture();let release=()=>{};try{
@@ -16,7 +17,7 @@ void test('actual Contact status403 hides the matching checkout private draft be
   await seedCheckoutBuyer(f.db,'contact-b','contact-b@local.hastabazaar.test','9866666663',Date.now());
   const cart=await import('../app/api/cart/route'),forms=await import('../app/api/forms/[formId]/route'),contacts=await import('../app/api/account/contact-verification/route');
   const props={customerId:'customer',customerEmail:'customer@local.hastabazaar.test',customerPhone:'9811111111',customerDisplayName:'Fictional original buyer',contactStatus:await getContactVerificationStatus(f.db,globalThis.publicCheckoutActor),cartScope:f.cartHash,paymentCapabilities:await readCheckoutPaymentCapabilities(f.db,{cartHash:f.cartHash}),policyContext:f.policyContext,serviceFee:f.serviceFee,deliveryRates:f.rates};
-  const code=(await build({stdin:{loader:'tsx',resolveDir:process.cwd(),contents:`import React from'react';import{createRoot}from'react-dom/client';import{CheckoutForm}from'./components/commerce/checkout-form';createRoot(document.getElementById('root')).render(<CheckoutForm {...window.__BOOT__}/>);`},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"production"'},plugins:[{name:'framework-only',setup(b){stubFixtureLink(b);b.onResolve({filter:/^next\/navigation$/},()=>({path:'navigation',namespace:'fixture'}));b.onLoad({filter:/.*/,namespace:'fixture'},()=>({loader:'js',contents:'export function useRouter(){return{refresh(){}}}'}));}}]})).outputFiles[0].text;
+  const code=(await build({stdin:{loader:'tsx',resolveDir:process.cwd(),contents:`import React from'react';import{createRoot}from'react-dom/client';import{CheckoutForm}from'./components/commerce/checkout-form';createRoot(document.getElementById('root')).render(<CheckoutForm {...window.__BOOT__}/>);`},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"production"'},plugins:[{name:'framework-only',setup(b){stubFixtureLink(b);stubFixtureImage(b);b.onResolve({filter:/^next\/navigation$/},()=>({path:'navigation',namespace:'fixture'}));b.onLoad({filter:/.*/,namespace:'fixture'},()=>({loader:'js',contents:'export function useRouter(){return{refresh(){}}}'}));}}]})).outputFiles[0].text;
   const{chromium}=await import(process.env.PLAYWRIGHT_MODULE??'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs'),browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH??'C:/Program Files/Google/Chrome/Application/chrome.exe'});
   try{
    const context=await browser.newContext(),origin='https://public-checkout.test',errors:string[]=[],statuses:number[]=[];let waiting=()=>{},completed=()=>{};const pending=new Promise<void>(resolve=>{waiting=resolve}),gate=new Promise<void>(resolve=>{release=resolve}),done=new Promise<void>(resolve=>{completed=resolve});
@@ -32,7 +33,7 @@ void test('actual Contact status403 hides the matching checkout private draft be
     return route.fulfill({status:response.status,contentType:'application/json',body:await response.text()});
    });
    const page=await context.newPage();page.on('pageerror',(error:Error)=>errors.push(error.message));await page.goto(origin+'/checkout');await pending;
-   await page.getByLabel(/^Recipient name/).fill('PRIVATE ORIGINAL ACCOUNT RECIPIENT');await page.getByLabel(/^Street, tole or locality/).fill('PRIVATE ORIGINAL ACCOUNT ADDRESS');
+   await page.getByLabel(/^Recipient name/).fill('PRIVATE ORIGINAL ACCOUNT RECIPIENT');await openCheckoutAddress(page);await page.getByLabel(/^Street, tole or locality/).fill('PRIVATE ORIGINAL ACCOUNT ADDRESS');
    await page.evaluate(()=>window.dispatchEvent(new CustomEvent('hb:account-access-denied',{detail:{actorId:'contact-b'}})));assert.equal(await page.getByLabel(/^Street, tole or locality/).inputValue(),'PRIVATE ORIGINAL ACCOUNT ADDRESS','another actor event cannot clear this scope');
    globalThis.publicCheckoutActor={userId:'contact-b',authSubject:'contact-b',email:'contact-b@local.hastabazaar.test'};release();await done;assert.deepEqual(statuses,[403]);
    await page.waitForFunction(()=>!document.querySelector('input[name="locality"]'),null,{timeout:3000}).catch((error:unknown)=>{assert.deepEqual(errors,[],'actual browser script errors must not be hidden by a visibility timeout');throw error;});assert.equal(await page.getByLabel(/^Recipient name/).count(),0);await page.getByRole('button',{name:'Reload current checkout',exact:true}).waitFor();assert.deepEqual(errors,[]);
