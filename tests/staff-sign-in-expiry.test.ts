@@ -297,7 +297,7 @@ void test(
               'form[data-form-id="identity.login-password"]',
             );
             await form.getByLabel('Email address').fill(email);
-            await form.getByLabel('Password', { exact: false }).fill(password);
+            await form.getByLabel(/^Password(?:\s+\*)?$/).fill(password);
             await form
               .getByRole('button', { name: 'Sign in', exact: true })
               .click();

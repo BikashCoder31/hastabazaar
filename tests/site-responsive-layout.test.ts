@@ -71,10 +71,9 @@ void test('customer, seller, and staff navigation wrap labels instead of truncat
   assert.doesNotMatch(buttonVariants, /\[&>span:last-child\]:truncate/);
   assert.match(buttonVariants, /\[&>span:last-child\]:whitespace-normal/);
   assert.match(buttonVariants, /\[&>span:last-child\]:break-words/);
-  assert.match(
-    account,
-    /grid-cols-1 gap-1 min-\[360px\]:grid-cols-2 sm:grid-cols-4/,
-  );
+  assert.match(account, /<details className="[^"]*\blg:hidden\b[^"]*">/);
+  assert.match(account, /const baseLink = '[^']*\bmin-w-0\b[^']*'/);
+  assert.doesNotMatch(account, /(?:className="[^"]*|const baseLink = '[^']*)\b(?:truncate|whitespace-nowrap)\b/);
   assert.match(seller, /<nav aria-label="Seller quick links" className="seller-mobile-tabs">/);
   assert.match(seller, /aria-label="Open seller menu" aria-haspopup="dialog"/);
   assert.match(seller, /<nav aria-label="All seller pages"[^>]*>\s*<ul className="grid\b[^"]*\bgap-1\b[^"]*\bsm:grid-cols-2\b[^"]*">/);
