@@ -24,6 +24,7 @@ export default async function StaffAccessDeniedPage() {
             alt=""
             width={48}
             height={48}
+            priority
             data-media-mode="contain"
             sizes={mediaSizes.brandMark}
             className={mediaObjectClass('contain', 'size-12')}
@@ -52,26 +53,26 @@ export default async function StaffAccessDeniedPage() {
             <a
               href="/auth/continue"
               target="_top"
-              className="rounded-lg border px-4 py-2 text-sm font-semibold hover:bg-muted"
+              className="inline-flex min-h-11 items-center rounded-lg border px-4 py-2 text-sm font-semibold hover:bg-muted"
             >
               Return to your workspace
             </a>
           ) : null}
           <Link
             href="/login?return_to=/admin"
-            className="rounded-lg border px-4 py-2 text-sm font-semibold"
+            className="inline-flex min-h-11 items-center rounded-lg border px-4 py-2 text-sm font-semibold"
           >
             Verify invited email
           </Link>
           <Link
             href="/seller"
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/85"
+            className="inline-flex min-h-11 items-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/85"
           >
             Open seller dashboard
           </Link>
           <Link
             href="/sell"
-            className="rounded-lg border px-4 py-2 text-sm font-semibold hover:bg-muted"
+            className="inline-flex min-h-11 items-center rounded-lg border px-4 py-2 text-sm font-semibold hover:bg-muted"
           >
             Seller application
           </Link>
@@ -79,7 +80,7 @@ export default async function StaffAccessDeniedPage() {
             <form data-form-id="identity.logout" method="POST" action={signOutPath('/staff-access-denied')} target="_top">
             <button
               type="submit"
-              className="rounded-lg border px-4 py-2 text-sm font-semibold hover:bg-muted"
+              className="inline-flex min-h-11 items-center rounded-lg border px-4 py-2 text-sm font-semibold hover:bg-muted"
             >
               Use another account
             </button>
@@ -88,14 +89,14 @@ export default async function StaffAccessDeniedPage() {
             <a
               href={signInPath('/admin')}
               target="_top"
-              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/85"
+              className="inline-flex min-h-11 items-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/85"
             >
               Staff sign in
             </a>
           )}
           <Link
             href="/"
-            className="rounded-lg border px-4 py-2 text-sm font-semibold hover:bg-muted"
+            className="inline-flex min-h-11 items-center rounded-lg border px-4 py-2 text-sm font-semibold hover:bg-muted"
           >
             Return to storefront
           </Link>

@@ -58,7 +58,7 @@ import { can } from '@/lib/marketplace/permissions';
 import { readOrderMarketplaceFeeViews } from '@/lib/db/repositories/fee-waivers';
 import { OrderMarketplaceFees } from '@/components/seller/order-marketplace-fees';
 import { readOrderCustomerServiceFees } from '@/lib/db/repositories/customer-service-fees';
-import { CustomerServiceFeeBreakdown } from '@/components/commerce/customer-service-fee-breakdown';
+import { CustomerServiceFeeBreakdown, hasCustomerServiceFee } from '@/components/commerce/customer-service-fee-breakdown';
 
 export const dynamic = 'force-dynamic';
 const requestTime = () => Date.now();
@@ -702,14 +702,18 @@ export default async function AdminOrderPage({
                       </dt>
                       <dd>{money(order.grandTotalPaisa)}</dd>
                     </div>
-                    <div className="flex flex-wrap justify-between gap-x-3">
-                      <dt>Platform service fee (included)</dt>
-                      <dd>{money(order.buyerPlatformFeePaisa)}</dd>
-                    </div>
-                    <div className="flex flex-wrap justify-between gap-x-3">
-                      <dt>Legally required fee refunds</dt>
-                      <dd>{money(feeSummary?.refundedPaisa ?? 0)}</dd>
-                    </div>
+                    {order.buyerPlatformFeePaisa > 0 ? (
+                      <div className="flex flex-wrap justify-between gap-x-3">
+                        <dt>Platform service fee (included)</dt>
+                        <dd>{money(order.buyerPlatformFeePaisa)}</dd>
+                      </div>
+                    ) : null}
+                    {feeSummary && feeSummary.refundedPaisa > 0 ? (
+                      <div className="flex flex-wrap justify-between gap-x-3">
+                        <dt>Legally required fee refunds</dt>
+                        <dd>{money(feeSummary.refundedPaisa)}</dd>
+                      </div>
+                    ) : null}
                     <div className="flex flex-wrap justify-between gap-x-3">
                       <dt>Payment</dt>
                       <dd>{orderStage(order.paymentStatus)}</dd>
@@ -734,7 +738,7 @@ export default async function AdminOrderPage({
                 >
                   Preparation issues and next updates
                 </Link>
-                {customerFee ? (
+                {customerFee && hasCustomerServiceFee(customerFee) ? (
                   <section className="rounded-[14px] border bg-card p-5">
                     <h2 className="mb-3 font-heading text-xl">
                       Customer service fee at placement
@@ -748,10 +752,11 @@ export default async function AdminOrderPage({
                           : 'recorded'
                       }
                     />
-                    <p className="mt-3 text-sm">
-                      Customer service fee after cancellations:{' '}
-                      {money(order.buyerPlatformFeePaisa)}.
-                    </p>
+                    {order.buyerPlatformFeePaisa > 0 || customerFee.netPaisa > 0 ? (
+                      <p className="mt-3 text-sm">
+                        Customer service fee after cancellations: {money(order.buyerPlatformFeePaisa)}.
+                      </p>
+                    ) : null}
                   </section>
                 ) : null}
                 {feeSummary && feeSummary.chargedPaisa > 0 ? (

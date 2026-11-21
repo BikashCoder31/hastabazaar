@@ -817,7 +817,7 @@ function ScopedCheckoutForm({
               <span>
                 Use shopping credit · {money(walletBalancePaisa)} available
                 <span className="mt-1 block text-xs text-muted-foreground">
-                  Applies to products. Delivery and any Platform service fee remain payable {paymentMethod==='manual_bank'?'by bank transfer':'in cash'}.
+                  Applies to products. {serviceFee.chargedPaisa > 0 ? 'Delivery and the customer service fee remain' : 'Delivery remains'} payable {paymentMethod === 'manual_bank' ? 'by bank transfer' : 'in cash'}.
                 </span>
               </span>
             </label>
@@ -875,7 +875,14 @@ function ScopedCheckoutForm({
             <Button type="button" variant="outline" onClick={() => setNcmQuoteAttempt(attempt => attempt + 1)}>Retry delivery quotes</Button>
           </div>
         ) : null}
-        <div className="mt-3 border-t pt-3"><CustomerServiceFeeBreakdown standardPaisa={'standardPaisa' in serviceFee ? serviceFee.standardPaisa : serviceFee.chargedPaisa} waivedPaisa={'waivedPaisa' in serviceFee ? serviceFee.waivedPaisa : 0} netPaisa={serviceFee.chargedPaisa} campaignName={'campaign' in serviceFee ? serviceFee.campaign?.name ?? null : null} source="estimate" /></div>
+        <CustomerServiceFeeBreakdown
+          className="mt-3 border-t pt-3"
+          standardPaisa={'standardPaisa' in serviceFee ? serviceFee.standardPaisa : serviceFee.chargedPaisa}
+          waivedPaisa={'waivedPaisa' in serviceFee ? serviceFee.waivedPaisa : 0}
+          netPaisa={serviceFee.chargedPaisa}
+          campaignName={'campaign' in serviceFee ? serviceFee.campaign?.name ?? null : null}
+          source="estimate"
+        />
         {delivery ? (
           <p className="mt-4 flex gap-2 text-sm leading-6 text-muted-foreground">
             <Truck className="mt-1 size-4 shrink-0 text-primary" />

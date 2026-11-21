@@ -46,3 +46,19 @@ void test('future billing displays original customer waiver only on invoice and 
   assert.match(cancelled,/Customer service fee after cancellations/);
   assert.doesNotMatch(cancelled,/Full customer fee waiver/);
 });
+
+void test('orders placed with the customer marketplace fee off have no fee line on invoices or receipts', () => {
+  const snapshot = billingPreviewSnapshot('mixed', 1000);
+  snapshot.grandTotalPaisa -= snapshot.buyerPlatformFeePaisa;
+  snapshot.buyerPlatformFeePaisa = 0;
+  snapshot.customerServiceFee = {
+    orderId: 'saved-order', source: 'customer_v2', standardPaisa: 0, waivedPaisa: 0,
+    netPaisa: 0, campaign: null, policyVersionId: 'disabled-policy',
+  };
+  for (const group of [undefined, ...buildReceiptGroups(snapshot)]) {
+    const html = renderToStaticMarkup(createElement(ApprovedBillingDocument, {
+      snapshot, kind: group ? 'payment_receipt' : 'order_statement', documentNumber: 'saved', group,
+    }));
+    assert.doesNotMatch(html, /customer service fee/i);
+  }
+});

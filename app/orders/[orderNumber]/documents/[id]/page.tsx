@@ -168,10 +168,12 @@ export default async function OrderDocumentPage({
               <dt>Delivery</dt>
               <dd>{money(snapshot.deliveryChargePaisa)}</dd>
             </div>
-            <div className="flex justify-between">
-              <dt>Platform service fee</dt>
-              <dd>{money(snapshot.buyerPlatformFeePaisa)}</dd>
-            </div>
+            {snapshot.buyerPlatformFeePaisa > 0 ? (
+              <div className="flex justify-between">
+                <dt>Platform service fee</dt>
+                <dd>{money(snapshot.buyerPlatformFeePaisa)}</dd>
+              </div>
+            ) : null}
             <div className="flex justify-between">
               <dt>Tax collected</dt>
               <dd>{money(snapshot.taxTotalPaisa)}</dd>

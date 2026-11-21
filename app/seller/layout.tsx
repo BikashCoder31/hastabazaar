@@ -17,7 +17,7 @@ import { CommissionFeeNotice } from '@/components/seller/commission-fee-notice';
 import { CommonFeeTerms } from '@/components/seller/common-fee-terms';
 import { getRegisteredFeeOffers } from '@/lib/commission/coordinated-policy';
 import { CommissionRateUnavailableError } from '@/lib/db/repositories/business-settings';
-import { mediaObjectClass, mediaSizes } from '@/lib/media/responsive-media';
+import { mediaObjectClass } from '@/lib/media/responsive-media';
 import { AccountSessionActivity } from '@/components/security/session-activity';
 import { sellerMfaRequired } from '@/lib/security/session';
 import { readSecurityInitialization, type SecurityPolicyBindings } from '@/lib/security/runtime-policy';
@@ -66,7 +66,7 @@ export default async function SellerLayout({
         Skip to workspace
       </a>
       <SellerNavigation {...navigation} mode="mobile" signOut={signOut}
-        brand={<Image src="/brand/hastabazaar-mark-96.png" alt="" width={30} height={30} sizes="30px"
+        brand={<Image src="/brand/hastabazaar-mark-96.png" alt="" width={30} height={30} sizes="30px" priority
           data-media-mode="contain" className={mediaObjectClass('contain', 'size-[30px] shrink-0 rounded-md')} />}
         notifications={<>
           <WorkspaceRefresh key={seller.userId} />
@@ -75,7 +75,7 @@ export default async function SellerLayout({
         desktopBrand={
           <Link href="/seller" className="flex w-fit items-center gap-3 rounded-xl">
             <Image data-media-mode="contain" src="/brand/hastabazaar-mark-96.png" alt=""
-              width={44} height={44} sizes={mediaSizes.brandMark} className={mediaObjectClass('contain', 'size-11')} />
+              width={44} height={44} sizes="44px" priority className={mediaObjectClass('contain', 'size-11')} />
             <span><BrandWordmark className="block text-xl" /><span className="block text-xs font-semibold text-[#A8232E]">Seller Studio</span></span>
           </Link>
         }

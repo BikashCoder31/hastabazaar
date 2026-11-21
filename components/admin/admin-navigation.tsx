@@ -96,11 +96,15 @@ export function AdminMobileNavigation({ counts, account, ...access }: AdminNavPr
   </div>;
 }
 
+export function AdminBrandMark() {
+  return <Image src="/brand/hastabazaar-mark-96.png" alt="" width={32} height={32} sizes="32px" priority
+    data-media-mode="contain" className={mediaObjectClass('contain', 'media-shrink size-8 shrink-0 rounded-md')} />;
+}
+
 export function AdminBrand({ mobile = false, ...props }: AdminStaffAccess & { mobile?: boolean }) {
   const { sections, active } = useAdminSections(props);
   return <Link href={sections[0]?.tabs[0].href ?? '/admin'} className={mobile ? 'admin-brand admin-brand-mobile' : 'admin-brand'} aria-label={mobile ? undefined : 'Hastabazaar Operations'}>
-    <Image src="/brand/hastabazaar-mark-96.png" alt="" width={32} height={32} sizes="32px"
-      data-media-mode="contain" className={mediaObjectClass('contain', 'media-shrink size-8 shrink-0 rounded-md')} />
+    <AdminBrandMark />
     {mobile ? <span className="min-w-0"><span className="block font-bold leading-tight">{active?.label ?? 'Hastabazaar'}</span>
         <span className="block text-xs font-semibold text-[#ecc264]">Operations</span></span>
       : <span className="min-w-0"><span className="block font-heading text-lg font-semibold leading-none">Hastabazaar</span>

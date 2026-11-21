@@ -48,12 +48,14 @@ export function SettingValuePreview({
 }) {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     return <p className="text-sm break-words">{summary}</p>;
+  if ('enabled' in value && value.enabled === false && 'amountPaisa' in value)
+    return <p className="text-sm">Off</p>;
   return (
     <dl className="space-y-2 text-sm">
       {Object.entries(value).map(([key, field]) => (
         <div key={key}>
           <dt className="text-xs text-muted-foreground">
-            {key === 'amountPaisa' && 'enabled' in value && value.enabled === false ? 'Saved amount for later' : labels[key] ?? key.replace(/([a-z])([A-Z])/g, '$1 $2')}
+            {labels[key] ?? key.replace(/([a-z])([A-Z])/g, '$1 $2')}
           </dt>
           <dd className="mt-0.5 break-words">{valueText(key, field)}</dd>
         </div>

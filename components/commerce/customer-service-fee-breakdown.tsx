@@ -1,5 +1,12 @@
 import { incentiveMoney } from '@/lib/incentives/presentation';
 import { PLATFORM_SERVICE_FEE_NOTICE } from '@/lib/checkout/platform-service-fee';
+import { cn } from '@/lib/utils';
+
+type FeeAmounts = { standardPaisa: number; waivedPaisa: number; netPaisa: number };
+
+export function hasCustomerServiceFee({ standardPaisa, waivedPaisa, netPaisa }: FeeAmounts) {
+  return standardPaisa > 0 || waivedPaisa > 0 || netPaisa > 0;
+}
 
 /** Presentation only: money and campaign attribution come from a server snapshot. */
 export function CustomerServiceFeeBreakdown({
@@ -8,15 +15,15 @@ export function CustomerServiceFeeBreakdown({
   netPaisa,
   campaignName,
   source,
-}: {
-  standardPaisa: number;
-  waivedPaisa: number;
-  netPaisa: number;
+  className,
+}: FeeAmounts & {
   campaignName: string | null;
   source: 'estimate' | 'recorded' | 'historical';
+  className?: string;
 }) {
+  if (!hasCustomerServiceFee({ standardPaisa, waivedPaisa, netPaisa })) return null;
   return (
-    <section aria-label="Customer service fee" className="space-y-2 text-sm">
+    <section aria-label="Customer service fee" className={cn('space-y-2 text-sm', className)}>
       <dl className="space-y-2">
         {source !== 'historical' ? <div className="flex justify-between gap-3">
           <dt>Standard customer service fee</dt>
@@ -34,7 +41,6 @@ export function CustomerServiceFeeBreakdown({
         </div>
       </dl>
       <p className="text-xs leading-5 text-muted-foreground">
-        {source === 'estimate' && standardPaisa === 0 ? 'No customer service fee is currently charged. ' : ''}
         {PLATFORM_SERVICE_FEE_NOTICE}{' '}
         {source === 'estimate'
           ? 'Estimate for this order. The final fee and any campaign are checked again at checkout.'

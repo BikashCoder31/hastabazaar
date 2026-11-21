@@ -20,7 +20,7 @@ import { MobileNavigation } from '@/components/layout/mobile-navigation';
 import { MobileProductSearch } from '@/components/layout/mobile-product-search';
 import { Input } from '@/components/ui/input';
 import { storefrontNavigation } from '@/lib/catalog/storefront-navigation';
-import { mediaObjectClass, mediaSizes } from '@/lib/media/responsive-media';
+import { mediaObjectClass } from '@/lib/media/responsive-media';
 import { loadQueryPresentationConfig, queryFieldPresentation } from '@/lib/catalog/shop-query';
 import type { PublishedFormConfig } from '@/lib/forms/types';
 
@@ -56,7 +56,7 @@ export async function SiteHeader() {
                 height={48}
                 priority
                 data-media-mode="contain"
-                sizes={mediaSizes.brandMark}
+                sizes="(min-width: 1024px) 56px, (min-width: 640px) 32px, clamp(24px, 8vw, 32px)"
                 className={mediaObjectClass(
                   'contain',
                   'block size-8 shrink-0 sm:size-11',

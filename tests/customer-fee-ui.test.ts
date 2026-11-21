@@ -13,6 +13,8 @@ import { saveBusinessSettingChange } from '../lib/db/repositories/business-setti
 import { promoCostPreview } from '../lib/incentives/presentation';
 import { FORM_REGISTRY } from '../lib/forms/registry';
 import { stubFixtureLink } from './helpers/browser-fixture-link';
+import { readFeeProgramWorkspace } from '../lib/admin/fee-program-workspace';
+import { readEarningsOverview } from '../app/seller/finance/overview-data';
 async function moduleAt(path:string) {
   assert.ok(existsSync(path),'rendered component exists: '+path);
   const output=await build({entryPoints:[path],bundle:true,write:false,platform:'node',format:'cjs',jsx:'automatic',external:['react','react/*','react-dom','react-dom/*'],plugins:[{name:'framework',setup(b){stubFixtureLink(b);b.onResolve({filter:/^next\/navigation$/},()=>({path:'router',namespace:'fixture'}));b.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:'export const useRouter=()=>({refresh(){}})',loader:'js'}));}}]});
@@ -33,15 +35,31 @@ void test('rendered customer breakdown shows server standard, full waiver and ne
       if(amount!==1000) await saveBusinessSettingChange(f.database,{key:'platform_service_fee_policy',value:{enabled:amount!==-1,amountPaisa:amount===-1?2500:amount},actorId:'owner',reason:'Disposable future customer fee',requestId:'future-'+amount,now:now-1_300_000_000,effectiveFrom:policyAt,expectedVersion:amount===2500?0:amount===0?1:2});
       const s=(await quoteCustomerServiceFee(f.database,policyAt)).snapshot;
       const html=renderToStaticMarkup(createElement(CustomerServiceFeeBreakdown,{standardPaisa:s.standardPaisa,waivedPaisa:s.waivedPaisa,netPaisa:s.chargedPaisa,campaignName:s.campaign?.name??null,source:'estimate'}));
-      assert.match(html,/Standard customer service fee/);assert.match(html,/Net customer service fee/);assert.match(html,/once per order/i);
-      if(amount>0){assert.match(html,/Full customer fee waiver.*Customer launch/);assert.match(html,new RegExp((amount/100).toFixed(2).replace('.','\\.')));assert.match(html,/0\.00/);}else {assert.match(html,/No customer service fee is currently charged/);assert.doesNotMatch(html,/Full customer fee waiver/);}
+      if (amount > 0) {
+        assert.match(html,/Standard customer service fee/);assert.match(html,/Net customer service fee/);assert.match(html,/once per order/i);
+        assert.match(html,/Full customer fee waiver.*Customer launch/);
+        assert.match(html,new RegExp((amount/100).toFixed(2).replace('.','\\.')));
+        assert.match(html,/0\.00/);
+      } else {
+        assert.equal(html, '');
+      }
+      if (amount === -1) {
+        const workspace = await readFeeProgramWorkspace(f.database, { id: 'owner', authSubject: 'owner' }, { now: policyAt });
+        const current = workspace.sources.find(row => row.key === 'platform_service_fee_policy' && row.status === 'current');
+        assert.equal(current?.summary, 'Off. No customer charge.');
+        const { EarningsExample } = await moduleAt('app/seller/finance/payout-overview.tsx');
+        const overview = await readEarningsOverview(f.database, 'seller-a', 'user-a', policyAt);
+        const earningsHtml = renderToStaticMarkup(createElement(EarningsExample, { overview, earnings: {} }));
+        assert.match(earningsHtml, />Marketplace fee<\/dt><dd[^>]*>Off</);
+        assert.doesNotMatch(earningsHtml, /NPR 25|paid by the customer/);
+      }
     }
   } finally {await f.dispose();}
 });
 void test('disabled policy renders no fictitious campaign relief even with an applying campaign',async()=>{
   const {CustomerServiceFeeBreakdown}=await moduleAt('components/commerce/customer-service-fee-breakdown.tsx');
   const html=renderToStaticMarkup(createElement(CustomerServiceFeeBreakdown,{standardPaisa:0,waivedPaisa:0,netPaisa:0,campaignName:null,source:'estimate'}));
-  assert.match(html,/No customer service fee is currently charged/);assert.doesNotMatch(html,/Full customer fee waiver/);
+  assert.equal(html, '');
 });
 void test('rendered manager supports overlapping customer campaigns, Nepal dates and separate immutable seller history',async()=>{
   const {FeeWaiverManager}=await moduleAt('components/admin/fee-waiver-manager.tsx');

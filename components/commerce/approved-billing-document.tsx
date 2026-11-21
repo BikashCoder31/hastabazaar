@@ -77,12 +77,12 @@ export function ApprovedBillingDocument({snapshot,kind,documentNumber,group,stam
       {promotions>0?<div><dt>Promo / referral savings</dt><dd>−{documentMoney(promotions)}</dd></div>:null}
       {wallet>0?<div><dt>Shopping credit</dt><dd>−{documentMoney(wallet)}</dd></div>:null}
       {!receipt||delivery>0?<div><dt>Delivery / shipping</dt><dd>{documentMoney(delivery)}</dd></div>:null}
-      {customerFee?.source==='customer_v2'?<>
+      {customerFee?.source === 'customer_v2' && customerFee.standardPaisa > 0 ? <>
         <div><dt>Standard customer service fee at placement</dt><dd>{documentMoney(customerFee.standardPaisa)}</dd></div>
         {customerFee.waivedPaisa>0?<div><dt>Full customer fee waiver · {customerFee.campaign?.name}</dt><dd>−{documentMoney(customerFee.waivedPaisa)}</dd></div>:null}
         {customerFee.netPaisa!==fee?<div><dt>Original net customer service fee</dt><dd>{documentMoney(customerFee.netPaisa)}</dd></div>:null}
         <div><dt>{customerFee.netPaisa===fee?'Net customer service fee':'Customer service fee after cancellations'}</dt><dd>{documentMoney(fee)}</dd></div>
-      </>:!receipt||fee>0?<div><dt>Recorded customer service fee</dt><dd>{documentMoney(fee)}</dd></div>:null}
+      </> : fee > 0 ? <div><dt>Recorded customer service fee</dt><dd>{documentMoney(fee)}</dd></div> : null}
       <div className="bill-total"><dt>{receipt?'TOTAL (NPR)':'ORDER TOTAL (NPR)'}</dt><dd>{documentMoney(total)}</dd></div></dl></div>
     {receipt&&!company?<div className="bill-channel"><img data-media-mode="contain" className="object-contain" src="/brand/hastabazaar-logo-lockup-640.png" alt="Hastabazaar" width={45} height={45}/><p><strong>Ordered through Hastabazaar</strong><br/>billing@hastabazaar.com | www.hastabazaar.com</p></div>:null}
     {receipt?<div className="bill-authorization">{company&&stampSource?<img data-media-mode="contain" data-company-stamp className="bill-stamp object-contain" src={stampSource} alt="Hasta Bazaar Private Limited company stamp" width={136} height={118}/>:null}<p>Authorized signature / stamp</p></div>:null}

@@ -3,7 +3,7 @@ import { headers } from 'next/headers';
 import { ArrowUpRight } from 'lucide-react';
 import { env } from 'cloudflare:workers';
 import { signOutPath } from '@/app/auth';
-import { AdminAccountMenu, AdminBrand, AdminMobileNavigation, AdminNavigation, AdminSearch } from '@/components/admin/admin-navigation';
+import { AdminAccountMenu, AdminBrand, AdminBrandMark, AdminMobileNavigation, AdminNavigation, AdminSearch } from '@/components/admin/admin-navigation';
 import { AdminSectionTabs } from '@/components/admin/admin-section-tabs';
 import { CommandSearch } from '@/components/admin/command-search';
 import { readAdminSidebarCounts } from '@/components/admin/admin-review-data';
@@ -35,9 +35,13 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
       <AdminSessionActivity />
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-card focus:p-3">Skip to operations</a>
       <AdminWorkspaceReady fallback={<>
-        <div className="admin-rail" aria-hidden="true" />
+        <div className="admin-rail" aria-hidden="true">
+          <div className="admin-brand"><AdminBrandMark /></div>
+        </div>
         <div className="min-w-0">
-          <div className="admin-toolbar" aria-hidden="true" />
+          <div className="admin-toolbar" aria-hidden="true">
+            <div className="admin-brand admin-brand-mobile"><AdminBrandMark /></div>
+          </div>
           <main tabIndex={-1} id="main-content" className="admin-workspace min-w-0">
             <AdminLoading />
           </main>

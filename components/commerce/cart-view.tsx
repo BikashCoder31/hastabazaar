@@ -277,7 +277,16 @@ export function CartView({serviceFee}:{serviceFee?:PlatformServiceFeeSnapshot} =
           <span className="text-muted-foreground">Delivery</span>
           <span>At checkout</span>
         </div>
-        {serviceFee ? <div className="mt-3"><CustomerServiceFeeBreakdown standardPaisa={'standardPaisa' in serviceFee ? serviceFee.standardPaisa : serviceFee.chargedPaisa} waivedPaisa={'waivedPaisa' in serviceFee ? serviceFee.waivedPaisa : 0} netPaisa={serviceFee.chargedPaisa} campaignName={'campaign' in serviceFee ? serviceFee.campaign?.name ?? null : null} source="estimate" /></div> : null}
+        {serviceFee ? (
+          <CustomerServiceFeeBreakdown
+            className="mt-3"
+            standardPaisa={'standardPaisa' in serviceFee ? serviceFee.standardPaisa : serviceFee.chargedPaisa}
+            waivedPaisa={'waivedPaisa' in serviceFee ? serviceFee.waivedPaisa : 0}
+            netPaisa={serviceFee.chargedPaisa}
+            campaignName={'campaign' in serviceFee ? serviceFee.campaign?.name ?? null : null}
+            source="estimate"
+          />
+        ) : null}
         <div className="mt-5 flex justify-between gap-3 border-t pt-5 font-semibold">
           <span>Subtotal before delivery</span>
           <span>{cart.items.some(item=>item.pricePaisa===null)?'Review unpriced items':money(cart.itemSubtotalPaisa+(serviceFee?.chargedPaisa??0))}</span>

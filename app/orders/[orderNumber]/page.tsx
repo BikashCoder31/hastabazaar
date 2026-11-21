@@ -31,7 +31,7 @@ import {
 } from '@/lib/cart/session';
 import { requireDatabase } from '@/lib/db/d1';
 import { getOrderReceipt } from '@/lib/db/repositories/orders';
-import { CustomerServiceFeeBreakdown } from '@/components/commerce/customer-service-fee-breakdown';
+import { CustomerServiceFeeBreakdown, hasCustomerServiceFee } from '@/components/commerce/customer-service-fee-breakdown';
 import { listFormAnswersForSubjectPage } from '@/lib/db/repositories/form-answers';
 import { authorizeFormAnswerRead } from '@/lib/forms/access';
 import { listReturnsForCustomerReceipt } from '@/lib/db/repositories/returns';
@@ -334,21 +334,27 @@ export default async function OrderReceiptPage({
                     <dt>Delivery</dt>
                     <dd>{money(receipt.deliveryChargePaisa)}</dd>
                   </div>
-                  <div className="flex justify-between border-t pt-3 text-base font-semibold">
-                    <dt>Customer service fee after cancellations</dt>
-                    <dd>{money(receipt.buyerPlatformFeePaisa)}</dd>
-                  </div>
+                  {receipt.buyerPlatformFeePaisa > 0 || receipt.customerServiceFee.netPaisa > 0 ? (
+                    <div className="flex justify-between">
+                      <dt>Customer service fee after cancellations</dt>
+                      <dd>{money(receipt.buyerPlatformFeePaisa)}</dd>
+                    </div>
+                  ) : null}
                   <div className="flex justify-between border-t pt-3 text-base font-semibold">
                     <dt>Order total</dt>
                     <dd>{money(receipt.grandTotalPaisa)}</dd>
                   </div>
                 </dl>
-                <div className="mt-4 border-t pt-4">
-                  <h3 className="mb-2 text-sm font-semibold">Customer service fee at placement</h3>
-                  <CustomerServiceFeeBreakdown {...receipt.customerServiceFee}
-                    campaignName={receipt.customerServiceFee.campaign?.name??null}
-                    source={receipt.customerServiceFee.source==='legacy_recorded'?'historical':'recorded'}/>
-                </div>
+                {hasCustomerServiceFee(receipt.customerServiceFee) ? (
+                  <div className="mt-4 border-t pt-4">
+                    <h3 className="mb-2 text-sm font-semibold">Customer service fee at placement</h3>
+                    <CustomerServiceFeeBreakdown
+                      {...receipt.customerServiceFee}
+                      campaignName={receipt.customerServiceFee.campaign?.name ?? null}
+                      source={receipt.customerServiceFee.source === 'legacy_recorded' ? 'historical' : 'recorded'}
+                    />
+                  </div>
+                ) : null}
                 {receipt.buyerPlatformFeePaisa > 0 ? <p className="mt-3 text-xs text-muted-foreground">Platform service fee is non-refundable, except where required by law.</p> : null}
                 {receipt.refundedPlatformServiceFeePaisa > 0 ? <p className="mt-3 text-xs text-muted-foreground">Legally required Platform service fee refund recorded: {money(receipt.refundedPlatformServiceFeePaisa)}.</p> : null}
                 <p className="mt-3 text-xs leading-5 text-muted-foreground">

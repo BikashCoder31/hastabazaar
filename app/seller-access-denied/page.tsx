@@ -23,6 +23,7 @@ export default async function SellerAccessDeniedPage() {
             alt=""
             width={48}
             height={48}
+            priority
             data-media-mode="contain"
             sizes={mediaSizes.brandMark}
             className={mediaObjectClass('contain', 'size-12')}
@@ -42,14 +43,14 @@ export default async function SellerAccessDeniedPage() {
           If you have submitted an application with this account, you can update it and prepare private product drafts while awaiting approval. If you have not applied, start registration below.
         </p> : null}
         <div className="mt-7 flex flex-wrap justify-center gap-3">
-          {user ? <Link href="/sell/application" className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
+          {user ? <Link href="/sell/application" className="inline-flex min-h-11 items-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
             View application and product drafts
           </Link> : null}
           {user ? (
             <form data-form-id="identity.logout" method="POST" action={signOutPath('/seller-access-denied')} target="_top">
             <button
               type="submit"
-              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+              className="inline-flex min-h-11 items-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
             >
               Use another account
             </button>
@@ -58,14 +59,14 @@ export default async function SellerAccessDeniedPage() {
             <a
               href={signInPath('/seller')}
               target="_top"
-              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+              className="inline-flex min-h-11 items-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
             >
               Sign in
             </a>
           )}
           <Link
             href="/sell"
-            className="rounded-lg border px-4 py-2 text-sm font-semibold hover:bg-muted"
+            className="inline-flex min-h-11 items-center rounded-lg border px-4 py-2 text-sm font-semibold hover:bg-muted"
           >
             Apply to sell
           </Link>

@@ -6,19 +6,24 @@ import { stubFixtureLink } from './helpers/browser-fixture-link';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { CustomerServiceFeeBreakdown } from '../components/commerce/customer-service-fee-breakdown';
+import { SettingValuePreview } from '../components/admin/setting-value-preview';
 
-void test('recorded and historical zero fee presentation never states the current policy or invents historical relief', () => {
- for (const source of ['recorded','historical'] as const) {
+void test('zero customer fees stay hidden in estimates, new orders and historical orders', () => {
+ for (const source of ['estimate','recorded','historical'] as const) {
   const html=renderToStaticMarkup(createElement(CustomerServiceFeeBreakdown,{source,standardPaisa:0,waivedPaisa:0,netPaisa:0,campaignName:null}));
-  assert.doesNotMatch(html,/currently charged|Full customer fee waiver/);
-  assert.match(html,/recorded/i);
-  if(source==='historical') {
-   assert.match(html,/Recorded customer service fee/);
-   assert.doesNotMatch(html,/Standard customer service fee|Net customer service fee/);
-  }
+  assert.equal(html, '');
  }
- const estimated=renderToStaticMarkup(createElement(CustomerServiceFeeBreakdown,{source:'estimate',standardPaisa:0,waivedPaisa:0,netPaisa:0,campaignName:null}));
- assert.match(estimated,/currently charged/);
+ const historical=renderToStaticMarkup(createElement(CustomerServiceFeeBreakdown,{source:'historical',standardPaisa:1000,waivedPaisa:0,netPaisa:1000,campaignName:null}));
+ assert.match(historical,/Recorded customer service fee/);
+ assert.doesNotMatch(historical,/Standard customer service fee|Net customer service fee/);
+});
+
+void test('disabled customer fee settings preview shows Off with no amount', () => {
+ const html = renderToStaticMarkup(createElement(SettingValuePreview, {
+  value: { enabled: false, amountPaisa: 1000 }, summary: 'Off',
+ }));
+ assert.match(html, />Off</);
+ assert.doesNotMatch(html, /NPR|Amount per order/);
 });
 
 // Browser plugin not available. This isolated mounted component uses fictional
@@ -65,7 +70,7 @@ void test('Super Admin fee switch and NPR amount submit one prospective policy o
    const toggle=page.getByRole('checkbox',{name:'Enable Platform service fee'});
    await toggle.waitFor();assert.equal(await toggle.isChecked(),true);
    assert.equal(await page.getByLabel('Amount per order (NPR)').inputValue(),'10');
-   await toggle.uncheck();await page.getByLabel('Amount per order (NPR)').fill('25.50');
+   await toggle.uncheck();await page.getByLabel('Saved amount for later (NPR)').fill('25.50');
    await page.getByLabel('Reason and expected impact').fill('Temporarily disable new order fees');
    const save=page.getByRole('button',{name:'Save changes',exact:true});await save.click();
    await page.getByText('Isolated fixture: no settings were changed.').waitFor();

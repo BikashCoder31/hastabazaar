@@ -100,7 +100,7 @@ function scalarString(value: unknown): string {
 function displayValue(key: BusinessSettingKey, value: unknown): string {
   if (key === 'platform_service_fee_policy' && value && typeof value === 'object') {
     const policy = value as { enabled: boolean; amountPaisa: number };
-    return `${policy.enabled ? 'Enabled' : 'Disabled'} · NPR ${(policy.amountPaisa / 100).toFixed(2)} per order`;
+    return policy.enabled ? `Enabled · NPR ${(policy.amountPaisa / 100).toFixed(2)} per order` : 'Off';
   }
   if ((key === 'independent_seller_commission_bps' || key === 'managed_sale_linked_platform_retention_bps') && value === null) return 'Not configured — no current rate is assumed';
   if (
@@ -1029,7 +1029,7 @@ function SettingValueEditor({
     const policy = value as { enabled: boolean; amountPaisa: number };
     return <div className="space-y-4">
       <label className="flex min-h-11 items-center gap-3"><input className="size-4 accent-primary" type="checkbox" checked={policy.enabled} onChange={event => onChange({ ...policy, enabled: event.target.checked })} />{businessPage ? 'Turn on customer marketplace fee' : 'Enable Platform service fee'}</label>
-      <div className="space-y-2"><Label htmlFor="service-fee-amount">{businessPage && !policy.enabled ? 'Saved amount for later (NPR)' : 'Amount per order (NPR)'}</Label>
+      <div className="space-y-2"><Label htmlFor="service-fee-amount">{policy.enabled ? 'Amount per order (NPR)' : 'Saved amount for later (NPR)'}</Label>
         <Input id="service-fee-amount" type="number" min={0} max={1000} step="0.01" value={Number.isFinite(policy.amountPaisa) ? policy.amountPaisa / 100 : ''}
           onChange={event => onChange({ ...policy, amountPaisa: event.target.value === '' ? NaN : Math.round(Number(event.target.value) * 100) })} /></div>
       <p className="text-sm text-muted-foreground">When disabled, new orders pay no Platform service fee. The amount is kept for re-enabling. Changes apply to newly reviewed orders only. Existing orders keep their saved charge and refund terms. Non-refundable except where required by law.</p>

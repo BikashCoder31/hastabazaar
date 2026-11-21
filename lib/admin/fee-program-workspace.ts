@@ -21,7 +21,7 @@ const SETTINGS:readonly {key:BusinessSettingKey;view:FeeProgramView;label:string
 function summary(key:BusinessSettingKey,value:unknown){
  if(key==='managed_maker_active_model'&&value===null)return 'No active commercial model. Native preparation and activation checks remain separate.';
  if(key.endsWith('_bps')){if(typeof value!=='number'||!Number.isSafeInteger(value)||value<0||value>10000)throw new Error('Invalid fee source.');return `${value/100}% of the defined eligible sale base.`;}
- if(key==='platform_service_fee_policy'){const p=value as {enabled?:boolean;amountPaisa?:number};if(typeof p?.enabled!=='boolean'||!Number.isSafeInteger(p.amountPaisa))throw new Error('Invalid customer charge.');return p.enabled?`${formatPaisaExact(p.amountPaisa!)} per eligible order.`:'Disabled; no customer charge or fictional waiver saving.';}
+ if(key==='platform_service_fee_policy'){const p=value as {enabled?:boolean;amountPaisa?:number};if(typeof p?.enabled!=='boolean'||!Number.isSafeInteger(p.amountPaisa))throw new Error('Invalid customer charge.');return p.enabled?`${formatPaisaExact(p.amountPaisa!)} per eligible order.`:'Off. No customer charge.';}
  if(typeof value!=='string')throw new Error('Invalid program source.');return value.replaceAll('_',' ');
 }
 /** Source references only. No editor, quote, redemption, acceptance or money action. */

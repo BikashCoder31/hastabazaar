@@ -18,13 +18,15 @@ import {getPublicOfferSet} from '../lib/products/public-offers';
 import {addOfferCartLine} from '../lib/cart/offer-cart';
 import {seedVerifiedCheckoutContact} from './helpers/checkout-contact';
 import {stubFixtureLink} from './helpers/browser-fixture-link';
+import { saveBusinessSettingChange } from '../lib/db/repositories/business-settings';
+import { getPlatformServiceFee } from '../lib/db/repositories/platform-service-fee';
 
 void test('actual checkout form uses current methods, original bank request recovery and current customer authority',{timeout:60000},async()=>{
  const f=await publicCheckoutFixture({bank:true});const releases:Array<()=>void>=[];try{
   await saveCustomerAddress(f.db,{userId:'customer',input:{...f.body.address,label:'Fictional original address',isDefault:true},requestId:crypto.randomUUID(),now:Date.now()});let currentCartToken=f.token;
   globalThis.publicCheckoutDb=f.db;globalThis.publicCheckoutActor={userId:'customer',authSubject:'customer',email:'customer@local.hastabazaar.test'};
   const api=await import('../app/api/checkout/route'),cartApi=await import('../app/api/cart/route'),forms=await import('../app/api/forms/[formId]/route'),contacts=await import('../app/api/account/contact-verification/route');
-  const boot=async()=>{const actor=globalThis.publicCheckoutActor!,user=f.sqlite.prepare('SELECT display_name,phone FROM users WHERE id=?').get(actor.userId)!;return{cartScope:await hashOpaqueToken(currentCartToken),paymentCapabilities:await readCheckoutPaymentCapabilities(f.db,{cartHash:await hashOpaqueToken(currentCartToken)}),policyContext:f.policyContext,serviceFee:f.serviceFee,deliveryRates:f.rates,customerId:actor.userId,customerEmail:actor.email,customerPhone:user.phone,customerDisplayName:user.display_name,contactStatus:await getContactVerificationStatus(f.db,actor),savedAddresses:await listCustomerAddresses(f.db,actor.userId)};};
+  const boot=async()=>{const actor=globalThis.publicCheckoutActor!,user=f.sqlite.prepare('SELECT display_name,phone FROM users WHERE id=?').get(actor.userId)!;return{cartScope:await hashOpaqueToken(currentCartToken),paymentCapabilities:await readCheckoutPaymentCapabilities(f.db,{cartHash:await hashOpaqueToken(currentCartToken)}),policyContext:f.policyContext,serviceFee:await getPlatformServiceFee(f.db),deliveryRates:f.rates,customerId:actor.userId,customerEmail:actor.email,customerPhone:user.phone,customerDisplayName:user.display_name,contactStatus:await getContactVerificationStatus(f.db,actor),savedAddresses:await listCustomerAddresses(f.db,actor.userId)};};
   const code=(await build({stdin:{loader:'tsx',resolveDir:process.cwd(),contents:`import React from'react';import{createRoot}from'react-dom/client';import{CheckoutForm}from'./components/commerce/checkout-form';const root=createRoot(document.getElementById('root'));function render(props){root.render(<main className='shell py-8'><CheckoutForm {...props}/></main>)}window.refreshCheckout=async()=>render(await(await fetch('/fixture-boot')).json());render(window.__CHECKOUT_BOOT__);`},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"production"'},plugins:[{name:'framework-navigation-only',setup(b){stubFixtureLink(b);b.onResolve({filter:/^next\/navigation$/},()=>({path:'navigation',namespace:'fixture'}));b.onLoad({filter:/.*/,namespace:'fixture'},()=>({loader:'js',contents:'export function useRouter(){return{refresh(){}}}'}));}}]})).outputFiles[0].text;
   const css=(await postcss([tailwind()]).process((await readFile('app/globals.css','utf8')).replace("@import 'tailwindcss';","@import 'tailwindcss' source(none);\n@source '../components/commerce/checkout-form.tsx';\n@source '../components/account/contact-verification.tsx';\n@source '../components/forms';\n@source inline('shell py-8');"),{from:resolve('app/globals.css')})).css;
   await mkdir('.test-artifacts/t31',{recursive:true});
@@ -59,9 +61,25 @@ void test('actual checkout form uses current methods, original bank request reco
    const revision=String(f.sqlite.prepare('SELECT revision FROM company_payment_account_versions WHERE id=?').get(f.accountVersionId)!.revision);await retireCompanyAccount(f.db,{actorId:'reviewer',requestId:'browser-bank-retired',expectedRevision:revision,now:Date.now()},{versionId:f.accountVersionId!,reason:'Stop future instructions while preserving the original uncertain browser request.'});
    await page.reload();await page.getByRole('button',{name:'Retry prior order attempt',exact:true}).waitFor();await page.getByRole('checkbox').last().check();assert.equal(await page.getByText('Total on delivery',{exact:true}).count(),0);assert.equal(await page.getByText('Total by bank transfer',{exact:true}).count(),0);assert.equal(await page.getByRole('button',{name:'Place COD order',exact:true}).count(),0);await page.setViewportSize({width:390,height:844});await page.screenshot({path:'.test-artifacts/t31/public-checkout-retained-bank-mobile.png',fullPage:true});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth)<=390);
    await page.getByRole('button',{name:'Retry prior order attempt',exact:true}).click();await page.waitForURL('**/orders/**');assert.equal(bodies.length,2);assert.deepEqual(JSON.parse(bodies[0]),JSON.parse(bodies[1]));assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM company_payment_instructions').get()!.n,1);assert.equal(f.sqlite.prepare("SELECT reserved FROM offer_stock WHERE offer_id='medium'").get()!.reserved,1);assert.deepEqual(errors,[]);
+   const previousFeeVersion = f.sqlite.prepare('SELECT COALESCE(MAX(version), 0) AS version FROM business_setting_versions WHERE setting_key=?').get('platform_service_fee_policy');
+   await saveBusinessSettingChange(f.db, {
+    key: 'platform_service_fee_policy', value: { enabled: false, amountPaisa: 1000 },
+    actorId: 'reviewer', reason: 'Verify how checkout shows the disabled fee in this fixture.',
+    requestId: 'public-browser-disabled-fee', now: Date.now(), effectiveFrom: null, expectedVersion: Number(previousFeeVersion?.version),
+   });
+
    // Actual committed response is delayed while the same component changes owner/cart.
    const newCart=async()=>{const token=createOpaqueToken(),hash=await hashOpaqueToken(token),set=(await getPublicOfferSet(f.db,f.productId))!;await addOfferCartLine(f.db,hash,{productId:f.productId,offerId:'medium',versionId:set.versionId,publicVersionId:set.publicVersionId,pricePaisa:80000,quantity:1,requestId:crypto.randomUUID()},Date.now());return token;};
-   currentCartToken=await newCart();await page.goto(origin+'/checkout');await page.getByRole('checkbox').last().check();
+   currentCartToken=await newCart();
+   for (const width of [390, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(origin + '/checkout');
+    await page.getByText('Total on delivery', { exact: true }).waitFor();
+    assert.equal(await page.getByRole('region', { name: 'Customer service fee', exact: true }).count(), 0);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
+    if (width === 390) assert.ok((await page.getByRole('button', { name: 'Place COD order', exact: true }).boundingBox())!.height >= 44);
+   }
+   await page.getByRole('checkbox').last().check();
    ready=new Promise<void>(r=>{committed=r});held=new Promise<void>(r=>{release=r;releases.push(r)});holdNext=true;
    await page.getByRole('button',{name:'Place COD order',exact:true}).click();await ready;
    f.sqlite.prepare("INSERT INTO users(id,auth_subject,email,display_name,status,created_at,updated_at) VALUES('public-b','public-b','public-b@local.hastabazaar.test','Fictional next customer','active',?,?)").run(Date.now(),Date.now());f.sqlite.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES('public-b','customer',?)").run(Date.now());await seedVerifiedCheckoutContact(f.db,'public-b','9822222222',Date.now());
