@@ -19,6 +19,7 @@ import { promisify } from 'node:util';
 interface Manifest {
   release: string;
   migrations: { path: string; usage: string; sha256: string }[];
+  ownerAppliedMigrations?: { path: string; usage: string; sha256: string }[];
   requiredTables: Record<string, string[]>;
   requiredTriggers: Record<string, string[]>;
 }
@@ -39,6 +40,7 @@ const ownerAppliedMigrations = [
   'mariadb-customer-cod-confirmation.sql',
   'mariadb-delivery-failure-reasons.sql',
   'mariadb-occasion-discovery.sql',
+  'mariadb-occasion-images.sql',
   'mariadb-packed-parcel-weight.sql',
   'mariadb-seller-staff-notes.sql',
 ];
@@ -118,11 +120,16 @@ void test('historical release generation covers its maintained non-reset SQL inv
       },
     );
 
-    await t.test('owner-applied SQL is retained without adding it to automated release maintenance', () => {
+    await t.test('owner-applied SQL is retained without adding it to automated release maintenance', async () => {
       for (const name of ownerAppliedMigrations) {
         assert.ok(sqlNames.includes(name), `${name} must be available for the owner`);
         assert.ok(!names.includes('deployment/babal/' + name), `${name} requires owner application`);
       }
+      const path = 'deployment/babal/mariadb-occasion-images.sql';
+      const sql = await readFile(join(root, path));
+      assert.deepEqual(manifest.ownerAppliedMigrations, [{
+        path, usage: 'owner-applied', sha256: createHash('sha256').update(sql).digest('hex'),
+      }]);
     });
 
     await t.test('prerequisites precede their companions', () => {

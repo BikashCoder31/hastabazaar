@@ -69,6 +69,7 @@ export interface OccasionRow {
   slug: string;
   nameEn: string;
   nameNe: string | null;
+  imageId?: string | null;
 }
 
 export async function listActiveCategories(

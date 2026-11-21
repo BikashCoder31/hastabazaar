@@ -30,6 +30,12 @@ const {
 } = options;
 const sourceRoot = includeOrderRefund ? fileURLToPath(new URL('../', import.meta.url)) : process.cwd();
 const readSource = (path, options) => readFile(resolve(sourceRoot, path), options);
+const occasionImageCompanion = 'deployment/babal/mariadb-occasion-images.sql';
+// Guarded features have an owner-reviewed companion, outside automated maintenance.
+const occasionImageSource = await readSource(occasionImageCompanion).catch(error => {
+  if (error.code === 'ENOENT') return null;
+  throw error;
+});
 if (assetRoot && explicitOutput) throw new Error('--asset-root requires a new directory and cannot be combined with --output.');
 if (includeOrderRefund && (!explicitSchemaInput || !(assetRoot || explicitOutput))) {
   throw new Error('--include-order-refund-migrations requires --schema-input and --asset-root or --output for new scratch output.');
@@ -525,6 +531,11 @@ const manifest = {
   hosting: 'Babal.Host',
   requiredNodeMajor: 22,
   migrations,
+  ...(occasionImageSource ? { ownerAppliedMigrations: [{
+    path: occasionImageCompanion,
+    sha256: createHash('sha256').update(occasionImageSource).digest('hex'),
+    usage: 'owner-applied',
+  }] } : {}),
   requiredTables: tables,
   requiredTriggers: { ...triggers, ...Object.fromEntries(Object.entries(customerFeeTriggerDefinitions).map(([name, shape]) => [name, ['signal sqlstate', '45000', shape.mariadb.match(/MESSAGE_TEXT='([^']+)'/)[1]]])) },
 };

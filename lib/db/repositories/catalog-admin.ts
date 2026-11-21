@@ -3,6 +3,7 @@ import { staffMutationGuard } from './staff-mutation-guard';
 import { digestFormRequest } from '../../forms/submission';
 import type { FormAnswerSnapshot } from '../../forms/types';
 import {formAnswerSourceSql} from '../../forms/answer-proof';
+import { hasOccasionImageStorage, taxonomyImageStorage } from '../../catalog/taxonomy-image-storage';
 
 export class CatalogManagementConflictError extends Error {}
 
@@ -59,9 +60,9 @@ export interface ManagedTaxonomyRow {
 export async function listManagedTaxonomy(database: D1Database): Promise<{
   categories: readonly ManagedTaxonomyRow[];
   occasions: readonly ManagedTaxonomyRow[];
+  occasionImagesAvailable: boolean;
 }> {
-  const [categories, occasions] = await Promise.all([
-    database
+  const categoriesQuery = database
       .prepare(
         `SELECT categories.id,categories.parent_id AS parentId, categories.slug, categories.name_en AS nameEn, categories.name_ne AS nameNe,
         categories.is_active AS isActive, categories.sort_order AS sortOrder, COUNT(products.id) AS usageCount,
@@ -70,16 +71,22 @@ export async function listManagedTaxonomy(database: D1Database): Promise<{
        LEFT JOIN category_image_assignments ON category_image_assignments.category_id=categories.id
        GROUP BY categories.id ORDER BY categories.sort_order, categories.name_en`,
       )
-      .all<ManagedTaxonomyRow>(),
+      .all<ManagedTaxonomyRow>();
+  const occasionImagesAvailable = await hasOccasionImageStorage(database);
+  const [categories, occasions] = await Promise.all([
+    categoriesQuery,
     database
       .prepare(
         `SELECT occasions.id, occasions.slug, occasions.name_en AS nameEn, occasions.name_ne AS nameNe,
-        occasions.is_active AS isActive, occasions.sort_order AS sortOrder, COUNT(product_occasions.product_id) AS usageCount
-       FROM occasions LEFT JOIN product_occasions ON product_occasions.occasion_id = occasions.id GROUP BY occasions.id ORDER BY occasions.sort_order, occasions.name_en`,
+        occasions.is_active AS isActive, occasions.sort_order AS sortOrder, COUNT(product_occasions.product_id) AS usageCount,
+        ${occasionImagesAvailable ? 'occasion_image_assignments.media_id' : 'NULL'} AS imageId
+       FROM occasions LEFT JOIN product_occasions ON product_occasions.occasion_id = occasions.id
+       ${occasionImagesAvailable ? 'LEFT JOIN occasion_image_assignments ON occasion_image_assignments.occasion_id=occasions.id' : ''}
+       GROUP BY occasions.id ORDER BY occasions.sort_order, occasions.name_en`,
       )
       .all<ManagedTaxonomyRow>(),
   ]);
-  return { categories: categories.results, occasions: occasions.results };
+  return { categories: categories.results, occasions: occasions.results, occasionImagesAvailable };
 }
 
 function cleanTaxonomy(input: {
@@ -91,7 +98,7 @@ function cleanTaxonomy(input: {
 }) {
   const slug = input.slug.trim().toLowerCase();
   const nameEn = input.nameEn.trim();
-  const nameNe = input.nameNe.trim() || nameEn;
+  const nameNe = input.nameNe.trim();
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 80)
     throw new CatalogManagementConflictError(
       'Use a lowercase URL slug with letters, numbers and hyphens.',
@@ -166,14 +173,16 @@ export async function saveTaxonomy(
   if(parentChange&&(options.kind!=='category'||options.input.expectedParentId===undefined))throw new CatalogManagementConflictError('A category parent change requires its exact previous parent.');
   const parentAuthority=parentChange?await staffMutationGuard(database,options.actorId,'catalog.manage',CatalogManagementConflictError,'super_admin'):null;
   for(const parent of [options.input.parentId,options.input.expectedParentId])if(parent!==null&&parent!==undefined&&(typeof parent!=='string'||!/^[A-Za-z0-9_-]{1,160}$/.test(parent)))throw new CatalogManagementConflictError('Choose a supported category parent.');
-  const imageChange = options.input.imageId !== undefined;
-  if (imageChange && (options.kind !== 'category' || !options.form || options.input.expectedImageId === undefined))
-    throw new CatalogManagementConflictError('Category image changes require a validated catalogue form and current image baseline.');
+  const { table, media, assignments, parent } = taxonomyImageStorage[options.kind];
+  const label = options.kind === 'category' ? 'Category' : 'Occasion';
+  const imageChange = options.input.imageId !== undefined &&
+    (options.kind === 'category' || await hasOccasionImageStorage(database));
+  if (imageChange && (!options.form || options.input.expectedImageId === undefined))
+    throw new CatalogManagementConflictError(`${label} image changes require a validated catalogue form and current image baseline.`);
   for (const value of [options.input.imageId, options.input.expectedImageId]) {
     if (value !== undefined && value !== null && !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$/.test(value))
-      throw new CatalogManagementConflictError('Category image reference is invalid.');
+      throw new CatalogManagementConflictError(`${label} image reference is invalid.`);
   }
-  const table = options.kind === 'category' ? 'categories' : 'occasions';
   const id = options.id ?? crypto.randomUUID();
   const existing = options.id
     ? await database
@@ -200,22 +209,22 @@ export async function saveTaxonomy(
   }
   let previousImageId: string | null = null;
   if (imageChange) {
-    previousImageId = (await database.prepare('SELECT media_id AS imageId FROM category_image_assignments WHERE category_id=?')
+    previousImageId = (await database.prepare(`SELECT media_id AS imageId FROM ${assignments} WHERE ${parent}=?`)
       .bind(id).first<{ imageId: string | null }>())?.imageId ?? null;
     if (previousImageId !== options.input.expectedImageId)
-      throw new CatalogManagementConflictError('The category image changed. Refresh the entry before saving.');
+      throw new CatalogManagementConflictError(`The ${options.kind} image changed. Refresh the entry before saving.`);
     if (options.input.imageId !== null) {
-      const permitted = await database.prepare(`SELECT id FROM category_media WHERE id=?
-        AND (category_id=? OR (category_id IS NULL AND created_by=?))`).bind(options.input.imageId!, id, options.actorId).first();
-      if (!permitted) throw new CatalogManagementConflictError('Choose your uploaded image or an image already belonging to this category.');
+      const permitted = await database.prepare(`SELECT id FROM ${media} WHERE id=?
+        AND (${parent}=? OR (${parent} IS NULL AND created_by=?))`).bind(options.input.imageId!, id, options.actorId).first();
+      if (!permitted) throw new CatalogManagementConflictError(`Choose your uploaded image or an image already belonging to this ${options.kind}.`);
     }
   }
   // MariaDB's upsert can also match the unique media key. Reject that path
-  // instead of updating another category; updated_by is canonically NOT NULL.
+  // instead of updating another entry; updated_by is canonically NOT NULL.
   const imageConflict = (database as D1Database & { dialect?: string }).dialect === 'mariadb'
-    ? `ON DUPLICATE KEY UPDATE updated_by=CASE WHEN category_id=VALUES(category_id) THEN VALUES(updated_by) ELSE NULL END,
+    ? `ON DUPLICATE KEY UPDATE updated_by=CASE WHEN ${parent}=VALUES(${parent}) THEN VALUES(updated_by) ELSE NULL END,
         media_id=VALUES(media_id),updated_at=VALUES(updated_at)`
-    : 'ON CONFLICT(category_id) DO UPDATE SET media_id=excluded.media_id,updated_by=excluded.updated_by,updated_at=excluded.updated_at';
+    : `ON CONFLICT(${parent}) DO UPDATE SET media_id=excluded.media_id,updated_by=excluded.updated_by,updated_at=excluded.updated_at`;
   try {
     await database.batch([
       ...(authority?.statements ?? []),
@@ -223,10 +232,10 @@ export async function saveTaxonomy(
       ...(options.form && existing ? catalogBatchGuard(database,
         `EXISTS(SELECT 1 FROM ${table} WHERE id=?)`, [id]) : []),
       ...(imageChange ? catalogBatchGuard(database,
-        "COALESCE((SELECT media_id FROM category_image_assignments WHERE category_id=?),'')=?",
+        `COALESCE((SELECT media_id FROM ${assignments} WHERE ${parent}=?),'')=?`,
         [id, previousImageId ?? '']) : []),
       ...(imageChange && options.input.imageId !== null ? catalogBatchGuard(database,
-        `EXISTS(SELECT 1 FROM category_media WHERE id=? AND (category_id=? OR (category_id IS NULL AND created_by=?)))`,
+        `EXISTS(SELECT 1 FROM ${media} WHERE id=? AND (${parent}=? OR (${parent} IS NULL AND created_by=?)))`,
         [options.input.imageId!, id, options.actorId]) : []),
       existing
         ? database
@@ -273,9 +282,9 @@ export async function saveTaxonomy(
                 options.now,
                 options.now,
               ),
-      ...(imageChange && options.input.imageId !== null ? [database.prepare('UPDATE category_media SET category_id=? WHERE id=? AND category_id IS NULL')
+      ...(imageChange && options.input.imageId !== null ? [database.prepare(`UPDATE ${media} SET ${parent}=? WHERE id=? AND ${parent} IS NULL`)
         .bind(id, options.input.imageId!)] : []),
-      ...(imageChange ? [database.prepare(`INSERT INTO category_image_assignments(category_id,media_id,updated_by,updated_at)
+      ...(imageChange ? [database.prepare(`INSERT INTO ${assignments}(${parent},media_id,updated_by,updated_at)
         VALUES (?,?,?,?) ${imageConflict}`)
         .bind(id, options.input.imageId!, options.actorId, options.now)] : []),
       database
@@ -301,7 +310,7 @@ export async function saveTaxonomy(
     ]);
   } catch (error) {
     if (imageChange && error instanceof Error && /constraint/i.test(error.message))
-      throw new CatalogManagementConflictError('Category details or image changed. Refresh the entry before saving.');
+      throw new CatalogManagementConflictError(`${label} details or image changed. Refresh the entry before saving.`);
     if (error instanceof Error && error.message.includes('UNIQUE constraint'))
       throw new CatalogManagementConflictError('That slug is already in use.');
     throw error;

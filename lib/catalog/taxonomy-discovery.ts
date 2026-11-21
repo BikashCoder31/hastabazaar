@@ -6,6 +6,7 @@ import {
 } from '@/lib/db/repositories/products';
 import { publicProductVisibility } from '@/lib/products/eligibility';
 import { publicCatalogueQuery } from '@/lib/products/public-catalogue-query';
+import { hasOccasionImageStorage } from './taxonomy-image-storage';
 
 export type DiscoveryCategory = CategoryRow & { productCount?: number };
 export type OccasionGroup = { name: string; entries: readonly OccasionRow[] };
@@ -53,9 +54,19 @@ async function readBudgetCaps(db: D1Database, now: number) {
   return [...new Set(results.map(row => Number(row.price)))];
 }
 
+async function listPublicDiscoveryOccasions(db: D1Database): Promise<readonly OccasionRow[]> {
+  if (!await hasOccasionImageStorage(db)) return listActiveOccasions(db);
+  const { results } = await db.prepare(`
+    SELECT o.id,o.slug,o.name_en AS nameEn,o.name_ne AS nameNe,a.media_id AS imageId
+    FROM occasions o LEFT JOIN occasion_image_assignments a ON a.occasion_id=o.id
+    WHERE o.is_active=1 ORDER BY o.sort_order,o.name_en
+  `).all<OccasionRow>();
+  return results;
+}
+
 export async function readDiscoveryOccasions(db: D1Database, now = Date.now()) {
   const [entries, hasStorage, priceCaps] = await Promise.all([
-    listActiveOccasions(db),
+    listPublicDiscoveryOccasions(db),
     hasDiscoveryStorage(db),
     readBudgetCaps(db, now),
   ]);

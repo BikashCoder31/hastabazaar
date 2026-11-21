@@ -42,9 +42,9 @@ export async function POST(request: Request): Promise<Response> {
     const hasImage = Object.prototype.hasOwnProperty.call(body, 'imageId');
     const hasParent=Object.hasOwn(body,'parentId');
     if(hasParent&&(body.kind!=='category'||!(body.parentId===null||typeof body.parentId==='string')||!(body.expectedParentId===null||typeof body.expectedParentId==='string')))return Response.json({error:'Select a category parent and its exact previous parent.'},{status:400});
-    if (hasImage && (body.kind !== 'category' || !(body.imageId === null || typeof body.imageId === 'string') ||
+    if (hasImage && (!(body.imageId === null || typeof body.imageId === 'string') ||
       !(body.expectedImageId === null || typeof body.expectedImageId === 'string')))
-      return Response.json({ error: 'Category image and current image baseline must be valid references or null.' }, { status: 400 });
+      return Response.json({ error: 'Image and current image baseline must be valid references or null.' }, { status: 400 });
     const form = await validateSellerFormSubmission(database, 'staff.catalog',
       body.formVersion, body.customAnswers, body.idempotencyKey);
     validatedVersionId = form.versionId;
@@ -57,12 +57,7 @@ export async function POST(request: Request): Promise<Response> {
         input: {
           slug: typeof body.slug === 'string' ? body.slug : '',
           nameEn: typeof body.nameEn === 'string' ? body.nameEn : '',
-          nameNe:
-            typeof body.nameNe === 'string' && body.nameNe.trim()
-              ? body.nameNe
-              : typeof body.nameEn === 'string'
-                ? body.nameEn
-                : '',
+          nameNe: typeof body.nameNe === 'string' ? body.nameNe : '',
           isActive: Boolean(body.isActive),
           sortOrder: Number(body.sortOrder),
           ...(hasParent?{parentId:body.parentId as string|null,expectedParentId:body.expectedParentId as string|null}:{}),

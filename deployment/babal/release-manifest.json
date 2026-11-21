@@ -1042,6 +1042,13 @@
       "usage": "additive-maintenance"
     }
   ],
+  "ownerAppliedMigrations": [
+    {
+      "path": "deployment/babal/mariadb-occasion-images.sql",
+      "sha256": "45ee85704bbb5f43b883b5efe633d90147bdf212bb0b827b30c78491c184d80f",
+      "usage": "owner-applied"
+    }
+  ],
   "requiredTables": {
     "addresses": [
       "created_at",

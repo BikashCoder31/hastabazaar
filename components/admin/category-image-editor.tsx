@@ -1,18 +1,23 @@
 'use client';
 import Image from 'next/image';
 import { useId, useRef, useState } from 'react';
+import type { TaxonomyKind } from '@/lib/catalog/taxonomy-image-storage';
 
 export function CategoryImageEditor({
+  kind = 'category',
   value,
   onChange,
   onBusyChange,
   disabled = false,
 }: {
+  kind?: TaxonomyKind;
   value: string | null;
   onChange: (id: string | null) => void;
   onBusyChange: (busy: boolean) => void;
   disabled?: boolean;
 }) {
+  const imageLabel = kind === 'category' ? 'Category image' : 'Occasion image';
+  const endpoint = `/api/admin/catalog/${kind}-media`;
   const id = useId();
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
@@ -39,7 +44,7 @@ export function CategoryImageEditor({
       const body = new FormData();
       body.set('file', current.file);
       body.set('requestId', current.requestId);
-      const response = await fetch('/api/admin/catalog/category-media', {
+      const response = await fetch(endpoint, {
         method: 'POST',
         body,
       });
@@ -49,7 +54,7 @@ export function CategoryImageEditor({
       } | null;
       if (!response.ok)
         throw Error(
-          result?.error || 'The category image could not be uploaded.',
+          result?.error || `The ${kind} image could not be uploaded.`,
         );
       if (typeof result?.media?.id !== 'string' || !result.media.id)
         throw Error('The upload could not be confirmed. Retry the same image.');
@@ -60,7 +65,7 @@ export function CategoryImageEditor({
       setError(
         cause instanceof Error
           ? cause.message
-          : 'The category image could not be uploaded.',
+          : `The ${kind} image could not be uploaded.`,
       );
     } finally {
       setBusy(false);
@@ -73,29 +78,29 @@ export function CategoryImageEditor({
       disabled={disabled || busy}
     >
       <legend className="px-1 text-sm font-semibold">
-        Category image{' '}
+        {imageLabel}{' '}
         <span className="font-normal text-muted-foreground">(optional)</span>
       </legend>
       {value ? (
         <Image
           data-media-mode="cover"
           unoptimized
-          src={`/api/admin/catalog/category-media/${encodeURIComponent(value)}`}
-          alt="Category image preview"
+          src={`${endpoint}/${encodeURIComponent(value)}`}
+          alt={`${imageLabel} preview`}
           width={160}
           height={160}
           className="size-32 rounded-xl border object-cover"
         />
       ) : null}
       <label htmlFor={id} className="block text-sm font-medium">
-        {value ? 'Replace category image' : 'Upload category image'}
+        {value ? `Replace ${kind} image` : `Upload ${kind} image`}
       </label>
       <input
         id={id}
         type="file"
         accept="image/jpeg,image/png,image/webp"
         aria-describedby={`${id}-help`}
-        className="block w-full min-w-0 text-sm"
+        className="block w-full min-w-0 text-sm max-md:min-h-11 max-md:file:min-h-11"
         onChange={(event) => {
           const file = event.currentTarget.files?.[0];
           event.currentTarget.value = '';

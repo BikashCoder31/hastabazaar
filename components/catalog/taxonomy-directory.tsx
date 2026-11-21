@@ -2,6 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowRight, CalendarDays, Gift, Heart, Package, Sparkles } from 'lucide-react';
 import { categoryImage } from '@/lib/catalog/category-presentation';
+import { nepaliTaxonomyName } from '@/lib/catalog/taxonomy-names';
 import { queryFieldPresentation } from '@/lib/catalog/shop-query';
 import type { DiscoveryCategory, OccasionGroup } from '@/lib/catalog/taxonomy-discovery';
 import type { OccasionRow } from '@/lib/db/repositories/products';
@@ -31,6 +32,7 @@ function CategoryCards({ entries }: { entries: readonly DiscoveryCategory[] }) {
     <section aria-label="All categories" className={`grid auto-rows-[11.875rem] grid-cols-2 gap-3 md:auto-rows-[15rem] md:gap-[18px] lg:auto-rows-[18.75rem] ${largeGrid ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
       {entries.map((entry, index) => {
         const image = categoryImage(entry);
+        const nepali = nepaliTaxonomyName(entry);
         const wide = largeGrid && (index === 0 || index === 5 || index === 6);
         const tall = largeGrid && index === 0;
         return (
@@ -55,9 +57,9 @@ function CategoryCards({ entries }: { entries: readonly DiscoveryCategory[] }) {
               </span>
             )}
             <div className="relative flex min-w-0 items-end justify-between gap-2 p-3.5 md:gap-3 md:p-[22px]">
-              <div className="min-w-0">
+              <div className="min-w-0 [overflow-wrap:anywhere]">
                 <h2 className="font-heading text-[clamp(1.375rem,2.6vw,2.125rem)] font-medium leading-[1.05]">{entry.nameEn}</h2>
-                {entry.nameNe ? <p lang="ne" className="mt-0.5 text-sm text-[#F3E6C9]">{entry.nameNe}</p> : null}
+                {nepali ? <p lang="ne" className="mt-0.5 text-sm text-[#F3E6C9]">{nepali}</p> : null}
               </div>
               <span aria-hidden="true" className="grid size-[34px] shrink-0 place-items-center rounded-full bg-white text-[#14213D] md:size-11">
                 <ArrowRight className="size-4" />
@@ -114,19 +116,32 @@ function CategoryNextSteps({ occasions, search }: {
   );
 }
 
+function occasionImageUrl(id: string) {
+  return `/api/occasions/image/${encodeURIComponent(id)}`;
+}
+
 function OccasionCards({ entries }: { entries: readonly OccasionRow[] }) {
   return (
     <div className="grid grid-cols-2 gap-2.5 md:gap-3.5 lg:grid-cols-4">
       {entries.map((entry, index) => {
         const { card, icon, Symbol } = occasionStyles[index % occasionStyles.length];
+        const nepali = nepaliTaxonomyName(entry);
         return (
           <Link key={entry.id} id={`occasion-${entry.slug}`} href={shopTaxonomyHref('occasion', entry.slug)}
-            className={`flex min-h-[140px] min-w-0 scroll-mt-44 flex-col justify-between gap-4 rounded-[20px] p-4 md:min-h-[170px] md:gap-7 md:p-[22px] ${card} ${focus}`}>
-            <span aria-hidden="true" className={`grid size-11 place-items-center rounded-[13px] ${icon}`}><Symbol className="size-[21px]" /></span>
-            <span className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-end gap-x-2">
-              <span className="min-w-0">
+            className={`relative isolate flex min-h-[140px] min-w-0 scroll-mt-44 flex-col gap-4 overflow-hidden rounded-[20px] p-4 md:min-h-[170px] md:gap-7 md:p-[22px] ${entry.imageId ? 'justify-end bg-[#14213D] text-white' : `justify-between ${card}`} ${focus}`}>
+            {entry.imageId ? (
+              <>
+                <Image src={occasionImageUrl(entry.imageId)} alt="" fill unoptimized data-media-mode="cover"
+                  sizes="(min-width: 1360px) 306px, (min-width: 1024px) 24vw, calc(50vw - 24px)" className="object-cover" />
+                <span className="absolute inset-0 bg-linear-to-t from-[#14213D]/95 via-[#14213D]/40 to-transparent" />
+              </>
+            ) : (
+              <span aria-hidden="true" className={`grid size-11 place-items-center rounded-[13px] ${icon}`}><Symbol className="size-[21px]" /></span>
+            )}
+            <span className="relative grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-end gap-x-2">
+              <span className="min-w-0 [overflow-wrap:anywhere]">
                 <span className="block font-heading text-[clamp(1.3125rem,2.1vw,1.625rem)] font-medium leading-[1.05]">{entry.nameEn}</span>
-                {entry.nameNe ? <span lang="ne" className="mt-0.5 block text-sm opacity-90">{entry.nameNe}</span> : null}
+                {nepali ? <span lang="ne" className="mt-0.5 block text-sm opacity-90">{nepali}</span> : null}
               </span>
               <ArrowRight aria-hidden="true" className="size-4" />
             </span>
@@ -141,7 +156,8 @@ function InSeason({ occasion }: { occasion: OccasionRow }) {
   return (
     <section aria-labelledby="in-season-title" className="grid overflow-hidden rounded-[24px] bg-[#14213D] text-white lg:min-h-[360px] lg:grid-cols-[1.1fr_1fr]">
       <div className="relative min-h-[260px] overflow-hidden lg:min-h-[360px]" data-media-frame="cover">
-        <Image src="/homepage/meaningful-gifts-hero.webp" alt="" fill data-media-mode="cover"
+        <Image src={occasion.imageId ? occasionImageUrl(occasion.imageId) : '/homepage/meaningful-gifts-hero.webp'}
+          unoptimized={Boolean(occasion.imageId)} alt="" fill data-media-mode="cover"
           sizes="(min-width: 1440px) 662px, (min-width: 1024px) 50vw, 100vw" className="object-cover" />
       </div>
       <div className="flex flex-col items-start justify-center gap-3 px-5 py-[26px] md:p-9 lg:p-10">

@@ -1,11 +1,29 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 
-/** Disposable SQLite with every real migration and atomic D1-style batches. */
+export function declareOccasionImageFixtureStorage(sqlite: DatabaseSync) {
+  if (sqlite.prepare('PRAGMA database_list').all().some(row => row.file))
+    throw new Error('Occasion image test storage requires an in-memory fixture.');
+  sqlite.exec(`
+    CREATE TABLE occasion_media (
+      id TEXT PRIMARY KEY, occasion_id TEXT REFERENCES occasions(id), object_key TEXT NOT NULL UNIQUE,
+      original_name TEXT NOT NULL, mime_type TEXT NOT NULL, size_bytes INTEGER NOT NULL, width INTEGER NOT NULL,
+      height INTEGER NOT NULL, content_hash TEXT NOT NULL, created_by TEXT NOT NULL REFERENCES users(id),
+      request_id TEXT NOT NULL, created_at INTEGER NOT NULL, UNIQUE(created_by,request_id)
+    );
+    CREATE TABLE occasion_image_assignments (
+      occasion_id TEXT PRIMARY KEY REFERENCES occasions(id), media_id TEXT UNIQUE REFERENCES occasion_media(id),
+      updated_by TEXT NOT NULL REFERENCES users(id), updated_at INTEGER NOT NULL
+    );
+  `);
+}
+
+/** Disposable SQLite with historical schema and atomic D1-style batches. */
 export async function categoryMediaDb() {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec('PRAGMA foreign_keys=ON');
-  const names = (await readdir(new URL('../../drizzle/', import.meta.url))).filter((name) => /^\d{4}_.+\.sql$/.test(name)).sort();
+  const names = (await readdir(new URL('../../drizzle/', import.meta.url)))
+    .filter(name => /^\d{4}_.+\.sql$/.test(name) && name !== '0170_occasion_images.sql').sort();
   for (const name of names) {
     const source = await readFile(new URL(`../../drizzle/${name}`, import.meta.url), 'utf8');
     for (const statement of source.split('--> statement-breakpoint').map((value) => value.trim()).filter(Boolean)) sqlite.exec(statement);

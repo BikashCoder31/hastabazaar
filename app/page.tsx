@@ -18,6 +18,7 @@ import { SiteHeader } from '@/components/layout/site-header';
 import { CustomerActingChip } from '@/components/storefront/customer-acting-chip';
 import { getCustomerReadContext } from '@/lib/auth/customer';
 import { categoryImage } from '@/lib/catalog/category-presentation';
+import { nepaliTaxonomyName } from '@/lib/catalog/taxonomy-names';
 import { companyPublicContacts } from '@/lib/content/company-details';
 import { requireDatabase } from '@/lib/db/d1';
 import { getEffectiveBusinessSetting } from '@/lib/db/repositories/business-settings';
@@ -165,6 +166,7 @@ export default async function Home() {
               <nav aria-label="Shop featured craft categories">
                 {categories.map(category => {
                   const photo = categoryImage(category);
+                  const nepali = nepaliTaxonomyName(category);
                   return (
                     <Link key={category.id} href={'/shop?category=' + encodeURIComponent(category.slug)} className={styles.category}>
                       <div data-media-frame="cover" className={mediaFrameClass('cover', 'aspect-[4/5]')}>
@@ -177,7 +179,7 @@ export default async function Home() {
                       <span className={styles.categoryName}>
                         <strong>{category.nameEn}</strong><ArrowRight size={16} aria-hidden="true" />
                       </span>
-                      {category.nameNe ? <small lang="ne">{category.nameNe}</small> : null}
+                      {nepali ? <small lang="ne">{nepali}</small> : null}
                     </Link>
                   );
                 })}
@@ -264,11 +266,12 @@ export default async function Home() {
 
         <HomepageOccasionCarousel slides={occasionSlides}>
           <nav aria-label="Gift occasions">
-            {occasions.map(occasion => (
-              <Link key={occasion.id} href={'/occasions#occasion-' + encodeURIComponent(occasion.slug)}>
-                {occasion.nameEn}{occasion.nameNe ? <span lang="ne">{occasion.nameNe}</span> : null}
-              </Link>
-            ))}
+            {occasions.map(occasion => {
+              const nepali = nepaliTaxonomyName(occasion);
+              return <Link key={occasion.id} href={'/occasions#occasion-' + encodeURIComponent(occasion.slug)}>
+                {occasion.nameEn}{nepali ? <span lang="ne">{nepali}</span> : null}
+              </Link>;
+            })}
             <Link href="/occasions">All occasions <ArrowRight size={15} aria-hidden="true" /></Link>
           </nav>
         </HomepageOccasionCarousel>
