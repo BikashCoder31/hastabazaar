@@ -99,7 +99,7 @@ for (const path of ['app/cart/page.tsx', 'app/checkout/page.tsx'])
     const output=await build({entryPoints:[path],bundle:true,write:false,platform:'node',format:'cjs',external:['react','react/*'],plugins:[{name:'customer-page',setup(b){
       // Exercise the actual corrected wrapper and its default current-time read.
       b.onResolve({filter:/^\.\/customer-service-fees$/},args=>args.importer.endsWith('platform-service-fee.ts')?{path:'@/lib/db/repositories/customer-service-fees',namespace:'fixture'}:undefined);
-      b.onResolve({filter:/^(cloudflare:workers|next\/headers|@\/components\/|@\/lib\/(db\/|auth\/|checkout\/(policy-context|payment-capabilities)))/},args=>args.path.endsWith('/platform-service-fee')?undefined:{path:args.path,namespace:'fixture'});
+      b.onResolve({filter:/^(cloudflare:workers|next\/headers|@\/components\/|@\/lib\/(db\/|auth\/|checkout\/(policy-context|payment-capabilities)|orders\/first-cod-review))/},args=>args.path.endsWith('/platform-service-fee')?undefined:{path:args.path,namespace:'fixture'});
       b.onLoad({filter:/.*/,namespace:'fixture'},args=>{
         const p=args.path;
         const contents=p==='cloudflare:workers'?'export const env={DB:{fixture:true}}'
@@ -108,6 +108,7 @@ for (const path of ['app/cart/page.tsx', 'app/checkout/page.tsx'])
           :p.endsWith('/customer-service-fees')?'export async function quoteCustomerServiceFee(db,at){if(!db.fixture)throw Error("Wrong database");globalThis.quoteCalls.push(at);return {snapshot:globalThis.snapshot}}'
           :p.endsWith('/delivery-rates')?'export async function getDeliveryRates(){return {}}'
           :p.endsWith('/customer')?'export async function getCustomerUser(){return null}'
+          :p.endsWith('/first-cod-review')?'export async function customerMustConfirmCod(){throw Error("Anonymous checkout must not read COD confirmation settings")}'
           :p.endsWith('/contact-verification')?'export async function getContactVerificationStatus(){return null};export const resolveCheckoutContactPolicy=()=>"email_and_phone"'
           :p.endsWith('/wallet')?'export async function getWallet(){return null}'
           :p.endsWith('/customers')?'export async function listCustomerAddresses(){return []}'
