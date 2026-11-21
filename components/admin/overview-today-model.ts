@@ -19,6 +19,7 @@ export type TodayTask = {
   assignment: TaskAssignment | null;
   href: string;
   action: string;
+  codConfirmationOrderId?: string;
 };
 export type TodayTaskCopy = Partial<Pick<TodayTask, 'type' | 'title' | 'context' | 'href' | 'action'>> & { sellerName?: string };
 

@@ -15,6 +15,7 @@ import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { isValidatedFormVersionStale, validateSellerFormSubmission } from '@/lib/forms/submission';
 import { FormRuntimeError } from '@/lib/forms/runtime';
 import { FormValidationError } from '@/lib/forms/validation';
+import { ACTOR_INTENT_HEADER } from '@/lib/http/actor-intent';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,17 +31,20 @@ export async function POST(
   let db: D1Database | null = null;
   let validatedVersionId: string | undefined;
   try {
-    const staff = await requireStaffApi('order.manage');
+    const intendedActorId = request.headers.get(ACTOR_INTENT_HEADER);
+    const staff = await requireStaffApi('order.manage', intendedActorId ? { intendedActorId } : undefined);
     const { id } = await context.params;
     const parsed = await readBoundedJsonObject(request) as unknown;
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) ||
       Object.keys(parsed).some((key) => !['action','note','trackingCode','sellerId','requestId',
-        'formVersion','customAnswers'].includes(key)))
+        'formVersion','customAnswers','codNotConfirmed'].includes(key)))
       return json({ error: 'Invalid fulfilment request.' }, 400);
     const body = parsed as Record<string, unknown>;
     const companyPreparation = body.action === 'start_packing' || body.action === 'ready_for_pickup';
     const action = body.action as AdminFulfillmentAction;
     if (!companyPreparation && !['dispatch', 'deliver', 'cancel'].includes(action)) return json({ error: 'Invalid fulfilment action.' }, 400);
+    if (body.codNotConfirmed !== undefined && (body.codNotConfirmed !== true || action !== 'cancel' || !intendedActorId))
+      return json({ error: 'Refresh the current cash-on-delivery confirmation.' }, 400);
     if (companyPreparation && staff.role !== 'super_admin') throw new StaffAuthorizationError('Super Admin access is required for company-store preparation.',403);
     if (companyPreparation ? typeof body.sellerId !== 'string' || !body.sellerId.trim() : body.sellerId !== undefined)
       return json({error:'Select the company-store maker items to prepare.'},400);
@@ -73,6 +77,7 @@ export async function POST(
         actorId: staff.id,
         action,
         note,
+        ...(body.codNotConfirmed === true ? { codNotConfirmed: true } : {}),
         trackingCode,
         requestId: body.requestId,
         now: Date.now(),

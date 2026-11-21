@@ -1,5 +1,5 @@
 import {OrderOfferDetails} from '@/components/commerce/order-offer-details';
-import { getFirstCodReview } from '@/lib/orders/first-cod-review';
+import { customerCodSchemaAvailable, getFirstCodReview } from '@/lib/orders/first-cod-review';
 import { listCustomerCancellationAnswers } from '@/lib/forms/cancellation-history';
 import { CancellationHistory } from '@/components/commerce/cancellation-history';
 import { CustomerDelivery } from '@/components/delivery/customer-delivery';
@@ -37,7 +37,7 @@ import { authorizeFormAnswerRead } from '@/lib/forms/access';
 import { listReturnsForCustomerReceipt } from '@/lib/db/repositories/returns';
 import { listComplaintsForCustomerReceipt } from '@/lib/db/repositories/complaints';
 import { getCustomerUser } from '@/lib/auth/customer';
-import { orderPresentation } from '@/lib/commerce/order-presentation';
+import { COD_CONFIRMATION_NOTICE, orderPresentation } from '@/lib/commerce/order-presentation';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'Your order' };
@@ -81,7 +81,7 @@ export default async function OrderReceiptPage({
     .bind(orderNumber)
     .first<{ id: string; customerId: string | null }>();
   const codReview = receiptOrder
-    ? await getFirstCodReview(database, receiptOrder.id)
+    ? await getFirstCodReview(database, receiptOrder.id, receipt.paymentMode === 'cod' && await customerCodSchemaAvailable(database))
     : null;
   const codPending =
     codReview?.status === 'pending' && receipt.status !== 'cancelled';
@@ -210,9 +210,8 @@ export default async function OrderReceiptPage({
               </p>
               {codPending ? (
                 <p className="mb-3 text-sm leading-6">
-                  We received your order. Staff will confirm it with you before
-                  your makers begin packing. You can still cancel eligible
-                  items.
+                  {codReview?.holdSource === 'customer_flag' ? COD_CONFIRMATION_NOTICE
+                    : 'We received your order. Staff will confirm it with you before your makers begin packing. You can still cancel eligible items.'}
                 </p>
               ) : null}
               <OrderStatusBadge

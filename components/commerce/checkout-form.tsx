@@ -44,6 +44,7 @@ import {
   NEPAL_PROVINCES,
 } from '@/lib/checkout/validation';
 import { DELIVERY_ESTIMATE_NOTICE } from '@/lib/checkout/delivery-presentation';
+import { COD_CONFIRMATION_NOTICE } from '@/lib/commerce/order-presentation';
 import { normalizeNepalMobile } from '@/lib/auth/nepal-phone';
 import type { CustomerAddressRow } from '@/lib/db/repositories/customers';
 import type { CheckoutPromoQuote } from '@/lib/incentives/types';
@@ -94,6 +95,7 @@ function ScopedCheckoutForm({
   contactPolicy = 'email_and_phone',
   customerId,
   customerDisplayName,
+  codConfirmationRequired = false,
   savedAddresses = [],
   walletBalancePaisa = 0,
   referralCampaign,
@@ -113,6 +115,7 @@ function ScopedCheckoutForm({
   contactStatus?: ContactVerificationStatus|null;
   contactPolicy?: CheckoutContactPolicy;
   customerId?:string;
+  codConfirmationRequired?: boolean;
   customerDisplayName?: string;
   savedAddresses?: readonly CustomerAddressRow[];
   walletBalancePaisa?: number;
@@ -727,6 +730,7 @@ function ScopedCheckoutForm({
           <div className="mt-5 space-y-3">
             {paymentCapabilities.cod?<label className="block rounded-xl border p-4"><input type="radio" name="paymentMethod" value="cod" checked={paymentMethod==='cod'} onChange={()=>setPaymentMethod('cod')} disabled={submitting}/> <span className="font-semibold">Cash on delivery</span><p className="mt-1 text-sm leading-6 text-muted-foreground">Pay the remaining cash total to the delivery representative for each parcel.</p></label>:null}
             {paymentCapabilities.manual_bank?<label className="block rounded-xl border p-4"><input type="radio" name="paymentMethod" value="manual_bank" checked={paymentMethod==='manual_bank'} onChange={()=>setPaymentMethod('manual_bank')} disabled={submitting}/> <span className="font-semibold">Manual bank transfer</span><p className="mt-1 text-sm leading-6 text-muted-foreground">Your order will provide original company bank instructions and a 24-hour payment deadline. Submit the amount and payment date after transferring; a reference or image is optional. Preparation starts after verified funds and release checks.</p></label>:null}
+            {paymentCapabilities.cod && paymentMethod === 'cod' && codConfirmationRequired ? <p className="text-sm leading-6 text-muted-foreground">{COD_CONFIRMATION_NOTICE}</p> : null}
             {!paymentCapabilities.cod&&!paymentCapabilities.manual_bank?<p>New payment methods are currently unavailable for this cart. A retained prior attempt can still be checked below.</p>:null}
           </div>
         </section>

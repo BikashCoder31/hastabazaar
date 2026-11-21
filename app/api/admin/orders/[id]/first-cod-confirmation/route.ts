@@ -6,6 +6,7 @@ import {
   FirstCodReviewConflictError,
 } from '@/lib/orders/first-cod-review';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import { ACTOR_INTENT_HEADER } from '@/lib/http/actor-intent';
 
 import { readBoundedBody, BodyTooLargeError } from '@/lib/http/bounded-body';
 export const dynamic = 'force-dynamic';
@@ -22,7 +23,8 @@ export async function POST(
   if (!isTrustedMutationRequest(request))
     return json({ error: 'Request origin was not accepted.' }, 403);
   try {
-    const staff = await requireStaffApi('order.manage');
+    const intendedActorId = request.headers.get(ACTOR_INTENT_HEADER);
+    const staff = await requireStaffApi('order.manage', intendedActorId ? { intendedActorId } : undefined);
     const { id } = await context.params;
     const parsed: unknown = JSON.parse(
       new TextDecoder('utf-8', { fatal: true }).decode(

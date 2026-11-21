@@ -1,12 +1,18 @@
 'use client';
 import { FormGuide } from '@/components/forms/form-guide';
-import { useRef, useState, type SyntheticEvent } from 'react';
+import { useId, useRef, useState, type SyntheticEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-export function FirstCodConfirmation({ orderId }: { orderId: string }) {
+import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { ACTOR_INTENT_HEADER } from '@/lib/http/actor-intent';
+
+export function FirstCodConfirmation({ orderId, actorId, compact = false }: { orderId: string; actorId?: string; compact?: boolean }) {
   const router = useRouter();
+  const inputId = useId();
+  const titleId = useId();
+  const [open, setOpen] = useState(false);
   const attempt = useRef<{ requestId: string; reason: string } | null>(null);
   const [reason, setReason] = useState('');
   const [pending, setPending] = useState(false);
@@ -34,7 +40,7 @@ export function FirstCodConfirmation({ orderId }: { orderId: string }) {
           '/first-cod-confirmation',
         {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: { 'content-type': 'application/json', ...(actorId ? { [ACTOR_INTENT_HEADER]: actorId } : {}) },
           body: JSON.stringify(attempt.current),
         },
       );
@@ -48,6 +54,7 @@ export function FirstCodConfirmation({ orderId }: { orderId: string }) {
             'Confirmation could not be verified. Retry the same decision.',
         );
       router.refresh();
+      setOpen(false);
     } catch (e) {
       setError(
         e instanceof Error ? e.message : 'Confirmation could not be saved.',
@@ -55,18 +62,7 @@ export function FirstCodConfirmation({ orderId }: { orderId: string }) {
       setPending(false);
     }
   }
-  return (
-    <section
-      className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-6"
-      aria-labelledby="cod-confirmation-title"
-    >
-      <h2 id="cod-confirmation-title" className="font-heading text-2xl">
-        Awaiting COD confirmation
-      </h2>
-      <p className="mt-2 text-sm leading-6">
-        This customer has no delivered order history. Confirm the customer and
-        order before releasing it for packing or delivery.
-      </p>
+  const form = (
       <form
         data-form-id="staff.first-cod-confirmation"
         onSubmit={submit}
@@ -74,9 +70,9 @@ export function FirstCodConfirmation({ orderId }: { orderId: string }) {
       >
         <FormGuide formId="staff.first-cod-confirmation" />
 
-        <Label htmlFor="cod-confirmation-reason">Confirmation reason</Label>
+        <Label htmlFor={inputId}>Confirmation reason</Label>
         <Textarea
-          id="cod-confirmation-reason"
+          id={inputId}
           value={reason}
           onChange={(event) => setReason(event.target.value)}
           minLength={8}
@@ -99,9 +95,26 @@ export function FirstCodConfirmation({ orderId }: { orderId: string }) {
             ? 'Saving confirmation…'
             : locked
               ? 'Retry this confirmation'
-              : 'Confirm COD order'}
+              : 'Confirmed by phone'}
         </Button>
+        {compact ? <Button className="min-h-11" type="button" variant="outline" disabled={pending} onClick={() => setOpen(false)}>Go back</Button> : null}
       </form>
+  );
+  if (compact) return (
+    <Dialog open={open} onOpenChange={next => { if (!pending) setOpen(next); }}>
+      <DialogTrigger render={<Button className="min-h-11 whitespace-normal" />}>Confirmed by phone</DialogTrigger>
+      <DialogContent showCloseButton={false}>
+        <DialogTitle>Record phone confirmation</DialogTitle>
+        <DialogDescription>Confirm that the customer wants this order before the seller starts preparing it.</DialogDescription>
+        {form}
+      </DialogContent>
+    </Dialog>
+  );
+  return (
+    <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-6" aria-labelledby={titleId}>
+      <h2 id={titleId} className="font-heading text-2xl">Awaiting COD confirmation</h2>
+      <p className="mt-2 text-sm leading-6">Call the customer and confirm this order before it is prepared.</p>
+      {form}
     </section>
   );
 }

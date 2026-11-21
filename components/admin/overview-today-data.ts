@@ -11,6 +11,8 @@ import { reviewTaskOpen, type NativeReviewTask, type ReviewQueueTask } from '@/l
 import { readRecentReviewDecisions, type RecentReviewDecision } from '@/lib/admin/recent-review-decisions';
 import type { FinanceRecentDecision } from '@/lib/admin/finance-work-items';
 import { withAdminReturnTo } from '@/lib/admin/return-context';
+import { payableOrderTotalSql } from '@/lib/db/repositories/platform-service-fee';
+import { customerCodSchemaAvailable } from '@/lib/orders/first-cod-review';
 import type { AdminStaffAccess } from './admin-sections';
 import { todayReviewTask, todayShortDate, type TodayTask } from './overview-today-model';
 import { readSellerPickupHandoffs, readSellerReviewHandoffs } from './overview-seller-handoff-data';
@@ -93,6 +95,25 @@ function isCompletedFinanceDecision(decision: FinanceRecentDecision) {
     decision.family === 'payout_packet' && decision.action === 'payout.transfer.paid';
 }
 
+export async function readTodayCodConfirmations(db: D1Database, returnTo: string): Promise<TodayTask[]> {
+  if (!await customerCodSchemaAvailable(db)) return [];
+  const orders = await db.prepare(`SELECT o.id, o.order_number AS orderNumber, buyer.display_name AS buyerName,
+      o.customer_phone AS phone, ${payableOrderTotalSql('o')} AS totalPaisa, r.created_at AS createdAt
+    FROM first_cod_reviews r JOIN orders o ON o.id=r.order_id JOIN users buyer ON buyer.id=r.customer_id
+    WHERE r.status='pending' AND r.hold_source='customer_flag' AND o.status='confirmed' AND o.payment_mode='cod'
+    ORDER BY r.created_at, o.id`).all<{ id: string; orderNumber: string; buyerName: string; phone: string; totalPaisa: number; createdAt: number }>();
+  const money = new Intl.NumberFormat('en-NP', { style: 'currency', currency: 'NPR' });
+  return orders.results.map(order => ({
+    id: 'cod-confirmation:' + order.id, section: 'Orders', type: 'Cash-on-delivery confirmation',
+    title: 'Call to confirm COD order ' + order.orderNumber,
+    context: [order.buyerName, order.phone, money.format(order.totalPaisa / 100)].filter(Boolean).join(' · '),
+    startedAt: order.createdAt, dueAt: null, state: 'action',
+    ownerId: null, ownerName: null, assignment: null,
+    href: withAdminReturnTo('/admin/orders/' + encodeURIComponent(order.id) + '?tab=parcel-cash#confirm-cod', returnTo),
+    action: 'Open order', codConfirmationOrderId: order.id,
+  }));
+}
+
 export async function readTodaySources({
   db, actor, now, returnTo, tasks, financeDecisions,
 }: {
@@ -115,17 +136,19 @@ export async function readTodaySources({
   const completed = await readRecentReviewDecisions(db, actor.id, native, returnTo, 8, { from, through: now }).catch(() => null);
   const ownerIds = [...new Set(tasks.flatMap(task => task.ownerId ? [task.ownerId] : []))];
   const open = tasks.filter(reviewTaskOpen);
-  const [names, handoffs, pickups] = await Promise.all([
+  const [names, handoffs, pickups, codConfirmations] = await Promise.all([
     displayNames(db, ownerIds).catch(() => new Map<string, string>()),
     readSellerReviewHandoffs(db, actor, open),
     readSellerPickupHandoffs(db, actor, returnTo).catch(() => null),
+    can(actor, 'order.manage') ? readTodayCodConfirmations(db, returnTo).catch(() => null) : [],
   ]);
   const completedTasks = new Map(native.filter(task => task.status === 'completed').map(task => [task.id, task]));
   const rows = open.map(task => todayReviewTask(task, returnTo, names.get(task.ownerId ?? '') ?? null, handoffs.copy.get(task.id)));
-  rows.push(...(pickups ?? []));
+  rows.push(...(pickups ?? []), ...(codConfirmations ?? []));
   const partial = [
     ...(handoffs.partial ? ['Some seller action details unavailable'] : []),
     ...(pickups === null ? ['Pickup tasks unavailable'] : []),
+    ...(codConfirmations === null ? ['COD confirmation tasks unavailable'] : []),
     ...(exceptions === null || unrecorded === null ? ['Parcel follow-up unavailable'] : []),
     ...(exceptions?.partial || unrecorded?.length === 100 ? ['Parcel follow-up shows the latest records'] : []),
     ...(cash === null ? ['Courier cash unavailable'] : []),

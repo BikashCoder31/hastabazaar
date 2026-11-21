@@ -27,6 +27,7 @@ import { receiptNumberStatements } from '../db/repositories/billing-documents';
 import { buildEarningsAccrualStatements } from '../db/repositories/payouts';
 import { accrueManagedEntitlements } from '../db/repositories/managed-settlements';
 import { issueManagedInvoiceGroups } from '../db/repositories/managed-documents';
+import { customerCodSchemaAvailable } from '../orders/first-cod-review';
 export class CancellationConflictError extends Error {}
 export interface CancellationAccess {
   orderNumber: string;
@@ -354,6 +355,7 @@ export async function cancelSelectedParcels(
     reviewId?: string;
     originalProof?: AtomicActionProof;
     staffAuthSubject?:string;
+    codNotConfirmed?: boolean;
     form?: CancellationForm;
     parcelContext?: { jobId: string; payload: string; riderPrivacyRequired?: boolean;
       form?: {requestId:string;versionId:string;answers:FormAnswerSnapshot} };
@@ -373,6 +375,9 @@ export async function cancelSelectedParcels(
   if(parcelForm && (!a.actorId || parcelForm.requestId!==o.requestId))
     throw new CancellationConflictError('Configured parcel cancellation requires its staff request.');
   const form = o.form;
+  if (o.codNotConfirmed && (!a.actorId || form?.formId !== 'staff.order-fulfillment' ||
+      !await customerCodSchemaAvailable(db)))
+    throw new CancellationConflictError('Cash-on-delivery confirmation is unavailable for this order.');
   if (form && (parcelForm || form.requestId !== o.requestId ||
     form.answers.formId !== form.formId ||
     (form.formId === 'commerce.order-cancellation' && (a.actorId || o.reviewId)) ||
@@ -393,6 +398,7 @@ export async function cancelSelectedParcels(
   const formDigest = form ? await digestFormRequest({ formId: form.formId,
     action: formAction, orderId: authorizedSource.order.id, actorId, selectedIds,
     note: o.note.trim(), fingerprint: o.fingerprint, reviewId: o.reviewId ?? null,
+    ...(o.codNotConfirmed ? { codNotConfirmed: true } : {}),
     versionId: form.versionId, answers: form.answers }) : null;
   const catalogAuditId = `${o.requestId}:catalog`;
   const catalogAudit = () => db.prepare(`INSERT INTO audit_logs
@@ -400,7 +406,7 @@ export async function cancelSelectedParcels(
     VALUES (?,?,'cancellation.form_submitted','order',?,?,?,?,?)`)
     .bind(crypto.randomUUID(), actorId, authorizedSource.order.id, o.note,
       JSON.stringify({ catalogDigest: formDigest, formId: form?.formId,
-        action: formAction, fingerprint: o.fingerprint }),
+        action: formAction, fingerprint: o.fingerprint, ...(o.codNotConfirmed ? { codNotConfirmed: true } : {}) }),
       catalogAuditId, o.now);
   async function assertFormReplay(subjectType: 'order_cancellation_event' | 'order_cancellation_review') {
     const audit = await db.prepare(`SELECT actor_id AS actorId,subject_id AS subjectId,
@@ -488,6 +494,8 @@ export async function cancelSelectedParcels(
     return { status: 'review_requested', id: o.requestId };
   }
   const p = await cancellationPreview(db, a, o.sellerIds);
+  if (o.codNotConfirmed && p.reviewRequired)
+    throw new CancellationConflictError('The order changed. Open the order to review its cancellation.');
   if (p.fingerprint !== o.fingerprint && (o.reviewId || !p.reviewRequired))
     throw new CancellationConflictError(
       'Order amounts or readiness changed. Review the updated cancellation before confirming.',
@@ -571,6 +579,12 @@ export async function cancelSelectedParcels(
     : null;
   const statements: D1PreparedStatement[] = [
     ...(a.actorId?await independentCancellationReviewer(db,a.actorId,p.order.id):[]),
+    ...(o.codNotConfirmed ? [
+      db.prepare("UPDATE first_cod_reviews SET status=status WHERE order_id=? AND status='pending' AND hold_source='customer_flag'").bind(p.order.id),
+      ...guard(db, `EXISTS(SELECT 1 FROM first_cod_reviews r JOIN orders cod_order ON cod_order.id=r.order_id
+        WHERE r.order_id=? AND r.status='pending' AND r.hold_source='customer_flag'
+          AND cod_order.status='confirmed' AND cod_order.payment_mode='cod')`, [p.order.id]),
+    ] : []),
     db
       .prepare(
         'UPDATE orders SET cancellation_version=cancellation_version+1,operation_request_id=? WHERE id=? AND cancellation_version=?',

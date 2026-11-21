@@ -23,8 +23,12 @@ import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
+import { ACTOR_INTENT_HEADER } from '@/lib/http/actor-intent';
 import type { AdminFulfillmentAction, SellerFulfillmentAction } from '@/lib/db/repositories/fulfillment';
 type FulfillmentAction = AdminFulfillmentAction | SellerFulfillmentAction;
+
+const fulfillmentBaseKeys = ['action', 'note', 'trackingCode', 'requestId', 'formVersion', 'codNotConfirmed'];
+const unconfirmedCodLabel = 'Cancel order — customer did not confirm';
 
 const definitions = {
   start_packing: {label:'Start company packing',title:'Start packing these company-store items?',description:'Records preparation of this maker’s company-store items. It does not dispatch the parcel or record payment.',icon:Send,variant:'default'},
@@ -34,18 +38,20 @@ const definitions = {
   cancel: { label: 'Cancel order', title: 'Cancel this complete order?', description: 'Eligible parcels close and reserved inventory is restored. Custom production already started requires a separate staff review. Readiness and revised amounts are checked before cancellation.', icon: Ban, variant: 'destructive' },
 } as const;
 
-export function AdminOrderFulfillmentActions({ orderId, status, initialTrackingCode, companySellerId }: { orderId: string; status: string; initialTrackingCode?: string | null; companySellerId?:string }) {
+export function AdminOrderFulfillmentActions({ orderId, status, initialTrackingCode, companySellerId, codNotConfirmedActorId }: {
+  orderId: string; status: string; initialTrackingCode?: string | null; companySellerId?: string; codNotConfirmedActorId?: string;
+}) {
   const router = useRouter();
   const catalog = usePublishedFormConfig('staff.order-fulfillment');
   const formRef = useRef<HTMLFormElement>(null);
   const [attemptPresent, setAttemptPresent] = useState(false);
-  const keyFor = (action: FulfillmentAction) => sessionAttemptKey('staff.order-fulfillment', companySellerId ? `${orderId}:company:${companySellerId}:${action}` : `${orderId}:${action}`);
+  const keyFor = (action: FulfillmentAction) => sessionAttemptKey('staff.order-fulfillment', companySellerId ? `${orderId}:company:${companySellerId}:${action}` : `${orderId}:${action}${codNotConfirmedActorId ? ':cod-not-confirmed' : ''}`);
   const [selected, setSelected] = useState<FulfillmentAction | null>(null);
   const [note, setNote] = useState('');
   const [trackingCode, setTrackingCode] = useState(initialTrackingCode??'');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
-  const actions: FulfillmentAction[] = companySellerId ? status==='confirmed'?['start_packing']:status==='packing'?['ready_for_pickup']:[] : status === 'ready_for_pickup'
+  const actions: FulfillmentAction[] = codNotConfirmedActorId ? ['cancel'] : companySellerId ? status==='confirmed'?['start_packing']:status==='packing'?['ready_for_pickup']:[] : status === 'ready_for_pickup'
     ? ['dispatch', 'cancel']
     : status === 'dispatched'
       ? ['deliver']
@@ -68,15 +74,17 @@ export function AdminOrderFulfillmentActions({ orderId, status, initialTrackingC
     setPending(true);
     setError('');
     try {
-      const configured = readConfiguredSubmission(formRef.current, catalog.config, ['action', 'note', 'trackingCode', 'requestId', 'formVersion']);
+      const configured = readConfiguredSubmission(formRef.current, catalog.config, fulfillmentBaseKeys);
       const payload = { action: selected, note, trackingCode, ...(companySellerId?{sellerId:companySellerId}:{}),
-        ...configuredJsonPayload(catalog.config, configured.answers, ['action', 'note', 'trackingCode', 'requestId', 'formVersion']) };
+        ...(codNotConfirmedActorId ? { codNotConfirmed: true } : {}),
+        ...configuredJsonPayload(catalog.config, configured.answers, fulfillmentBaseKeys) };
       const attemptKey = keyFor(selected);
       const requestId = getOrCreateSessionAttempt(attemptKey);
       setAttemptPresent(true);
       const response = await fetch(`/api/admin/orders/${encodeURIComponent(orderId)}/fulfillment`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json',
+          ...(codNotConfirmedActorId ? { [ACTOR_INTENT_HEADER]: codNotConfirmedActorId } : {}) },
         body: JSON.stringify({ ...payload, requestId }),
       });
       const result = (await response.json().catch(() => null)) as { ok?: boolean; error?: string; code?: string } | null;
@@ -98,13 +106,13 @@ export function AdminOrderFulfillmentActions({ orderId, status, initialTrackingC
 
   return (
     <div>
-      <div className="flex flex-wrap gap-2">{actions.map((action) => { const definition = definitions[action]; const Icon = definition.icon; return <Button key={action} variant={definition.variant} onClick={() => prepare(action)}><Icon />{definition.label}</Button>; })}</div>
+      <div className="flex flex-wrap gap-2">{actions.map((action) => { const definition = definitions[action]; const Icon = definition.icon; return <Button key={action} variant={definition.variant} className="h-auto min-h-11 max-w-full whitespace-normal" onClick={() => prepare(action)}><Icon />{codNotConfirmedActorId ? unconfirmedCodLabel : definition.label}</Button>; })}</div>
       {error && !selected ? <p role="alert" className="mt-3 text-sm font-medium text-destructive">{error}</p> : null}
       <AlertDialog open={selected !== null} onOpenChange={(open) => { if (!open && !pending) setSelected(null); }}>
         <AlertDialogContent>
           {selected ? <form ref={formRef} data-form-id="staff.order-fulfillment" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
       <FormGuide formId="staff.order-fulfillment" />
-<AlertDialogHeader><AlertDialogTitle>{definitions[selected].title}</AlertDialogTitle><AlertDialogDescription>{definitions[selected].description}</AlertDialogDescription></AlertDialogHeader><div className="space-y-4">{selected === 'dispatch' ? <div className="space-y-2"><Label htmlFor="trackingCode">Tracking or consignment reference</Label><Input id="trackingCode" value={trackingCode} onChange={(event) => setTrackingCode(event.target.value)} maxLength={80} /></div> : null}<div className="space-y-2"><Label htmlFor="operationsNote">Operations note</Label><Textarea id="operationsNote" value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} placeholder="Record the reason and any relevant details." /></div>{catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={['action', 'note', 'trackingCode', 'requestId', 'formVersion']} /> : null}{catalog.message ? <p role="alert" className="text-sm text-destructive">{catalog.message}</p> : null}{error ? <p role="alert" className="text-sm font-medium text-destructive">{error}</p> : null}</div>{attemptPresent ? <div className="my-3 space-y-2 text-sm"><p>A prior fulfilment action may have succeeded. Check this order before starting another attempt.</p><Button type="button" variant="outline" disabled={pending} onClick={() => { if (!selected || !window.confirm('A prior fulfilment action may already have succeeded. Check the order first. Starting a new attempt may duplicate it. Continue?')) return; clearSessionAttempt(keyFor(selected)); setAttemptPresent(false); setError(''); if (catalog.status === 'stale') catalog.refresh(); }}>Start a new fulfilment attempt</Button></div> : null}<AlertDialogFooter><AlertDialogCancel disabled={pending}>Go back</AlertDialogCancel><AlertDialogAction variant={definitions[selected].variant} disabled={pending || !catalog.canSubmit} onClick={(event) => { event.preventDefault(); void submit(); }}>{pending ? 'Updating…' : definitions[selected].label}</AlertDialogAction></AlertDialogFooter></form> : null}
+<AlertDialogHeader><AlertDialogTitle>{codNotConfirmedActorId ? 'Cancel this cash-on-delivery order?' : definitions[selected].title}</AlertDialogTitle><AlertDialogDescription>{codNotConfirmedActorId ? 'Cancel the order and record why the customer did not confirm.' : definitions[selected].description}</AlertDialogDescription></AlertDialogHeader><div className="space-y-4">{selected === 'dispatch' ? <div className="space-y-2"><Label htmlFor="trackingCode">Tracking or consignment reference</Label><Input id="trackingCode" value={trackingCode} onChange={(event) => setTrackingCode(event.target.value)} maxLength={80} /></div> : null}<div className="space-y-2"><Label htmlFor="operationsNote">Operations note</Label><Textarea id="operationsNote" value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} placeholder="Record the reason and any relevant details." /></div>{catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={fulfillmentBaseKeys} /> : null}{catalog.message ? <p role="alert" className="text-sm text-destructive">{catalog.message}</p> : null}{error ? <p role="alert" className="text-sm font-medium text-destructive">{error}</p> : null}</div>{attemptPresent ? <div className="my-3 space-y-2 text-sm"><p>A prior fulfilment action may have succeeded. Check this order before starting another attempt.</p><Button type="button" variant="outline" disabled={pending} onClick={() => { if (!selected || !window.confirm('A prior fulfilment action may already have succeeded. Check the order first. Starting a new attempt may duplicate it. Continue?')) return; clearSessionAttempt(keyFor(selected)); setAttemptPresent(false); setError(''); if (catalog.status === 'stale') catalog.refresh(); }}>Start a new fulfilment attempt</Button></div> : null}<AlertDialogFooter><AlertDialogCancel className="min-h-11" disabled={pending}>Go back</AlertDialogCancel><AlertDialogAction className="h-auto min-h-11 whitespace-normal" variant={definitions[selected].variant} disabled={pending || !catalog.canSubmit} onClick={(event) => { event.preventDefault(); void submit(); }}>{pending ? 'Updating…' : codNotConfirmedActorId ? unconfirmedCodLabel : definitions[selected].label}</AlertDialogAction></AlertDialogFooter></form> : null}
         </AlertDialogContent>
       </AlertDialog>
     </div>

@@ -1,5 +1,6 @@
 import { CURRENT_CUSTOMER_ROLE_SQL } from '@/lib/auth/customer-scope';
 import { nepalDayIso } from '@/lib/dates/nepal-calendar';
+import { customerCodSchemaAvailable } from '@/lib/orders/first-cod-review';
 
 export const customerFilters = [
   ['all', 'All'],
@@ -28,6 +29,7 @@ type CustomerRow = {
   unsuccessfulCodCount: number;
   walletPaisa: number;
   location: string | null;
+  codConfirmationRequired: boolean | null;
 };
 type CustomerOrder = {
   id: string;
@@ -100,6 +102,7 @@ export async function readCustomerWorkspace(
   query: CustomerQuery,
   now: number,
 ) {
+  const codConfirmationAvailable = await customerCodSchemaAvailable(db);
   const q = query.q?.trim().slice(0, 160) ?? '';
   const view: CustomerFilter =
     customerFilters.find(([id]) => id === query.view)?.[0] ?? 'all';
@@ -124,7 +127,8 @@ export async function readCustomerWorkspace(
   )`
     : '';
   const customers = `WITH matching AS (
-    SELECT users.id,display_name AS name,email,phone,created_at AS createdAt
+    SELECT users.id,display_name AS name,email,phone,created_at AS createdAt,
+      ${codConfirmationAvailable ? 'cod_confirmation_required' : 'NULL'} AS codConfirmationRequired
     FROM users
     WHERE users.status<>'deleted' AND ${CURRENT_CUSTOMER_ROLE_SQL} ${search}
   ), customer_orders AS (
@@ -175,8 +179,9 @@ export async function readCustomerWorkspace(
         ORDER BY o.created_at DESC,o.id DESC LIMIT 1) AS addressJson
     FROM matching m LEFT JOIN totals t ON t.customer_id=m.id
     LEFT JOIN wallet_accounts w ON w.user_id=m.id`;
-  type QueryRow = Omit<CustomerRow, 'location'> & {
+  type QueryRow = Omit<CustomerRow, 'location' | 'codConfirmationRequired'> & {
     addressJson: string | null;
+    codConfirmationRequired: number | null;
   };
   const customerId = query.customer?.trim().slice(0, 160);
   const [rows, selected] = await Promise.all([
@@ -195,9 +200,10 @@ export async function readCustomerWorkspace(
           .first<QueryRow>()
       : null,
   ]);
-  const format = ({ addressJson, ...row }: QueryRow): CustomerRow => ({
+  const format = ({ addressJson, codConfirmationRequired, ...row }: QueryRow): CustomerRow => ({
     ...row,
     location: customerLocation(addressJson),
+    codConfirmationRequired: codConfirmationRequired === null ? null : Number(codConfirmationRequired) === 1,
   });
   const result = selected ?? rows.results[0];
   const customer = result ? format(result) : null;

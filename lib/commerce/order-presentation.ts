@@ -12,6 +12,8 @@ const titles: Record<string, string> = {
   refunded: 'Your refund is recorded.',
 };
 
+export const COD_CONFIRMATION_NOTICE = "We'll call you to confirm this order before it is prepared.";
+
 export function orderPresentation(
   status: string,
   paymentStatus: string,

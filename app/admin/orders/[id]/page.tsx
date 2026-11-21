@@ -579,7 +579,7 @@ export default async function AdminOrderPage({
               <div className="space-y-5">
                 {codPending ? (
                   <div id="confirm-cod" className="scroll-mt-20">
-                    <FirstCodConfirmation orderId={id} />
+                    <FirstCodConfirmation orderId={id} actorId={staff.id} />
                   </div>
                 ) : null}
                 {companyPreparation.length ? (

@@ -24,7 +24,7 @@ import {publicProfileFieldSql} from '@/lib/sellers/public-profile-sql';
 import { publicTrackingReferenceSql } from '../../riders/public-tracking';
 import { quotePromo, preparePromoConsumption } from './promo-codes';
 import { requireCheckoutContactProof, checkoutContactGuards, type CheckoutContactPolicy } from '@/lib/auth/contact-verification';
-import {prepareFirstCodReview} from '@/lib/orders/first-cod-review';
+import {customerCodSchemaAvailable, prepareFirstCodReview} from '@/lib/orders/first-cod-review';
 import { promoQuoteIntent } from '@/lib/incentives/quote-intent';
 import { allocatePromoDiscount } from '@/lib/incentives/promo-policy';
 import {calculateBenefitTotals} from '@/lib/incentives/benefit-combinations';
@@ -735,7 +735,7 @@ async function createCodOrderAttempt(
 
   statements.push(customerFeeEvidenceInsert(database, id, serviceFee, placedAt));
   if(!bank)statements.push(...prepareFirstCodReview(database,{customerId:contactProof.actor.userId,orderId:id,
-    totalPaisa:grandTotalPaisa+credit.walletPaisa,now}));
+    totalPaisa:grandTotalPaisa+credit.walletPaisa,now,customerFlagAvailable:await customerCodSchemaAvailable(database)}));
   if(bankInstructions){const instruction=bankInstructions.snapshot;statements.push(...bankInstructions.statements,
     database.prepare('INSERT INTO manual_payment_windows(order_id,amount_paisa,issued_at,deadline_at,buffer_end_at,calendar_version,revision,last_event_id) VALUES(?,?,?,?,?,?,0,?)').bind(id,grandTotalPaisa,now,instruction.deadlineAt,calculateServiceDueAt({startedAt:instruction.deadlineAt,amount:4,unit:'staffed_hour',calendarVersion:instruction.calendarVersion}),instruction.calendarVersion,input.idempotencyKey),...await operationalBusinessNotificationStatements(database,{kind:'payment.order',sourceId:id,eventId:input.idempotencyKey,actorId:customerId!,now,status:'issued'}));}
   const snapshotGuards:D1PreparedStatement[]=[

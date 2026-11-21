@@ -14,6 +14,8 @@ import {
   type TaskAssignment, type TodayFilters, type TodayTask, type TodayView,
 } from './overview-today-model';
 import { postReviewTaskAssignment, type ReviewTaskAssignment } from './review-task-assignment';
+import { FirstCodConfirmation } from './first-cod-confirmation';
+import { AdminOrderFulfillmentActions } from './order-fulfillment-actions';
 
 const todayDate = new Intl.DateTimeFormat('en-GB', {
   weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Kathmandu',
@@ -303,7 +305,14 @@ export function TodayOverview({ tasks, partialSources, actorId, firstName, obser
                       : task.assignment ? <button type="button" className="min-h-11" disabled={!canAssign} onClick={() => startAssignment([task.id])}>Assign to me</button>
                         : <span>{task.state === 'done' ? 'Completed' : task.ownerKnown === false ? 'See source' : 'No owner'}</span>}
                   </div>
-                  <Link className="today-button today-task-action min-h-11! max-lg:col-start-3! max-lg:justify-self-start!" href={href} data-review-open>{task.action}</Link>
+                  {task.codConfirmationOrderId ? (
+                    <div className="today-task-action flex min-w-0 max-w-52 flex-col items-start gap-2 max-lg:col-start-3! max-lg:justify-self-start!">
+                      <FirstCodConfirmation orderId={task.codConfirmationOrderId} actorId={actorId} compact />
+                      <AdminOrderFulfillmentActions orderId={task.codConfirmationOrderId} status="confirmed" codNotConfirmedActorId={actorId} />
+                    </div>
+                  ) : (
+                    <Link className="today-button today-task-action min-h-11! max-lg:col-start-3! max-lg:justify-self-start!" href={href} data-review-open>{task.action}</Link>
+                  )}
                 </li>;
               })}
             </ul>

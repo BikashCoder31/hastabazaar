@@ -18,6 +18,7 @@ import { requireDatabase } from '@/lib/db/d1';
 import { can } from '@/lib/marketplace/permissions';
 import { OrderStageBadge } from '../orders/order-stage-badge';
 import { orderMoney } from '../orders/order-queue-presentation';
+import { CustomerCodConfirmation, CustomerCodConfirmationChip } from './customer-cod-confirmation';
 
 export const dynamic = 'force-dynamic';
 export const metadata = {
@@ -81,11 +82,13 @@ function CustomerRecord({
   customer,
   orders,
   canOpenOrder,
+  codActorId,
   returnTo,
 }: {
   customer: NonNullable<Workspace['customer']>;
   orders: Workspace['recentOrders'];
   canOpenOrder: boolean;
+  codActorId?: string;
   returnTo: string;
 }) {
   const risk = customer.codRefusalCount >= customerRiskThreshold;
@@ -166,6 +169,15 @@ function CustomerRecord({
           </span>
         </p>
       ) : null}
+
+      {customer.codConfirmationRequired === null ? null : (
+        <CustomerCodConfirmation
+          key={customer.id + ':' + Number(customer.codConfirmationRequired).toString()}
+          actorId={codActorId}
+          customerId={customer.id}
+          enabled={customer.codConfirmationRequired}
+        />
+      )}
 
       <div>
         <h3 className="text-sm font-bold text-[#46536F]">Recent orders</h3>
@@ -382,6 +394,7 @@ export default async function CustomersPage({
                             .filter(Boolean)
                             .join(' · ')}
                         </span>
+                        {row.codConfirmationRequired === null ? null : <CustomerCodConfirmationChip enabled={row.codConfirmationRequired} />}
                       </span>
                       {row.codRefusalCount >= customerRiskThreshold ? (
                         <span className={watchBadge}>
@@ -436,6 +449,7 @@ export default async function CustomersPage({
             customer={customer}
             orders={recentOrders}
             canOpenOrder={can(staff, 'order.manage')}
+            codActorId={staff.role === 'super_admin' ? staff.id : undefined}
             returnTo={returnTo}
           />
         ) : null}

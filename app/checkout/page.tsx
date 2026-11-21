@@ -18,6 +18,7 @@ import { getCheckoutPolicyContext } from '@/lib/checkout/policy-context';
 import { getPlatformServiceFee } from '@/lib/db/repositories/platform-service-fee';
 import { VARIANT_PRICING_RULE_VERSION, variantPricingEnabled } from '@/lib/products/variant-pricing';
 import { ncmDemoCheckout } from '@/lib/shipping/ncm-demo-checkout';
+import { customerMustConfirmCod } from '@/lib/orders/first-cod-review';
 
 export const metadata: Metadata = { title: 'Secure checkout' };
 export const dynamic = 'force-dynamic';
@@ -70,6 +71,7 @@ export default async function CheckoutPage() {
             contactPolicy={contactPolicy}
             customerId={customer?.userId}
             customerDisplayName={customer?.displayName}
+            codConfirmationRequired={customer ? await customerMustConfirmCod(database, customer.userId) : false}
             savedAddresses={addresses}
           />
         </div>
