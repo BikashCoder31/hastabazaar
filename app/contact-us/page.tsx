@@ -40,7 +40,12 @@ export const metadata: Metadata = {
   alternates: { canonical: 'https://hastabazaar.com/contact-us' },
 };
 
-export default function ContactUsPage() {
+export default async function ContactUsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ topic?: string | string[] }>;
+} = {}) {
+  const topic = (await searchParams)?.topic;
   return (
     <div className="min-h-screen bg-background">
       <SiteHeader />
@@ -102,7 +107,7 @@ export default function ContactUsPage() {
             </a>
           </div>
           <section aria-labelledby="contact-form-heading" className="min-w-0">
-            <h2 id="contact-form-heading" className="font-heading text-3xl">
+            <h2 id="contact-form-heading" className="scroll-mt-44 font-heading text-3xl">
               Send us a message
             </h2>
             <p className="mb-5 mt-2 text-sm leading-7 text-muted-foreground">
@@ -110,7 +115,10 @@ export default function ContactUsPage() {
               For an existing order, your secure receipt is the best place to
               share private details.
             </p>
-            <CustomerContactForm kind="contact" />
+            <CustomerContactForm
+              kind="contact"
+              defaultTopic={topic === 'seller-support' ? 'Seller support' : undefined}
+            />
           </section>
         </section>
       </main>

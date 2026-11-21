@@ -3,7 +3,7 @@
 import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
 import { useState } from 'react';
-import { feedbackTopics } from '@/lib/feedback/customer-feedback';
+import { feedbackTopics, type FeedbackTopic } from '@/lib/feedback/customer-feedback';
 import { clearFeedbackAttemptId, reserveFeedbackAttemptId } from '@/lib/feedback/attempt-id';
 import { ConfiguredFields, fieldDisplay } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
@@ -17,8 +17,10 @@ const uncertainDeliveryMessage = 'Delivery is uncertain. Your message may have b
 
 export function CustomerContactForm({
   kind,
+  defaultTopic,
 }: {
   kind: 'feedback' | 'contact';
+  defaultTopic?: FeedbackTopic;
 }) {
   const formId = kind === 'feedback' ? 'public.feedback' : 'public.contact';
   const catalog = usePublishedFormConfig(formId);
@@ -87,7 +89,7 @@ export function CustomerContactForm({
     <form
       data-form-id={kind === 'feedback' ? 'public.feedback' : 'public.contact'}
       onSubmit={submit}
-      className="grid min-w-0 grid-cols-1 gap-5 rounded-3xl border bg-card p-6 shadow-sm sm:grid-cols-2 sm:p-8"
+      className="grid min-w-0 grid-cols-1 gap-5 rounded-3xl border bg-card p-6 shadow-sm sm:grid-cols-2 sm:p-8 max-md:[&_summary]:py-2.5"
     >
       <FormGuide formId={kind === 'feedback' ? 'public.feedback' : 'public.contact'} />
 
@@ -109,6 +111,7 @@ export function CustomerContactForm({
       <Field label={fieldDisplay(catalog.config, 'name')?.label ?? 'Name'} helpText={fieldDisplay(catalog.config, 'name')?.helpText}>
         <Input
           name="name"
+          className="max-md:min-h-11"
           placeholder={fieldDisplay(catalog.config, 'name')?.placeholder}
           autoComplete="name"
           minLength={2}
@@ -120,6 +123,7 @@ export function CustomerContactForm({
       <Field label={fieldDisplay(catalog.config, 'email')?.label ?? 'Email'} helpText={fieldDisplay(catalog.config, 'email')?.helpText}>
         <Input
           name="email"
+          className="max-md:min-h-11"
           placeholder={fieldDisplay(catalog.config, 'email')?.placeholder}
           type="email"
           autoComplete="email"
@@ -131,6 +135,7 @@ export function CustomerContactForm({
       <Field label={fieldDisplay(catalog.config, 'phone')?.label ?? 'Phone number (optional)'} helpText={fieldDisplay(catalog.config, 'phone')?.helpText}>
         <Input
           name="phone"
+          className="max-md:min-h-11"
           placeholder={fieldDisplay(catalog.config, 'phone')?.placeholder}
           type="tel"
           autoComplete="tel"
@@ -144,7 +149,7 @@ export function CustomerContactForm({
       >
         <select
           name="topic"
-          defaultValue=""
+          defaultValue={defaultTopic ?? ''}
           required
           disabled={busy}
           className="min-h-11 w-full rounded-md border bg-background px-3 text-sm"
@@ -161,6 +166,7 @@ export function CustomerContactForm({
         <Field label="Subject">
           <Input
             name="subject"
+            className="max-md:min-h-11"
             minLength={3}
             maxLength={160}
             required
@@ -200,7 +206,7 @@ export function CustomerContactForm({
         </Field>
       ) : (
         <Field label="Order reference (optional)">
-          <Input name="orderReference" maxLength={80} disabled={busy} />
+          <Input name="orderReference" className="max-md:min-h-11" maxLength={80} disabled={busy} />
         </Field>
       )}
       {catalog.config ? <fieldset disabled={busy} className="min-w-0 sm:col-span-2"><ConfiguredFields config={catalog.config} baseKeys={displayKeys} errors={fieldErrors} /></fieldset> : null}
@@ -226,7 +232,7 @@ export function CustomerContactForm({
         </span>
       </label>
       <div className="flex flex-wrap items-center gap-4 sm:col-span-2">
-        <Button type="submit" disabled={busy || !catalog.canSubmit}>
+        <Button type="submit" className="max-md:min-h-11" disabled={busy || !catalog.canSubmit}>
           {busy
             ? 'Sending…'
             : kind === 'feedback'
@@ -234,8 +240,8 @@ export function CustomerContactForm({
               : 'Send message'}
         </Button>
         {!catalog.canSubmit ? <output className="text-sm text-muted-foreground">{catalog.message || 'Form configuration is loading.'}</output> : null}
-        {catalog.status === 'stale' || catalog.status === 'unavailable' ? <Button type="button" disabled={busy} onClick={catalog.refresh}>Refresh form</Button> : null}
-        <Button type="button" className="h-auto min-h-8 max-w-full whitespace-normal" disabled={busy} onClick={(event) => {
+        {catalog.status === 'stale' || catalog.status === 'unavailable' ? <Button type="button" className="max-md:min-h-11" disabled={busy} onClick={catalog.refresh}>Refresh form</Button> : null}
+        <Button type="button" className="h-auto min-h-8 max-w-full whitespace-normal max-md:min-h-11" disabled={busy} onClick={(event) => {
           const form = event.currentTarget.closest('form');
           if (form) startNewMessage(form);
         }}>Start a new message after contacting support</Button>
