@@ -67,7 +67,7 @@ void test('staff workspace tolerates autofill DOM changes without hiding real hy
     bundle: true, write: false, platform: 'node', format: 'cjs', external: ['react', 'react-dom/server'], plugins: [plugin] });
   const serverModule = { exports: {} as { markup(mismatch: boolean): Promise<string> } };
   runInNewContext(server.outputFiles[0].text, { module: serverModule, exports: serverModule.exports,
-    require: createRequire(import.meta.url), process, console, TextEncoder, TextDecoder });
+    require: createRequire(import.meta.url), process, console, Headers, TextEncoder, TextDecoder });
   const client = await build({ stdin: { resolveDir: process.cwd(), sourcefile: 'admin-autofill-client.tsx', loader: 'tsx',
     contents: fixtures + `import {hydrateRoot} from 'react-dom/client';
       window.hydrationErrors=[];window.consoleErrors=[];
