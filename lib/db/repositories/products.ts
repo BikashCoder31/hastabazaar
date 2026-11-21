@@ -1443,12 +1443,15 @@ export interface PublicProductRow extends Partial<PublicSellingIdentity>,PublicO
 
 export interface PublicCatalogueFilters {
   query?: string;
+  sellerId?: string;
   categorySlugs?: readonly string[];
   occasionSlugs?: readonly string[];
   minimumPricePaisa?: number;
+  maximumPricePaisa?: number;
+  readyToDispatch?: boolean;
   limit?: number;
   page?: number;
-  sort?: 'newest' | 'price-low' | 'price-high' | 'name';
+  sort?: 'relevance' | 'newest' | 'price-low' | 'price-high' | 'name';
 }
 
 interface HomepageProductQueryRow extends Partial<PublicSellingIdentity>,PublicOfferQueryFields,PublicOfferProductFields {
@@ -1959,6 +1962,24 @@ export async function setHomepageProductVisibility(
   return { hidden: options.hidden, version: nextVersion };
 }
 
+function appendDispatchAndPriceFilters(
+  filters: PublicCatalogueFilters,
+  catalogue: Awaited<ReturnType<typeof publicCatalogueQuery>>,
+  conditions: string[],
+  bindings: Array<string | number>,
+) {
+  if (filters.maximumPricePaisa !== undefined) {
+    if (!Number.isSafeInteger(filters.maximumPricePaisa) || filters.maximumPricePaisa < 0 || filters.maximumPricePaisa > 100_000_000_000)
+      throw new RangeError('Maximum price must be valid integer paisa.');
+    conditions.push(`${catalogue.price()} <= ?`);
+    bindings.push(filters.maximumPricePaisa);
+  }
+  if (filters.readyToDispatch) {
+    conditions.push(`(products.made_to_order = 0 AND products.preparation_days = 0
+      AND ${catalogue.stock()} > 0 AND (${catalogue.purchasable()}))`);
+  }
+}
+
 export async function listPublishedProducts(
   database: D1Database,
   filters: PublicCatalogueFilters = {},
@@ -1975,6 +1996,7 @@ export async function listPublishedProducts(
     throw new RangeError('Catalogue page must be a positive integer.');
   const sort = filters.sort ?? 'newest';
   const orderBy = {
+    relevance: 'products.published_at DESC, products.id ASC',
     newest: 'products.published_at DESC, products.id ASC',
     'price-low': `${catalogue.price()} IS NULL, ${catalogue.price()} ASC, products.id ASC`,
     'price-high': `${catalogue.price()} DESC, products.id ASC`,
@@ -1991,6 +2013,11 @@ export async function listPublishedProducts(
       throw new RangeError('Minimum price must be valid integer paisa.');
     conditions.push(`${catalogue.price()} >= ?`);
     bindings.push(filters.minimumPricePaisa);
+  }
+  appendDispatchAndPriceFilters(filters, catalogue, conditions, bindings);
+  if (filters.sellerId) {
+    conditions.push('products.seller_id = ?');
+    bindings.push(filters.sellerId);
   }
   const query = filters.query?.trim().slice(0, 100);
   if (query) {
@@ -2039,7 +2066,16 @@ export async function listPublishedProducts(
       AND featured_promotion.ends_at > ?
   ) THEN 0 ELSE 1 END, `
       : '';
-  if (sort === 'newest') bindings.push(Date.now(), Date.now());
+  if (sort === 'newest') bindings.push(catalogue.now, catalogue.now);
+  const relevanceOrder = sort === 'relevance' && query
+    ? `CASE WHEN LOWER(products.name_en) = LOWER(?) OR LOWER(products.name_ne) = LOWER(?) THEN 0
+      WHEN products.name_en LIKE ? ESCAPE '!' OR products.name_ne LIKE ? ESCAPE '!' THEN 1
+      WHEN products.name_en LIKE ? ESCAPE '!' OR products.name_ne LIKE ? ESCAPE '!' THEN 2 ELSE 3 END, `
+    : '';
+  if (relevanceOrder && query) {
+    const escaped = query.replace(/[!%_]/g, '!$&');
+    bindings.push(query, query, escaped + '%', escaped + '%', '%' + escaped + '%', '%' + escaped + '%');
+  }
   const result = await database
     .prepare(
       `${catalogue.withClause} SELECT ${publicSellingIdentityColumns(catalogue.now)}, ${publicOfferQueryColumns(catalogue)}, CASE WHEN ${catalogue.purchasable()} THEN 1 ELSE 0 END AS purchasable, products.id, products.slug, products.name_en AS nameEn,
@@ -2069,7 +2105,7 @@ export async function listPublishedProducts(
        INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
        INNER JOIN categories ON categories.id = products.category_id
        WHERE ${conditions.join('\n         AND ')}
-       ORDER BY ${promotionOrder}${orderBy} LIMIT ? OFFSET ?`,
+       ORDER BY ${promotionOrder}${relevanceOrder}${orderBy} LIMIT ? OFFSET ?`,
     )
     .bind(...bindings, limit, (page - 1) * limit)
     .all<PublicProductRow & PublicOfferQueryFields>();
@@ -2091,6 +2127,11 @@ export async function countPublishedProducts(
       throw new RangeError('Minimum price must be valid integer paisa.');
     conditions.push(`${catalogue.price()} >= ?`);
     bindings.push(filters.minimumPricePaisa);
+  }
+  appendDispatchAndPriceFilters(filters, catalogue, conditions, bindings);
+  if (filters.sellerId) {
+    conditions.push('products.seller_id = ?');
+    bindings.push(filters.sellerId);
   }
   const query = filters.query?.trim().slice(0, 100);
   if (query) {

@@ -27,6 +27,7 @@ const publicRouteDependencies: Record<string, string> = {
       id: 'cup', slug: 'cup', nameEn: 'Fictional cup', media: [],
     });
     export const getUnavailablePublishedProductBySlug = async () => null;
+    export const listPublishedProducts = async () => [];
   `,
   '@/lib/db/repositories/customers': `
     export const listPublishedReviews = async () => [];
@@ -43,7 +44,7 @@ const publicRouteDependencies: Record<string, string> = {
     export const publicUrl = (path) => path;
     export const productStructuredData = () => ({});
     export const safeJsonLd = JSON.stringify;
-    export const publishedRating = async () => null;
+    export const publishedRating = async () => ({ count: 0, average: null });
   `,
   '@/lib/db/repositories/recently-viewed': `
     export const listRecentlyViewedProducts = async (_, { userId }) => [{ id: userId }];
@@ -71,7 +72,7 @@ const publicRouteDependencies: Record<string, string> = {
 const publicWidgets = `
   const unusedWidget = () => null;
   export const ProductOfferProvider = ({ children }) => children;
-  export const OfferAddToCart = unusedWidget, ProductOfferPrice = unusedWidget,
+  export const OfferAddToCart = unusedWidget, ProductOfferPrice = unusedWidget, ProductCard = unusedWidget,
     ProductDelivery = unusedWidget, ProductGallery = unusedWidget, SiteFooter = unusedWidget,
     SiteHeader = unusedWidget, ReviewForm = unusedWidget, ReviewPhotos = unusedWidget,
     PublicSellerReply = unusedWidget;

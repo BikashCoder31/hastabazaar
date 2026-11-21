@@ -171,7 +171,7 @@ void test('public product dates display the Nepal calendar day on a UTC host', a
       'exports.notFound=()=>{throw Error("Unexpected missing product")};',
     '@/lib/db/d1': 'exports.requireDatabase=()=>({});',
     '@/lib/db/repositories/products':
-      'exports.getPublishedProductBySlug=async()=>fixture.product;exports.getUnavailablePublishedProductBySlug=async()=>null;',
+      'exports.getPublishedProductBySlug=async()=>fixture.product;exports.getUnavailablePublishedProductBySlug=async()=>null;exports.listPublishedProducts=async()=>[];',
     '@/lib/db/repositories/delivery-rates':
       'exports.getDeliveryRates=async()=>[];',
     '@/lib/auth/customer': 'exports.getCustomerReadContext=async()=>({customer:null,authenticated:false});',
@@ -188,6 +188,7 @@ void test('public product dates display the Nepal calendar day on a UTC host', a
     jsx: 'automatic',
     bundle: true,
     write: false,
+    loader: { '.module.css': 'empty' },
     platform: 'node',
     format: 'cjs',
     external: ['react', 'react/*', 'react-dom', 'react-dom/*'],

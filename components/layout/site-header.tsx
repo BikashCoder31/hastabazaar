@@ -19,7 +19,7 @@ import { RewardsShortcut } from '@/components/layout/rewards-shortcut';
 import { MobileNavigation } from '@/components/layout/mobile-navigation';
 import { MobileProductSearch } from '@/components/layout/mobile-product-search';
 import { CustomerPhoneTabs } from '@/components/storefront/customer-phone-tabs';
-import { Input } from '@/components/ui/input';
+import { SearchSuggestionField } from '@/components/catalog/search-suggestion-field';
 import { storefrontNavigation } from '@/lib/catalog/storefront-navigation';
 import { mediaObjectClass } from '@/lib/media/responsive-media';
 import { loadQueryPresentationConfig, queryFieldPresentation } from '@/lib/catalog/shop-query';
@@ -222,22 +222,17 @@ function HeaderSearch({ id, config, unavailable }: { id: string; config: Publish
           className="hidden size-4 shrink-0 text-muted-foreground lg:block"
           aria-hidden="true"
         />
-        <label htmlFor={id} className="sr-only">
-          {search.label}
-        </label>
-        <Input
+        <SearchSuggestionField
           id={id}
-          type="search"
-          name="q"
-          maxLength={100}
+          label={search.label}
           placeholder={search.placeholder}
-          aria-describedby={search.helpText ? `${id}-help` : undefined}
-          className="h-auto min-w-0 flex-1 rounded-none border-0 bg-transparent px-0 py-1.5 text-base placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 md:text-base"
+          helpId={search.helpText ? `${id}-help` : undefined}
+          className="h-auto min-h-11 min-w-0 flex-1 rounded-none border-0 bg-transparent px-0 py-1.5 text-base placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 sm:min-h-9 md:text-base"
         />
         <button
           type="submit"
           aria-label="Search"
-          className="inline-flex min-h-9 w-8 shrink-0 items-center justify-center rounded-full bg-[#b5121b] text-sm font-semibold text-white transition-colors hover:bg-[#921018] max-[299px]:w-7 lg:w-auto lg:px-4"
+          className="inline-flex min-h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#b5121b] text-sm font-semibold text-white transition-colors hover:bg-[#921018] sm:min-h-9 sm:w-8 lg:w-auto lg:px-4"
         >
           <Search aria-hidden="true" className="size-4 lg:hidden" />
           <span className="hidden lg:inline">Search</span>

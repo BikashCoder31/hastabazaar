@@ -53,13 +53,13 @@ function ScopedProductPhotos({media,productName,selectedMedia}:{media:readonly G
   const [activeIndex,setActiveIndex]=useState(()=>Math.max(0,media.findIndex(row=>row.id===selectedMedia)));
   const active = media[activeIndex] ?? media[0];
   return (
-    <>
+    <div className="flex min-w-0 flex-col gap-3 md:flex-row-reverse md:items-start">
       {active ? (
         <div
           data-media-frame="contain"
           className={mediaFrameClass(
             'contain',
-            'aspect-square rounded-3xl border bg-card',
+            'aspect-square w-full min-w-0 rounded-xl border border-[#e2d6c2] bg-[#fffdf9] md:flex-1',
           )}
         >
           <Image
@@ -82,14 +82,14 @@ function ScopedProductPhotos({media,productName,selectedMedia}:{media:readonly G
           </span>
         </div>
       ) : (
-        <div className="flex aspect-square flex-col items-center justify-center gap-4 rounded-3xl bg-muted text-muted-foreground">
+        <div className="flex aspect-square w-full min-w-0 flex-col items-center justify-center gap-4 rounded-xl bg-muted text-muted-foreground md:flex-1">
           <ImageIcon className="size-10" />
           <p>Photos coming soon</p>
         </div>
       )}
       {media.length > 1 ? (
         <div
-          className="mt-4 grid grid-cols-5 gap-2 sm:gap-3"
+          className="grid grid-cols-5 gap-2 md:max-h-[38rem] md:w-16 md:shrink-0 md:grid-cols-1 md:overflow-y-auto xl:w-[5.25rem]"
           aria-label="Product photos"
         >
           {media.map((photo, index) => (
@@ -102,7 +102,7 @@ function ScopedProductPhotos({media,productName,selectedMedia}:{media:readonly G
               aria-pressed={active.id === photo.id}
               className={mediaFrameClass(
                 'cover',
-                'aspect-square rounded-xl border-2 bg-card transition-colors ' +
+                'aspect-square min-h-11 rounded-lg border-2 bg-card transition-colors focus-visible:outline-2 focus-visible:outline-primary ' +
                   (active.id === photo.id
                     ? 'border-primary'
                     : 'border-transparent hover:border-primary/40'),
@@ -121,6 +121,6 @@ function ScopedProductPhotos({media,productName,selectedMedia}:{media:readonly G
           ))}
         </div>
       ) : null}
-    </>
+    </div>
   );
 }

@@ -25,7 +25,7 @@ export function ProductDelivery({ preparationDays, madeToOrder, rates }: { prepa
           <p className="text-muted-foreground">{madeToOrder ? 'Made to order · ' : ''}{quote.preparationDays} days preparation + {quote.transitMinDays}–{quote.transitMaxDays} days transit. Estimate, not a guaranteed date.</p>
         </> : <p className="text-muted-foreground">{madeToOrder ? 'Made to order · ' : ''}{preparationDays === 0 ? 'Ready to dispatch.' : `${preparationDays} days of preparation before dispatch.`}</p>}
       </div>
-      <p className="mt-2 text-xs leading-5 text-muted-foreground">Cash on delivery. This is the one-store destination base fee. Multiple products from the same store share it; each additional store adds 50% of the base. See the full cart estimate at checkout.</p>
+      <p className="mt-2 text-xs leading-5 text-muted-foreground">This estimate is for one seller. Items from the same seller share the delivery charge. See the delivery totals for your bag at checkout.</p>
     </div>
   );
 }

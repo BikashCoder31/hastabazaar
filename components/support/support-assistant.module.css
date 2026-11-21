@@ -1,7 +1,7 @@
 .widget {
   position: fixed;
   right: max(20px, env(safe-area-inset-right));
-  bottom: calc(max(20px, env(safe-area-inset-bottom)) + var(--storefront-phone-tabs-height, 0px));
+  bottom: calc(max(20px, env(safe-area-inset-bottom)) + var(--storefront-phone-tabs-height, 0px) + var(--storefront-product-actions-height, 0px));
   z-index: 45;
   font-family: var(--font-sans);
 }
@@ -34,7 +34,7 @@
   display: flex;
   flex-direction: column;
   width: min(360px, calc(100vw - 32px));
-  height: min(570px, calc(100dvh - 88px - var(--storefront-phone-tabs-height, 0px)));
+  height: min(570px, calc(100dvh - 88px - var(--storefront-phone-tabs-height, 0px) - var(--storefront-product-actions-height, 0px)));
   margin: 0 0 10px;
   padding: 0;
   overflow: hidden;
@@ -382,11 +382,11 @@
 @media (max-width: 480px) {
   .widget {
     right: 12px;
-    bottom: calc(max(12px, env(safe-area-inset-bottom)) + var(--storefront-phone-tabs-height, 0px));
+    bottom: calc(max(12px, env(safe-area-inset-bottom)) + var(--storefront-phone-tabs-height, 0px) + var(--storefront-product-actions-height, 0px));
   }
   .panel {
     width: min(360px, calc(100vw - 24px));
-    height: min(570px, calc(100dvh - 76px - var(--storefront-phone-tabs-height, 0px)));
+    height: min(570px, calc(100dvh - 76px - var(--storefront-phone-tabs-height, 0px) - var(--storefront-product-actions-height, 0px)));
     border-radius: 18px;
     margin-bottom: 8px;
   }

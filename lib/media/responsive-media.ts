@@ -16,13 +16,14 @@ export const mediaSizes = {
   // Recently viewed: 1 / 2 / 4 columns, 24px gaps, four columns at lg.
   productGrid:
     '(min-width: 1440px) 318px, (min-width: 1024px) calc(25vw - 42px), (min-width: 640px) calc(50vw - 44px), (min-width: 300px) calc(100vw - 2 * clamp(12px, 5vw, 32px)), calc(100vw - 24px)',
-  // Shop reserves a 288px filter rail and a 32px gap from lg onward.
+  // Shop and related products share two columns until lg and a 1264px cap.
   shopGrid:
-    '(min-width: 1440px) 328px, (min-width: 1280px) calc((100vw - 456px) / 3), (min-width: 1024px) calc(50vw - 218px), (min-width: 640px) calc(50vw - 42px), (min-width: 300px) calc((100vw - 2 * clamp(12px, 5vw, 32px) - 16px) / 2), calc(50vw - 20px)',
+    '(min-width: 1360px) 301px, (min-width: 1024px) calc((100vw - 156px) / 4), (min-width: 768px) calc((100vw - 116px) / 2), calc((100vw - 48px) / 2)',
+  // Use the full gallery width for a product with a single photo.
   productGallery:
-    '(min-width: 1440px) 672px, (min-width: 1280px) calc(52.5vw - 84px), (min-width: 1024px) calc(52.5vw - 71.4px), (min-width: 640px) calc(100vw - 64px), (min-width: 300px) calc(100vw - 2 * clamp(12px, 5vw, 32px)), calc(100vw - 24px)',
+    '(min-width: 1360px) 642px, (min-width: 1280px) calc((100vw - 160px) * 23 / 43), (min-width: 768px) calc((100vw - 128px) * 23 / 43), calc(100vw - 32px)',
   galleryThumbnail:
-    '(min-width: 1440px) 124.8px, (min-width: 1280px) calc(10.5vw - 26.4px), (min-width: 1024px) calc(10.5vw - 23.88px), (min-width: 640px) calc(20vw - 22.4px), (min-width: 300px) calc((100vw - 2 * clamp(12px, 5vw, 32px) - 32px) / 5), calc(20vw - 11.2px)',
+    '(min-width: 1280px) 84px, (min-width: 768px) 64px, calc((100vw - 64px) / 5)',
   // Account reserves a 248px navigation rail and a 32px gap at lg.
   savedProduct:
     '(min-width: 1440px) calc(1024px / 3), (min-width: 1280px) calc((100vw - 416px) / 3), (min-width: 1024px) calc(50vw - 198px), (min-width: 640px) calc(50vw - 42px), (min-width: 300px) calc(100vw - 2 * clamp(12px, 5vw, 32px)), calc(100vw - 24px)',

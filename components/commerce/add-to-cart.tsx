@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Check, ShoppingBag, Zap } from 'lucide-react';
+import { Check, Minus, Plus, ShoppingBag, Zap } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
@@ -11,9 +11,11 @@ import { sendJson } from '@/lib/http/client-request';
 export function AddToCart({
   productId,
   available,
+  productPage = false,
 }: {
   productId: string;
   available: number;
+  productPage?: boolean;
 }) {
   const router = useRouter();
   const maximum = Math.min(10, available);
@@ -38,6 +40,7 @@ export function AddToCart({
     try {
       await sendJson('/api/cart', 'POST', { productId, quantity },
         'We couldn’t add this product. Please try again.');
+      window.dispatchEvent(new Event('cart:updated'));
       if (action === 'buy_now') {
         openingCheckout = true;
         router.push('/checkout');
@@ -72,7 +75,8 @@ export function AddToCart({
         >
           Quantity
         </label>
-        <select
+        {productPage ? <ProductQuantity id="product-quantity" value={quantity} maximum={maximum} disabled={pendingAction !== null}
+          onChange={value => { setQuantity(value); setAddedQuantity(null); }} /> : <select
           id="product-quantity"
           value={quantity}
           disabled={pendingAction !== null}
@@ -89,26 +93,28 @@ export function AddToCart({
               </option>
             ),
           )}
-        </select>
+        </select>}
       </div>
       <div className="grid gap-3">
+        <div data-product-mobile-add={productPage ? '' : undefined}>
         <Button
           type="button"
           onClick={() => void submit('add_to_cart')}
           disabled={pendingAction !== null}
-          className="h-12 w-full rounded-full text-base"
+          className={productPage ? 'min-h-11 w-full rounded-xl bg-[#a8232e] text-base text-white hover:bg-[#8c1c27] md:h-12' : 'h-12 w-full rounded-full text-base'}
         >
           {addedQuantity === quantity ? (
             <>
-              <Check /> Added to cart
+              <Check /> {productPage ? 'Added to bag' : 'Added to cart'}
             </>
           ) : (
             <>
               <ShoppingBag />{' '}
-              {pendingAction === 'add_to_cart' ? 'Adding…' : 'Add to cart'}
+              {pendingAction === 'add_to_cart' ? 'Adding…' : productPage ? 'Add to bag' : 'Add to cart'}
             </>
           )}
         </Button>
+        </div>
         <Button
           type="button"
           variant="outline"
@@ -138,6 +144,29 @@ export function AddToCart({
           {error}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+export function ProductQuantity({ id, value, maximum, disabled = false, onChange }: {
+  id: string;
+  value: number;
+  maximum: number;
+  disabled?: boolean;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className="inline-flex max-w-full items-center rounded-xl border border-[#d9c8ae] bg-white text-[#14213d]">
+      <button type="button" aria-label="Decrease quantity" disabled={disabled || value <= 1}
+        onClick={() => onChange(value - 1)} className="inline-flex size-11 shrink-0 items-center justify-center rounded-l-xl focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-40">
+        <Minus className="size-4" aria-hidden="true" />
+      </button>
+      <input id={id} type="number" min="1" max={Math.max(1, maximum)} value={value} readOnly disabled={disabled}
+        className="min-h-11 w-10 appearance-none border-0 bg-transparent p-0 text-center font-semibold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
+      <button type="button" aria-label="Increase quantity" disabled={disabled || value >= maximum}
+        onClick={() => onChange(value + 1)} className="inline-flex size-11 shrink-0 items-center justify-center rounded-r-xl focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-40">
+        <Plus className="size-4" aria-hidden="true" />
+      </button>
     </div>
   );
 }

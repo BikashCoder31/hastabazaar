@@ -1,0 +1,20 @@
+@media (width < 768px) {
+  :global(body:has([data-storefront-phone-tabs]):has([data-product-mobile-add])) {
+    --storefront-product-actions-height: 3.75rem;
+    padding-bottom: calc(var(--storefront-phone-tabs-height) + var(--storefront-product-actions-height));
+  }
+
+  :global([data-product-mobile-add]) {
+    position: fixed;
+    z-index: 41;
+    right: 0;
+    bottom: var(--storefront-phone-tabs-height, 0px);
+    left: 0;
+    display: flex;
+    align-items: center;
+    min-height: var(--storefront-product-actions-height, 3.75rem);
+    padding: 7px max(1rem, env(safe-area-inset-right, 0px)) 7px max(1rem, env(safe-area-inset-left, 0px));
+    border-top: 1px solid #e2d6c2;
+    background: #fffdf9;
+  }
+}
