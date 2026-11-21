@@ -1,3 +1,4 @@
+import { allocateOrderCash, ParcelConflictError } from '../checkout/parcel-cash-allocation';
 import {preparePaymentException} from '../payments/payment-exceptions';
 import { assertFirstCodFulfillmentAllowed } from '../orders/first-cod-review';
 import { payableOrderTotalSql } from '../db/repositories/platform-service-fee';
@@ -43,7 +44,7 @@ import {
   type RiderFinancePolicy,
   type RiderTripOutcome,
 } from '../riders/operations-policy';
-export class ParcelConflictError extends Error {}
+export { allocateOrderCash, ParcelConflictError } from '../checkout/parcel-cash-allocation';
 export interface Parcel {
   id: string;
   orderId: string;
@@ -92,38 +93,6 @@ export async function listParcels(
     .bind(...(sellerId ? [orderId, sellerId] : [orderId]))
     .all<Parcel>();
   return rows.results;
-}
-export function allocateOrderCash(
-  total: number,
-  weights: readonly { sellerId: string; amount: number }[],
-) {
-  if (
-    !Number.isSafeInteger(total) ||
-    total < 0 ||
-    !weights.length ||
-    weights.some((w) => !Number.isSafeInteger(w.amount) || w.amount <= 0)
-  )
-    throw new ParcelConflictError('Invalid order allocation.');
-  const sorted = [...weights].sort((a, b) =>
-    a.sellerId.localeCompare(b.sellerId),
-  );
-  const sum = sorted.reduce((n, w) => n + BigInt(w.amount), BigInt(0));
-  const parts = sorted.map((w) => ({
-    sellerId: w.sellerId,
-    amount: Number((BigInt(total) * BigInt(w.amount)) / sum),
-    remainder: (BigInt(total) * BigInt(w.amount)) % sum,
-  }));
-  let remaining = total - parts.reduce((n, w) => n + w.amount, 0);
-  for (const part of [...parts].sort((a, b) =>
-    a.remainder === b.remainder
-      ? a.sellerId.localeCompare(b.sellerId)
-      : a.remainder > b.remainder
-        ? -1
-        : 1,
-  )) {
-    if (remaining-- > 0) part.amount++;
-  }
-  return parts.map(({ sellerId, amount }) => ({ sellerId, amount }));
 }
 function assertion(
   db: D1Database,
@@ -397,50 +366,37 @@ async function originalShipmentCashAllocation(db: D1Database, orderId: string, o
   }
 }
 
-export async function prepareSellerParcels(
-  db: D1Database,
-  o: { orderId: string; actorId: string; requestId: string; now: number },
-) {
-  const authority = await staffMutationGuard(
-    db,
-    o.actorId,
-    'order.manage',
-    ParcelConflictError,
-  );
-  await assertFirstCodFulfillmentAllowed(db, o.orderId, ParcelConflictError);
-  const payload = JSON.stringify({ action: 'setup', orderId: o.orderId });
-  if (await repeated(db, o.requestId, o.actorId, payload)) return;
-  const order = await db
+async function readParcelSetupOrder(db: D1Database, orderId: string, readyForSetup: boolean) {
+  return db
     .prepare(
       `SELECT ${payableOrderTotalSql()} AS total,cancellation_version AS cancellationVersion,payment_mode AS paymentMode,
         delivery_rate_snapshot_json AS deliverySnapshotJson,item_subtotal_paisa AS subtotal,delivery_charge_paisa AS delivery,
         wallet_credit_paisa AS wallet,referral_discount_paisa+promo_discount_paisa AS discount,
         promo_discount_paisa AS promo,buyer_platform_fee_paisa AS serviceFee
-        FROM orders WHERE id=? AND status IN ('confirmed','packing','ready_for_pickup')`,
+        FROM orders WHERE id=?${readyForSetup ? " AND status IN ('confirmed','packing','ready_for_pickup')" : ''}`,
     )
-    .bind(o.orderId)
+    .bind(orderId)
     .first<ParcelSetupOrder>();
-  if (!order)
-    throw new ParcelConflictError(
-      'Prepare parcels before dispatch. Historical delivered orders remain unchanged.',
-    );
+}
+
+async function calculateSellerParcelCash(db: D1Database, orderId: string, order: ParcelSetupOrder) {
   const items = await db
     .prepare(
       "SELECT seller_id AS sellerId,SUM(line_total_paisa) AS amount FROM order_items WHERE order_id=? AND fulfillment_status<>'cancelled' GROUP BY seller_id",
     )
-    .bind(o.orderId)
+    .bind(orderId)
     .all<{ sellerId: string; amount: number }>();
   const useOriginalShipmentCash = order.paymentMode === 'cod' && !order.cancellationVersion &&
     usesSellerShipmentDelivery(order.deliverySnapshotJson);
   let allocated = useOriginalShipmentCash
-    ? await originalShipmentCashAllocation(db, o.orderId, order)
+    ? await originalShipmentCashAllocation(db, orderId, order)
     : allocateOrderCash(order.paymentMode==='cod'?order.total:0, items.results);
   if (order.cancellationVersion && order.paymentMode==='cod') {
     const event = await db
       .prepare(
         'SELECT next_json AS next FROM order_cancellation_events WHERE order_id=? AND version=?',
       )
-      .bind(o.orderId, order.cancellationVersion)
+      .bind(orderId, order.cancellationVersion)
       .first<{ next: string }>();
     if (!event)
       throw new ParcelConflictError(
@@ -456,6 +412,40 @@ export async function prepareSellerParcels(
         'Cancellation allocation does not reconcile.',
       );
   }
+  return allocated;
+}
+
+/** Project the same recorded cash allocation that parcel setup will use. */
+export async function readUnbookedSellerParcelCash(db: D1Database, orderId: string) {
+  const order = await readParcelSetupOrder(db, orderId, false);
+  if (!order || order.paymentMode !== 'cod') return [];
+  try {
+    return await calculateSellerParcelCash(db, orderId, order);
+  } catch (error) {
+    if (error instanceof ParcelConflictError || error instanceof SyntaxError) return [];
+    throw error;
+  }
+}
+
+export async function prepareSellerParcels(
+  db: D1Database,
+  o: { orderId: string; actorId: string; requestId: string; now: number },
+) {
+  const authority = await staffMutationGuard(
+    db,
+    o.actorId,
+    'order.manage',
+    ParcelConflictError,
+  );
+  await assertFirstCodFulfillmentAllowed(db, o.orderId, ParcelConflictError);
+  const payload = JSON.stringify({ action: 'setup', orderId: o.orderId });
+  if (await repeated(db, o.requestId, o.actorId, payload)) return;
+  const order = await readParcelSetupOrder(db, o.orderId, true);
+  if (!order)
+    throw new ParcelConflictError(
+      'Prepare parcels before dispatch. Historical delivered orders remain unchanged.',
+    );
+  const allocated = await calculateSellerParcelCash(db, o.orderId, order);
   const statements: D1PreparedStatement[] = [
     db
       .prepare('UPDATE orders SET updated_at=updated_at WHERE id=?')
