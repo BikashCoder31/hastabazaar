@@ -1,4 +1,5 @@
 import { getEffectiveBusinessSetting } from '@/lib/db/repositories/business-settings';
+import { payoutRunCalendar } from '@/lib/payments/payout-run-calendar';
 import { sellerBankState } from '@/lib/sellers/bank-details';
 
 const localTime = 'Asia/Kathmandu';
@@ -13,7 +14,7 @@ function monthBounds(now: number) {
 
 export async function readEarningsOverview(db: D1Database, sellerId: string, ownerId: string, now: number) {
   const [monthStart, monthEnd] = monthBounds(now);
-  const [upcoming, paid, bank, weekday, cutoff, hold, fee, example] = await Promise.all([
+  const [upcoming, paid, bank, weekday, cutoff, timezone, hold, fee, example] = await Promise.all([
     db.prepare(`SELECT COUNT(DISTINCT i.order_id) AS orders, COALESCE(SUM(i.line_total_paisa - i.commission_paisa), 0) AS amountPaisa
       FROM order_items i JOIN orders o ON o.id=i.order_id
       WHERE i.seller_id=? AND o.status IN ('pending_payment','confirmed','packing','ready_for_pickup','dispatched')
@@ -27,6 +28,7 @@ export async function readEarningsOverview(db: D1Database, sellerId: string, own
     readMaskedBank(db, sellerId, ownerId, now),
     getEffectiveBusinessSetting(db, 'payout_processing_weekday', now),
     getEffectiveBusinessSetting(db, 'payout_cutoff_local_time', now),
+    getEffectiveBusinessSetting(db, 'payout_timezone', now),
     getEffectiveBusinessSetting(db, 'seller_delivery_hold_days', now),
     getEffectiveBusinessSetting(db, 'platform_service_fee_policy', now),
     db.prepare(`SELECT price_paisa AS amountPaisa FROM products WHERE seller_id=? AND status='published' AND price_paisa>0
@@ -34,7 +36,7 @@ export async function readEarningsOverview(db: D1Database, sellerId: string, own
   ]);
   return {
     upcoming, paid, bank,
-    weekday: weekday.value,
+    payoutCalendar: payoutRunCalendar(now, weekday.value, cutoff.value, timezone.value),
     cutoff: cutoff.value,
     holdDays: hold.value,
     marketplaceFee: fee.value,

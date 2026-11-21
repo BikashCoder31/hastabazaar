@@ -1,4 +1,4 @@
-import type { BusinessWeekday } from '@/lib/configuration/types';
+import type { BusinessWeekday } from '../configuration/types';
 
 const weekdays: readonly BusinessWeekday[] = [
   'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday',

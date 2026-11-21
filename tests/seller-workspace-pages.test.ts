@@ -33,6 +33,36 @@ void test('actual Home rejects an offboard during its last private product and e
  }finally{f.dispose();}
 });
 
+void test('Earnings terms show the saved payout weekday and the next eligible run', async () => {
+ const f = await completeVersionFixture(Date.now());
+ try {
+  globalThis.sellerPageDb = f.db;
+  globalThis.sellerPageUserId = 'registered-owner';
+  const publish = f.sqlite.prepare(`INSERT INTO business_setting_versions
+    (id, setting_key, version, value_json, status, revision, change_control, effective_from, reason, created_by, created_at, last_request_id)
+    VALUES (?, ?, 1, ?, 'published', 1, 'controlled', 1, 'Disposable payout schedule', 'reviewer', 1, ?)`);
+  publish.run('earnings-weekday', 'payout_processing_weekday', JSON.stringify('thursday'), 'earnings-weekday');
+  publish.run('earnings-cutoff', 'payout_cutoff_local_time', JSON.stringify('16:00'), 'earnings-cutoff');
+
+  const finance = await import('../app/seller/finance/page');
+  const html = renderToStaticMarkup(await finance.default());
+  const terms = html.match(/<section[^>]*aria-labelledby="earning-example"[^>]*>.*?<\/section>/)?.[0];
+  assert.ok(terms);
+  assert.match(terms, /Payouts are sent every Thursday\./);
+  assert.match(terms, /The next run for eligible payouts is <strong>Thursday \d{1,2} [A-Z][a-z]{2}<\/strong>/);
+
+  const { readEarningsOverview } = await import('../app/seller/finance/overview-data');
+  const [beforeCutoff, atCutoff] = await Promise.all([
+   readEarningsOverview(f.db, 'registered', 'registered-owner', Date.parse('2026-11-19T15:59:00+05:45')),
+   readEarningsOverview(f.db, 'registered', 'registered-owner', Date.parse('2026-11-19T16:00:00+05:45')),
+  ]);
+  assert.equal(beforeCutoff.payoutCalendar.runDay, 'Thursday 19 Nov');
+  assert.equal(atCutoff.payoutCalendar.runDay, 'Thursday 26 Nov');
+ } finally {
+  f.dispose();
+ }
+});
+
 void test('seller order tabs follow individual item stages and retain the bookmarked detail', async () => {
  const { actionableOrderFixture } = await import('./helpers/order-response-fixture');
  const fixture = await actionableOrderFixture({ secondOffer: true });

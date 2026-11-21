@@ -32,7 +32,7 @@ export function PayoutTracker({ item, overview }: { item: NonNullable<ReturnType
     { id: 'sent', label: 'Sent to your bank', state: approvedAt ? 'current' : 'upcoming', detail: payout?.processedAt ? 'Bank instruction in progress' : 'After approval' },
     { id: 'confirmed', label: 'In your account', state: 'upcoming', detail: 'When the bank confirms payment' },
   ];
-  const weekday = overview.weekday[0].toUpperCase() + overview.weekday.slice(1);
+  const { weekday } = overview.payoutCalendar;
   return <section className={financePanel} aria-labelledby="open-payout">
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div className="min-w-0 space-y-1">
@@ -137,6 +137,7 @@ export function EarningsExample({ earnings, overview }: { earnings: SellerEarnin
   const price = overview.exampleSalePaisa;
   const commission = price !== null && rate !== undefined ? calculateSellerCommissionPaisa(price, rate) : null;
   const fee = overview.marketplaceFee;
+  const { weekday, runDay } = overview.payoutCalendar;
   return <section className={financePanel} aria-labelledby="earning-example">
     <h2 id="earning-example" className="flex items-center gap-2 font-bold"><Banknote className="size-4 shrink-0" aria-hidden="true" /> How a sale becomes your money</h2>
     <dl className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2 text-sm">
@@ -150,5 +151,9 @@ export function EarningsExample({ earnings, overview }: { earnings: SellerEarnin
         <dd className="border-t border-[#E4DACA] pt-2 text-right font-bold text-[#236548]">{sellerMoney(price - commission)}</dd>
       </> : null}
     </dl>
+    <div className="space-y-1 text-sm text-[#46536F]">
+      <p>Payouts are sent every {weekday}.</p>
+      <p>The next run for eligible payouts is <strong>{runDay}</strong>.</p>
+    </div>
   </section>;
 }
