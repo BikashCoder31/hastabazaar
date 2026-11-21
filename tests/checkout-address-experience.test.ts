@@ -103,6 +103,11 @@ void test('checkout labels required and optional fields and explains automatic a
       assert.equal(await h.page.locator('#' + id).getAttribute('required'), null);
       assert.match(await h.page.locator('label[for="' + id + '"]').innerText(), /optional/i);
     }
+    await openCheckoutAddress(h.page);
+    await h.page.locator('[data-checkout-fields="2"]').getByRole('button', { name: 'Continue', exact: true }).click();
+    const deliveryStep = h.page.locator('[data-checkout-fields="3"]');
+    await deliveryStep.getByText(/^Estimated arrival:/).waitFor();
+    assert.doesNotMatch(await deliveryStep.innerText(), /transit(?:MinDays|MaxDays| time)|preparation time|destination rate/i);
     await openCheckoutPayment(h.page);
     assert.equal(await h.page.getByRole('button', { name: 'Place COD order', exact: true }).isDisabled(), true, 'Terms are still unaccepted');
     await h.page.getByRole('checkbox', { name: /I agree to the customer terms/ }).check();

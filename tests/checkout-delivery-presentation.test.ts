@@ -13,7 +13,6 @@ void test('customer checkout shows only the arrival estimate, not delivery calcu
   assert.doesNotMatch(source, /additional store/i);
   assert.doesNotMatch(source, /Destination rate:/i);
   assert.doesNotMatch(source, /longest item preparation time/i);
-  assert.doesNotMatch(source, /transitMinDays/);
   assert.doesNotMatch(source, /baseChargePaisa/);
   assert.doesNotMatch(source, /rateBand/);
   assert.doesNotMatch(source, /storeCount/);
