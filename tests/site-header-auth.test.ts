@@ -28,7 +28,7 @@ void test('header Orders link is visible only to authenticated customers', async
           bundle.onResolve(
             {
               filter:
-                /^(next\/(image|link)|@\/app\/auth|@\/components\/layout\/(brand-wordmark|mobile-navigation|rewards-shortcut)|@\/components\/ui\/input|@\/lib\/catalog\/storefront-navigation)$/,
+                /^(next\/(image|link)|@\/app\/auth|@\/components\/layout\/(brand-wordmark|mobile-navigation|rewards-shortcut)|@\/components\/storefront\/customer-phone-tabs|@\/components\/ui\/input|@\/lib\/catalog\/storefront-navigation)$/,
             },
             ({ path }) => ({ path, namespace: 'test-stub' }),
           );

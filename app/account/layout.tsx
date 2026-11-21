@@ -2,7 +2,6 @@ import { isRiderPortalEnabled } from '@/lib/riders/availability';
 import { getSellerUser } from '@/lib/auth/seller';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
-import { ChevronRight } from 'lucide-react';
 import { signOutPath } from '@/app/auth';
 import { AccountNavigation } from '@/components/account/account-navigation';
 import {AccountAccessBoundary} from '@/components/account/account-access-boundary';
@@ -27,23 +26,11 @@ export default async function AccountLayout({
       : Promise.resolve(null),
   ]);
   return (
-    <div className="min-h-screen bg-secondary/35">
+    <div className="min-h-screen bg-[#F5EFE3] text-[#14213D]">
       <SiteHeader />
-      <div className="shell py-6 sm:py-8">
-        <nav
-          aria-label="Breadcrumb"
-          className="mb-6 flex items-center gap-2 text-sm text-muted-foreground"
-        >
-          <Link href="/" className="rounded-md hover:text-primary">
-            Home
-          </Link>
-          <ChevronRight className="size-3.5" />
-          <Link href="/account" className="rounded-md hover:text-primary">
-            My account
-          </Link>
-        </nav>
-        <AccountAccessBoundary actorId={customer.userId}><div className="grid items-start gap-6 lg:grid-cols-[15.5rem_minmax(0,1fr)] lg:gap-8">
-          <aside className="min-w-0 lg:sticky lg:top-40">
+      <div className="mx-auto w-full max-w-[1264px] px-4 py-6 md:px-12 md:py-9 min-[1360px]:px-0">
+        <AccountAccessBoundary actorId={customer.userId}><div className="grid items-start gap-5 lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-10">
+          <aside className="min-w-0">
             {customer.isSuperAdmin === 1 ? (
               <Link
                 href="/admin"

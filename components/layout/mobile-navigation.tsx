@@ -18,7 +18,9 @@ import {
   storefrontNavigation,
 } from '@/lib/catalog/storefront-navigation';
 
-export function MobileNavigation() {
+export function MobileNavigation({ browseLinks = storefrontNavigation }: {
+  browseLinks?: readonly { label: string; href: string }[];
+}) {
   const [open, setOpen] = useState(false);
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -43,7 +45,7 @@ export function MobileNavigation() {
         </SheetHeader>
         <div className="px-5">
           <nav aria-label="Mobile shopping navigation" className="space-y-1">
-            {[{ label: 'Home', href: '/' }, ...storefrontNavigation].map(
+            {[{ label: 'Home', href: '/' }, ...browseLinks].map(
               (item) => (
                 <Link
                   key={item.href}

@@ -34,6 +34,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
     'next/navigation': 'export function redirect(){throw Error("Unexpected redirect")};export function notFound(){throw Error("Not found")};export function useRouter(){return {refresh(){}}};export function usePathname(){return "/"}',
     '@/components/layout/mobile-navigation': 'export function MobileNavigation(){return null}',
     '@/components/layout/mobile-product-search': 'export function MobileProductSearch({children}){return children}',
+    '@/components/storefront/customer-phone-tabs': 'export function CustomerPhoneTabs(){return null}',
     '@/components/layout/site-header': 'export function SiteHeader(){return globalThis.React.createElement("header",null,"Navigation remains")}',
     '@/components/layout/site-footer': 'export function SiteFooter(){return null}',
     '@/components/admin/recorded-progress': 'export function RecordedProgressSection(){return null}',

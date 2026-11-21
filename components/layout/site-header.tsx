@@ -18,6 +18,7 @@ import { BrandWordmark } from '@/components/layout/brand-wordmark';
 import { RewardsShortcut } from '@/components/layout/rewards-shortcut';
 import { MobileNavigation } from '@/components/layout/mobile-navigation';
 import { MobileProductSearch } from '@/components/layout/mobile-product-search';
+import { CustomerPhoneTabs } from '@/components/storefront/customer-phone-tabs';
 import { Input } from '@/components/ui/input';
 import { storefrontNavigation } from '@/lib/catalog/storefront-navigation';
 import { mediaObjectClass } from '@/lib/media/responsive-media';
@@ -27,6 +28,14 @@ import type { PublishedFormConfig } from '@/lib/forms/types';
 export async function SiteHeader() {
   const [identity, searchPresentation] = await Promise.all([getAuthenticatedUser(),
     loadQueryPresentationConfig((env as unknown as { DB?: D1Database }).DB, 'catalog.header-search')]);
+  const trackHref = identity ? '/account/orders' : '/track';
+  const savedHref = identity ? '/account/wishlist' : signInPath('/account/wishlist');
+  const accountHref = identity ? '/account' : signInPath('/account');
+  const browseLinks = [
+    ...storefrontNavigation.filter(item => item.href !== '/help'),
+    { label: 'Track an order', href: trackHref },
+    { label: 'Help & returns', href: '/help' },
+  ];
   return (
     <>
       <div className={styles.utility}>
@@ -42,7 +51,7 @@ export async function SiteHeader() {
       <header className={`sticky top-0 z-40 ${styles.header}`}>
         <div className={`site-header-main shell flex min-h-20 items-center justify-between gap-2 py-3 sm:gap-5 ${styles.main}`}>
           <div className="site-header-brand-group flex min-w-0 items-center gap-1 sm:gap-2">
-            <MobileNavigation />
+            <MobileNavigation browseLinks={browseLinks} />
             <Link
               href="/"
               aria-label="Hastabazaar home"
@@ -96,7 +105,7 @@ export async function SiteHeader() {
               </Link>
             ) : (
               <a
-                href={signInPath('/account/wishlist')}
+                href={savedHref}
                 target="_top"
                 aria-label="Sign in to your wishlist"
                 className="header-action hidden sm:inline-flex"
@@ -122,7 +131,7 @@ export async function SiteHeader() {
               </Link>
             ) : (
               <a
-                href={signInPath('/account')}
+                href={accountHref}
                 target="_top"
                 className="header-action bg-secondary text-primary"
               >
@@ -133,7 +142,7 @@ export async function SiteHeader() {
             )}
           </div>
         </div>
-        <div className="border-t border-border/60 bg-secondary/25 lg:hidden">
+        <div className="hidden border-t border-border/60 bg-secondary/25 md:block lg:hidden">
           <div className="shell flex min-h-11 items-center justify-between gap-3 max-[299px]:flex-wrap max-[299px]:gap-y-0 max-[299px]:pt-1">
             <span className="text-xs text-muted-foreground">Bring your work to Hastabazaar</span>
             <Link
@@ -155,7 +164,7 @@ export async function SiteHeader() {
                 <House className="size-4" aria-hidden="true" />
                 Home
               </Link>
-              {storefrontNavigation.map((item) => (
+              {browseLinks.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
@@ -175,6 +184,7 @@ export async function SiteHeader() {
           </div>
         </div>
       </header>
+      <CustomerPhoneTabs savedHref={savedHref} accountHref={accountHref} />
     </>
   );
 }
