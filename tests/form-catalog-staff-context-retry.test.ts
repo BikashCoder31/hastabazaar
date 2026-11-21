@@ -145,7 +145,7 @@ void test('staff catalogue, exception, payout, privacy and both rider sites requ
           if (target.mode === 'catalog') await page.getByRole('button', { name: 'Add category' }).click();
           const form = page.locator(`form[data-form-id="${target.formId}"]`);
           if (target.mode === 'catalog') {
-            await form.getByLabel('Display name').fill('Fictional Category');
+            await form.getByLabel('English name').fill('Fictional Category');
             await form.getByLabel('URL slug').fill('fictional-category');
           } else if (target.mode === 'exception') {
             await form.getByLabel('Next action *').fill('Call the customer and review evidence');

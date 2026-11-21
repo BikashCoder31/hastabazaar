@@ -1004,7 +1004,8 @@ void test('mounted staff marketplace, parcel, and payout forms send published co
     await page.getByRole('button', { name: 'Add category' }).click();
     const taxonomy = page.locator('form[data-form-id="staff.catalog"]');
     assert.equal(await taxonomy.count(), 1);
-    await taxonomy.getByLabel('Display name').fill('New Category');
+    await taxonomy.getByLabel('English name').fill('New Category');
+    await taxonomy.getByLabel('Nepali name (नेपाली नाम)').fill('नयाँ वर्ग');
     await taxonomy.getByLabel('URL slug').fill('new-category');
     await taxonomy.getByLabel('Staff context').fill('Reviewed bilingual naming');
     const catalogResponse=page.waitForResponse('https://staff-catalog.test/api/admin/catalog');
@@ -1017,6 +1018,8 @@ void test('mounted staff marketplace, parcel, and payout forms send published co
     await classification.getByRole('button', { name: 'Save classification' }).click();
     await classificationResponse;
     const submissions = sentStaff;
+    assert.equal(submissions[0].body.nameEn, 'New Category');
+    assert.equal(submissions[0].body.nameNe, 'नयाँ वर्ग');
     assert.equal(submissions[0].body.formVersion, 1);
     assert.deepEqual(submissions[0].body.customAnswers, [{ fieldId: 'context_note', value: 'Reviewed bilingual naming' }]);
     assert.equal(submissions[1].body.formVersion, 1);

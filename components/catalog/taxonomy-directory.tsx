@@ -127,7 +127,7 @@ function OccasionCards({ entries }: { entries: readonly OccasionRow[] }) {
         const { card, icon, Symbol } = occasionStyles[index % occasionStyles.length];
         const nepali = nepaliTaxonomyName(entry);
         return (
-          <Link key={entry.id} id={`occasion-${entry.slug}`} href={shopTaxonomyHref('occasion', entry.slug)}
+          <Link key={entry.id} id={`occasion-${entry.slug}`} href={shopTaxonomyHref('occasion', entry.slug)} data-media-frame="cover"
             className={`relative isolate flex min-h-[140px] min-w-0 scroll-mt-44 flex-col gap-4 overflow-hidden rounded-[20px] p-4 md:min-h-[170px] md:gap-7 md:p-[22px] ${entry.imageId ? 'justify-end bg-[#14213D] text-white' : `justify-between ${card}`} ${focus}`}>
             {entry.imageId ? (
               <>
