@@ -60,6 +60,8 @@ import {
 import { SellerBankReview } from '@/components/admin/seller-bank-review';
 import { SellerDocumentReview } from '@/components/admin/seller-document-review';
 import { StaffReviewAccessBoundary } from '@/components/admin/staff-review-access-boundary';
+import { listSellerStaffNotes } from '@/lib/admin/seller-notes';
+import { SellerNotesCard } from './seller-notes-card';
 
 export const dynamic = 'force-dynamic';
 
@@ -178,7 +180,7 @@ export default async function SellerApplicationPage({
   const [
     onboarding, intake, recoveryTarget, managedDetails, managedTerms,
     operationalAddresses, governance, managedProgram, acceptedManagedTerms,
-    applications, publicExtras, standing, money, extraWork, tabRows, payoutHistory,
+    applications, publicExtras, standing, money, extraWork, tabRows, payoutHistory, staffNotes,
   ] = await Promise.all([
     staff.role === 'super_admin' ? getSellerOnboardingChecklist(database, {
       sellerId: application.id, ownerId: application.userId, stage: application.applicationStage ?? application.status,
@@ -204,6 +206,7 @@ export default async function SellerApplicationPage({
     independent ? readSellerOpenWork(database, id, staff, observedAt) : null,
     tab === 'orders' ? readSellerOrders(database, id, staff.id, page) : tab === 'products' ? readSellerProducts(database, id, page) : [],
     tab === 'history' && allowedFinance && registered ? readPaidPayoutHistory(database, id) : [],
+    independent ? listSellerStaffNotes(database, application.id) : null,
   ]);
   const registrationIntake = Boolean(intake);
   const restricted = restrictionIsActive(governance.restriction, observedAt);
@@ -235,12 +238,12 @@ export default async function SellerApplicationPage({
     label: verifiedBank ? `${verifiedBank.bankName}, account ending ${verifiedBank.bankAccountNumber.slice(-4)}` : 'Bank details',
     status: bank.status, href: '#seller-bank',
   } : null;
-  const notes = allowedRestrictions ? governance.events.flatMap(event => {
+  const restrictionNotes = allowedRestrictions ? governance.events.flatMap(event => {
     const { id, privateReason, createdAt, actorName } = event;
     return typeof id === 'string' && typeof privateReason === 'string' && privateReason.trim()
-      && typeof createdAt === 'number' && typeof actorName === 'string'
+      && typeof createdAt === 'number' && Number.isFinite(createdAt) && typeof actorName === 'string'
       ? [{ id, text: privateReason, at: createdAt, actor: actorName }] : [];
-  }).slice(0, 3) : [];
+  }) : [];
   const history = tab === 'history' ? application.history.map((event): RecordListItem => ({
     id: event.id, title: 'Application ' + event.toStatus.replaceAll('_', ' '),
     detail: [sellerRecordDate.format(event.createdAt), event.actorName].filter(Boolean).join(' · '), status: 'Record',
@@ -268,7 +271,9 @@ export default async function SellerApplicationPage({
         workUnavailable={reviewTasks === null}
         rows={tab === 'work' ? work : tab === 'history' ? history : tabRows}
         standing={standing} money={money} registered={registered} payoutsHref={payoutsHref} recoveryHref={recoveryHref}
-        documents={application.documents} bank={bankSummary} agreement={application.sellerAgreementAcceptedAt} notes={notes}
+        documents={application.documents} bank={bankSummary} agreement={application.sellerAgreementAcceptedAt}
+        notes={<SellerNotesCard key={staff.id + ':' + application.id} actorId={staff.id} sellerId={application.id}
+          staffNotes={staffNotes} restrictionNotes={restrictionNotes} />}
       />
       <div className={applying ? 'grid min-w-0 items-start gap-6 xl:grid-cols-[minmax(13rem,15rem)_minmax(0,1fr)]' : 'min-w-0'}>
         {applying ? <SellerApplicationQueue applications={applications} selected={id} /> : null}

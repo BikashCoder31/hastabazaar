@@ -55,7 +55,7 @@ async function digest(value: unknown): Promise<string> {
   return Array.from(new Uint8Array(bytes), byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-type CommandIdentity = { action: string; subjectType: string; subjectId: string };
+type CommandIdentity = { action: string; subjectType: string; subjectId: string; auditReason?: string };
 type Receipt = { replayed: true; result: unknown } | { replayed: false; insert(result: unknown): D1PreparedStatement };
 
 /**
@@ -78,12 +78,20 @@ export async function commandReceipt(db: D1Database, context: CommandContext, so
     return { replayed: true, result: JSON.parse(previous.result) as unknown };
   }
   return { replayed: false, insert(result) {
-    if(nativeFormHealth)return db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,request_id,created_at,command_key,command_digest,command_result_json,next_json)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?)`).bind(crypto.randomUUID(),context.actorId,source.action,source.subjectType,source.subjectId,
-      context.requestId,context.now,key,commandDigest,canonical(result),canonical({nativeFormHealth}));
-    return db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,request_id,created_at,command_key,command_digest,command_result_json)
-      VALUES(?,?,?,?,?,?,?,?,?,?)`).bind(crypto.randomUUID(), context.actorId, source.action, source.subjectType, source.subjectId,
-      context.requestId, context.now, key, commandDigest, canonical(result));
+    const columns = ['id', 'actor_id', 'action', 'subject_type', 'subject_id', 'request_id', 'created_at',
+      'command_key', 'command_digest', 'command_result_json'];
+    const values = [crypto.randomUUID(), context.actorId, source.action, source.subjectType, source.subjectId,
+      context.requestId, context.now, key, commandDigest, canonical(result)];
+    if (nativeFormHealth) {
+      columns.push('next_json');
+      values.push(canonical({ nativeFormHealth }));
+    }
+    if (source.auditReason !== undefined) {
+      columns.push('reason');
+      values.push(source.auditReason);
+    }
+    return db.prepare(`INSERT INTO audit_logs(${columns.join(',')})
+      VALUES(${columns.map(() => '?').join(',')})`).bind(...values);
   } };
 }
 

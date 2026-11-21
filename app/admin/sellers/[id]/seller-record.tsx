@@ -144,7 +144,7 @@ type RecordProps = {
   documents: SellerApplicationDetail['documents'];
   bank: { label: string; status: string; href: string } | null;
   agreement: number | null;
-  notes: readonly { id: string; text: string; at: number; actor: string }[];
+  notes: ReactNode;
   workUnavailable: boolean;
 };
 
@@ -243,16 +243,7 @@ export function SellerRecord(props: RecordProps) {
             </ul>
             {sideDocuments.length === 0 ? <p className="text-sm text-[#46536F]">No reviewable documents recorded.</p> : null}
           </Panel>
-          <Panel title="Private staff notes">
-            {notes.length ? (
-              <ul className="space-y-2">
-                {notes.map(note => <li key={note.id} className="text-sm text-[#46536F]">
-                  <p>{note.text}</p>
-                  <p className="mt-0.5 text-xs">Seller restriction · {note.actor} · {sellerRecordDate.format(note.at)}</p>
-                </li>)}
-              </ul>
-            ) : <p className="text-sm text-[#46536F]">No private staff notes recorded.</p>}
-          </Panel>
+          {notes}
         </aside>
       </div>
     </article>
