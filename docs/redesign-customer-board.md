@@ -14,6 +14,8 @@ Batch 4 starts from the completed Batch 3 report at `c1fe210` on `admin-redesign
 | C7 · Responsive sweep and tests | customer_c7 | C1–C6 | Done | `a3b4b22`, `c36af8f` | Typecheck, lint, focused integration and legacy tests passed. 100 checks at four widths passed. The open shopping and search menus passed tap size and keyboard checks. |
 | FINAL · Whole-project verification | Main agent | C0–C7 | Done | `71ed559` verified | Typecheck, lint, preflight and both browser journeys passed. Full suite ran 5,792 tests. All nine reported failures passed on the corrected tree. |
 
+Customer experience complete — ready for your review
+
 ## For the owner
 
 The approved references are in `docs/design-reference/customer/`. The implementation uses existing product photos and saved application values. The homepage shares the customer header and phone tabs. Its page content remains outside this redesign.
@@ -255,3 +257,18 @@ Browser evidence for the two purchase journeys and the 96-state responsive rerun
 - `tests/staff-sign-in-expiry.test.ts`
 - `tests/tracking-page-preload.test.ts`
 - `tests/wishlist-save-for-later.test.ts`
+
+## Batch 4b
+
+| Task | Owner | Waits for | Status | Commit | Checks |
+| --- | --- | --- | --- | --- | --- |
+| H1 · Restore the storefront header | Main agent | Batch 4 | Done | This task commit | Typecheck, lint, 14 focused tests, 13 viewport checks, mobile menu and tracking paths passed. |
+| H2 · Homepage | Homepage helper | H1 | Queued | | |
+| H3 · Categories, occasions and makers | Discovery helper | H1 | Queued | | |
+| H4 · Final check | Main agent | H1–H3 | Queued | | |
+
+### For the owner
+
+Batch 4b uses the updated customer references and the storefront header from `c1fe210`.
+
+The checked launcher passed with 107/107 forms. Header checks used the checked preview and separate guest and Buyer contexts. At 390, 768, 1024 and 1440 px the header fit with zero sideways scroll. The desktop menu and the mobile sheet follow the original link order. Desktop Sell with us measures 34 px, and the invitation row and sheet links measure at least 44 px on phones. The search suggestions keep keyboard focus. The original tablet search uses its icon button where the tablet picture shows a text button. Tracking is reachable through You → My orders for buyers, and You → sign-in tracking for guests.

@@ -81,7 +81,7 @@
 .navigation .homeLink { color: #142d56; font-weight: 700; }
 .main :global(.site-header-brand) [aria-label='Hastabazaar'] > span:last-child { color: #a5121c; }
 .sell {
-  min-height: 44px;
+  min-height: 34px;
   padding-inline: 12px;
   border: 1px solid #eed8da;
   border-radius: 8px;
@@ -103,7 +103,7 @@
   .main :global(.site-header-brand) [aria-label='Hastabazaar'] { font-size: 31px; }
   .main :global(.site-header-actions) > :last-child { padding-inline: 16px; }
   .searchForm { min-height: 48px; }
-  .searchForm button { padding-inline: 20px; }
+  .searchForm button { min-height: 38px; padding-inline: 20px; }
   .searchForm input { font-size: 14px; }
 }
 @media (max-width: 639px) {
@@ -112,6 +112,9 @@
 }
 @media (min-width: 390px) and (max-width: 639px) {
   .main:global(.site-header-main) { --header-control-size: 44px; }
+}
+@media (max-width: 389px) {
+  .main:global(.site-header-main) { padding-inline: 2px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .main :global(.site-header-brand), .searchForm,

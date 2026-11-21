@@ -28,14 +28,8 @@ import type { PublishedFormConfig } from '@/lib/forms/types';
 export async function SiteHeader() {
   const [identity, searchPresentation] = await Promise.all([getAuthenticatedUser(),
     loadQueryPresentationConfig((env as unknown as { DB?: D1Database }).DB, 'catalog.header-search')]);
-  const trackHref = identity ? '/account/orders' : '/track';
   const savedHref = identity ? '/account/wishlist' : signInPath('/account/wishlist');
   const accountHref = identity ? '/account' : signInPath('/account');
-  const browseLinks = [
-    ...storefrontNavigation.filter(item => item.href !== '/help'),
-    { label: 'Track an order', href: trackHref },
-    { label: 'Help & returns', href: '/help' },
-  ];
   return (
     <>
       <div className={styles.utility}>
@@ -51,7 +45,7 @@ export async function SiteHeader() {
       <header className={`sticky top-0 z-40 ${styles.header}`}>
         <div className={`site-header-main shell flex min-h-20 items-center justify-between gap-2 py-3 sm:gap-5 ${styles.main}`}>
           <div className="site-header-brand-group flex min-w-0 items-center gap-1 sm:gap-2">
-            <MobileNavigation browseLinks={browseLinks} />
+            <MobileNavigation />
             <Link
               href="/"
               aria-label="Hastabazaar home"
@@ -142,7 +136,7 @@ export async function SiteHeader() {
             )}
           </div>
         </div>
-        <div className="hidden border-t border-border/60 bg-secondary/25 md:block lg:hidden">
+        <div className="border-t border-border/60 bg-secondary/25 lg:hidden">
           <div className="shell flex min-h-11 items-center justify-between gap-3 max-[299px]:flex-wrap max-[299px]:gap-y-0 max-[299px]:pt-1">
             <span className="text-xs text-muted-foreground">Bring your work to Hastabazaar</span>
             <Link
@@ -164,7 +158,7 @@ export async function SiteHeader() {
                 <House className="size-4" aria-hidden="true" />
                 Home
               </Link>
-              {browseLinks.map((item) => (
+              {storefrontNavigation.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
@@ -227,12 +221,12 @@ function HeaderSearch({ id, config, unavailable }: { id: string; config: Publish
           label={search.label}
           placeholder={search.placeholder}
           helpId={search.helpText ? `${id}-help` : undefined}
-          className="h-auto min-h-11 min-w-0 flex-1 rounded-none border-0 bg-transparent px-0 py-1.5 text-base placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0"
+          className="h-auto min-w-0 flex-1 rounded-none border-0 bg-transparent px-0 py-1.5 text-base placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 md:text-base max-md:min-h-11"
         />
         <button
           type="submit"
           aria-label="Search"
-          className="inline-flex min-h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#b5121b] text-sm font-semibold text-white transition-colors hover:bg-[#921018] lg:w-auto lg:px-4"
+          className="inline-flex min-h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#b5121b] text-sm font-semibold text-white transition-colors hover:bg-[#921018] md:min-h-9 md:w-8 lg:w-auto lg:px-4"
         >
           <Search aria-hidden="true" className="size-4 lg:hidden" />
           <span className="hidden lg:inline">Search</span>

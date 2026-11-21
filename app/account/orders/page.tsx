@@ -73,9 +73,12 @@ export default async function CustomerOrdersPage({
             Use the private receipt link you received after checkout to view
             that order.
           </p>
-          <Link href="/help#tracking" className="section-link mt-1 min-h-11">
-            Help finding a guest order →
-          </Link>
+          <div className="mt-1 flex flex-wrap gap-x-4">
+            <Link href="/track" className="section-link">Track an order</Link>
+            <Link href="/help#tracking" className="section-link">
+              Help finding a guest order →
+            </Link>
+          </div>
         </div>
       </div>
     </div>
