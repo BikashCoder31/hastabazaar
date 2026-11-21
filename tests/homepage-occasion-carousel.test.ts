@@ -285,7 +285,7 @@ void test('public and Super Admin surfaces reuse the central setting and actual 
       ),
       'utf8',
     ).catch(() => ''),
-    readFile(new URL('../app/globals.css', import.meta.url), 'utf8'),
+    readFile(new URL('../components/homepage/homepage-occasion.module.css', import.meta.url), 'utf8'),
   ]);
   assert.match(
     page,
@@ -299,10 +299,9 @@ void test('public and Super Admin surfaces reuse the central setting and actual 
   assert.match(navigation, /occasions\.map/);
   assert.match(navigation, /encodeURIComponent\(occasion.slug\)/);
   assert.match(navigation, /occasion.nameEn/);
-  assert.doesNotMatch(
-    navigation,
-    /HomepageOccasionCarousel|aria-hidden|inert=/,
-  );
+  assert.match(navigation, /occasion.nameNe/);
+  assert.match(navigation, /\/occasions#occasion-/);
+  assert.doesNotMatch(navigation, /<nav[^>]+(?:aria-hidden|inert)/);
   assert.match(adminPage, /<HomepageOccasionManager/);
   assert.match(
     adminPage,
@@ -324,13 +323,7 @@ void test('public and Super Admin surfaces reuse the central setting and actual 
     carousel,
     /aria-hidden=\{index === current \? undefined : true\}/,
   );
-  assert.match(
-    styles,
-    /:where\(section, article, main\)\[id\]\s*\{[\s\S]*?scroll-margin-top:\s*12rem/,
-  );
-  assert.match(
-    styles,
-    /\.homepage-occasion-section\s*\{[\s\S]*?container-name:\s*homepage-occasion/,
-  );
-  assert.match(styles, /@container homepage-occasion \(max-width:\s*639px\)/);
+  assert.match(styles, /scroll-margin-top:\s*10rem/);
+  assert.match(styles, /repeating-linear-gradient\(45deg/);
+  assert.match(styles, /@media \(width >= 640px\)[\s\S]*?\.cards\s*\{\s*grid-template-columns:\s*repeat\(2/);
 });

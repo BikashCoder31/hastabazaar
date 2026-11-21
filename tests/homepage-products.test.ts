@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 import {DatabaseSync,type SQLInputValue} from 'node:sqlite';
 import test from 'node:test';
 import { companyDetails } from '../lib/content/company-details';
+import { listHomepageMakers } from '../lib/homepage/homepage-storefront-data';
 
 import {
   listActiveHomepagePromotions,
@@ -151,11 +152,12 @@ async function homepageFixture() {
 void test('homepage collections use only real eligible listings and truthful ranking inputs', async () => {
   const fixture = await homepageFixture();
   try {
-    const [latest, promoted, top, offers] = await Promise.all([
+    const [latest, promoted, top, offers, makers] = await Promise.all([
       listHomepageLatestProducts(fixture.database),
       listHomepagePromotedProducts(fixture.database, fixture.now),
       listHomepageTopProducts(fixture.database, { now: fixture.now }),
       listActiveHomepagePromotions(fixture.database, fixture.now),
+      listHomepageMakers(fixture.database, fixture.now),
     ]);
 
     assert.deepEqual(
@@ -181,6 +183,10 @@ void test('homepage collections use only real eligible listings and truthful ran
     );
     assert.equal(latest[0].tradingName, 'Fictional Shop', 'The approved public name is authoritative over a private legacy name.');
     assert.equal(latest[0].label, 'New');
+    assert.equal(latest[0].id, 'newest');
+    assert.equal(latest[0].categorySlug, 'home-decor');
+    assert.equal(makers.find(maker => maker.id === 'registered')?.image?.src, '/api/product-media/media-sold-out');
+    assert.ok(makers.every(maker => maker.id !== 'disabled-seller'));
     assert.equal(promoted[0].label, 'Offer');
     assert.equal(top[0].label, 'Popular');
   } finally {
@@ -195,71 +201,41 @@ void test('homepage and shop queries stay within native D1 expression limits', a
     assert.deepEqual(await listActiveHomepagePromotions(fixture.db), []);
     assert.deepEqual(await listHomepageLatestProducts(fixture.db), []);
     assert.deepEqual(await listHomepageTopProducts(fixture.db), []);
+    await listHomepageMakers(fixture.db, Date.now());
     assert.deepEqual(await listPublishedProducts(fixture.db, { sort: 'price-low' }), []);
   } finally {
     await fixture.dispose();
   }
 });
 
-void test('homepage source has no hard-coded product fallback and retains honest empty states', async () => {
-  const [page, fallback, footer] = await Promise.all([
+void test('new arrivals retains a truthful empty state and its existing shop URL', async () => {
+  const [page, arrivals, fallback, footer] = await Promise.all([
     readFile(new URL('../app/page.tsx', import.meta.url), 'utf8'),
-    readFile(
-      new URL('../lib/catalog/featured-products.ts', import.meta.url),
-      'utf8',
-    ),
-    readFile(
-      new URL('../components/layout/site-footer.tsx', import.meta.url),
-      'utf8',
-    ),
+    readFile(new URL('../components/homepage/homepage-products.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../lib/catalog/featured-products.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../components/layout/site-footer.tsx', import.meta.url), 'utf8'),
   ]);
-
   assert.doesNotMatch(page, /featuredProducts/);
-  assert.doesNotMatch(
-    fallback,
-    /Handmade Macrame Crossbody Bag|Handwoven Straw Tote/,
-  );
-  const renderedCopy = page.replace(/\s+/g, ' ');
-  for (const approvedCopy of [
-    'NEW TO HASTABAZAAR',
-    'New arrivals.',
-    'Fresh finds are on the way.',
-    'New products will appear here as soon as they’re ready to shop.',
-    'Explore craft categories',
-    'Shop all new arrivals',
-  ]) {
-    assert.ok(
-      renderedCopy.includes(approvedCopy),
-      `missing approved copy: ${approvedCopy}`,
-    );
+  assert.doesNotMatch(fallback, /Handmade Macrame Crossbody Bag|Handwoven Straw Tote/);
+  assert.match(page, /<HomepageNewArrivals products=\{latestProducts\}/);
+  for (const copy of ['Fresh finds are on the way.', 'New products will appear here as soon as they’re ready to shop.', 'See all new arrivals']) {
+    assert.ok(arrivals.includes(copy), copy);
   }
-  assert.doesNotMatch(
-    page,
-    /Just added by our sellers|approved seller product/i,
-  );
-  assert.match(page, /ProductSlider/);
+  assert.match(arrivals, /URLSearchParams\(\{ sort: 'newest' \}\)/);
   assert.equal(companyDetails.supportEmail, 'support@hastabazaar.com');
-  assert.match(footer, /href=\{`mailto:\$\{companyDetails\.supportEmail\}`\}/);
-  assert.match(footer, /\{companyDetails\.supportEmail\}/);
+  assert.ok(footer.includes('mailto:' + '$' + '{companyDetails.supportEmail}'));
 });
 
-void test('new arrivals uses a wide capped desktop shell without changing the mobile card layout', async () => {
-  const [page, slider, styles] = await Promise.all([
-    readFile(new URL('../app/page.tsx', import.meta.url), 'utf8'),
-    readFile(
-      new URL('../components/catalog/product-slider.tsx', import.meta.url),
-      'utf8',
-    ),
-    readFile(new URL('../app/globals.css', import.meta.url), 'utf8'),
+void test('new arrivals adapts to two, three and four columns', async () => {
+  const [productCards, styles] = await Promise.all([
+    readFile(new URL('../components/homepage/homepage-products.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../components/homepage/homepage.module.css', import.meta.url), 'utf8'),
   ]);
-
-  assert.match(page, /id="latest-products"[\s\S]*?homepage-product-shell/);
-  assert.match(styles, /\.homepage-product-shell\s*\{[\s\S]*?max-width:\s*105rem/);
-  assert.match(slider, /homepage-product-scroller/);
-  assert.match(slider, /2xl:basis-\[calc\(20%-1\.2rem\)\]/);
-  assert.match(slider, /basis-\[78%\]/);
-  assert.match(styles, /\.homepage-product-scroller\s*\{[\s\S]*?scrollbar-width:\s*none/);
-  assert.match(styles, /\.homepage-product-scroller::-webkit-scrollbar/);
+  assert.match(productCards, /id="latest-products"/);
+  assert.match(productCards, /aria-pressed=\{selected === key\}/);
+  for (const columns of [2, 3, 4]) {
+    assert.ok(styles.includes('grid-template-columns: repeat(' + columns + ', minmax(0, 1fr))'));
+  }
 });
 
 void test('Super Admin can hide and restore individual homepage products without unpublishing', async () => {

@@ -12,13 +12,12 @@ import {
   HandHeart,
   Heart,
   House,
-  MapPin,
   Paintbrush,
   Plane,
   Sparkles,
   type LucideIcon,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { SliderDots } from '@/components/ui/slider-dots';
 import { useSliderAutoplay } from '@/lib/homepage/slider-autoplay';
@@ -37,11 +36,9 @@ import {
   type HomepageOccasionIcon,
   type HomepageOccasionSlides,
 } from '@/lib/homepage/occasion-slides';
-import {
-  mediaFrameClass,
-  mediaObjectClass,
-  mediaSizes,
-} from '@/lib/media/responsive-media';
+import { categoryImage } from '@/lib/catalog/category-presentation';
+import { mediaFrameClass, mediaObjectClass } from '@/lib/media/responsive-media';
+import styles from './homepage-occasion.module.css';
 
 const icons: Record<HomepageOccasionIcon, LucideIcon> = {
   gift: Gift,
@@ -63,12 +60,26 @@ function heading(slides: HomepageOccasionSlides, index: number): string {
     .join(' ');
 }
 
+function occasionCardPhoto(href: string) {
+  const destination = new URL(href, 'https://hastabazaar.invalid');
+  const category = destination.searchParams.get('category');
+  if (category && category !== 'gifts') {
+    const image = categoryImage({ slug: category, nameEn: '' });
+    if (image) return image.src;
+  }
+  if (destination.hash === '#craft-guide') return '/homepage/maker-hands-hero.webp';
+  if (destination.searchParams.get('occasion')) return '/homepage/category-gifts.webp';
+  return '/homepage/meaningful-gifts-hero.webp';
+}
+
 export function HomepageOccasionCarousel({
   slides,
   initialSlideId,
+  children,
 }: {
   slides: HomepageOccasionSlides;
   initialSlideId?: string;
+  children?: ReactNode;
 }) {
   const enabledSlides = useMemo(
     () =>
@@ -162,25 +173,12 @@ export function HomepageOccasionCarousel({
   return (
     <section
       id="occasions"
-      className="homepage-occasion-section"
+      className={styles.band}
       aria-label="Gifts for meaningful moments"
       {...interactionProps}
     >
-      <div
-        data-media-frame="cover"
-        className={mediaFrameClass('cover', 'homepage-occasion-pattern')}
-        aria-hidden="true"
-      >
-        <Image
-          data-media-mode="cover"
-          src="/homepage/nepali-gift-pattern.webp"
-          alt=""
-          fill
-          sizes={mediaSizes.occasion}
-          className={mediaObjectClass('cover')}
-        />
-      </div>
-      <Carousel
+      <div className={styles.container}>
+        <Carousel
         opts={{ loop: true, startIndex: initialIndex }}
         setApi={setApi}
         aria-label="Hastabazaar gifting stories"
@@ -206,52 +204,51 @@ export function HomepageOccasionCarousel({
               aria-hidden={index === current ? undefined : true}
               inert={index === current ? undefined : true}
             >
-              <div className="shell homepage-occasion-layout">
-                <div className="homepage-occasion-copy">
-                  <p className="homepage-occasion-kicker">{slide.eyebrow}</p>
-                  <h2 className="homepage-occasion-title">
+              <div className={styles.layout}>
+                <div className={styles.copy}>
+                  <p className={styles.eyebrow}>{slide.eyebrow}</p>
+                  <h2>
                     {slide.headingLead}{' '}
                     {slide.highlightedPhrase ? (
-                      <span>{slide.highlightedPhrase}</span>
+                      <em>{slide.highlightedPhrase}</em>
                     ) : null}{' '}
                     {slide.headingTail}
                   </h2>
-                  <p className="homepage-occasion-intro">{slide.body}</p>
-                  {slide.supportingNote ? (
-                    <p className="homepage-occasion-delivery">
-                      <span className="homepage-occasion-delivery-icon">
-                        <MapPin aria-hidden="true" />
-                      </span>
-                      {slide.supportingNote}
-                    </p>
-                  ) : null}
+                  <p>{slide.body}</p>
+                  {slide.supportingNote ? <small>{slide.supportingNote}</small> : null}
                 </div>
                 <nav
                   aria-label={`Actions for ${heading(enabledSlides, index)}`}
-                  className="homepage-occasion-grid"
+                  className={styles.cards}
                 >
-                  {slide.cards.map((card) => {
+                  {slide.cards.map((card, cardIndex) => {
                     const Icon = icons[card.icon];
                     return (
                       <Link
-                        key={`${slide.id}:${card.destination}`}
+                        key={cardIndex}
                         href={card.destination}
-                        className="homepage-occasion-card"
+                        className={styles.card}
                         data-theme={card.theme}
                       >
-                        <Icon
-                          className="homepage-occasion-card-watermark"
-                          aria-hidden="true"
-                        />
-                        <span className="homepage-occasion-card-icon">
+                        <span data-media-frame="cover" className={mediaFrameClass('cover', styles.photo)}>
+                          <Image
+                            src={occasionCardPhoto(card.destination)}
+                            alt=""
+                            data-media-mode="cover"
+                            fill
+                            sizes="(min-width: 640px) 174px, 168px"
+                            className={mediaObjectClass('cover')}
+                          />
+                        </span>
+                        <span className={styles.icon}>
                           <Icon aria-hidden="true" />
                         </span>
-                        <span className="homepage-occasion-card-copy">
+                        <span className={styles.cardCopy}>
                           <span>{card.kicker}</span>
                           <strong>{card.title}</strong>
                         </span>
                         <span
-                          className="homepage-occasion-card-action"
+                          className={styles.action}
                           aria-hidden="true"
                         >
                           {card.theme === 'warm' ? (
@@ -278,9 +275,11 @@ export function HomepageOccasionCarousel({
           )}
           current={current}
           onSelect={selectManually}
-          className="mt-4"
+          className={styles.controls}
         />
-      </Carousel>
+        </Carousel>
+        {children}
+      </div>
       <p className="sr-only" aria-live="polite" aria-atomic="true">
         {announcement}
       </p>

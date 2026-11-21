@@ -22,7 +22,7 @@ async function mounted(kind:'hero'|'occasion'='hero') {
       const occasionSlides=Array.from({length:4},(_,index)=>({...INITIAL_HOMEPAGE_OCCASION_SLIDES[0],id:'fixture-occasion-'+index,position:index+1,headingLead:'Gifting story '+(index+1)}));
       createRoot(document.getElementById('root')).render(new URL(location.href).searchParams.has('occasion')?<HomepageOccasionCarousel slides={occasionSlides}/>:<HomepageHeroCarousel slides={slides}/>);
     ` },
-    bundle: true, write: false, platform: 'browser', format: 'iife',
+    bundle: true, write: false, loader: { '.module.css': 'empty' }, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'hero-fixture-link', setup(bundler) {
       bundler.onResolve({ filter: /^next\/(link|image)$/ }, args => ({ path: args.path, namespace: 'hero-fixture' }));
@@ -43,7 +43,7 @@ async function mounted(kind:'hero'|'occasion'='hero') {
       [data-slot=carousel-content]{overflow:hidden}
       [data-slot=carousel-content]>div{display:flex;touch-action:pan-y pinch-zoom}
       [data-slot=carousel-item]{flex:0 0 100%;min-width:0}
-      .homepage-hero-layout,.homepage-occasion-layout{height:300px;overflow:hidden}
+      [data-slot=carousel-item]{height:300px;overflow:hidden}
       [data-slider-dots]{display:flex}
     </style><button id="outside">Outside the slideshow</button><div id="root"></div>`,
   }));
@@ -62,7 +62,7 @@ async function mounted(kind:'hero'|'occasion'='hero') {
       const schedule=window.setTimeout.bind(window);
       const cancel=window.clearTimeout.bind(window);
       window.setTimeout=(handler,delay,...args)=>{
-        if(delay!==6_000||typeof handler!=='function')return schedule(handler,delay,...args);
+        if(delay!==${kind === 'hero' ? 6_500 : 6_000}||typeof handler!=='function')return schedule(handler,delay,...args);
         const id=schedule(()=>{timing.timers.delete(id);handler.apply(window,args);},delay);
         timing.timers.set(id,Date.now());return id;
       };
@@ -104,18 +104,19 @@ async function mounted(kind:'hero'|'occasion'='hero') {
 }
 
 for(const kind of ['hero','occasion'] as const){
-void test(`${kind} has only story dots and rotates automatically at each six-second boundary`, async () => {
+const interval = kind === 'hero' ? 6_500 : 6_000;
+void test(`${kind} renders its story controls and rotates at each configured boundary`, async () => {
   const h=await mounted(kind);
   try {
-    assert.equal(await h.page.getByRole('button',{name:/Pause|Resume/}).count(),0,'hero controls must contain only dots');
+    assert.equal(await h.page.getByRole('button',{name:'Pause featured stories'}).count(),kind==='hero'?1:0);
     assert.equal(await h.page.locator('[data-slider-dots] button').count(),4);
-    await h.boundary(6_000);
-    await h.boundary(6_000);
+    await h.boundary(interval);
+    await h.boundary(interval);
     assert.equal(await h.page.locator('[aria-live="polite"]').textContent(),'','automatic rotation stays silent');
   } finally {await h.close();}
 });
 
-void test(`a manual ${kind} dot grants twelve seconds before six-second rotation returns`, async () => {
+void test(`a manual ${kind} story selection grants twelve seconds before automatic browsing resumes`, async () => {
   const h=await mounted(kind);
   try {
     await h.page.clock.runFor(5_000);
@@ -124,7 +125,7 @@ void test(`a manual ${kind} dot grants twelve seconds before six-second rotation
     await h.page.locator('#outside').focus();
     await h.page.mouse.move(10,10);
     await h.boundary(12_000);
-    await h.boundary(6_000);
+    await h.boundary(interval);
   } finally {await h.close();}
 });
 
@@ -135,13 +136,13 @@ void test(`mouse and touch focus cannot permanently freeze ${kind} rotation afte
     await h.page.mouse.move(10,10);
     assert.equal(await h.page.locator('[data-slider-dots] button').nth(3).evaluate((button:HTMLElement)=>button===document.activeElement),true);
     await h.boundary(12_000);
-    await h.boundary(6_000);
+    await h.boundary(interval);
     const box=await h.page.locator('[data-slider-dots] button').nth(2).boundingBox();
     assert.ok(box);
     await h.page.touchscreen.tap(box.x+box.width/2,box.y+box.height/2);
     assert.match(String(await h.selected()),/^Show slide 3:/);
     await h.boundary(12_000);
-    await h.boundary(6_000);
+    await h.boundary(interval);
   } finally {await h.close();}
 });
 
@@ -153,7 +154,7 @@ void test(`${kind} keeps hover, keyboard focus, hidden-page and motion safeguard
     await h.page.clock.runFor(18_000);
     assert.equal(await h.selected(),hovered,'hover pauses rotation');
     await h.page.mouse.move(10,10);
-    await h.boundary(6_000);
+    await h.boundary(interval);
 
     await h.page.clock.runFor(1_000);
     await h.page.locator('[data-slot=carousel-item]:not([inert])').click({position:{x:5,y:5}});
@@ -165,7 +166,7 @@ void test(`${kind} keeps hover, keyboard focus, hidden-page and motion safeguard
     await h.page.clock.runFor(18_000);
     assert.equal(await h.selected(),tabbed,'Tab entry after a non-focusable pointer click must pause');
     await h.page.locator('#outside').focus();
-    await h.boundary(6_000);
+    await h.boundary(interval);
 
     await h.page.locator('[data-slider-dots] button').nth(0).focus();
     const focused=await h.selected();
@@ -180,7 +181,7 @@ void test(`${kind} keeps hover, keyboard focus, hidden-page and motion safeguard
     await h.page.clock.runFor(18_000);
     assert.equal(await h.selected(),keyboardSelection,'keyboard-created clicks must keep the focus safeguard');
     await h.page.locator('#outside').focus();
-    await h.boundary(6_000);
+    await h.boundary(interval);
 
     await h.page.evaluate(()=>{
       Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});
@@ -193,7 +194,7 @@ void test(`${kind} keeps hover, keyboard focus, hidden-page and motion safeguard
       Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});
       document.dispatchEvent(new Event('visibilitychange'));
     });
-    await h.boundary(6_000);
+    await h.boundary(interval);
 
     await h.page.emulateMedia({reducedMotion:'reduce'});
     await h.waitForMotion(true,false);
@@ -204,7 +205,7 @@ void test(`${kind} keeps hover, keyboard focus, hidden-page and motion safeguard
     await h.page.emulateMedia({reducedMotion:'no-preference'});
     await h.page.locator('#outside').focus();
     await h.waitForMotion(false,true);
-    await h.boundary(6_000);
+    await h.boundary(interval);
 
     if(kind==='hero'){
     await h.mount('?video');
@@ -213,7 +214,7 @@ void test(`${kind} keeps hover, keyboard focus, hidden-page and motion safeguard
     await h.page.clock.runFor(18_000);
     assert.equal(await h.selected(),playing,'playing video pauses rotation');
     await h.page.locator('video').evaluate((video:HTMLVideoElement)=>video.dispatchEvent(new Event('pause',{bubbles:true})));
-    await h.boundary(6_000);
+    await h.boundary(interval);
     }
   } finally {await h.close();}
 });
@@ -230,7 +231,7 @@ void test(`a long ${kind} drag grants twelve seconds from release before automat
     await touch.detach();
     assert.notEqual(await h.selected(),before,'a real drag must choose another story');
     await h.boundary(12_000);
-    await h.boundary(6_000);
+    await h.boundary(interval);
     await h.page.clock.runFor(1_000);
     const beforeMouse=await h.selected();
     await h.page.mouse.move(300,200);
@@ -243,7 +244,7 @@ void test(`a long ${kind} drag grants twelve seconds from release before automat
     await h.page.mouse.up();
     assert.notEqual(await h.selected(),beforeMouse,'a mouse release outside the section must finish its drag');
     await h.boundary(12_000);
-    await h.boundary(6_000);
+    await h.boundary(interval);
   } finally {await h.close();}
 });
 

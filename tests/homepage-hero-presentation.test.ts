@@ -16,7 +16,7 @@ void test('homepage resolves the effective hero carousel with an explicit recove
 });
 
 void test('category overlap and established homepage anchors remain intact', async () => {
-  const [page, occasionCarousel, styles, craftDetails] = await Promise.all([
+  const [page, occasionCarousel, styles, craftDetails, products] = await Promise.all([
     readFile(new URL('../app/page.tsx', import.meta.url), 'utf8'),
     readFile(
       new URL(
@@ -25,15 +25,16 @@ void test('category overlap and established homepage anchors remain intact', asy
       ),
       'utf8',
     ),
-    readFile(new URL('../app/globals.css', import.meta.url), 'utf8'),
+    readFile(new URL('../components/homepage/homepage.module.css', import.meta.url), 'utf8'),
     readFile(
       new URL('../components/homepage/craft-details.tsx', import.meta.url),
       'utf8',
     ),
+    readFile(new URL('../components/homepage/homepage-products.tsx', import.meta.url), 'utf8'),
   ]);
   assert.match(page, /<CraftDetails\s*\/>/);
   assert.match(craftDetails, /aria-labelledby="craft-details-heading"/);
-  const homepageSources = `${page}\n${occasionCarousel}\n${craftDetails}`;
+  const homepageSources = `${page}\n${occasionCarousel}\n${craftDetails}\n${products}`;
   assert.ok(
     page.indexOf('<HomepageHeroCarousel') < page.indexOf('id="categories"'),
   );
@@ -49,12 +50,12 @@ void test('category overlap and established homepage anchors remain intact', asy
   }
   assert.match(
     styles,
-    /\.homepage-category-wrap\s*\{[\s\S]*?margin-top:\s*-3\.4rem/,
+    /\.categoryPanel\s*\{[\s\S]*?margin-top:\s*-4\.5rem/,
   );
-  assert.match(styles, /\.homepage-hero-carousel/);
+  assert.match(styles, /scroll-snap-type: x proximity/);
 });
 
-void test('hero media is full bleed, calmer, and uses readable captions with dot navigation', async () => {
+void test('hero media is full bleed and keeps captions, progress and a pause control', async () => {
   const [carouselSource, styles, presentation] = await Promise.all([
     readFile(
       new URL(
@@ -85,8 +86,9 @@ void test('hero media is full bleed, calmer, and uses readable captions with dot
   assert.match(styles, /backdrop-filter:\s*blur/);
   assert.doesNotMatch(carousel, /bg-\[#eee5d8\]\/85/);
   assert.equal((carousel.match(/homepage-hero-image-note/g) ?? []).length, 1);
-  assert.match(carousel, /homepage-hero-dot/);
-  // Shared dot rendering and keyboard selection are verified in slider-dots.test.ts.
+  assert.match(carousel, /data-slider-dots/);
+  assert.match(carousel, /Pause featured stories/);
+  assert.match(carousel, /animationDuration:/);
 });
 
 void test('homepage editorial sections retain responsive containers and safe compact typography', async () => {

@@ -263,8 +263,8 @@ Browser evidence for the two purchase journeys and the 96-state responsive rerun
 | Task | Owner | Waits for | Status | Commit | Checks |
 | --- | --- | --- | --- | --- | --- |
 | H1 · Restore the storefront header | Main agent | Batch 4 | Done | `28bd9da` | Typecheck, lint, 14 focused tests, 13 viewport checks, mobile menu and tracking paths passed. |
-| H2 · Homepage | Homepage helper | H1 | In progress | | |
-| H3 · Categories, occasions and makers | Discovery helper | H1 | Done | This task commit | Typecheck, lint, 19 focused checks, 12 checked-preview and 12 populated fixture measurements passed. |
+| H2 · Homepage | Homepage helper | H1 | Done | This task commit | Typecheck, lint, focused suites, four-width Buyer and guest checks, and both native Homepage editor publications passed. |
+| H3 · Categories, occasions and makers | Discovery helper | H1 | Done | `e5b395d` | Typecheck, lint, 19 focused checks, 12 checked-preview and 12 populated fixture measurements passed. |
 | H4 · Final check | Main agent | H1–H3 | Queued | | |
 
 ### For the owner
@@ -289,3 +289,7 @@ An early focused test used the Batch 3 exclusion list and loaded 0169 while init
 The long-running preview returned a worker runner error. The checked launcher restarted using the same local data and passed the 107-form check. Home, local sign-in, Categories and Gifts by occasion then returned HTTP 200.
 
 The checked catalogue contains one active category and occasion, both named Others, and one catalogue-derived budget cap. Its maker profile has no reviewed workshop media. A populated fixture verified published category counts, occasion groups and season windows, approved maker details, photos and captions, catalogue links, a missing maker’s 404, and native inline MP4 playback at 390 and 1440 px. Workshop video starts muted and offers the original file link. The existing profile workflow accepts up to two attachments and has no timed subtitle track.
+
+The checked homepage passed at 390, 768, 1024 and 1440 px, including carousel pause and play, reduced motion, keyboard selection and the Buyer welcome strip. At 1024 and 1440 px the category panel overlaps the hero image by 72 px. Both Homepage editors saved and published through their existing staff controls in a disposable fixture. The corresponding public headings appeared at the saved effective time.
+
+The return badge reads the shared versioned marketplace policy that checkout snapshots. There is no separate global return-window field in Business settings. Both saved offer availability and popularity ranks come from the catalogue. With no eligible promotions or ranked products in the checked data, those sections do not appear. The promoted fallback uses “Featured finds” when no popularity ranking is available.

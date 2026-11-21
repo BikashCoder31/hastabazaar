@@ -1462,8 +1462,17 @@ interface HomepageProductQueryRow extends Partial<PublicSellingIdentity>,PublicO
   pricePaisa: number | null;
   compareAtPricePaisa: number | null;
   category: string;
+  categorySlug?: string;
+  madeToOrder?: number;
+  preparationDays?: number;
   tradingName: string;
   mediaId: string;
+}
+
+export interface HomepageProduct extends FeaturedProduct {
+  id: string;
+  madeToOrder?: boolean;
+  preparationDays?: number;
 }
 
 export interface HomepagePromotion {
@@ -1503,9 +1512,10 @@ export class HomepageVisibilityConflictError extends Error {}
 function homepageProduct(
   row: HomepageProductQueryRow,
   label: FeaturedProduct['label'],
-): FeaturedProduct {
+): HomepageProduct {
   const pricePaisa = row.pricePaisa===null?null:Number(row.pricePaisa);
   return {
+    id: row.id,
     slug: row.slug,
     name: publicProductName(row.name),
     pricePaisa,
@@ -1516,6 +1526,9 @@ function homepageProduct(
     price: pricePaisa===null?'':new Intl.NumberFormat('en-NP').format(pricePaisa / 100),
     priceFrom: row.priceFrom??false,maximumPricePaisa:row.maximumPricePaisa??pricePaisa,
     category: row.category,
+    categorySlug: row.categorySlug,
+    madeToOrder: row.madeToOrder === undefined ? undefined : Boolean(row.madeToOrder),
+    preparationDays: row.preparationDays,
     image: `/api/product-media/${row.mediaId}`,
     imageAlt: publicProductName(row.name),
     tradingName: row.tradingName,
@@ -1535,7 +1548,7 @@ export async function listHomepagePromotedProducts(
   database: D1Database,
   now = Date.now(),
   limit = 8,
-): Promise<readonly FeaturedProduct[]> {
+): Promise<readonly HomepageProduct[]> {
   homepageLimit(limit);
   const catalogue=await publicCatalogueQuery(database,now);
   const result = await database
@@ -1568,7 +1581,7 @@ export async function listHomepagePromotedProducts(
     )
     .bind(now, now, Math.min(limit * 3, 24))
     .all<HomepageProductQueryRow>();
-  const unique = new Map<string, FeaturedProduct>();
+  const unique = new Map<string, HomepageProduct>();
   for (const row of await attachPublicOfferRows(database,result.results,catalogue.now)) {
     if (!unique.has(row.slug)) unique.set(row.slug, homepageProduct(row, 'Offer'));
   }
@@ -1622,7 +1635,7 @@ export async function listActiveHomepagePromotions(
 export async function listHomepageLatestProducts(
   database: D1Database,
   limit = 8,
-): Promise<readonly FeaturedProduct[]> {
+): Promise<readonly HomepageProduct[]> {
   homepageLimit(limit);
   const catalogue=await publicCatalogueQuery(database);
   const result = await database
@@ -1630,7 +1643,9 @@ export async function listHomepageLatestProducts(
       `${catalogue.withClause} SELECT ${publicSellingIdentityColumns(catalogue.now)}, ${publicOfferQueryColumns(catalogue)}, CASE WHEN ${catalogue.purchasable()} THEN 1 ELSE 0 END AS purchasable, products.id, products.slug, products.name_en AS name,
         ${catalogue.price()} AS pricePaisa,
         products.compare_at_price_paisa AS compareAtPricePaisa,
-        categories.name_en AS category, ${publicProfileFieldSql('publicName')} AS tradingName,
+        categories.name_en AS category, categories.slug AS categorySlug,
+        products.made_to_order AS madeToOrder, products.preparation_days AS preparationDays,
+        ${publicProfileFieldSql('publicName')} AS tradingName,
         homepage_media.id AS mediaId
        FROM products
        INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
@@ -1660,7 +1675,7 @@ export async function listHomepageLatestProducts(
 export async function listHomepageTopProducts(
   database: D1Database,
   options: { now?: number; windowDays?: number; limit?: number } = {},
-): Promise<readonly FeaturedProduct[]> {
+): Promise<readonly HomepageProduct[]> {
   const now = options.now ?? Date.now();
   const windowDays = options.windowDays ?? 90;
   const limit = homepageLimit(options.limit ?? 8);

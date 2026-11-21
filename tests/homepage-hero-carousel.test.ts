@@ -19,9 +19,9 @@ void test('hero index advances, reverses, and wraps in configured order', () => 
   assert.throws(() => nextHeroIndex(0, 0, 'next'), /slide count/i);
 });
 
-void test('both image and paused video stories use the requested six-second delay', () => {
-  assert.equal(heroAdvanceDelayMs('image'), 6_000);
-  assert.equal(heroAdvanceDelayMs('video'), 6_000);
+void test('both image and paused video stories use the requested six-and-a-half-second delay', () => {
+  assert.equal(heroAdvanceDelayMs('image'), 6_500);
+  assert.equal(heroAdvanceDelayMs('video'), 6_500);
 });
 
 void test('every pause reason stops autoplay and an empty set permits it', () => {

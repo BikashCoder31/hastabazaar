@@ -19,7 +19,7 @@ const fixture={db:null as D1Database|null,media:null as R2Bucket|null,actor:'rev
 registerHooks({resolve(specifier,context,next){const modules:Record<string,string>={
  'cloudflare:workers':'export const env={get DB(){return globalThis.homepageBrowserFixture.db},get MEDIA(){return globalThis.homepageBrowserFixture.media},HASTABAZAAR_RUNTIME_ENV:"local_staging",NODE_ENV:"development",APP_ORIGIN:"http://localhost:3018"};',
  'next/navigation':'export function redirect(url){throw Error(url)};',
- '@/app/auth':'export async function getAuthenticatedUser(){const actor=globalThis.homepageBrowserFixture.actor;return actor?{userId:"external-home-"+actor,email:actor+"@local.hastabazaar.test",fullName:"Fictional editor"}:null};export const requireAuthenticatedUser=getAuthenticatedUser;',
+ '@/app/auth':'export async function getAuthenticatedUser(){const actor=globalThis.homepageBrowserFixture.actor;return actor?{userId:"external-home-"+actor,email:actor+"@local.hastabazaar.test",fullName:"Fictional editor"}:null};export const requireAuthenticatedUser=getAuthenticatedUser;export const signInPath=(path)=>"/login?return_to="+encodeURIComponent(path);',
  };return modules[specifier]?{url:'data:text/javascript,'+encodeURIComponent(modules[specifier]),shortCircuit:true}:next(specifier,context);}});
 let cssPromise:Promise<string>|undefined;
 function homepageCss(){return cssPromise??=(async()=>{const css=(await readFile('app/globals.css','utf8')).replace("@import 'tailwindcss';", "@import 'tailwindcss' source(none);\n@source '../components/admin/homepage-*.tsx';\n@source '../components/admin/use-homepage-*.tsx';\n@source '../components/admin/commercial-recovery.tsx';\n@source '../components/forms';\n@source '../components/ui';\n@source inline('min-w-0 p-4');");return(await postcss([tailwind()]).process(css,{from:resolve('app/globals.css')})).css;})();}
@@ -27,8 +27,8 @@ async function homepageBundle(){
   const bundle=(await build({stdin:{sourcefile:'homepage-content-fixture.tsx',resolveDir:process.cwd(),loader:'tsx',contents:`
    import React from 'react';import {createRoot} from 'react-dom/client';import {notificationAccessDenied} from './lib/operations/notification-client-events';window.denyHomepageNotification=(accountId,workspace)=>notificationAccessDenied({accountId,workspace});
    import {HomepageAccessBoundary} from './components/admin/homepage-access-boundary';import {HomepageHeroManager} from './components/admin/homepage-hero-manager';import {HomepageOccasionManager} from './components/admin/homepage-occasion-manager';
-   const root=createRoot(document.getElementById('root')),query=new URLSearchParams(location.search);window.renderActor=actorId=>root.render(<HomepageAccessBoundary actorId={actorId}>{query.get('mode')==='hero'?<HomepageHeroManager actorId={actorId} initialSlides={[]} initialMedia={[]} history={[]} asOf={1}/>:<HomepageOccasionManager actorId={actorId} initialSlides={[]} history={[]} asOf={1}/>} {query.has('paired')?<HomepageOccasionManager actorId={actorId} initialSlides={[]} history={[]} asOf={1}/>:null}</HomepageAccessBoundary>);window.renderActor('reviewer');
-  `},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"production"'},plugins:[{name:'homepage-fixture-navigation',setup(b){stubFixtureLink(b);stubFixtureImage(b);b.onResolve({filter:/^next\/navigation$/},()=>({path:'navigation',namespace:'homepage-fixture'}));b.onLoad({filter:/.*/,namespace:'homepage-fixture'},()=>({contents:"export function useRouter(){return{refresh(){window.refreshes=(window.refreshes??0)+1}}}export function usePathname(){return location.pathname}export function useSearchParams(){return new URLSearchParams(location.search)}",loader:'js'}));}}]})).outputFiles[0].text;
+   const root=createRoot(document.getElementById('root')),query=new URLSearchParams(location.search),initial=window.homepagePublicationFixture??{slides:[],history:[],media:[],asOf:1};window.renderActor=actorId=>root.render(<HomepageAccessBoundary actorId={actorId}>{query.get('mode')==='hero'?<HomepageHeroManager actorId={actorId} initialSlides={initial.slides} initialMedia={initial.media} history={initial.history} asOf={initial.asOf}/>:<HomepageOccasionManager actorId={actorId} initialSlides={initial.slides} history={initial.history} asOf={initial.asOf}/>} {query.has('paired')?<HomepageOccasionManager actorId={actorId} initialSlides={[]} history={[]} asOf={1}/>:null}</HomepageAccessBoundary>);window.renderActor('reviewer');
+  `},bundle:true,write:false,loader:{'.module.css':'empty'},platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"production"'},plugins:[{name:'homepage-fixture-navigation',setup(b){stubFixtureLink(b);stubFixtureImage(b);b.onResolve({filter:/^next\/navigation$/},()=>({path:'navigation',namespace:'homepage-fixture'}));b.onLoad({filter:/.*/,namespace:'homepage-fixture'},()=>({contents:"export function useRouter(){return{refresh(){window.refreshes=(window.refreshes??0)+1}}}export function usePathname(){return location.pathname}export function useSearchParams(){return new URLSearchParams(location.search)}",loader:'js'}));}}]})).outputFiles[0].text;
  return bundle;
 }
 void test('actual homepage editors bind staff, retire callbacks and recover the original native draft without resubmission',{timeout:180_000},async t=>{
@@ -100,4 +100,121 @@ const hero=page.locator('form[data-form-id="staff.homepage-hero-manager"]'),occa
    }finally{release();await context.close();}
   });
  }finally{for(const release of releases)release();await browser?.close();fixture.db=null;fixture.media=null;f.dispose();}
+});
+
+void test('publishing each homepage editor changes the corresponding public story at its effective time', {timeout:90_000}, async () => {
+  const f = await completeVersionFixture();
+  assert.ok(f.sqlite.prepare('PRAGMA database_list').all().every(row => row.file === ''));
+  f.sqlite.exec(await readFile('drizzle/0055_homepage_hero_carousel.sql', 'utf8'));
+  f.sqlite.exec("UPDATE users SET auth_subject='external-home-reviewer' WHERE id='reviewer'");
+  fixture.db = f.db;
+  fixture.actor = 'reviewer';
+  let browser: Browser | undefined;
+  const actualTime = Date.now;
+  try {
+    const forms = await import('../app/api/forms/[formId]/route');
+    const save = await import('../app/api/admin/business-settings/route');
+    const change = await import('../app/api/admin/business-settings/changes/[id]/route');
+    const { getEffectiveBusinessSetting, listBusinessSettingHistory } = await import('../lib/db/repositories/business-settings');
+    const { listHomepageHeroMediaForAdmin } = await import('../lib/db/repositories/homepage-hero');
+    const { createElement } = await import('react');
+    const { renderToStaticMarkup } = await import('react-dom/server');
+    const pageModules: Record<string, string> = {
+      'next/link': 'export default function Link({children,...props}){return globalThis.homepageTestElement("a",props,children)}',
+      'next/image': 'export default function Image({fill,unoptimized,...props}){return globalThis.homepageTestElement("img",props)}',
+      'next/navigation': 'export function useRouter(){return {refresh(){}}} export function redirect(path){throw Error(path)}',
+      '@/components/layout/site-header': 'export function SiteHeader(){return null}',
+      '@/components/layout/site-footer': 'export function SiteFooter(){return null}',
+      '@/lib/auth/customer': 'export async function getCustomerReadContext(){return {customer:null,authenticated:false}}',
+    };
+    (globalThis as typeof globalThis & {homepageTestElement: typeof createElement}).homepageTestElement = createElement;
+    const hooks = registerHooks({resolve(specifier, context, next){
+      const stub = specifier.endsWith('.module.css') ? 'export default {}' : pageModules[specifier];
+      return stub ? {url:'data:text/javascript,'+encodeURIComponent(stub),shortCircuit:true} : next(specifier, context);
+    }});
+    try {
+      const { default: Home } = await import('../app/page');
+      const bundle = await homepageBundle();
+      const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright');
+      browser = await chromium.launch({headless:true, executablePath:process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe'});
+      for (const mode of ['hero', 'occasion'] as const) {
+        const formId = mode === 'hero' ? 'staff.homepage-hero-manager' : 'staff.homepage-occasion-manager';
+        const key = mode === 'hero' ? 'homepage_hero_slides' : 'homepage_occasion_slides';
+        const config = await saveFormDraft(f.db, {formId, actorId:'reviewer', actorRole:'super_admin', expectedPublishedVersion:0, config:{formId,fields:[]},
+          reason:'Configure the isolated homepage publication test.', requestId:crypto.randomUUID(),now:actualTime()});
+        await publishFormDraft(f.db, {formId, draftId:config.id, actorId:'reviewer', actorRole:'super_admin', expectedDraftRevision:config.revision,
+          expectedPublishedVersion:0,reason:'Publish the isolated editor form.',requestId:crypto.randomUUID(),now:actualTime()});
+        const context = await browser!.newContext({viewport:{width:1440,height:900},timezoneId:'UTC'});
+        try {
+          const page = await context.newPage();
+          const changedHeading = 'Fictional published ' + mode + ' story';
+          const effectiveAt = Math.ceil((actualTime()+60_000)/60_000)*60_000;
+          let asOf: number | undefined;
+          await context.route('**/*', async (route: Route) => {
+            const incoming = route.request();
+            const url = new URL(incoming.url());
+            if (url.origin !== 'http://localhost:3018') return route.abort();
+            if (url.pathname === '/fixture.js') return route.fulfill({contentType:'text/javascript',body:bundle});
+            if (url.pathname === '/admin/homepage') {
+              const observed = actualTime();
+              const [setting, history, media] = await Promise.all([
+                getEffectiveBusinessSetting(f.db,key,observed),
+                listBusinessSettingHistory(f.db,key),
+                listHomepageHeroMediaForAdmin(f.db),
+              ]);
+              const payload = JSON.stringify({slides:setting.value,history,media,asOf:observed}).replaceAll('<','\\u003c');
+              return route.fulfill({contentType:'text/html',body:`<div id="root"></div><script>window.homepagePublicationFixture=${payload}</script><script src="/fixture.js"></script>`});
+            }
+            if (url.pathname === '/') {
+              Date.now = () => asOf ?? actualTime();
+              try {
+                return await route.fulfill({contentType:'text/html',body:renderToStaticMarkup(await Home())});
+              } finally { Date.now = actualTime; }
+            }
+            const request = new Request(url, {method:incoming.method(), headers:{...incoming.headers(),origin:url.origin},body:incoming.postData() ?? undefined});
+            let response: Response;
+            if (url.pathname.startsWith('/api/forms/')) {
+              response = await forms.GET(request,{params:Promise.resolve({formId})});
+            } else if (url.pathname === '/api/admin/business-settings') {
+              response = await save.POST(request);
+            } else if (url.pathname.startsWith('/api/admin/business-settings/changes/')) {
+              response = await change.POST(request,{params:Promise.resolve({id:url.pathname.split('/').at(-1)!})});
+            } else {
+              return route.abort();
+            }
+            return route.fulfill({status:response.status,headers:Object.fromEntries(response.headers),body:await response.text()});
+          });
+          await page.goto('http://localhost:3018/admin/homepage?mode=' + mode);
+          await page.getByLabel('Heading lead',{exact:true}).first().fill(changedHeading);
+          await page.getByLabel('Reason and expected impact').fill('Verify this fictional change reaches the public story.');
+          const saved = page.waitForResponse(response=>response.url().endsWith('/api/admin/business-settings') && response.request().method()==='POST');
+          await page.getByRole('button',{name:'Save private draft',exact:true}).click();
+          const savedResponse = await saved;
+          assert.equal(savedResponse.status(),201);
+
+          await page.getByRole('button',{name:'Publish / schedule',exact:true}).waitFor();
+          await page.getByLabel('Publication effective date').fill(new Date(effectiveAt).toISOString().slice(0,16));
+          await page.getByLabel('Reason and expected impact').fill('Publish the fictional story through its existing staff workflow.');
+          const published = page.waitForResponse(response=>response.url().includes('/api/admin/business-settings/changes/') && response.request().method()==='POST');
+          await page.getByRole('button',{name:'Publish / schedule',exact:true}).click();
+          const publishedResponse = await published;
+          assert.equal(publishedResponse.status(),200);
+
+          asOf = effectiveAt - 1;
+          await page.goto('http://localhost:3018/');
+          assert.equal(await page.getByRole('heading',{name:new RegExp(changedHeading)}).count(),0);
+          asOf = effectiveAt;
+          await page.reload();
+          await page.getByRole('heading',{name:new RegExp(changedHeading)}).waitFor();
+        } finally {
+          await context.close();
+        }
+      }
+    } finally { hooks.deregister(); }
+  } finally {
+    Date.now = actualTime;
+    await browser?.close();
+    fixture.db = null;
+    f.dispose();
+  }
 });

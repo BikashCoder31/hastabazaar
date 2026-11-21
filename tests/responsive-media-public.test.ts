@@ -47,14 +47,14 @@ void test('homepage editorial fill media uses responsive cover frames and purpos
 
   assert.match(occasion, /data-media-frame="cover"/);
   assert.match(occasion, /data-media-mode="cover"/);
-  assert.match(occasion, /sizes=\{mediaSizes\.occasion\}/);
+  assert.match(occasion, /sizes="\(min-width: 640px\) 174px, 168px"/);
   assert.match(occasion, /mediaObjectClass\('cover'/);
 
   const editorialSources = homepage + craftDetails;
-  assert.equal((editorialSources.match(/data-media-frame="cover"/g) ?? []).length, 2);
-  assert.equal((editorialSources.match(/data-media-mode="cover"/g) ?? []).length, 2);
-  assert.match(homepage, /sizes="112px"/);
-  assert.match(craftDetails, /sizes=\{mediaSizes\.editorial\}/);
+  assert.equal((editorialSources.match(/data-media-frame="cover"/g) ?? []).length, 3);
+  assert.equal((editorialSources.match(/data-media-mode="cover"/g) ?? []).length, 3);
+  assert.match(homepage, /sizes="\(min-width: 1440px\) 190px, [^"]+132px"/);
+  assert.match(craftDetails, /sizes="\(min-width: 1024px\) 34vw, [^"]+calc\(100vw - 32px\)"/);
   assert.match(homepage, /mediaObjectClass\('cover'/);
 
   assert.match(styles, /\.homepage-hero-grid\s*\{[\s\S]*?max-width:\s*96rem/);

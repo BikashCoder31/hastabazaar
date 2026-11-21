@@ -172,9 +172,10 @@ void test('geometry fixtures track the current fluid shell and mounted component
   );
   assert.match(
     details,
-    /grid-template-columns: minmax\(0, 1.08fr\) minmax\(0, 0.92fr\)/,
+    /grid-template-columns: minmax\(0, 1.25fr\) repeat\(2, minmax\(0, 1fr\)\)/,
   );
-  assert.match(details, /gap: clamp\(2rem, 4vw, 4rem\)/);
+  assert.match(details, /gap: clamp\(1rem, 2vw, 1.25rem\)/);
+  assert.match(details, /\.card:first-child\s*\{[^}]*grid-row: span 2/);
   assert.match(gallery, /grid-cols-5 gap-2.*md:w-16.*md:grid-cols-1.*xl:w-\[5.25rem\]/);
   assert.match(shop, /w-\[calc\(100%-2rem\)\].*max-w-\[1264px\].*md:w-\[calc\(100%-6rem\)\]/);
   assert.match(shop, /grid-cols-2 gap-x-4.*md:gap-x-5 lg:grid-cols-4/);

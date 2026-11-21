@@ -3,12 +3,12 @@ import { registerHooks } from 'node:module';
 import test from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import type { FeaturedProduct } from '../lib/catalog/featured-products';
+import type { HomepageProduct } from '../lib/db/repositories/products';
 
 const fixture = globalThis as typeof globalThis & {
   truthfulnessElement: typeof createElement;
-  truthfulnessTop: FeaturedProduct[];
-  truthfulnessPromoted: FeaturedProduct[];
+  truthfulnessTop: HomepageProduct[];
+  truthfulnessPromoted: HomepageProduct[];
 };
 fixture.truthfulnessElement = createElement;
 fixture.truthfulnessTop = [];
@@ -17,6 +17,12 @@ registerHooks({
   resolve(specifier, context, nextResolve) {
     const stubs: Record<string, string> = {
       'cloudflare:workers': 'export const env={DB:{prepare(){}}}',
+      '@/app/account/account-overview-data': 'export async function readAccountYourTurn(){return null}',
+      '@/app/auth': 'export const signInPath=(path)=>"/login?return_to="+encodeURIComponent(path)',
+      '@/lib/auth/customer': 'export async function getCustomerReadContext(){return {customer:null,authenticated:false}}',
+      '@/lib/homepage/homepage-storefront-data': 'export async function listHomepageMakers(){return []}',
+      '@/lib/db/repositories/loyalty': 'export async function getPublishedLoyaltyTerms(){return {status:"disabled"}}',
+      'next/navigation': 'export function useRouter(){return {refresh(){}}}',
       'next/link':
         'export default function Link(props){return globalThis.truthfulnessElement("a",props)}',
       'next/image':
@@ -44,8 +50,8 @@ registerHooks({
   },
 });
 
-const product = (slug: string): FeaturedProduct => ({
-  slug,
+const product = (slug: string): HomepageProduct => ({
+  id: slug, slug,
   name: `Fixture ${slug}`,
   price: '1,200',
   pricePaisa: 120000,
@@ -56,7 +62,7 @@ const product = (slug: string): FeaturedProduct => ({
   imageAlt: 'Fixture product',
   tradingName: 'Fixture seller',
 });
-async function homepage(top: FeaturedProduct[], promoted: FeaturedProduct[]) {
+async function homepage(top: HomepageProduct[], promoted: HomepageProduct[]) {
   fixture.truthfulnessTop = top;
   fixture.truthfulnessPromoted = promoted;
   const { default: Home } = await import('../app/page');
@@ -85,7 +91,7 @@ void test('homepage top products take priority over the approved promotion fallb
   assert.ok(section);
   assert.match(section, /href="\/products\/top-only"/);
   assert.doesNotMatch(section, /href="\/products\/promotion-only"/);
-  assert.match(section, /Top products right now/);
+  assert.match(section, /Popular with shoppers/);
   assert.doesNotMatch(
     section,
     /non-cancelled|last 90 days|active approved homepage promotion/,
@@ -95,7 +101,7 @@ void test('homepage top products take priority over the approved promotion fallb
 void test('homepage shows eligible promotion products as featured when top products are empty', async () => {
   const section = topSection(await homepage([], [product('promotion-only')]));
   assert.ok(section);
-  assert.match(section, /Featured by Hastabazaar/);
+  assert.match(section, /Featured finds/);
   assert.match(section, /href="\/products\/promotion-only"/);
   assert.doesNotMatch(
     section,
