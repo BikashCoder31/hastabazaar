@@ -2,6 +2,7 @@ import { Gift, Heart, Package, ShieldCheck, Undo2 } from 'lucide-react';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { OrderTracker } from '@/components/commerce/order-tracker';
+import type { PublishedFormConfig } from '@/lib/forms/types';
 import { accountSurface, touchTargets } from './account-sections';
 
 export const authField = 'mt-2 min-h-11 w-full min-w-0 rounded-lg border border-[#dacdb9] bg-white px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-[#14213d]';
@@ -14,11 +15,12 @@ const benefits = [
   { Icon: Undo2, label: 'Ask for a return from your order' },
 ];
 
-export function AuthPanels({ children, page, returnTo, challenge = false }: {
+export function AuthPanels({ children, page, returnTo, challenge = false, trackingPresentation }: {
   children: ReactNode;
   page: 'login' | 'register';
   returnTo: string;
   challenge?: boolean;
+  trackingPresentation?: { config: PublishedFormConfig | null; unavailable: boolean } | null;
 }) {
   return (
     <main tabIndex={-1} id="main-content" className={touchTargets + " shell max-w-6xl min-w-0 py-7 text-[#14213d] sm:py-10"}>
@@ -42,7 +44,8 @@ export function AuthPanels({ children, page, returnTo, challenge = false }: {
             <section className={accountSurface + ' min-w-0 p-4 sm:p-6'}>
               <h2 className="font-heading text-2xl leading-tight">Track an order without signing in</h2>
               <p className="mt-2 text-sm text-muted-foreground">Use the order number from your receipt and the email you ordered with.</p>
-              <OrderTracker initialOrder="" compact />
+              <OrderTracker initialOrder="" compact presentationConfig={trackingPresentation?.config ?? null}
+                presentationUnavailable={trackingPresentation?.unavailable} />
             </section>
             <section className={accountSurface + ' p-4 sm:p-6'}>
               <h2 className="text-lg font-semibold">With an account you can</h2>

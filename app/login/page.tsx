@@ -4,6 +4,7 @@ import { FormGuide } from '@/components/forms/form-guide';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { env } from 'cloudflare:workers';
 import { requireDatabase } from '@/lib/db/d1';
+import { loadQueryPresentationConfig } from '@/lib/catalog/shop-query';
 import { resolvePublishedForm } from '@/lib/forms/runtime';
 import { safeSignInReturnPath, SESSION_EXPIRED_MESSAGE } from '@/lib/auth/sign-in-destination';
 import Link from 'next/link';
@@ -35,15 +36,18 @@ export default async function LoginPage({
   if (identity&&!freshChallenge) redirect(returnTo);
   const error = query.error ? errors[query.error] : null;
   const db = requireDatabase(env as unknown as { DB?: D1Database });
-  const [passwordResult, emailRequestResult] = await Promise.allSettled([
+  const [passwordResult, emailRequestResult, trackingResult] = await Promise.allSettled([
     resolvePublishedForm(db, 'identity.login-password'),
     passwordStep ? null : resolvePublishedForm(db, 'identity.email-code-request'),
+    freshChallenge ? null : loadQueryPresentationConfig(db, 'commerce.order-tracking'),
   ]);
   const passwordConfig = passwordResult.status === 'fulfilled' ? passwordResult.value : null;
   const emailRequestConfig = emailRequestResult.status === 'fulfilled' ? emailRequestResult.value : null;
 
+  const trackingPresentation = trackingResult.status === 'fulfilled' ? trackingResult.value : null;
+
   return (
-    <AuthPanels page="login" returnTo={returnTo} challenge={freshChallenge}>
+    <AuthPanels page="login" returnTo={returnTo} challenge={freshChallenge} trackingPresentation={trackingPresentation}>
         <h1 className="font-heading text-4xl tracking-tight">{freshChallenge?'Confirm your sign-in':'Welcome back'}</h1>
         {passwordStep ? <p className="mt-3">Enter your password to continue to your authenticator.</p>
           : freshChallenge ? <p className="mt-3">Enter your password or a new email sign-in code to confirm this sensitive account change.</p> : null}

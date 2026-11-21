@@ -227,12 +227,12 @@ function HeaderSearch({ id, config, unavailable }: { id: string; config: Publish
           label={search.label}
           placeholder={search.placeholder}
           helpId={search.helpText ? `${id}-help` : undefined}
-          className="h-auto min-h-11 min-w-0 flex-1 rounded-none border-0 bg-transparent px-0 py-1.5 text-base placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 sm:min-h-9 md:text-base"
+          className="h-auto min-h-11 min-w-0 flex-1 rounded-none border-0 bg-transparent px-0 py-1.5 text-base placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0"
         />
         <button
           type="submit"
           aria-label="Search"
-          className="inline-flex min-h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#b5121b] text-sm font-semibold text-white transition-colors hover:bg-[#921018] sm:min-h-9 sm:w-8 lg:w-auto lg:px-4"
+          className="inline-flex min-h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#b5121b] text-sm font-semibold text-white transition-colors hover:bg-[#921018] lg:w-auto lg:px-4"
         >
           <Search aria-hidden="true" className="size-4 lg:hidden" />
           <span className="hidden lg:inline">Search</span>

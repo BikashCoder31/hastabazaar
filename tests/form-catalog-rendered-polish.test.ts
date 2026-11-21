@@ -9,8 +9,8 @@ import { assertHostedBrowserState } from '../scripts/testing/verify-packaged-bro
 (globalThis as unknown as { React: typeof React }).React = React;
 registerHooks({ resolve(specifier, context, nextResolve) {
   const mock = specifier === 'cloudflare:workers' ? 'export const env={DB:{}}'
-    : specifier === '@/lib/db/d1' ? 'export function requireDatabase(){return {}}'
-    : specifier === '@/lib/forms/runtime' ? 'export async function resolvePublishedForm(db,formId){return {formId,version:1,publishedAt:1,fields:[]}}'
+    : specifier === '@/lib/db/d1' ? 'export function requireDatabase(){return {prepare(){return {bind(){return {first(){return {found:1}}}}}}}}'
+    : (specifier === '@/lib/forms/runtime' || specifier === '../forms/runtime') ? `export async function resolvePublishedForm(db,formId){return {formId,version:1,publishedAt:1,fields:formId==='commerce.order-tracking'?[{id:'orderNumber',key:'orderNumber',label:'Published order number',type:'short_text',required:true,order:0,status:'active'}]:[]}}`
     : specifier === '@/app/auth' ? 'export async function getAuthenticatedUser(){return null}'
     : specifier === 'next/navigation' ? 'export function redirect(){throw Error("Unexpected redirect")};export function useRouter(){return {refresh(){}}}'
     : specifier === 'next/link' ? 'export default function Link(props){return globalThis.React.createElement("a",{href:props.href},props.children)}'
@@ -21,8 +21,8 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 
 void test('identity and seller forms render their exact registered form IDs', async () => {
   const identity = [
-    ['../app/login/page', ['identity.login-password', 'identity.email-code-request']],
-    ['../app/register/page', ['identity.register']],
+    ['../app/login/page', ['identity.login-password', 'identity.email-code-request', 'commerce.order-tracking']],
+    ['../app/register/page', ['identity.register', 'commerce.order-tracking']],
     ['../app/login/code/page', ['identity.email-code-verify']],
     ['../app/forgot-password/page', ['identity.password-reset-request']],
     ['../app/forgot-password/reset/page', ['identity.password-reset-complete']],
@@ -32,6 +32,7 @@ void test('identity and seller forms render their exact registered form IDs', as
     const html = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
     for (const id of ids) assert.ok(html.includes(`data-form-id="${id}"`), `${path} omitted ${id}`);
     assert.equal((html.match(/<form\b/g) ?? []).length, ids.length);
+    if (ids.some(id => id === 'commerce.order-tracking')) assert.match(html, /Published order number/);
   }
   const { ProductSubmissionForm } = await import('../components/seller/product-submission-form');
   const { InventoryEditor } = await import('../components/seller/inventory-editor');

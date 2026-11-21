@@ -13,17 +13,22 @@ void test('request actors follow the recorded review, reply, pickup, replacement
     [{ waitingFor: 'seller' }, 'seller', 1],
     [{ status: 'needs_customer_changes' }, 'you', 2],
     [{ kind: 'complaint', status: 'waiting_customer' }, 'you', 2],
+    [{ kind: 'complaint', waitingFor: 'carrier' }, 'courier', 3],
     [{ waitingFor: 'platform' }, 'hastabazaar', 2],
     [{ status: 'rejected' }, 'done', 2],
+    [{ kind: 'complaint', status: 'closed' }, 'done', 2],
     [{ status: 'approved' }, 'hastabazaar', 3],
     [{ status: 'in_transit' }, 'courier', 3],
     [{ phase: 'received' }, 'hastabazaar', 3],
+    [{ phase: 'inspected' }, 'hastabazaar', 3],
     [{ outcome: 'replacement', replacementStatus: 'reserved' }, 'hastabazaar', 4],
     [{ outcome: 'replacement', replacementStatus: 'dispatched' }, 'courier', 4],
+    [{ outcome: 'replacement', replacementStatus: 'delivered' }, 'hastabazaar', 4],
     [{ status: 'resolved', outcome: 'replacement', replacementStatus: 'delivered' }, 'done', 4],
     [{ refundStatus: 'payment_details_needed' }, 'you', 4],
     [{ status: 'resolved', refundStatus: 'returned_for_review' }, 'hastabazaar', 4],
     [{ refundStatus: 'confirmed_settled' }, 'done', 4],
+    [{ refundStatus: 'corrected' }, 'done', 4],
   ] as const;
   for (const [record, actor, step] of expected) {
     const result = customerRequestProgress({ ...input, ...record });

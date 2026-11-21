@@ -4,6 +4,7 @@ import { SignupPasswordFields } from '@/components/auth/signup-password-fields';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { env } from 'cloudflare:workers';
 import { requireDatabase } from '@/lib/db/d1';
+import { loadQueryPresentationConfig } from '@/lib/catalog/shop-query';
 import { resolvePublishedForm } from '@/lib/forms/runtime';
 import { safeSignInReturnPath } from '@/lib/auth/sign-in-destination';
 import Link from 'next/link';
@@ -31,10 +32,14 @@ export default async function RegisterPage({
   const returnTo = safeSignInReturnPath(query.return_to ?? '/account');
   if (identity) redirect(returnTo);
   const error = query.error ? errors[query.error] : null;
-  const config = await resolvePublishedForm(requireDatabase(env as unknown as { DB?: D1Database }), 'identity.register');
+  const db = requireDatabase(env as unknown as { DB?: D1Database });
+  const [config, trackingPresentation] = await Promise.all([
+    resolvePublishedForm(db, 'identity.register'),
+    loadQueryPresentationConfig(db, 'commerce.order-tracking'),
+  ]);
 
   return (
-    <AuthPanels page="register" returnTo={returnTo}>
+    <AuthPanels page="register" returnTo={returnTo} trackingPresentation={trackingPresentation}>
         <h1 className="font-heading text-4xl tracking-tight">Create your account</h1>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">Save favourites, track orders, and shop from Nepalese makers.</p>
         {error ? <p className="mt-5 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</p> : null}

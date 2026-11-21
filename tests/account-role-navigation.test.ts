@@ -79,3 +79,40 @@ void test('account navigation defaults to hiding assigned deliveries unless appr
   assert.doesNotMatch(html, /href="\/rider"|Assigned deliveries/);
   assert.match(html, /href="\/account\/orders"/);
 });
+
+void test('settings and wallet tabs keep their original URL and expose the selected page to assistive technology', async () => {
+  const { CustomerSettings, CustomerWallet } = await import('../components/account/account-sections');
+  const settings = {
+    profile: '/account/profile',
+    addresses: '/account/addresses',
+    notifications: '/account/notifications',
+    security: '/account/security',
+    privacy: '/account/privacy',
+  } as const;
+  const wallet = {
+    credit: '/account/wallet',
+    rewards: '/account/rewards',
+    referrals: '/account/referrals',
+    refunds: '/account/refunds',
+  } as const;
+
+  function assertTabLinks(html: string, paths: readonly string[], selectedPath: string) {
+    const links = html.match(/<a\b[^>]*>/g) ?? [];
+    assert.deepEqual(
+      links.filter(link => link.includes('aria-current="page"')).map(link => link.match(/href="([^"]+)"/)?.[1]),
+      [selectedPath],
+    );
+    for (const path of paths) assert.ok(links.some(link => link.includes(`href="${path}"`)), path);
+  }
+
+  for (const active of Object.keys(settings) as (keyof typeof settings)[]) {
+    const props = { active, children: null };
+    const html = renderToStaticMarkup(createElement(CustomerSettings, props));
+    assertTabLinks(html, Object.values(settings), settings[active]);
+  }
+  for (const active of ['credit', 'rewards', 'referrals'] as const) {
+    const props = { active, children: null };
+    const html = renderToStaticMarkup(createElement(CustomerWallet, props));
+    assertTabLinks(html, Object.values(wallet), wallet[active]);
+  }
+});

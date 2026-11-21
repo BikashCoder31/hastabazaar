@@ -46,13 +46,18 @@ void test('only the buyer can keep the current seller proposal and a retry creat
 void test('parcel presentation uses the active actor and the customer-safe delivery reason', () => {
   const expected = {
     placed: 'hastabazaar', confirmed: 'seller', packing: 'seller', ready_for_pickup: 'courier', pickup_requested: 'courier',
-    label_ready: 'courier', pickup_scheduled: 'courier', dispatched: 'courier', delivery_failed: 'hastabazaar',
-    return_to_origin: 'courier', returned: 'done', delivered: 'done', cancelled: 'done', awaiting_cod_confirmation: 'hastabazaar',
+    label_pending: 'courier', label_ready: 'courier', pickup_scheduled: 'courier', dispatched: 'courier', delivery_failed: 'hastabazaar',
+    return_to_origin: 'courier', returning: 'courier', returned: 'done', delivered: 'done', cancelled: 'done', awaiting_cod_confirmation: 'hastabazaar',
   };
   for (const [status, actor] of Object.entries(expected)) assert.equal(customerParcelState({ status }).actor, actor, status);
   assert.equal(customerParcelState({ status: 'confirmed', proposedDate: true }).actor, 'you');
   assert.equal(customerParcelState({ status: 'placed', bankDue: true }).actor, 'you');
   assert.equal(customerParcelState({ status: 'placed', bankReview: true }).actor, 'hastabazaar');
+  assert.equal(customerParcelState({ status: 'placed', codPending: true }).condition, 'waiting');
+  assert.equal(customerParcelState({ status: 'cancelled', bankDue: true, proposedDate: true }).actor, 'done');
+  assert.equal(customerParcelState({ status: 'ready_for_pickup' }).stage, 'packed');
+  assert.equal(customerParcelState({ status: 'dispatched' }).stage, 'with-courier');
+  assert.equal(customerParcelState({ status: 'delivered' }).stage, 'delivered');
   assert.equal(customerParcelState({ status: 'delivery_failed' }).condition, 'problem');
   assert.equal(customerDeliveryProblem('not_reached'), 'The courier couldn’t reach you.');
   assert.doesNotMatch(customerDeliveryProblem('PRIVATE-COURIER-NOTE'), /PRIVATE-COURIER-NOTE/);
