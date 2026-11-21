@@ -34,6 +34,13 @@ const orderRefundOptIn = new Set([
   'mariadb-refund-route-reservations.sql',
   'mariadb-priced-order-acceptance-lock.sql',
 ]);
+const ownerAppliedBatch3 = [
+  'mariadb-cancellation-cause.sql',
+  'mariadb-customer-cod-confirmation.sql',
+  'mariadb-delivery-failure-reasons.sql',
+  'mariadb-packed-parcel-weight.sql',
+  'mariadb-seller-staff-notes.sql',
+];
 
 // Omitting a maintained companion must fail even if the checked-in manifest
 // and the generator omit the same file. Expectations come from the SQL inventory.
@@ -70,7 +77,7 @@ void test('historical release generation covers its maintained non-reset SQL inv
     const manifest = JSON.parse(first) as Manifest;
     const names = manifest.migrations.map(({ path }) => path);
     const expectedPaths = sqlNames
-      .filter((name) => name !== 'mariadb-reset-empty-import.sql' && !orderRefundOptIn.has(name))
+      .filter((name) => name !== 'mariadb-reset-empty-import.sql' && !orderRefundOptIn.has(name) && !ownerAppliedBatch3.includes(name))
       .map((name) => 'deployment/babal/' + name);
 
     await t.test(
@@ -109,6 +116,13 @@ void test('historical release generation covers its maintained non-reset SQL inv
         }
       },
     );
+
+    await t.test('owner-applied SQL is retained without adding it to automated release maintenance', () => {
+      for (const name of ownerAppliedBatch3) {
+        assert.ok(sqlNames.includes(name), `${name} must be available for the owner`);
+        assert.ok(!names.includes('deployment/babal/' + name), `${name} requires owner application`);
+      }
+    });
 
     await t.test('prerequisites precede their companions', () => {
       for (const [before, after] of [

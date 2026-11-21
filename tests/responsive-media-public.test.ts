@@ -126,8 +126,8 @@ void test('catalogue media keeps authenticated sources and uses purpose-specific
   assert.match(gallery, /sizes=\{mediaSizes\.galleryThumbnail\}/);
   assert.match(gallery, /data-media-frame="contain"/);
   assert.match(gallery, /data-media-frame="cover"/);
-  assert.match(gallery, /src=\{'\/api\/product-media\/' \+ active\.id\}/);
-  assert.match(gallery, /src=\{'\/api\/product-media\/' \+ photo\.id\}/);
-  assert.match(gallery, /src=\{'\/api\/product-media\/' \+ video\.id\}/);
+  assert.match(gallery, /src=\{active\.src \?\? '\/api\/product-media\/' \+ active\.id\}/);
+  assert.match(gallery, /src=\{photo\.src \?\? '\/api\/product-media\/' \+ photo\.id\}/);
+  assert.match(gallery, /src=\{video\.src \?\? '\/api\/product-media\/' \+ video\.id\}/);
   assert.match(gallery, /alt=\{active\.altEn \|\| productName\}/);
 });
