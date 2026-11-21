@@ -1,6 +1,7 @@
 import { CURRENT_CUSTOMER_ROLE_SQL } from '@/lib/auth/customer-scope';
 import { nepalDayIso } from '@/lib/dates/nepal-calendar';
 import { customerCodSchemaAvailable } from '@/lib/orders/first-cod-review';
+import { deliveryFailureSchemaAvailable } from '@/lib/shipping/delivery-failure';
 
 export const customerFilters = [
   ['all', 'All'],
@@ -82,27 +83,36 @@ function customerLocation(value: string | null) {
 const searchablePhone = (column: 'phone' | 'customer_phone') =>
   `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(${column},' ',''),'-',''),'(',''),')',''),'+','')`;
 
-// Only explicit outcomes with courier shipment and event references qualify.
-// A generic delivery failure or return to origin does not identify its cause.
-const courierOutcomes = (candidateOrders: string) => `
-  SELECT s.order_id,
-    MAX(CASE WHEN e.status='refused' THEN 1 ELSE 0 END) AS refused,
-    MAX(CASE WHEN e.status='not_reached' THEN 1 ELSE 0 END) AS notReached
-  FROM shipments s
-  JOIN shipment_events e ON e.shipment_id=s.id
-  WHERE s.order_id IN (${candidateOrders})
-    AND NULLIF(TRIM(s.provider_shipment_id),'') IS NOT NULL
-    AND NULLIF(TRIM(e.provider_event_id),'') IS NOT NULL
-    AND s.provider<>'own_rider'
-    AND e.status IN ('refused','not_reached')
-  GROUP BY s.order_id`;
+// Count each order once, including when the courier and staff record the same outcome.
+// A later retry can change the job state; the original failure stays in its event.
+function courierOutcomes(db: D1Database, candidateOrders: string, structured: boolean) {
+  const jsonReason = "json_extract(CASE WHEN json_valid(e.payload_json) THEN e.payload_json ELSE '{}' END,'$.failureReason')";
+  const reason = (db as D1Database & { dialect?: string }).dialect === 'mariadb' ? `JSON_UNQUOTE(${jsonReason})` : jsonReason;
+  return `SELECT recorded.order_id,
+    MAX(CASE WHEN recorded.outcome='refused' THEN 1 ELSE 0 END) AS refused,
+    MAX(CASE WHEN recorded.outcome='not_reached' THEN 1 ELSE 0 END) AS notReached
+  FROM (
+    SELECT s.order_id,e.status AS outcome FROM shipments s JOIN shipment_events e ON e.shipment_id=s.id
+    WHERE s.order_id IN (${candidateOrders})
+      AND NULLIF(TRIM(s.provider_shipment_id),'') IS NOT NULL
+      AND NULLIF(TRIM(e.provider_event_id),'') IS NOT NULL
+      AND s.provider<>'own_rider' AND e.status IN ('refused','not_reached')
+    ${structured ? `UNION ALL
+    SELECT j.order_id,${reason} FROM shipping_jobs j
+    JOIN parcel_operation_events e ON e.shipping_job_id=j.id AND e.order_id=j.order_id
+    WHERE j.order_id IN (${candidateOrders}) AND j.direction='outbound' AND e.action='fail'
+      AND ${reason} IN ('refused','not_reached')` : ''}
+  ) AS recorded GROUP BY recorded.order_id`;
+}
 
 export async function readCustomerWorkspace(
   db: D1Database,
   query: CustomerQuery,
   now: number,
 ) {
-  const codConfirmationAvailable = await customerCodSchemaAvailable(db);
+  const [codConfirmationAvailable, failureReasonsAvailable] = await Promise.all([
+    customerCodSchemaAvailable(db), deliveryFailureSchemaAvailable(db),
+  ]);
   const q = query.q?.trim().slice(0, 160) ?? '';
   const view: CustomerFilter =
     customerFilters.find(([id]) => id === query.view)?.[0] ?? 'all';
@@ -135,7 +145,7 @@ export async function readCustomerWorkspace(
     SELECT o.id,o.customer_id,o.delivered_at,o.status,o.payment_mode
     FROM matching m JOIN orders o ON o.customer_id=m.id
   ), outcomes AS (
-    ${courierOutcomes('SELECT id FROM customer_orders')}
+    ${courierOutcomes(db, 'SELECT id FROM customer_orders', failureReasonsAvailable)}
   ), totals AS (
     SELECT o.customer_id,COUNT(*) AS orderCount,
       SUM(CASE WHEN o.delivered_at IS NOT NULL OR o.status='delivered' THEN 1 ELSE 0 END) AS deliveredCount,
@@ -149,7 +159,7 @@ export async function readCustomerWorkspace(
   const counts = await db
     .prepare(`${customers}
     SELECT COUNT(*) AS allCount,
-      COUNT(CASE WHEN t.codRefusalCount>=? THEN 1 END) AS riskCount,
+      COUNT(CASE WHEN t.unsuccessfulCodCount>=? THEN 1 END) AS riskCount,
       COUNT(CASE WHEN m.createdAt BETWEEN ? AND ? THEN 1 END) AS newCount
     FROM matching m LEFT JOIN totals t ON t.customer_id=m.id`)
     .bind(...bindings, customerRiskThreshold, monthStart, now)
@@ -166,7 +176,7 @@ export async function readCustomerWorkspace(
     : 1;
   const filter =
     view === 'risk'
-      ? { sql: 'WHERE t.codRefusalCount>=?', args: [customerRiskThreshold] }
+      ? { sql: 'WHERE t.unsuccessfulCodCount>=?', args: [customerRiskThreshold] }
       : view === 'new'
         ? { sql: 'WHERE m.createdAt BETWEEN ? AND ?', args: [monthStart, now] }
         : { sql: '', args: [] };
@@ -214,7 +224,7 @@ export async function readCustomerWorkspace(
         SELECT id,order_number,status,delivered_at,created_at FROM orders
         WHERE customer_id=? ORDER BY created_at DESC,id DESC LIMIT 5
       ), outcomes AS (
-        ${courierOutcomes('SELECT id FROM recent')}
+        ${courierOutcomes(db, 'SELECT id FROM recent', failureReasonsAvailable)}
       )
       SELECT o.id,o.order_number AS orderNumber,o.status,
         (SELECT i.product_name_snapshot FROM order_items i WHERE i.order_id=o.id ORDER BY i.id LIMIT 1) AS productName,

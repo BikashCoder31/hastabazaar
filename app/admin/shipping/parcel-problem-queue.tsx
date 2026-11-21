@@ -5,8 +5,9 @@ import { OrderPreparationWorkspace } from '@/components/commerce/order-preparati
 import { NextStepBox } from '@/components/ui/next-step-box';
 import { withAdminReturnTo } from '@/lib/admin/return-context';
 import { readPreparationWorkspace } from '@/lib/orders/response-workspace';
+import { deliveryFailureReasonLabel, deliveryFailureReasons } from '@/lib/shipping/delivery-failure';
 import { ParcelProblemAction } from './parcel-problem-action';
-import { problemFilters, problemHref, readParcelProblems, type ParcelProblem, type ProblemFilter } from './parcel-problems';
+import { problemFilters, problemHref, readParcelProblems, type ParcelProblem, type ProblemFilter, type ProblemReasonFilter } from './parcel-problems';
 
 const icons = { delay: Clock3, cannot_fulfill: AlertTriangle, delivery_failed: Phone, refused: X, return_to_origin: Undo2 };
 const nextLabel = {
@@ -21,6 +22,11 @@ const refusalReasons: Record<string, string> = {
 const pill = 'inline-flex w-fit max-w-full items-center rounded-full px-2.5 py-1 text-xs leading-tight font-semibold';
 const linkStyle = 'inline-flex min-h-11 items-center py-2 text-sm font-semibold underline underline-offset-4 hover:text-[#A8232E]';
 const panel = 'min-w-0 rounded-2xl border border-[#E4DACA] bg-white';
+const reasonFilters: ReadonlyArray<readonly [ProblemReasonFilter, string]> = [
+  ['all', 'All reasons'],
+  ...deliveryFailureReasons.map(([reason]) => [reason, deliveryFailureReasonLabel(reason)] as const),
+  ['unrecorded', 'Reason not recorded'],
+];
 const readyDate = new Intl.DateTimeFormat('en-NP', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Kathmandu' });
 const recordDate = new Intl.DateTimeFormat('en-NP', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kathmandu' });
 
@@ -51,6 +57,10 @@ function ProblemBadge({ problem }: { problem: ParcelProblem }) {
   return <span className={`${pill} ${color}`}>{nextLabel[problem.kind]}</span>;
 }
 
+function FailureReasonBadge({ problem }: { problem: ParcelProblem }) {
+  return problem.courierFailure ? <span className={`${pill} bg-[#F7F3EC] text-[#46536F]`}>{deliveryFailureReasonLabel(problem.failureReason)}</span> : null;
+}
+
 async function renderProblemDetail({ problem, db, viewer, returnTo }: {
   problem: ParcelProblem;
   db: D1Database;
@@ -72,7 +82,7 @@ async function renderProblemDetail({ problem, db, viewer, returnTo }: {
         <p className="font-mono text-[13px] break-words text-[#46536F]">{problem.orderNumber}{problem.sellerName ? ` · ${problem.sellerName}` : ''}</p>
         <h2 id="problem-heading" className="mt-1 font-heading text-[25px] leading-tight font-semibold tracking-tight" tabIndex={-1}>{title(problem)}</h2>
       </div>
-      <ProblemBadge problem={problem} />
+      <div className="flex flex-wrap gap-2"><ProblemBadge problem={problem} /><FailureReasonBadge problem={problem} /></div>
     </div>
     {evidence.length ? <p className="text-sm break-words text-[#46536F]">{evidence.join(' · ')}</p> : null}
     {problem.note ? <p className="text-sm leading-relaxed whitespace-pre-wrap break-words text-[#46536F]">{problem.note}</p> : null}
@@ -90,28 +100,39 @@ async function renderProblemDetail({ problem, db, viewer, returnTo }: {
   </section>;
 }
 
-export async function renderParcelProblemQueue({ db, viewer, superAdmin, kind, requestedPage, selected }: {
+export async function renderParcelProblemQueue({ db, viewer, superAdmin, kind, requestedPage, selected, requestedReason }: {
   db: D1Database;
   viewer: { id: string; authSubject?: string | null };
   superAdmin: boolean;
   kind: ProblemFilter;
   requestedPage?: string;
   selected?: string;
+  requestedReason?: string;
 }) {
-  const { problems, countByKind, page, pageCount } = await readParcelProblems(db, { superAdmin, kind, requestedPage });
+  const { problems, countByKind, page, pageCount, reason, failureReasonsAvailable } = await readParcelProblems(db, { superAdmin, kind, requestedPage, reason: requestedReason });
   const current = problems.find(problem => problem.id === selected) ?? problems[0];
-  const detail = current ? await renderProblemDetail({ problem: current, db, viewer, returnTo: problemHref(kind, page, current.id) }) : null;
+  const detail = current ? await renderProblemDetail({ problem: current, db, viewer, returnTo: problemHref(kind, page, current.id, reason) }) : null;
   return <StaffReviewAccessBoundary actorId={viewer.id} sourceId="parcel-problems">
     <section aria-label="Parcel problems" className="space-y-4">
       <nav aria-label="Filter parcel problems" className="flex flex-wrap gap-2.5">
         {problemFilters.map(([key, label]) => (
-          <Link key={key} href={problemHref(key)} scroll={false} aria-current={kind === key ? 'page' : undefined}
+          <Link key={key} href={problemHref(key, 1, undefined, reason)} scroll={false} aria-current={kind === key ? 'page' : undefined}
             className={`inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3 text-sm font-semibold ${kind === key
               ? 'border-[#14213D] bg-[#14213D] text-white' : 'border-[#D3C5AD] bg-white text-[#46536F] hover:border-[#14213D]'}`}>
             {label} <span className="tabular-nums opacity-80">{countByKind.get(key) ?? 0}</span>
           </Link>
         ))}
       </nav>
+      {failureReasonsAvailable ? <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <nav aria-label="Filter by delivery failure reason" className="flex flex-wrap gap-x-3 gap-y-1">
+          {reasonFilters.map(([key, label]) => (
+            <Link key={key} href={problemHref(kind, 1, undefined, key)} scroll={false}
+              aria-current={reason === key ? 'page' : undefined}
+              className={`${linkStyle} ${reason === key ? 'text-[#A8232E]' : ''}`}>{label}</Link>
+          ))}
+        </nav>
+        <Link href="/admin/orders/dispatch?lane=courier" className={linkStyle}>Find a parcel with a courier</Link>
+      </div> : null}
       {current ? (
         <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,0.91fr)_minmax(0,1fr)]">
           <div className="min-w-0 space-y-2">
@@ -121,13 +142,14 @@ export async function renderParcelProblemQueue({ db, viewer, superAdmin, kind, r
                 const active = current.id === problem.id;
                 const warm = problem.kind === 'delay' || problem.kind === 'return_to_origin';
                 return <li key={problem.id}>
-                  <Link href={`${problemHref(kind, page, problem.id)}#problem-detail`} prefetch={false} aria-current={active ? 'true' : undefined}
+                  <Link href={`${problemHref(kind, page, problem.id, reason)}#problem-detail`} prefetch={false} aria-current={active ? 'true' : undefined}
                     className={`relative flex min-h-18 flex-wrap items-center gap-x-3.5 gap-y-2 py-3 pr-3.5 pl-[17px] text-sm hover:bg-[#F7F3EC] focus-visible:-outline-offset-2 sm:flex-nowrap sm:pr-4 sm:pl-[19px] ${active ? 'bg-[#FFFCF7] before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-[#A8232E]' : ''}`}>
                     <Icon className={`size-9.5 shrink-0 rounded-[10px] p-2.5 ${warm ? 'bg-[#F7E9C9] text-[#8A5A0B]' : 'bg-[#F8E1DE] text-[#A8232E]'}`} aria-hidden="true" />
                     <span className="min-w-0 grow basis-[45%] break-words sm:basis-auto">
                       <span className="block font-semibold">{title(problem)}</span>
                       <span className="mt-0.5 block text-[13px] text-[#46536F]">{[problem.orderNumber, problem.sellerName, problem.trackingCode, refusalReasons[problem.state]].filter(Boolean).join(' · ')}</span>
                       {problem.followup ? <span className="mt-0.5 line-clamp-2 text-[13px] text-[#46536F]">{problem.followup}</span> : null}
+                      <FailureReasonBadge problem={problem} />
                     </span>
                     <span className="max-w-full shrink-0"><ProblemBadge problem={problem} /></span>
                   </Link>
@@ -135,14 +157,14 @@ export async function renderParcelProblemQueue({ db, viewer, superAdmin, kind, r
               })}
             </ul>
             {pageCount > 1 ? <nav aria-label="Parcel problems pages" className="flex flex-wrap items-center justify-between gap-2 text-sm">
-              {page > 1 ? <Link href={problemHref(kind, page - 1)} className={linkStyle}>Previous</Link> : <span />}
+              {page > 1 ? <Link href={problemHref(kind, page - 1, undefined, reason)} className={linkStyle}>Previous</Link> : <span />}
               <span>Page {page} of {pageCount}</span>
-              {page < pageCount ? <Link href={problemHref(kind, page + 1)} className={linkStyle}>Next</Link> : <span />}
+              {page < pageCount ? <Link href={problemHref(kind, page + 1, undefined, reason)} className={linkStyle}>Next</Link> : <span />}
             </nav> : null}
           </div>
           {detail}
         </div>
-      ) : <p className={`${panel} p-5 text-sm text-[#46536F]`}>{kind === 'all' ? 'No active parcel problems.' : 'No active problems match this filter.'}</p>}
+      ) : <p className={`${panel} p-5 text-sm text-[#46536F]`}>{kind === 'all' && reason === 'all' ? 'No active parcel problems.' : 'No active problems match this filter.'}</p>}
     </section>
   </StaffReviewAccessBoundary>;
 }

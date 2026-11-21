@@ -1,3 +1,5 @@
+import { deliveryFailureSchemaAvailable, readDeliveryFailureReason, type DeliveryFailureReason } from '@/lib/shipping/delivery-failure';
+
 export const problemFilters = [
   ['all', 'All'],
   ['delay', 'Seller delays'],
@@ -9,6 +11,7 @@ export const problemFilters = [
 
 export type ProblemFilter = (typeof problemFilters)[number][0];
 export type ProblemKind = Exclude<ProblemFilter, 'all'>;
+export type ProblemReasonFilter = DeliveryFailureReason | 'all' | 'unrecorded';
 
 export type ParcelProblem = {
   id: string;
@@ -27,6 +30,8 @@ export type ParcelProblem = {
   note: string | null;
   followup: string | null;
   version: number | null;
+  failureReason: DeliveryFailureReason | null;
+  courierFailure: number;
 };
 
 const pageSize = 25;
@@ -35,18 +40,42 @@ export function readProblemFilter(value: string | undefined): ProblemFilter {
   return problemFilters.find(([key]) => key === value)?.[0] ?? 'all';
 }
 
-export function problemHref(kind: ProblemFilter, page = 1, id?: string) {
+export function problemHref(kind: ProblemFilter, page = 1, id?: string, reason: ProblemReasonFilter = 'all') {
   const params = new URLSearchParams();
   if (kind !== 'all') params.set('kind', kind);
   if (page > 1) params.set('page', String(page));
   if (id) params.set('problem', id);
+  if (reason !== 'all') params.set('reason', reason);
   return `/admin/shipping${params.size ? `?${params}` : ''}`;
+}
+
+export async function readParcelFailureTarget(db: D1Database, jobId: string) {
+  if (!/^[\w:-]{1,191}$/.test(jobId) || !await deliveryFailureSchemaAvailable(db)) return null;
+  return db.prepare(`SELECT o.id AS orderId,o.order_number AS orderNumber,
+    s.trading_name AS sellerName,p.courier_name AS courierName,p.version
+    FROM shipping_jobs j JOIN shipping_parcels p ON p.shipping_job_id=j.id
+    JOIN orders o ON o.id=j.order_id JOIN seller_profiles s ON s.id=j.seller_id
+    WHERE j.id=? AND j.direction='outbound' AND j.status='dispatched'
+      AND p.method='courier' AND p.rider_user_id IS NULL
+      AND o.status IN ('confirmed','packing','ready_for_pickup','dispatched','delivered')
+      AND NOT EXISTS(SELECT 1 FROM first_cod_reviews review WHERE review.order_id=o.id AND review.status='pending')`)
+    .bind(jobId).first<{ orderId: string; orderNumber: string; sellerName: string; courierName: string | null; version: number }>();
 }
 
 export async function readParcelProblems(
   db: D1Database,
-  { superAdmin, kind, requestedPage }: { superAdmin: boolean; kind: ProblemFilter; requestedPage: string | undefined },
+  { superAdmin, kind, requestedPage, reason: requestedReason }: {
+    superAdmin: boolean; kind: ProblemFilter; requestedPage: string | undefined; reason?: string;
+  },
 ) {
+  const failureReasonsAvailable = await deliveryFailureSchemaAvailable(db);
+  const reason: ProblemReasonFilter = failureReasonsAvailable
+    ? requestedReason === 'unrecorded' ? 'unrecorded' : readDeliveryFailureReason(requestedReason) ?? 'all'
+    : 'all';
+  const reasonClause = reason === 'all' ? '1=1'
+    : reason === 'unrecorded' ? 'courierFailure=1 AND failureReason IS NULL'
+    : 'courierFailure=1 AND failureReason=?';
+  const reasonArgs = reason === 'all' || reason === 'unrecorded' ? [] : [reason];
   const refusalOutcomes = "('refused_whole_parcel_wrong_item','refused_whole_parcel_damage','refused_whole_parcel_other')";
   const activeRefusals = superAdmin ? `SELECT r.id,r.shipping_job_id,r.open_box_outcome,r.note,r.created_at
     FROM rider_reports r JOIN shipping_jobs job ON job.id=r.shipping_job_id
@@ -57,7 +86,8 @@ export async function readParcelProblems(
     SELECT CONCAT('case:',c.id) AS id,c.kind,'preparation' AS source,c.id AS sourceId,
       o.id AS orderId,o.order_number AS orderNumber,s.trading_name AS sellerName,c.state,
       COALESCE(e.created_at,c.created_at) AS occurredAt,c.proposed_ready_at AS readyAt,c.next_update_at AS nextUpdateAt,
-      NULL AS trackingCode,NULL AS courierName,NULL AS note,NULL AS followup,NULL AS version
+      NULL AS trackingCode,NULL AS courierName,NULL AS note,NULL AS followup,NULL AS version,
+      NULL AS failureReason,0 AS courierFailure
     FROM order_response_cases c JOIN order_response_portions p ON p.id=c.portion_id
     JOIN orders o ON o.id=p.order_id JOIN seller_profiles s ON s.id=p.seller_id
     LEFT JOIN order_response_events e ON e.id=c.last_event_id
@@ -78,7 +108,9 @@ export async function readParcelProblems(
       CASE WHEN (p.method IS NULL OR p.method<>'own_rider') AND p.rider_user_id IS NULL
         AND o.status IN ('confirmed','packing','ready_for_pickup','dispatched','delivered')
         AND NOT EXISTS(SELECT 1 FROM first_cod_reviews review WHERE review.order_id=o.id AND review.status='pending')
-        THEN p.version END
+        THEN p.version END,
+      ${failureReasonsAvailable ? "CASE WHEN p.method='courier' AND p.rider_user_id IS NULL THEN j.delivery_failure_reason END" : 'NULL'},
+      CASE WHEN (p.method IS NULL OR p.method='courier') AND p.rider_user_id IS NULL THEN 1 ELSE 0 END
     FROM shipping_jobs j JOIN orders o ON o.id=j.order_id JOIN seller_profiles s ON s.id=j.seller_id
     LEFT JOIN shipping_parcels p ON p.shipping_job_id=j.id
     WHERE j.direction='outbound' AND j.status IN ('delivery_failed','returning','return_to_origin')
@@ -86,7 +118,9 @@ export async function readParcelProblems(
       ${superAdmin ? '' : "AND (p.shipping_job_id IS NULL OR ((p.method IS NULL OR p.method<>'own_rider') AND p.rider_user_id IS NULL))"}
     UNION ALL
     SELECT CONCAT('shipment:',ship.id),ship.status,'shipment',ship.id,o.id,o.order_number,NULL,ship.status,
-      ship.updated_at,NULL,NULL,ship.tracking_code,NULL,NULL,NULL,NULL
+      ship.updated_at,NULL,NULL,ship.tracking_code,NULL,NULL,NULL,NULL,NULL,
+      CASE WHEN ship.provider<>'own_rider' AND NOT EXISTS(SELECT 1 FROM delivery_assignments d
+        WHERE d.order_id=o.id AND (d.method='own_rider' OR d.rider_user_id IS NOT NULL)) THEN 1 ELSE 0 END
     FROM shipments ship JOIN orders o ON o.id=ship.order_id
     WHERE ship.status IN ('delivery_failed','return_to_origin')
       AND NOT EXISTS(SELECT 1 FROM shipments newer WHERE newer.order_id=ship.order_id
@@ -95,20 +129,21 @@ export async function readParcelProblems(
       ${superAdmin ? '' : "AND NOT EXISTS(SELECT 1 FROM delivery_assignments d WHERE d.order_id=ship.order_id AND (d.method='own_rider' OR d.rider_user_id IS NOT NULL))"}
     ${superAdmin ? `UNION ALL
     SELECT CONCAT('refusal:',r.id),'refused','refusal',r.id,o.id,o.order_number,s.trading_name,r.open_box_outcome,
-      r.created_at,NULL,NULL,NULL,NULL,r.note,NULL,NULL
+      r.created_at,NULL,NULL,NULL,NULL,r.note,NULL,NULL,NULL,0
     FROM refusals r JOIN shipping_jobs j ON j.id=r.shipping_job_id JOIN orders o ON o.id=j.order_id
     JOIN seller_profiles s ON s.id=j.seller_id
     WHERE NOT EXISTS(SELECT 1 FROM refusals newer WHERE newer.shipping_job_id=r.shipping_job_id
       AND (newer.created_at>r.created_at OR (newer.created_at=r.created_at AND newer.id>r.id)))` : ''}
   )`;
-  const counts = (await db.prepare(`${queue} SELECT kind,COUNT(*) AS total FROM problems GROUP BY kind`)
+  const counts = (await db.prepare(`${queue} SELECT kind,COUNT(*) AS total FROM problems WHERE ${reasonClause} GROUP BY kind`)
+    .bind(...reasonArgs)
     .all<{ kind: ProblemKind; total: number }>()).results;
   const countByKind = new Map<ProblemFilter, number>(counts.map(({ kind, total }) => [kind, Number(total)]));
   countByKind.set('all', counts.reduce((sum, entry) => sum + Number(entry.total), 0));
   const pageCount = Math.max(1, Math.ceil((countByKind.get(kind) ?? 0) / pageSize));
   const requested = Number(requestedPage);
   const page = Number.isSafeInteger(requested) ? Math.min(Math.max(1, requested), pageCount) : 1;
-  const { results } = await db.prepare(`${queue} SELECT * FROM problems WHERE (?='all' OR kind=?)
-    ORDER BY occurredAt DESC,id DESC LIMIT ? OFFSET ?`).bind(kind, kind, pageSize, (page - 1) * pageSize).all<ParcelProblem>();
-  return { countByKind, page, pageCount, problems: results };
+  const { results } = await db.prepare(`${queue} SELECT * FROM problems WHERE (?='all' OR kind=?) AND ${reasonClause}
+    ORDER BY occurredAt DESC,id DESC LIMIT ? OFFSET ?`).bind(kind, kind, ...reasonArgs, pageSize, (page - 1) * pageSize).all<ParcelProblem>();
+  return { countByKind, page, pageCount, problems: results, failureReasonsAvailable, reason };
 }

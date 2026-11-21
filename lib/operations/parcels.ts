@@ -31,6 +31,7 @@ import { withReceiptGroups } from '../documents/billing';
 import type { OrderDocumentSnapshot } from '../db/repositories/orders';
 import { receiptNumberStatements,withLiveInvoiceReferences } from '../db/repositories/billing-documents';
 import { getEffectiveBusinessSetting } from '../db/repositories/business-settings';
+import { deliveryFailureSchemaAvailable, readDeliveryFailureReason } from '../shipping/delivery-failure';
 import {
   addKathmanduBusinessDays,
   buildRiderAssignmentPolicySnapshot,
@@ -161,16 +162,18 @@ function parcelAudit(
   o: { actorId: string; requestId: string; now: number },
   orderId: string,
   action: string,
+  reason = 'Parcel operation recorded',
 ) {
   return db
     .prepare(
-      "INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,request_id,created_at) VALUES (?,?,?,'order',?,'Parcel operation recorded',?,?)",
+      "INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,request_id,created_at) VALUES (?,?,?,'order',?,?,?,?)",
     )
     .bind(
       crypto.randomUUID(),
       o.actorId,
       'parcel.' + action,
       orderId,
+      reason,
       o.requestId + ':audit',
       o.now,
     );
@@ -529,6 +532,7 @@ export interface ParcelOperation {
   pickupStart?: number;
   pickupEnd?: number;
   riderReportId?: string;
+  failureReason?: string;
   form?: {
     requestId: string;
     versionId: string;
@@ -573,7 +577,12 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
     throw new ParcelConflictError(
       'Rider confirmation requires the matching report action.',
     );
-  const { form, ...operation } = o;
+  const trackFailure = o.action === 'fail' && !o.riderReportId && await deliveryFailureSchemaAvailable(db);
+  const { form, failureReason, ...savedOperation } = o;
+  const recordedFailure = trackFailure ? readDeliveryFailureReason(failureReason) : undefined;
+  if (trackFailure && failureReason !== undefined && !recordedFailure)
+    throw new ParcelConflictError('Choose a delivery failure reason.');
+  const operation = { ...savedOperation, ...(recordedFailure ? { failureReason: recordedFailure } : {}) };
   const catalogFormId = form?.formId ?? 'staff.parcel-control';
   const formDigest = form
     ? await digestFormRequest({
@@ -610,6 +619,9 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
     await issueManagedInvoiceGroups(db,{orderId:p.orderId,requestId:o.requestId+':managed-invoice',now:o.now});
     return;
   }
+  const courierFailure = trackFailure && p.method === 'courier' && !p.riderUserId;
+  if (courierFailure && !recordedFailure) throw new ParcelConflictError('Choose a delivery failure reason.');
+  if (!courierFailure && recordedFailure) throw new ParcelConflictError('Choose a parcel assigned to a courier.');
   if (o.action !== 'cancel' && o.action !== 'record_cost')
     await assertFirstCodFulfillmentAllowed(db, p.orderId, ParcelConflictError);
   const statements: D1PreparedStatement[] = [
@@ -1136,11 +1148,14 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
           .bind(p.orderId, p.sellerId),
       );
     }
-    statements.push(
-      db
-        .prepare('UPDATE shipping_jobs SET status=?,updated_at=? WHERE id=?')
-        .bind(t.to, o.now, o.jobId),
-    );
+    statements.push(recordedFailure
+      ? db.prepare("UPDATE shipping_jobs SET status=?,updated_at=?,delivery_failure_reason=? WHERE id=? AND direction='outbound'")
+          .bind(t.to, o.now, recordedFailure, o.jobId)
+      : db.prepare('UPDATE shipping_jobs SET status=?,updated_at=? WHERE id=?')
+          .bind(t.to, o.now, o.jobId));
+    if (recordedFailure) statements.push(...assertion(db,
+      "EXISTS(SELECT 1 FROM shipping_jobs j JOIN shipping_parcels p ON p.shipping_job_id=j.id WHERE j.id=? AND j.direction='outbound' AND p.method='courier' AND p.rider_user_id IS NULL AND j.delivery_failure_reason=?)",
+      [o.jobId, recordedFailure]));
     if (o.action === 'deliver')
       statements.push(
         db
@@ -1258,7 +1273,7 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
         o.now,
       ),
   );
-  statements.push(parcelAudit(db, o, p.orderId, o.action));
+  statements.push(parcelAudit(db, o, p.orderId, o.action, recordedFailure ? o.note.trim() : undefined));
   if (form)
     statements.push(
       buildFormAnswerInsert(db, {

@@ -8,7 +8,7 @@ import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import { can } from '@/lib/marketplace/permissions';
 import { pickupOptions } from './pickup-window';
-import { readDispatchParcels } from './read-dispatch';
+import { dispatchLanes, readDispatchParcels } from './read-dispatch';
 
 export const dynamic = 'force-dynamic';
 export const metadata = {
@@ -18,10 +18,11 @@ export const metadata = {
 const observedAt = () => Date.now();
 const pathname = '/admin/orders/dispatch';
 
-export default async function DispatchPage() {
+export default async function DispatchPage({ searchParams }: { searchParams?: Promise<{ lane?: string }> } = {}) {
   const staff = await requireStaffPage(pathname, 'order.manage');
   const db = requireDatabase(env as unknown as { DB?: D1Database });
-  const parcels = await readDispatchParcels(db);
+  const [parcels, query] = await Promise.all([readDispatchParcels(db), searchParams]);
+  const initialLane = dispatchLanes.find(({ id }) => id === query?.lane)?.id;
   return (
     <div className="min-w-0 space-y-4">
       <AdminPageHelpProvider
@@ -42,6 +43,8 @@ export default async function DispatchPage() {
         </AdminPageTitle>
       </AdminPageHelpProvider>
       <DispatchWorkspace
+        key={initialLane}
+        initialLane={initialLane}
         parcels={parcels}
         actorId={staff.id}
         options={pickupOptions(observedAt())}

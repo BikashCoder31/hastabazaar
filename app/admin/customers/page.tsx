@@ -64,7 +64,7 @@ function CustomerAvatar({
     .join('')
     .toLocaleUpperCase();
   const color =
-    customer.codRefusalCount >= customerRiskThreshold
+    customer.unsuccessfulCodCount >= customerRiskThreshold
       ? 'bg-[#A8232E]'
       : avatarColors[(customer.id.codePointAt(0) ?? 0) % avatarColors.length];
 
@@ -91,7 +91,7 @@ function CustomerRecord({
   codActorId?: string;
   returnTo: string;
 }) {
-  const risk = customer.codRefusalCount >= customerRiskThreshold;
+  const risk = customer.unsuccessfulCodCount >= customerRiskThreshold;
   const phone = normalizeNepalMobile(customer.phone);
   const maskedPhone = phone
     ? phone.slice(4, 6) + '••••••' + phone.slice(-2)
@@ -176,6 +176,7 @@ function CustomerRecord({
           actorId={codActorId}
           customerId={customer.id}
           enabled={customer.codConfirmationRequired}
+          suggested={risk && !customer.codConfirmationRequired}
         />
       )}
 
@@ -279,7 +280,7 @@ export default async function CustomersPage({
   const empty = q
     ? `No customer matches “${q}”.`
     : view === 'risk'
-      ? 'No customers with two recorded cash-order refusals.'
+      ? 'No customers with two cash orders where the parcel was refused or the customer could not be reached.'
       : view === 'new'
         ? 'No customers registered this month.'
         : 'No customers found.';
@@ -293,7 +294,7 @@ export default async function CustomersPage({
             title: 'How to use Customers',
             sentences: [
               'Find a customer by name, phone, email or order number to see their orders, delivery outcomes and wallet.',
-              'Two courier-recorded refusals on cash orders mark a customer as Watch.',
+              'Watch marks customers with two cash orders where the parcel was refused or the courier could not reach them.',
             ],
             procedureHref: can(staff, 'support.manage')
               ? '/admin/legal-policies/active'
@@ -396,9 +397,9 @@ export default async function CustomersPage({
                         </span>
                         {row.codConfirmationRequired === null ? null : <CustomerCodConfirmationChip enabled={row.codConfirmationRequired} />}
                       </span>
-                      {row.codRefusalCount >= customerRiskThreshold ? (
+                      {row.unsuccessfulCodCount >= customerRiskThreshold ? (
                         <span className={watchBadge}>
-                          {number.format(row.codRefusalCount)} refused
+                          {number.format(row.unsuccessfulCodCount)} cash orders to review
                         </span>
                       ) : null}
                     </Link>

@@ -15,6 +15,7 @@ import { ExceptionOrderSection } from '@/components/admin/exception-order-sectio
 import { InvoiceAdjustmentForm } from '@/components/admin/invoice-adjustment-form';
 import { LiveInvoiceAdjustmentForm } from '@/components/admin/live-invoice-adjustment-form';
 import { ParcelControls } from '@/components/admin/parcel-controls';
+import { deliveryFailureSchemaAvailable } from '@/lib/shipping/delivery-failure';
 import {
   listParcels,
   parcelCashRecords,
@@ -164,7 +165,7 @@ export default async function AdminOrderPage({
     ).some((allowed) => !allowed)
   )
     notFound();
-  const [parcels, cash, compensation, invoiceGroups] = await Promise.all([
+  const [parcels, cash, compensation, invoiceGroups, failureReasonsAvailable] = await Promise.all([
     listParcels(db, id),
     parcelCashRecords(db, id).then((records) =>
       staff.role === 'super_admin'
@@ -175,6 +176,7 @@ export default async function AdminOrderPage({
       ? riderCompensationEntries(db, id)
       : Promise.resolve([]),
     listManagedInvoiceGroupsForOrder(db, id),
+    deliveryFailureSchemaAvailable(db),
   ]);
   const adjustmentReasons = can(staff, 'tax_policy.manage')
     ? (
@@ -616,6 +618,7 @@ export default async function AdminOrderPage({
                 <div id="courier" className="scroll-mt-20">
                   <ParcelControls
                     orderId={id}
+                    failureReasonsAvailable={failureReasonsAvailable}
                     parcels={visibleParcels}
                     records={
                       staff.role === 'super_admin'

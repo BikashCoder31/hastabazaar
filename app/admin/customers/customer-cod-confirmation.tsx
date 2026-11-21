@@ -14,10 +14,11 @@ export function CustomerCodConfirmationChip({ enabled }: { enabled: boolean }) {
   </span>;
 }
 
-export function CustomerCodConfirmation({ actorId, customerId, enabled }: {
+export function CustomerCodConfirmation({ actorId, customerId, enabled, suggested = false }: {
   actorId?: string;
   customerId: string;
   enabled: boolean;
+  suggested?: boolean;
 }) {
   const router = useRouter();
   const inputId = useId();
@@ -68,7 +69,7 @@ export function CustomerCodConfirmation({ actorId, customerId, enabled }: {
         <CustomerCodConfirmationChip enabled={enabled} />
         {actorId ? (
           <Dialog open={open} onOpenChange={next => { if (!busy) setOpen(next); }}>
-            <DialogTrigger render={<Button variant="outline" className="min-h-11 whitespace-normal" />}>{label}</DialogTrigger>
+            <DialogTrigger render={<Button variant={suggested ? 'default' : 'outline'} className="min-h-11 whitespace-normal" />}>{label}</DialogTrigger>
             <DialogContent showCloseButton={false}>
               <DialogTitle>{label}?</DialogTitle>
               <DialogDescription>This changes how future cash-on-delivery orders are handled.</DialogDescription>

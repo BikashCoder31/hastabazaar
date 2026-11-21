@@ -1,4 +1,5 @@
 import { AdminPageTitle } from '@/components/admin/page-help';
+import { StaffReviewAccessBoundary } from '@/components/admin/staff-review-access-boundary';
 import { env } from 'cloudflare:workers';
 import { ShippingConsole } from '@/components/shipping-console';
 import { AnswerDetails } from '@/components/forms/answer-details';
@@ -11,12 +12,13 @@ import { readHistoryCursor } from '@/lib/forms/rider-history';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { renderParcelProblemQueue } from './parcel-problem-queue';
-import { readProblemFilter } from './parcel-problems';
+import { ParcelProblemAction } from './parcel-problem-action';
+import { readParcelFailureTarget, readProblemFilter } from './parcel-problems';
 
 export const dynamic = 'force-dynamic';
 
 type ShippingQuery = {
-  kind?: string; problem?: string; page?: string; view?: string;
+  kind?: string; problem?: string; page?: string; view?: string; reason?: string; recordFailure?: string;
   historyEvent?: string; beforeAt?: string; beforeId?: string; afterAt?: string; afterId?: string;
 };
 
@@ -31,8 +33,26 @@ export default async function AdminShippingPage({ searchParams }: {
   const showHistory = Boolean(query?.historyEvent || query?.beforeAt || query?.beforeId || query?.afterAt || query?.afterId);
 
   if (!showShippingRecords && !showHistory) {
+    const failureJobId = query?.recordFailure;
+    const target = typeof failureJobId === 'string' ? await readParcelFailureTarget(db, failureJobId) : null;
+    if (target && failureJobId) {
+      return <div className="min-w-0 space-y-4 text-[#14213D]">
+        <AdminPageTitle><h1 className="section-title">Orders</h1></AdminPageTitle>
+        <StaffReviewAccessBoundary actorId={staff.id} sourceId={failureJobId}>
+          <section aria-labelledby="record-failed-delivery" className="min-w-0 max-w-2xl space-y-4 rounded-2xl border border-[#E4DACA] bg-white p-5 sm:p-6">
+            <h2 id="record-failed-delivery" className="font-heading text-2xl font-semibold">Record failed delivery</h2>
+            <p className="text-sm break-words text-[#46536F]">{[target.orderNumber, target.sellerName, target.courierName].filter(Boolean).join(' · ')}</p>
+            <ParcelProblemAction actorId={staff.id} orderId={target.orderId} jobId={failureJobId} version={Number(target.version)} recordFailure />
+            <div className="flex flex-wrap gap-x-4">
+              <Link className="section-link inline-flex min-h-11 items-center" href="/admin/orders/dispatch?lane=courier">Back to Dispatch</Link>
+              <Link className="section-link inline-flex min-h-11 items-center" href="/admin/shipping">Parcel problems</Link>
+            </div>
+          </section>
+        </StaffReviewAccessBoundary>
+      </div>;
+    }
     const [queue, history] = await Promise.all([
-      renderParcelProblemQueue({ db, viewer: staff, superAdmin, kind: readProblemFilter(query?.kind), requestedPage: query?.page, selected: query?.problem }),
+      renderParcelProblemQueue({ db, viewer: staff, superAdmin, kind: readProblemFilter(query?.kind), requestedPage: query?.page, selected: query?.problem, requestedReason: query?.reason }),
       renderShippingHistory({ db, staff, query }),
     ]);
     return <div className="space-y-4 text-[#14213D]">

@@ -394,7 +394,7 @@ const STAFF_OPERATION_KEYS = Object.freeze({
   'staff.managed-payout-preparation': ['action', 'sellerId', 'actorId', 'reason', 'destinationReference', 'scheduledFor', 'expectedAmountPaisa', 'expectedSnapshot', 'amountPaisa', 'balancePaisa', 'requestId', 'formVersion', 'customAnswers'],
   'staff.managed-payout-action': ['action', 'sellerId', 'actorId', 'payoutId', 'expectedStatus', 'providerReference', 'amountPaisa', 'reason', 'requestId', 'formVersion', 'customAnswers'],
   'staff.managed-transition-decision': ['action', 'applicationId', 'decision', 'effectiveLocal', 'effectiveAt', 'reason', 'requestId', 'formVersion', 'customAnswers'],
-  'staff.parcel-control': ['orderId', 'jobId', 'version', 'action', 'note', 'method', 'riderEmail', 'courierName', 'trackingCode', 'trackingUrl', 'reference', 'amount', 'amountPaisa', 'cashRecordId', 'riderReportId', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.parcel-control': ['orderId', 'jobId', 'version', 'action', 'note', 'method', 'riderEmail', 'courierName', 'trackingCode', 'trackingUrl', 'reference', 'amount', 'amountPaisa', 'cashRecordId', 'riderReportId', 'failureReason', 'requestId', 'formVersion', 'customAnswers'],
   'staff.payout-request-action': ['payoutRequestId', 'action', 'note', 'requestId', 'formVersion', 'customAnswers'],
   'staff.privacy-action': ['privacyRequestId', 'action', 'status', 'note', 'requestId', 'formVersion', 'customAnswers'],
   'staff.rider-control-1': ['action', 'status', 'note', 'userId', 'reportId', 'version', 'eligible', 'requestId', 'formVersion', 'customAnswers'],

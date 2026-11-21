@@ -1,5 +1,6 @@
 import type { NepalAddress } from '@/lib/shipping/provider';
 import { packedWeightSchemaAvailable } from '@/lib/shipping/packed-weight-storage';
+import { deliveryFailureSchemaAvailable } from '@/lib/shipping/delivery-failure';
 
 export const dispatchLanes = [
   { id: 'ready', label: 'Ready for pickup' },
@@ -35,6 +36,7 @@ type DispatchRow = {
   state: string | null;
   lane: DispatchLane;
   canMarkPickedUp: number;
+  canRecordFailure: number;
 };
 
 export type DispatchParcel = Pick<
@@ -62,6 +64,7 @@ export type DispatchParcel = Pick<
   pickupAddress: string;
   destination: string;
   canMarkPickedUp: boolean;
+  canRecordFailure: boolean;
 };
 
 const waiting =
@@ -93,7 +96,10 @@ export async function readDispatchParcels(
   db: D1Database,
   target?: { orderId: string; sellerId: string },
 ) {
-  const weightsAvailable = await packedWeightSchemaAvailable(db);
+  const [weightsAvailable, failureReasonsAvailable] = await Promise.all([
+    packedWeightSchemaAvailable(db),
+    deliveryFailureSchemaAvailable(db),
+  ]);
   const rows = await db
     .prepare(`WITH portions AS (
     SELECT i.order_id,i.seller_id,MIN(i.id) AS firstItem,COUNT(*) AS itemCount,
@@ -114,6 +120,10 @@ export async function readDispatchParcels(
       a.municipality AS pickupMunicipality,a.district AS pickupDistrict,
       j.id AS jobId,p.version,p.cod_due_paisa AS codDuePaisa,o.payment_mode AS paymentMode,o.placed_at AS placedAt,
       ${weightsAvailable ? 'w.weight_grams AS packedWeightGrams,' : ''}
+      ${failureReasonsAvailable ? `CASE WHEN j.status='dispatched' AND p.method='courier'
+        AND o.status IN ('confirmed','packing','ready_for_pickup','dispatched','delivered')
+        AND NOT EXISTS(SELECT 1 FROM first_cod_reviews review WHERE review.order_id=o.id AND review.status='pending')
+        THEN 1 ELSE 0 END` : '0'} AS canRecordFailure,
       COALESCE(p.courier_name,d.courier_name) AS courierName,
       COALESCE(j.tracking_code,d.tracking_reference,s.tracking_code) AS trackingNumber,
       j.pickup_window_start AS pickupStart,j.pickup_window_end AS pickupEnd,
@@ -161,6 +171,7 @@ export async function readDispatchParcels(
       pickupDistrict,
       paymentMode,
       canMarkPickedUp,
+      canRecordFailure,
       ...parcel
     } = row;
     return {
@@ -175,6 +186,7 @@ export async function readDispatchParcels(
       destination: destination(addressJson),
       codDuePaisa: paymentMode === 'cod' ? row.codDuePaisa : 0,
       canMarkPickedUp: Boolean(canMarkPickedUp),
+      canRecordFailure: Boolean(canRecordFailure),
     };
   });
 }

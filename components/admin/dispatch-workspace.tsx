@@ -19,13 +19,15 @@ export function DispatchWorkspace({
   parcels,
   actorId,
   options,
+  initialLane = 'ready',
 }: {
   parcels: DispatchParcel[];
   actorId: string;
   options: (PickupWindow & { label: string })[];
+  initialLane?: DispatchLane;
 }) {
   const router = useRouter();
-  const [lane, setLane] = useState<DispatchLane>('ready');
+  const [lane, setLane] = useState<DispatchLane>(initialLane);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [marked, setMarked] = useState<string | null>(null);
   const [notice, setNotice] = useState({ message: '', error: false });

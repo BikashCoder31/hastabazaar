@@ -201,6 +201,11 @@ export function DispatchParcelList({
                         Mark picked up
                       </button>
                     ) : null}
+                    {parcel.canRecordFailure && parcel.jobId ? (
+                      <Link className={dispatchChip} href={`/admin/shipping?recordFailure=${encodeURIComponent(parcel.jobId)}`}>
+                        Record failed delivery
+                      </Link>
+                    ) : null}
                   </div>
                 </li>
               ))}
