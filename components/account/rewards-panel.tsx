@@ -260,9 +260,11 @@ const earningMessages = {
 export function RewardsPanel({
   initialRewards,
   subjectId,
+  inWallet = false,
 }: {
   initialRewards: RewardsView;
   subjectId: string;
+  inWallet?: boolean;
 }) {
   const claimConfig = usePublishedFormConfig(forms.claim);
   const exchangeConfig = usePublishedFormConfig(forms.exchange);
@@ -615,7 +617,7 @@ export function RewardsPanel({
       data-reading={reading}
     >
       <section className="rounded-3xl bg-[#17345f] p-6 text-white sm:p-8">
-        <h1 className="font-heading text-4xl">My Rewards</h1>
+        {inWallet ? <h2 className="font-heading text-3xl">My Rewards</h2> : <h1 className="font-heading text-4xl">My Rewards</h1>}
         <p className="mt-3 text-white/75">
           Collect daily points and exchange whole blocks for shopping credit.
         </p>
@@ -655,6 +657,7 @@ export function RewardsPanel({
       ) : null}
       <div className="grid gap-5 lg:grid-cols-2">
         <form
+          id="daily-check-in"
           data-form-id="account.daily-reward"
           onSubmit={(event) => {
             event.preventDefault();

@@ -153,6 +153,20 @@ export async function markNotificationRead(
     throw new OperationsConflictError('Notification not found.');
 }
 
+export async function markCustomerNotificationsRead(
+  database: D1Database,
+  customer: { userId: string; authSubject: string },
+  now: number,
+): Promise<void> {
+  await database.prepare(
+    `UPDATE notification_messages SET status='read', read_at=?
+      WHERE recipient_user_id=? AND channel='in_app' AND audience_role='customer' AND read_at IS NULL
+        AND EXISTS(SELECT 1 FROM users WHERE id=notification_messages.recipient_user_id
+          AND HEX(auth_subject)=HEX(?) AND status='active' AND ${CURRENT_CUSTOMER_ROLE_SQL})
+        AND ${riderNotificationSourceSql('notification_messages')}`,
+  ).bind(now, customer.userId, customer.authSubject).run();
+}
+
 export async function getSellerAnalytics(
   database: D1Database,
   sellerId: string,

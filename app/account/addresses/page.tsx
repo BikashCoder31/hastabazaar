@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:workers';
 
+import { CustomerSettings } from '@/components/account/account-sections';
 import { AddressManager } from '@/components/account/address-manager';
 import { AnswerDetails } from '@/components/forms/answer-details';
 import { requireCustomerPage } from '@/lib/auth/customer';
@@ -33,13 +34,13 @@ export default async function AddressesPage({ searchParams }: {
     page: await listFormAnswersForSubjectPage(db, { subjectType: 'address', subjectId: address.id,
       formId: 'account.address', after: params?.addressId === address.id ? after : undefined }),
   })));
-  return <>
-    <AddressManager actorId={customer.userId} addresses={addresses} />
+  return <CustomerSettings active="addresses">
+    <AddressManager actorId={customer.userId} addresses={addresses} embedded />
     {history.filter(({ page }) => page.answers.length).map(({ address, page }) => <section key={address.id}
       className="mt-6 space-y-4" aria-label={`${address.label} address answer history`}>
       <h2 className="font-heading text-2xl">{address.label} · previous address answers</h2>
       {page.answers.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)}
-      {page.nextCursor ? <a className="inline-flex rounded-lg border px-4 py-2 text-sm font-medium" href={
+      {page.nextCursor ? <a className="inline-flex min-h-11 items-center rounded-lg border px-4 py-2 text-sm font-medium" href={
         `/account/addresses?addressId=${encodeURIComponent(address.id)}&historyAt=${page.nextCursor.createdAt}&historyId=${encodeURIComponent(page.nextCursor.id)}` +
         (deletedAfter ? `&deletedAt=${deletedAfter.deletedAt}&deletedId=${encodeURIComponent(deletedAfter.addressId)}` : '')
       }>Next 50 answers</a> : null}
@@ -47,5 +48,5 @@ export default async function AddressesPage({ searchParams }: {
     {deleted.nextCursor ? <a className="mt-6 inline-flex rounded-lg border px-4 py-2 text-sm font-medium" href={
       `/account/addresses?deletedAt=${deleted.nextCursor.deletedAt}&deletedId=${encodeURIComponent(deleted.nextCursor.addressId)}`
     }>Next 50 deleted addresses</a> : null}
-  </>;
+  </CustomerSettings>;
 }

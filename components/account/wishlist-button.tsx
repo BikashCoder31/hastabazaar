@@ -10,11 +10,13 @@ export function WishlistButton({
   initialSaved,
   signInPath,
   compact = false,
+  iconOnly = false,
 }: {
   productId: string;
   initialSaved: boolean;
   signInPath?: string;
   compact?: boolean;
+  iconOnly?: boolean;
 }) {
   const router = useRouter();
   const [saved, setSaved] = useState(initialSaved);
@@ -64,10 +66,10 @@ export function WishlistButton({
         onClick={() => void toggle()}
         aria-pressed={saved}
         aria-label={saved ? 'Remove from wishlist' : 'Save to wishlist'}
-        className="min-h-11 rounded-full px-4"
+        className={iconOnly ? "size-11 min-h-11 rounded-full border border-[#e3d8c7] bg-[#fdfbf7] p-0 text-[#a8232e] hover:bg-[#ebe1d1]" : "min-h-11 rounded-full px-4"}
       >
-        <Heart className={saved ? 'fill-current' : ''} />
-        {busy ? 'Updating…' : saved ? 'Saved · Remove' : 'Save to wishlist'}
+        <Heart aria-hidden="true" className={saved ? 'fill-current' : ''} />
+        {iconOnly ? null : busy ? 'Updating…' : saved ? 'Saved · Remove' : 'Save to wishlist'}
       </Button>
       {error ? (
         <p role="alert" className="mt-2 text-sm text-destructive">

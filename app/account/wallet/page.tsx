@@ -3,7 +3,7 @@ import { GiftCardForm } from '@/components/commerce/gift-card-form';
 import { AnswerDetails } from '@/components/forms/answer-details';
 import Link from 'next/link';
 import { env } from 'cloudflare:workers';
-import { Wallet, ArrowUpRight } from 'lucide-react';
+import { CustomerWallet, accountSurface } from '@/components/account/account-sections';
 import { requireCustomerPage } from '@/lib/auth/customer';
 import { requireDatabase } from '@/lib/db/d1';
 import { getWallet } from '@/lib/db/repositories/wallet';
@@ -24,6 +24,7 @@ const labels: Record<string, string> = {
   gift_card: 'Gift card credit',
   cancellation: 'Cancelled order credit restored',
   refund: 'Return credit restored',
+  loyalty_redemption: 'Points exchanged',
 };
 
 export default async function WalletPage({ searchParams }: {
@@ -70,75 +71,26 @@ export default async function WalletPage({ searchParams }: {
   }
   await assertGiftCardViewScope(db,scope,selectedGift?{id:selectedGift.id,owner:'redeemed_by'}:undefined);
   return (
-    <div className="space-y-7">
-      <section className="rounded-3xl bg-[#17345f] p-6 text-white sm:p-8">
-        <Wallet className="size-7 text-[#f4c46b]" />
-        <h1 className="mt-4 font-heading text-4xl">Your Hastabazaar wallet</h1>
-        <p className="mt-3 text-white/75">
-          A little thank-you for bringing good people to good finds.
-        </p>
-        <p className="mt-7 text-sm text-white/75">Available shopping credit</p>
-        <p className="mt-2 text-4xl font-semibold">
-          {money(wallet.balancePaisa)}
-        </p>
-        <Link
-          href="/shop"
-          className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#f4c46b] px-5 py-3 font-semibold text-[#332608]"
-        >
-          Use your credit <ArrowUpRight className="size-4" />
-        </Link>
-        <p className="mt-4 max-w-xl text-sm leading-6 text-white/75">
-          Apply credit to products at checkout and pay the remaining amount in
-          cash on delivery. Delivery is paid in cash. Deposits and withdrawals
-          are unavailable.
-        </p>
-      </section>
-      <GiftCardForm actorId={customer.userId} />
+    <CustomerWallet active="credit">
+      <div className="grid gap-4 md:grid-cols-2">
+        <section className="rounded-2xl bg-[#14213d] p-5 text-white sm:p-6" aria-label="Shopping credit balance">
+          <h2 className="text-sm font-medium text-white/80">Shopping credit</h2>
+          <p className="mt-2 break-words font-heading text-4xl tracking-tight sm:text-5xl">{money(wallet.balancePaisa)}</p>
+          <p className="mt-3 text-sm leading-6 text-white/80">Switch on “Use shopping credit” at checkout to spend it on products.</p>
+          <p className="mt-1 text-sm leading-6 text-white/80">Shopping credit covers products. Delivery is paid separately. Deposits and withdrawals are unavailable.</p>
+          <Link href="/shop" className="mt-2 inline-flex min-h-11 items-center rounded-md text-sm font-semibold text-white underline underline-offset-4 focus-visible:outline-2">Shop with your credit</Link>
+        </section>
+        <GiftCardForm actorId={customer.userId} />
+      </div>
       {query?.giftId&&!selectedGift?<output className="block">The requested original gift redemption is unavailable for this account.</output>:null}
-      <section className="space-y-4 rounded-3xl border bg-card p-6" aria-label="Your gift card answers">
-        <h2 className="font-heading text-2xl">Gift card answer history</h2>
-        {gifts.length ? <ul className="space-y-2">{gifts.map((gift) => <li key={gift.id}>
-          <Link className="underline" href={`/account/wallet?giftId=${encodeURIComponent(gift.id)}`}>
-            Redeemed {date(gift.redeemedAt)} · {money(gift.amountPaisa)}
-          </Link>
-        </li>)}</ul> : <p>No redeemed gift cards.</p>}
-        {nextGift ? <Link className="underline" href={
-          `/account/wallet?beforeAt=${nextGift.redeemedAt}&beforeId=${encodeURIComponent(nextGift.id)}`
-        }>Next 50 redeemed cards</Link> : null}
-        {selectedGift ? <div id={'gift-record-'+selectedGift.id} className="space-y-3 border-t pt-4">
-          <p className="break-all">Original gift card redemption: {selectedGift.id} · {money(selectedGift.amountPaisa)}</p>
-          <h3 className="font-semibold">Redeemed card answers</h3>
-          {history?.answers.length ? history.answers.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)
-            : <p>No saved answers for this redemption.</p>}
-          {history?.nextCursor ? <Link className="underline" href={
-            `/account/wallet?giftId=${encodeURIComponent(selectedGift.id)}&historyAt=${history.nextCursor.createdAt}&historyId=${encodeURIComponent(history.nextCursor.id)}`
-          }>Next 50 answers</Link> : null}
-        </div> : null}
-      </section>
-      <section id="referrals" className="rounded-3xl border bg-card p-6">
-        <h2 className="font-heading text-2xl">
-          Invite friends and earn credit
-        </h2>
-        <p className="mt-3 text-muted-foreground">
-          Your personal code, sharing tools and referral progress now have their
-          own page.
-        </p>
-        <Link
-          href="/account/referrals"
-          className="mt-3 inline-flex min-h-11 items-center font-semibold text-primary underline"
-        >
-          Go to Refer & earn →
-        </Link>
-      </section>
-      <section className="rounded-3xl border bg-card p-6">
-        {' '}
-        <h2 id="credit-activity" className="font-heading text-2xl">Credit activity</h2>
+      <section className={accountSurface + " p-5"}>
+        <h2 id="credit-activity" className="text-lg font-semibold">Credit activity</h2>
         {wallet.entries.length ? (
           <ul className="mt-4 divide-y">
             {wallet.entries.map((e) => (
               <li
                 key={e.id}
-                className="flex justify-between gap-4 py-4 text-sm"
+                className="flex flex-wrap justify-between gap-x-4 gap-y-1 py-3 text-sm"
               >
                 <div className="min-w-0">
                   <p className="font-semibold">{labels[e.kind] || e.kind}</p>
@@ -147,7 +99,7 @@ export default async function WalletPage({ searchParams }: {
                     {e.orderNumber && e.kind !== 'referral_reward' ? ` · ${e.orderNumber}` : ''}
                   </p>
                 </div>
-                <span className="shrink-0 font-semibold">
+                <span className={e.amountPaisa > 0 ? "font-semibold text-[#22664b]" : "font-semibold"}>
                   {e.amountPaisa > 0 ? '+' : ''}
                   {money(e.amountPaisa)}
                 </span>
@@ -163,6 +115,27 @@ export default async function WalletPage({ searchParams }: {
           Showing the latest 100 entries. Your balance includes all activity.
         </p>
       </section>
-    </div>
+      <section className={accountSurface + " space-y-4 p-5"} aria-label="Your gift card answers">
+        <h2 className="font-heading text-2xl">Gift card answer history</h2>
+        {gifts.length ? <ul className="space-y-2">{gifts.map((gift) => <li key={gift.id}>
+          <Link className="inline-flex min-h-11 items-center underline" href={`/account/wallet?giftId=${encodeURIComponent(gift.id)}`}>
+            Redeemed {date(gift.redeemedAt)} · {money(gift.amountPaisa)}
+          </Link>
+        </li>)}</ul> : <p>No redeemed gift cards.</p>}
+        {nextGift ? <Link className="inline-flex min-h-11 items-center underline" href={
+          `/account/wallet?beforeAt=${nextGift.redeemedAt}&beforeId=${encodeURIComponent(nextGift.id)}`
+        }>Next 50 redeemed cards</Link> : null}
+        {selectedGift ? <div id={'gift-record-'+selectedGift.id} className="space-y-3 border-t pt-4">
+          <p className="break-all">Original gift card redemption: {selectedGift.id} · {money(selectedGift.amountPaisa)}</p>
+          <h3 className="font-semibold">Redeemed card answers</h3>
+          {history?.answers.length ? history.answers.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)
+            : <p>No saved answers for this redemption.</p>}
+          {history?.nextCursor ? <Link className="inline-flex min-h-11 items-center underline" href={
+            `/account/wallet?giftId=${encodeURIComponent(selectedGift.id)}&historyAt=${history.nextCursor.createdAt}&historyId=${encodeURIComponent(history.nextCursor.id)}`
+          }>Next 50 answers</Link> : null}
+        </div> : null}
+      </section>
+      <p id="referrals" className="text-sm"><Link href="/account/referrals" className="inline-flex min-h-11 items-center font-semibold text-[#a8232e] underline">Invite friends and earn credit</Link></p>
+    </CustomerWallet>
   );
 }

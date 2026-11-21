@@ -38,3 +38,45 @@ void test('native notification reads and read acknowledgements reject a former r
   }
  }finally{fixture.db=null;f.dispose();}
 });
+
+void test('mark all read requires the current customer and only acknowledges their in-app notifications', async () => {
+  const f = await productPublicationFixture();
+  fixture.db = f.db;
+  fixture.subject = 'batch4-notification-customer';
+  try {
+    const { POST, GET } = await import('../app/api/notifications/route');
+    f.sqlite.prepare("UPDATE users SET auth_subject=? WHERE id='customer'").run(fixture.subject);
+    const insert = f.sqlite.prepare(`INSERT INTO notification_messages
+      (id,recipient_user_id,audience_role,channel,template_key,subject_en,subject_ne,body_en,body_ne,status,request_id,created_at,read_at)
+      VALUES(?,?,?,?,'fixture.notice','Notice','Notice','Private note','Private note',?,?,?,?)`);
+    for (let index = 0; index < 103; index++) {
+      const id = 'bulk-' + index;
+      insert.run(id,'customer','customer','in_app','sent',id,index+1,null);
+    }
+    insert.run('bulk-read','customer','customer','in_app','read','bulk-read',1,42);
+    insert.run('bulk-email','customer','customer','email','sent','bulk-email',1,null);
+    insert.run('bulk-staff','customer','staff','in_app','sent','bulk-staff',1,null);
+    insert.run('bulk-foreign','foreign','customer','in_app','sent','bulk-foreign',1,null);
+    const markAll = (actor?: string, origin = 'http://localhost:3018') => POST(new Request('http://localhost:3018/api/notifications',
+      { method:'POST', headers:{origin, ...(actor ? {'X-Hastabazaar-Actor':actor} : {})} }));
+    const unread = () => f.sqlite.prepare("SELECT COUNT(*) AS n FROM notification_messages WHERE id GLOB 'bulk-[0-9]*' AND read_at IS NULL").get()?.n;
+    assert.equal((await markAll()).status, 403);
+    assert.equal((await markAll('foreign')).status, 403);
+    assert.equal((await markAll('customer', 'https://foreign.test')).status, 403);
+    assert.equal(unread(), 103);
+    const reply = await markAll('customer');
+    assert.equal(reply.status, 200);
+    assert.equal(reply.headers.get('Cache-Control'), 'no-store');
+    assert.equal(unread(), 0);
+    const panel = await GET(new Request('http://localhost:3018/api/notifications?filter=unread'));
+    assert.deepEqual(await panel.json(), { items: [], unreadCount: 0 });
+    assert.equal((await markAll('customer')).status, 200);
+    const outstanding = f.sqlite.prepare("SELECT id, read_at FROM notification_messages WHERE id IN ('bulk-email','bulk-staff','bulk-foreign','bulk-read') ORDER BY id").all();
+    assert.deepEqual(outstanding.map(row => [row.id,row.read_at]), [['bulk-email',null],['bulk-foreign',null],['bulk-read',42],['bulk-staff',null]]);
+    f.sqlite.exec("UPDATE users SET status='disabled' WHERE id='customer'");
+    assert.equal((await markAll('customer')).status, 403);
+  } finally {
+    fixture.db = null;
+    f.dispose();
+  }
+});

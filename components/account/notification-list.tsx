@@ -9,40 +9,48 @@ import {ACTOR_INTENT_HEADER} from '@/lib/http/actor-intent';
 import {NOTIFICATION_READ_EVENT,NOTIFICATION_ACCESS_EVENT,CUSTOMER_ACCOUNT_ACCESS_EVENT,matchingNotificationScope,matchingCustomerAccountDenial,notificationAccessDenied} from '@/lib/operations/notification-client-events';
 import type { NotificationRow } from '@/lib/db/repositories/operations';
 
-interface NotificationListProps{initial:readonly NotificationRow[];workspace:NotificationAudience;accountId:string;}
+interface NotificationListProps{initial:readonly NotificationRow[];workspace:NotificationAudience;accountId:string;unreadCount?:number;}
 export function NotificationList(props:NotificationListProps){return <ScopedNotificationList key={JSON.stringify([props.accountId,props.workspace,props.initial.map(item=>item.id)])} {...props}/>;}
 function ScopedNotificationList({
   initial,
   workspace,
   accountId,
+  unreadCount,
 }: NotificationListProps) {
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  const [allRead, setAllRead] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [accessDenied,setAccessDenied]=useState(false),mounted=useRef(true),inFlight=useRef(false);
   useEffect(() => {
     mounted.current=true;
     const receive = (event: Event) => {
-      const id = matchingNotificationScope(event,{accountId,workspace})?.id;
-      if (typeof id === 'string') setReadIds(current => new Set([...current, id]));
+      const update = matchingNotificationScope(event,{accountId,workspace});
+      if (update?.all) setAllRead(true);
+      if (typeof update?.id === 'string') {
+        const { id } = update;
+        setReadIds(current => new Set([...current, id]));
+      }
     };
     const deny=(event:Event)=>{if(matchingNotificationScope(event,{accountId,workspace})||matchingCustomerAccountDenial(event,{accountId,workspace})){setAccessDenied(true);setError('');}};
     window.addEventListener(NOTIFICATION_READ_EVENT, receive);window.addEventListener(NOTIFICATION_ACCESS_EVENT,deny);window.addEventListener(CUSTOMER_ACCOUNT_ACCESS_EVENT,deny);
     return () => {mounted.current=false;window.removeEventListener(NOTIFICATION_READ_EVENT,receive);window.removeEventListener(NOTIFICATION_ACCESS_EVENT,deny);window.removeEventListener(CUSTOMER_ACCOUNT_ACCESS_EVENT,deny);};
   }, [accountId,workspace]);
-  async function markRead(id: string) {
-    if (inFlight.current||accessDenied) return;
+  async function markRead(id?: string) {
+    if (inFlight.current || accessDenied || (!id && workspace !== 'customer')) return;
     inFlight.current=true;
     setError('');
-    setBusy(id);
+    setBusy(id ?? 'all');
     try {
-      const response=await fetch((workspace==='staff'?'/api/admin/notifications/':'/api/notifications/')+encodeURIComponent(id)+'/read',{method:'POST',headers:{[ACTOR_INTENT_HEADER]:accountId}});
+      const base = workspace === 'staff' ? '/api/admin/notifications' : '/api/notifications';
+      const url = id ? base + '/' + encodeURIComponent(id) + '/read' : base;
+      const response = await fetch(url, { method: 'POST', headers: { [ACTOR_INTENT_HEADER]: accountId } });
       const result=await response.json().catch(()=>null) as {ok?:boolean;error?:string}|null;
       if(!response.ok)throw new HttpResponseError(result?.error??'Notification could not be updated.',response.status);
-      if(result?.ok!==true)throw new Error('Notification update was not confirmed. Retry this same notification.');
-      window.dispatchEvent(new CustomEvent(NOTIFICATION_READ_EVENT, { detail: { id,accountId,workspace } }));
-      if(!mounted.current)return;
-      setReadIds((current) => new Set([...current, id]));
+      if (result?.ok !== true) throw new Error('Notification update was not confirmed. Try again.');
+      window.dispatchEvent(new CustomEvent(NOTIFICATION_READ_EVENT, {
+        detail: id ? { id, accountId, workspace } : { all: true, accountId, workspace },
+      }));
     } catch (reason) {
       if(!mounted.current)return;
       if(reason instanceof HttpResponseError&&[401,403].includes(reason.status)){notificationAccessDenied({accountId,workspace});return;}
@@ -66,8 +74,20 @@ function ScopedNotificationList({
         </p>
       </div>
     );
+  const notices = initial.filter(item => item.channel === 'in_app' && item.audienceRole === workspace);
+  const remaining = allRead || unreadCount === undefined
+    ? 0 : Math.max(0, unreadCount - notices.filter(item => !item.readAt && readIds.has(item.id)).length);
   return (
     <div className="space-y-3">
+      {unreadCount !== undefined ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <output className="text-sm text-muted-foreground">{remaining ? `${remaining} unread` : 'You’re all caught up'}</output>
+          {remaining ? <Button variant="outline" className="min-h-11 rounded-full" disabled={busy !== null} onClick={() => void markRead()}>
+            <Check aria-hidden="true" />
+            {busy === 'all' ? 'Updating…' : 'Mark all read'}
+          </Button> : null}
+        </div>
+      ) : null}
       {error ? (
         <p
           role="alert"
@@ -76,9 +96,9 @@ function ScopedNotificationList({
           {error}
         </p>
       ) : null}
-      {initial.filter(item => item.channel === 'in_app' && item.audienceRole === workspace).map((item) => {
+      {notices.map((item) => {
         const href = notificationDestination(workspace, item.audienceRole, item.relatedType, item.relatedId, {orderNumber:item.orderNumber,productStatus:item.productStatus,requiredPermission:item.requiredPermission});
-        const read = Boolean(item.readAt) || readIds.has(item.id);
+        const read = allRead || Boolean(item.readAt) || readIds.has(item.id);
         return (
           <article
             key={item.id}
@@ -101,7 +121,7 @@ function ScopedNotificationList({
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h2 className="font-semibold">{item.subjectEn}</h2>
-                  {href ? <Link className="mt-3 inline-block underline underline-offset-4" href={href} onClick={() => { if (!read) void markRead(item.id); }}>Open related {item.relatedType === 'order' && workspace === 'customer' ? 'orders' : 'record'}</Link> : null}
+                  {href ? <Link className={workspace === 'customer' ? 'inline-flex min-h-11 items-center underline underline-offset-4' : 'mt-3 inline-block underline underline-offset-4'} href={href} onClick={() => { if (!read) void markRead(item.id); }}>Open related {item.relatedType === 'order' && workspace === 'customer' ? 'orders' : 'record'}</Link> : null}
                 {!read && item.channel === 'in_app' ? (
                     <span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-semibold text-primary">
                       Unread
@@ -120,7 +140,7 @@ function ScopedNotificationList({
                 {!read && item.channel === 'in_app' ? (
                   <Button
                     variant="outline"
-                    className={workspace === 'customer' ? 'mt-4 min-h-10 rounded-full' : 'mt-4 min-h-11 rounded-full'}
+                    className="mt-4 min-h-11 rounded-full"
                     disabled={busy !== null}
                     onClick={() => void markRead(item.id)}
                   >

@@ -31,10 +31,10 @@ const BASE_KEYS = ['label', 'recipientName', 'phone', 'province', 'district', 'm
 const ADDRESS_KEYS = ['label', 'recipientName', 'phone', 'province', 'district', 'municipality', 'ward', 'locality', 'landmark', 'postalCode'] as const;
 
 type AddressManagerProps={actorId:string;addresses:readonly CustomerAddressRow[]};
-export function AddressManager(props:AddressManagerProps) {
+export function AddressManager(props:AddressManagerProps & { embedded?: boolean }) {
   return <CurrentAddressManager key={props.actorId} {...props}/>;
 }
-function CurrentAddressManager({actorId,addresses}:AddressManagerProps) {
+function CurrentAddressManager({actorId,addresses,embedded}:AddressManagerProps & { embedded?: boolean }) {
   const router = useRouter();
   const { config, status, message: configMessage, canSubmit, refresh, handleSubmissionResponse } = usePublishedFormConfig('account.address');
   const requestId = useRef<string | null>(null);
@@ -137,10 +137,9 @@ function CurrentAddressManager({actorId,addresses}:AddressManagerProps) {
     <div>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="eyebrow">Delivery book</p>
-          <h1 className="mt-3 font-heading text-4xl tracking-tight sm:text-5xl">
-            Your favourite destinations.
-          </h1>
+          {embedded ? <h2 className="text-xl font-semibold">Saved addresses</h2> : (
+            <h1 className="font-heading text-4xl tracking-tight sm:text-5xl">Saved addresses</h1>
+          )}
           <p className="mt-3 max-w-xl text-base leading-7 text-muted-foreground">
             Home, work, or someone special. Save an address for an easier
             checkout.

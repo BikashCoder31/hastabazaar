@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {registerHooks} from 'node:module';
 import {build} from 'esbuild';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {createElement} from 'react';
 import {readFile,mkdir} from 'node:fs/promises';
 import postcss from 'postcss';
 import tailwind from '@tailwindcss/postcss';
@@ -14,10 +16,13 @@ import {stubFixtureLink} from './helpers/browser-fixture-link';
 
 const fixture={db:null as D1Database|null,actorId:'',media:null as R2Bucket|null};
 (globalThis as typeof globalThis&{accountReviewFixture:typeof fixture}).accountReviewFixture=fixture;
+(globalThis as typeof globalThis&{accountReviewFixtureElement:typeof createElement}).accountReviewFixtureElement=createElement;
 declare global{interface Window{renderReviewActor:(actor:string)=>void}}
 registerHooks({resolve(specifier,context,next){const modules:Record<string,string>={
  'cloudflare:workers':'export const env={get DB(){return globalThis.accountReviewFixture.db},get MEDIA(){return globalThis.accountReviewFixture.media}}',
- 'next/navigation':'export function redirect(path){throw Error(path)}',
+ 'next/link':'export default function Link({children,...props}){return globalThis.accountReviewFixtureElement("a",props,children)}',
+ 'next/image':'export default function Image({unoptimized,...props}){return globalThis.accountReviewFixtureElement("img",props)}',
+ 'next/navigation':'export function redirect(path){throw Error(path)}export function notFound(){throw Error("not found")}export function useRouter(){return{refresh(){}}}',
  '@/app/auth':'export async function getAuthenticatedUser(){const id=globalThis.accountReviewFixture.actorId;return{userId:id,email:id+"@local.hastabazaar.test",fullName:"Fictional current buyer"}};export const requireAuthenticatedUser=getAuthenticatedUser;',
  };return modules[specifier]?{url:'data:text/javascript,'+encodeURIComponent(modules[specifier]),shortCircuit:true}:next(specifier,context);}});
 type Route={request():{url():string;method():string;headers():Record<string,string>;postDataBuffer():Buffer|null};fulfill(value:{status?:number;contentType?:string;body?:string|Buffer;headers?:Record<string,string>}):Promise<void>};
@@ -25,6 +30,15 @@ type Route={request():{url():string;method():string;headers():Record<string,stri
 void test('actual review multipart preserves exact RAM retry, opaque reload recovery and old-account privacy',{timeout:180000},async()=>{
  const f=await deliveredLiveFinancialFixture();let browser;let release=()=>{};try{assert.ok(f.sqlite.prepare('PRAGMA database_list').all().every(row=>row.file===''));fixture.db=f.db;fixture.actorId=f.buyerId;
   await seedCheckoutBuyer(f.db,'foreign-review-buyer','foreign-review-buyer@local.hastabazaar.test','9812345678');
+  const {default: rateItems}=await import('../app/account/reviews/[orderNumber]/page');
+  const rateParams={params:Promise.resolve({orderNumber:f.order.orderNumber})};
+  const rateMarkup=renderToStaticMarkup(await rateItems(rateParams));
+  assert.match(rateMarkup,/How were your items\?/);
+  assert.match(rateMarkup,/Your rating/);
+  assert.match(rateMarkup,/Reviews and photos appear after moderation/);
+  fixture.actorId='foreign-review-buyer';
+  await assert.rejects(rateItems(rateParams),/not found/);
+  fixture.actorId=f.buyerId;
   const draft=await saveFormDraft(f.db,{formId:'account.review',actorId:'reviewer',actorRole:'super_admin',expectedPublishedVersion:0,config:{formId:'account.review',fields:[]},reason:'Use a genuine native review form for the isolated delivered purchase.',requestId:'review-browser-form-draft',now:Date.now()});
   await publishFormDraft(f.db,{formId:'account.review',draftId:draft.id,actorId:'reviewer',actorRole:'super_admin',expectedDraftRevision:draft.revision,expectedPublishedVersion:0,reason:'Publish the supported original review contract in this memory-only fixture.',requestId:'review-browser-form-publish',now:Date.now()});
   const stored=new Map<string,ArrayBuffer>();let puts=0;fixture.media={async put(key:string,value:ReadableStream){puts++;stored.set(key,await new Response(value).arrayBuffer());return{};},async delete(key:string){stored.delete(key);}}as unknown as R2Bucket;
@@ -39,7 +53,19 @@ void test('actual review multipart preserves exact RAM retry, opaque reload reco
    else if(url.pathname===`/api/products/${f.productId}/reviews`){assert.ok(bytes);writes.push({bytes:Buffer.from(bytes),contentType:incoming.headers()['content-type']});if(hold){hold=false;entered();await gate;}if(failBefore){failBefore=false;return route.fulfill({status:503,contentType:'application/json',body:'{"error":"Fictional request interruption before native handling."}'});}response=await review.POST(request,{params:Promise.resolve({id:f.productId})});if(response.ok&&loseAfter){loseAfter=false;return route.fulfill({status:503,contentType:'application/json',body:'{"error":"Fictional acknowledgement lost after native review commit."}'});}}
    else throw Error('Unintercepted review request: '+url.pathname);await route.fulfill({status:response.status,headers:Object.fromEntries(response.headers),body:await response.text()});
   }catch(error){errors.push(String(error));await route.fulfill({status:500,body:JSON.stringify({error:String(error)})});}});
-  await page.goto('http://localhost:3018/review');await page.getByLabel('Your review',{exact:false}).fill('PRIVATE-A first review must never be submitted as another buyer.');await page.getByRole('button',{name:'Submit review',exact:true}).click();await waiting;fixture.actorId='foreign-review-buyer';release();await page.getByText('Review access changed.',{exact:false}).waitFor();assert.equal(await page.locator('[name=body]').count(),0);assert.equal(f.sqlite.prepare('SELECT COUNT(*)n FROM product_reviews').get()?.n,0);assert.equal(puts,0);
+  await page.goto('http://localhost:3018/review');
+  const fiveStars=page.getByRole('radio',{name:'5 stars · Excellent',exact:true});
+  await fiveStars.focus();
+  await page.keyboard.press('ArrowLeft');
+  assert.equal(await page.getByRole('radio',{name:'4 stars · Good',exact:true}).isChecked(),true);
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await fiveStars.isChecked(),true);
+  for(const width of [390,768,1024,1440]){
+   await page.setViewportSize({width,height:844});
+   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  }
+  await page.setViewportSize({width:390,height:844});
+  await page.getByLabel('Your review',{exact:false}).fill('PRIVATE-A first review must never be submitted as another buyer.');await page.getByRole('button',{name:'Submit review',exact:true}).click();await waiting;fixture.actorId='foreign-review-buyer';release();await page.getByText('Review access changed.',{exact:false}).waitFor();assert.equal(await page.locator('[name=body]').count(),0);assert.equal(f.sqlite.prepare('SELECT COUNT(*)n FROM product_reviews').get()?.n,0);assert.equal(puts,0);
   await page.evaluate(()=>window.renderReviewActor('foreign-review-buyer'));assert.equal(await page.getByText('PRIVATE-A first review',{exact:false}).count(),0);fixture.actorId=f.buyerId;await page.evaluate((actor:string)=>window.renderReviewActor(actor),f.buyerId);
   await page.getByLabel('Title (optional)',{exact:true}).fill('PRIVATE original photo review');await page.getByLabel('Your review',{exact:false}).fill('PRIVATE original body and selected photograph belong to this exact verified buyer.');const sharp=sharpImport as SharpConstructor,photo=await sharp({create:{width:40,height:40,channels:3,background:'#b6a78c'}}).png().toBuffer();await page.getByLabel('Customer photos (optional)',{exact:true}).setInputFiles({name:'private-original-photo.png',mimeType:'image/png',buffer:photo});
   failBefore=true;loseAfter=true;await page.getByRole('button',{name:'Submit review',exact:true}).click();const retried=page.waitForResponse((response:{url():string;status():number})=>response.url().includes('/reviews')&&response.status()===503);await page.getByRole('button',{name:'Retry original request',exact:true}).click();await retried;await page.getByRole('button',{name:'Retry original request',exact:true}).waitFor();assert.equal(f.sqlite.prepare('SELECT COUNT(*)n FROM product_reviews').get()?.n,1);assert.equal(puts,1);assert.deepEqual(writes[1],writes[2],'The original multipart bytes and boundary must be identical in RAM retry.');

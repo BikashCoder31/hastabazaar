@@ -4,6 +4,7 @@ import { Gift } from 'lucide-react';
 import { requireCustomerPage } from '@/lib/auth/customer';
 import { requireDatabase } from '@/lib/db/d1';
 import { getWallet } from '@/lib/db/repositories/wallet';
+import { CustomerWallet } from '@/components/account/account-sections';
 import { ReferralShare } from '@/components/account/referral-share';
 import { referralInvitationLink } from '@/lib/referrals/invitation-link';
 
@@ -30,10 +31,10 @@ export default async function ReferralsPage() {
     .filter((r) => r.status === 'pending' || r.status === 'on_hold')
     .reduce((sum, r) => sum + r.rewardPaisa, 0);
   return (
-    <div className="space-y-7">
+    <CustomerWallet active="referrals">
       <section className="rounded-3xl bg-[#17345f] p-6 text-white sm:p-8">
         <Gift className="size-7 text-[#f4c46b]" aria-hidden="true" />
-        <h1 className="mt-4 font-heading text-4xl">Refer & earn</h1>
+        <h2 className="mt-3 font-heading text-3xl">Refer a friend</h2>
         <p className="mt-3 text-xl">
           Give {money(campaign.friendDiscountPaisa)}. Earn{' '}
           {money(campaign.rewardPaisa)}.
@@ -142,6 +143,6 @@ export default async function ReferralsPage() {
           </p>
         )}
       </section>
-    </div>
+    </CustomerWallet>
   );
 }

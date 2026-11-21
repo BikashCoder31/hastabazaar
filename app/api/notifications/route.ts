@@ -6,10 +6,29 @@ import { requireExistingStaffIntentApi } from '@/lib/auth/staff-intent';
 import { requireDatabase } from '@/lib/db/d1';
 import { getSellerCenterAccess } from '@/lib/db/repositories/seller-center-access';
 import { getNotificationPanel } from '@/lib/operations/notification-panel';
-import {hasActorIntentMismatch} from '@/lib/http/actor-intent';
+import { ACTOR_INTENT_HEADER, hasActorIntentMismatch } from '@/lib/http/actor-intent';
+import { markCustomerNotificationsRead } from '@/lib/db/repositories/operations';
+import { isTrustedMutationRequest } from '@/lib/http/request-security';
 
 export const dynamic = 'force-dynamic';
 const reply = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
+export async function POST(request: Request) {
+  if (!isTrustedMutationRequest(request)) return reply({ error: 'Cross-site requests are not allowed.' }, 403);
+  try {
+    const customer = await requireExistingCustomerApi();
+    if (request.headers.get(ACTOR_INTENT_HEADER) !== customer.userId) {
+      return reply({ error: 'Your signed-in account changed. Refresh the notification workspace.' }, 403);
+    }
+    await markCustomerNotificationsRead(
+      requireDatabase(env as unknown as { DB?: D1Database }), customer, Date.now(),
+    );
+    return reply({ ok: true });
+  } catch (error) {
+    if (error instanceof CustomerAuthorizationError) return reply({ error: error.message }, error.status);
+    return reply({ error: 'Notifications could not be updated. Try marking them as read again.' }, 503);
+  }
+}
+
 export async function GET(request: Request) {
   const params = new URL(request.url).searchParams, audience = params.get('audience') ?? 'customer';
   if (!['customer', 'seller', 'staff'].includes(audience)) return reply({ error: 'Unknown notification workspace.' }, 400);
