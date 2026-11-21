@@ -56,8 +56,12 @@ void test('exact financial record renders its safe original reference and guarde
 void test('customer refund destination has the actual per-record anchor referenced by its notice', async () => {
   const modules = {
     'cloudflare:workers': `export const env={};`,
+    'next/link': link,
+    'next/image': `export default function Image(){return null}`,
+    'next/navigation': `export function useRouter(){return{refresh(){}}}`,
     '@/lib/auth/customer': `export async function requireCustomerPage(){return{userId:'customer'}}`,
     '@/lib/db/d1': `export function requireDatabase(){return{}}`,
+    '@/lib/returns/customer-aftercare-context': `export async function listCustomerRequestIndex(){return []};export async function readOwnedCustomerRequest(){return null}`,
     '@/lib/payments/refund-workspace': `export async function getCustomerRefundWorkspace(){return[{id:'original-refund',orderNumber:'ORDER-ONE',state:'completed',cashPaisa:100,walletPaisa:0,alreadyRestoredWalletPaisa:0,bankSatisfiedPaisa:0,originalCashPaisa:100,initiationDueAt:null,bindingDueAt:null,nextUpdateAt:null,events:[]}]}`,
     '@/components/commerce/refund-destination-form': `export function RefundDestinationForm(){throw Error('Completed refund must not request another destination')}`,
   };

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { build } from 'esbuild';
 import type { FixtureBrowser, FixtureLocator, FixturePage } from './helpers/browser-fixture-types';
+import { stubFixtureImage } from './helpers/browser-fixture-link';
 
 const modes = [
   ['customer-return', 'commerce.return-request'], ['customer-complaint', 'commerce.complaint'],
@@ -26,6 +27,7 @@ function bundle() {
           savedAddresses={[{id:'fixture-address',label:'Home',isDefault:1,recipientName:'Fixture Buyer',phone:'9811111111',province:'Madhesh',district:'Dhanusha',municipality:'Janakpur',locality:'Fixture locality',ward:null,landmark:null,postalCode:null}]}/>);` },
     bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' }, plugins: [{ name: 'navigation-fixture', setup(builder) {
+      stubFixtureImage(builder);
       builder.onResolve({ filter: /^next\/navigation$|^next\/link$|^@\/components\/delivery\/location-picker$/ },
         (args) => ({ path: args.path, namespace: 'fixture' }));
       builder.onLoad({ filter: /.*/, namespace: 'fixture' }, (args) => ({ loader: 'js', resolveDir: process.cwd(),
@@ -119,6 +121,9 @@ for (const [mode, formId] of modes) void test(`${formId} retains attempts and in
       if (mode.startsWith('customer-')) await page.getByText(mode === 'customer-return' ?
         'Return or replace an item' : 'Get help or raise a complaint').click();
       const form = page.locator(`form[data-form-id="${formId}"]`);
+      if (mode.startsWith('customer-')) {
+        for (let step = 1; step < 4; step++) await form.getByRole('button', { name: 'Continue', exact: true }).click();
+      }
       await form.getByLabel('Case context').waitFor();
       await fill(page, mode, form);
       return form;

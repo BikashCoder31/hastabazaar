@@ -26,7 +26,11 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   if (!authorised) {
     const identity = await getAuthenticatedUser();
     if (identity) {
-      authorised = (await hasStaffPermissionBySubject(database, identity.userId, 'support.manage')) || Boolean(
+      const ownsCustomerUpload = evidence.customerId && evidence.uploadedByType === 'customer' && Boolean(
+        await database.prepare("SELECT 1 FROM users WHERE id = ? AND auth_subject = ? AND status = 'active' LIMIT 1")
+          .bind(evidence.customerId, identity.userId).first(),
+      );
+      authorised = Boolean(ownsCustomerUpload) || (await hasStaffPermissionBySubject(database, identity.userId, 'support.manage')) || Boolean(
         await database
           .prepare(
             `SELECT 1 FROM users

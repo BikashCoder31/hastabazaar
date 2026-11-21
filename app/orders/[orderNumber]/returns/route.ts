@@ -14,6 +14,7 @@ import {
   ReturnConflictError,
   type ReturnEvidenceInput,
 } from '@/lib/db/repositories/returns';
+import { deletePrivateReturnEvidence, uploadPrivateReturnEvidence } from '@/lib/returns/private-evidence-upload';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { consumePublicRequestRateLimit as consumeRequestRateLimit, rateLimitJson } from '@/lib/http/rate-limit';
 
@@ -111,29 +112,9 @@ export async function POST(
   const { orderNumber } = await context.params;
   const bucket = requireMediaBucket(bindings);
   const returnRequestId = crypto.randomUUID();
-  const uploaded: ReturnEvidenceInput[] = [];
+  let uploaded: ReturnEvidenceInput[] = [];
   try {
-    for (const file of files) {
-      const sha256 = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',
-        await file.arrayBuffer())), (byte) => byte.toString(16).padStart(2, '0')).join('');
-      const nameSha256 = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',
-        new TextEncoder().encode(file.name))), (byte) => byte.toString(16).padStart(2, '0')).join('');
-      const evidenceId = crypto.randomUUID();
-      const objectKey = `private/return-evidence/${returnRequestId}/${evidenceId}`;
-      await bucket.put(objectKey, file.stream(), {
-        httpMetadata: { contentType: file.type },
-        customMetadata: { evidenceId, kind: 'return_evidence' },
-      });
-      uploaded.push({
-        id: evidenceId,
-        objectKey,
-        originalName: file.name.slice(0, 180),
-        mimeType: file.type,
-        sizeBytes: file.size,
-        sha256,
-        nameSha256,
-      });
-    }
+    uploaded = await uploadPrivateReturnEvidence(bucket, returnRequestId, files);
     const result = await createCustomerReturnRequest(database, {
       orderNumber,
       receiptTokenHash: token ? await hashOpaqueToken(token) : null,
@@ -143,10 +124,7 @@ export async function POST(
       evidence: uploaded,
       now: Date.now(),
     });
-    if (result.duplicate)
-      await Promise.allSettled(
-        uploaded.map((file) => bucket.delete(file.objectKey)),
-      );
+    if (result.duplicate) await deletePrivateReturnEvidence(bucket, uploaded);
     return json(
       {
         ...result,
@@ -157,9 +135,7 @@ export async function POST(
       result.duplicate ? 200 : 201,
     );
   } catch (error) {
-    await Promise.allSettled(
-      uploaded.map((file) => bucket.delete(file.objectKey)),
-    );
+    await deletePrivateReturnEvidence(bucket, uploaded);
     if (error instanceof ReturnConflictError)
       return json({ error: error.message }, 409);
     console.error('Customer return request failed', error);

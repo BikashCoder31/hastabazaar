@@ -639,27 +639,65 @@ export async function getCustomerReturnDetail(
   return withCurrentRefundProgress(database,{ ...row,investigationSummary:null,followup:await publicAftercareFollowup(database,'return_request',row.id),physical:await publicReturnHandling(database,row.id), offerSnapshot:await getOrderItemOfferSnapshot(database,row.orderItemId), ...(await returnCaseParts(database, row.id,false)) });
 }
 
+interface CustomerReturnClarificationScope {
+  returnRequestId: string;
+  orderNumber: string;
+  receiptTokenHash: string | null;
+  customerId?: string | null;
+}
+
+function readCustomerReturnClarificationSource(database: D1Database, options: CustomerReturnClarificationScope) {
+  return database.prepare(`SELECT r.status, h.waiting_for AS waitingFor, h.clarification_at AS clarificationAt
+    FROM return_requests r JOIN order_items i ON i.id = r.order_item_id JOIN orders o ON o.id = i.order_id
+    LEFT JOIN return_handling h ON h.case_id = r.id
+    WHERE r.id = ? AND o.order_number = ? AND (o.receipt_token_hash = ? OR o.customer_id = ?)`)
+    .bind(options.returnRequestId, options.orderNumber, options.receiptTokenHash, options.customerId ?? null)
+    .first<{ status: string; waitingFor: string | null; clarificationAt: number | null }>();
+}
+
+export async function hasCustomerReturnClarificationAccess(database: D1Database, options: CustomerReturnClarificationScope) {
+  return Boolean(await readCustomerReturnClarificationSource(database, options));
+}
+
 export async function addCustomerReturnClarification(
   database: D1Database,
-  options: {
-    returnRequestId: string;
-    orderNumber: string;
-    receiptTokenHash: string | null;
-    customerId?: string | null;
+  options: CustomerReturnClarificationScope & {
     message: string;
     locale: SupportedLocale;
     requestId: string;
     now: number;
+    evidence?: readonly ReturnEvidenceInput[];
   },
-): Promise<void> {
-  if(options.message.trim().length<10||options.message.length>4000)throw new ReturnConflictError('Provide the actual requested clarification.');
-  const source=await database.prepare(`SELECT r.status,h.waiting_for AS waitingFor,h.clarification_at AS clarificationAt FROM return_requests r JOIN order_items i ON i.id=r.order_item_id JOIN orders o ON o.id=i.order_id LEFT JOIN return_handling h ON h.case_id=r.id WHERE r.id=? AND o.order_number=? AND (o.receipt_token_hash=? OR o.customer_id=?)`).bind(options.returnRequestId,options.orderNumber,options.receiptTokenHash,options.customerId??null).first<{status:string;waitingFor:string|null;clarificationAt:number|null}>();
-  if(!source)throw new ReturnConflictError('This original return is unavailable.');
-  const duplicate=await database.prepare('SELECT return_request_id AS caseId,action,internal_note AS message FROM return_request_events WHERE request_id=?').bind(options.requestId).first<{caseId:string;action:string;message:string}>();
-  if(duplicate){if(duplicate.caseId!==options.returnRequestId||duplicate.action!=='customer_clarified'||duplicate.message!==options.message)throw new ReturnConflictError('This reference already records different clarification content.');return;}
+): Promise<{ duplicate: boolean }> {
+  if (options.message.trim().length < 10 || options.message.length > 4000)
+    throw new ReturnConflictError('Provide the actual requested clarification.');
+  const source = await readCustomerReturnClarificationSource(database, options);
+  if (!source) throw new ReturnConflictError('This original return is unavailable.');
+  const evidence = options.evidence ?? [];
+  const manifest = evidenceManifest(evidence);
+
+  async function hasExactReplay() {
+    const saved = await database.prepare(`SELECT e.return_request_id AS caseId, e.action, e.internal_note AS message,
+      a.next_json AS nextJson FROM return_request_events e LEFT JOIN audit_logs a
+        ON a.subject_type = 'return_request' AND a.subject_id = e.return_request_id
+          AND a.action = 'return.customer.clarified' AND a.request_id = e.request_id
+      WHERE e.request_id = ? LIMIT 1`).bind(options.requestId)
+      .first<{ caseId: string; action: string; message: string; nextJson: string | null }>();
+    if (!saved) return false;
+    let savedPayload: { evidenceManifest?: unknown; locale?: string } = {};
+    try { if (saved.nextJson) savedPayload = JSON.parse(saved.nextJson) as typeof savedPayload; }
+    catch { throw new ReturnConflictError('Saved reply evidence could not be verified.'); }
+    if (saved.caseId !== options.returnRequestId || saved.action !== 'customer_clarified' || saved.message !== options.message
+      || (savedPayload.locale !== undefined && savedPayload.locale !== options.locale)
+      || JSON.stringify(savedPayload.evidenceManifest ?? []) !== JSON.stringify(manifest)) {
+      throw new ReturnConflictError('This reference already records different clarification content.');
+    }
+    return true;
+  }
+  if (await hasExactReplay()) return { duplicate: true };
   if(['resolved','rejected'].includes(source.status)||source.status!=='needs_customer_changes'&&source.waitingFor!=='customer')throw new ReturnConflictError('This case is not waiting for customer clarification.');
   const toStatus=source.status==='needs_customer_changes'?'under_investigation':source.status;
-  const results = await database.batch([
+  const statements = [
     database
       .prepare(
         `UPDATE return_requests SET status = ?, detail = detail || ?,
@@ -696,7 +734,7 @@ export async function addCustomerReturnClarification(
           FROM return_requests WHERE id = ? AND operation_request_id = ?`,
       )
       .bind(
-        crypto.randomUUID(),source.status,toStatus,
+        crypto.randomUUID(), source.status, toStatus,
         options.message,
         options.requestId,
         options.now,
@@ -716,13 +754,19 @@ export async function addCustomerReturnClarification(
         crypto.randomUUID(),
         options.message,
         JSON.stringify({ status: source.status }),
-        JSON.stringify({ status: toStatus }),
+        JSON.stringify({ status: toStatus, locale: options.locale, evidenceManifest: manifest }),
         options.requestId,
         options.now,
         options.returnRequestId,
         options.requestId,
       ),
     database.prepare(`SELECT CASE WHEN EXISTS(SELECT 1 FROM return_requests WHERE id=? AND operation_request_id=?) THEN 1 ELSE json_extract('stale-return-clarification','$') END`).bind(options.returnRequestId,options.requestId),
+    ...evidence.map(file => database.prepare(`INSERT INTO return_evidence (
+      id, return_request_id, object_key, original_name, mime_type, size_bytes,
+      uploaded_by_type, uploaded_by, created_at) SELECT ?, id, ?, ?, ?, ?, 'customer', ?, ?
+      FROM return_requests WHERE id = ? AND operation_request_id = ?`)
+      .bind(file.id, file.objectKey, file.originalName, file.mimeType, file.sizeBytes,
+        options.customerId ?? null, options.now, options.returnRequestId, options.requestId)),
     ...(await caseBusinessNotificationStatements(database, {
       sourceType: 'return_request',
       sourceId: options.returnRequestId,
@@ -731,12 +775,16 @@ export async function addCustomerReturnClarification(
       action: 'customer_response',
       now: options.now,
     })),
-  ]);
-  if ((results[0].meta.changes ?? 0) !== 1) {
-    throw new ReturnConflictError(
-      'This return request no longer needs customer information.',
-    );
+  ];
+  try {
+    const results = await database.batch(statements);
+    if ((results[0].meta.changes ?? 0) !== 1)
+      throw new ReturnConflictError('This return request no longer needs customer information.');
+  } catch (error) {
+    if (await hasExactReplay()) return { duplicate: true };
+    throw error;
   }
+  return { duplicate: false };
 }
 
 export async function listReturnsForSeller(
@@ -2177,6 +2225,8 @@ export async function getReturnEvidenceAccess(
   mimeType: string;
   orderNumber: string;
   receiptTokenHash: string | null;
+  customerId: string | null;
+  uploadedByType: string;
   sellerId: string;
 } | null> {
   return (
@@ -2186,8 +2236,8 @@ export async function getReturnEvidenceAccess(
           return_evidence.original_name AS originalName,
           return_evidence.mime_type AS mimeType,
           orders.order_number AS orderNumber,
-          orders.receipt_token_hash AS receiptTokenHash,
-          order_items.seller_id AS sellerId
+          orders.receipt_token_hash AS receiptTokenHash, orders.customer_id AS customerId,
+          return_evidence.uploaded_by_type AS uploadedByType, order_items.seller_id AS sellerId
          FROM return_evidence
          INNER JOIN return_requests ON return_requests.id = return_evidence.return_request_id
          INNER JOIN order_items ON order_items.id = return_requests.order_item_id
@@ -2201,6 +2251,8 @@ export async function getReturnEvidenceAccess(
         mimeType: string;
         orderNumber: string;
         receiptTokenHash: string | null;
+        customerId: string | null;
+        uploadedByType: string;
         sellerId: string;
       }>()) ?? null
   );

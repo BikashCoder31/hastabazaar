@@ -1,5 +1,5 @@
 import { readyCheckoutSeller, seedVerifiedCheckoutContact } from './helpers/checkout-contact';
-import { stubFixtureLink } from './helpers/browser-fixture-link';
+import { stubFixtureImage, stubFixtureLink } from './helpers/browser-fixture-link';
 import { historicalCommissionFixture } from './helpers/historical-commission-fixture';
 import type { FixtureBrowser } from './helpers/browser-fixture-types';
 import assert from 'node:assert/strict';
@@ -894,7 +894,7 @@ void test('aftercare client posts published answers with each authorized case re
     `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'navigation-stub', setup(bundler) {
-      stubFixtureLink(bundler);
+      stubFixtureLink(bundler);stubFixtureImage(bundler);
       bundler.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'next/navigation', namespace: 'next-shim' }));
       bundler.onLoad({ filter: /.*/, namespace: 'next-shim' }, () => ({
         contents: 'export function useRouter(){return {refresh(){}}}', loader: 'js',
@@ -934,11 +934,12 @@ void test('aftercare client posts published answers with each authorized case re
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
     await page.getByText('Return or replace an item').click();
     const returnForm = page.locator('form[data-form-id="commerce.return-request"]');
-    await returnForm.getByPlaceholder(/Describe the issue/).fill('The item arrived damaged and cannot be used.');
+    for (let step = 1; step < 4; step++) await returnForm.getByRole('button', { name: 'Continue', exact: true }).click();
+    await returnForm.getByLabel('Tell us more').fill('The item arrived damaged and cannot be used.');
     await returnForm.getByLabel(/Case context/).fill('Outer box torn');
     await returnForm.getByRole('button', { name: 'Send return request' }).click();
     await returnForm.getByText('Correct the case details.').waitFor();
-    await returnForm.getByPlaceholder(/Describe the issue/).fill('The item arrived damaged and its clasp cannot close.');
+    await returnForm.getByLabel('Tell us more').fill('The item arrived damaged and its clasp cannot close.');
     await returnForm.getByRole('button', { name: 'Send return request' }).click();
     await page.waitForFunction(() => document.body.textContent?.includes('Case received.'));
     assert.match(bodies[0], /name="formVersion"[\s\S]*?1/);
@@ -948,6 +949,8 @@ void test('aftercare client posts published answers with each authorized case re
       bodies[1].match(/name="idempotencyKey"[\s\S]*?\r\n\r\n([^\r\n]+)/)?.[1]);
     await page.getByText('Get help or raise a complaint').click();
     const complaintForm = page.locator('form[data-form-id="commerce.complaint"]');
+    for (let step = 1; step < 4; step++) await complaintForm.getByRole('button', { name: 'Continue', exact: true }).click();
+    await complaintForm.getByLabel(/Case context/).waitFor();
     assert.equal(await complaintForm.count(), 1);
     assert.equal(await complaintForm.locator('[name="custom.context_note"]').count(), 1);
     await complaintForm.getByLabel('Subject').fill('Damaged delivery');

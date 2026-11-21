@@ -7,6 +7,8 @@ const fixture = {
   name: 'नेपाली.jpg',
   receiptHash: '',
   mimeType: 'image/jpeg',
+  identity: null as string | null,
+  uploadedByType: 'customer',
   bytes: new Uint8Array([255, 216, 255, 217]),
 };
 (
@@ -15,9 +17,9 @@ const fixture = {
 registerHooks({
   resolve(specifier, context, next) {
     const modules: Record<string, string> = {
-      'cloudflare:workers': `export const env={DB:{prepare(){}},MEDIA:{async get(){return {body:new Response(globalThis.evidenceDownloadFixture.bytes).body}}}};`,
-      '@/app/auth': 'export async function getAuthenticatedUser(){return null}',
-      '@/lib/db/repositories/returns': `export async function getReturnEvidenceAccess(){const f=globalThis.evidenceDownloadFixture;return {objectKey:'private/evidence',originalName:f.name,mimeType:f.mimeType,receiptTokenHash:f.receiptHash,sellerId:'seller'}}`,
+      'cloudflare:workers': `export const env={DB:{prepare(sql){return{bind(...values){return{async first(){return sql.includes('WHERE id = ? AND auth_subject = ?')&&values[0]==='order-owner'&&values[1]==='owner-subject'?{id:values[0]}:null}}}}}},MEDIA:{async get(){return {body:new Response(globalThis.evidenceDownloadFixture.bytes).body}}}};`,
+      '@/app/auth': 'export async function getAuthenticatedUser(){const subject=globalThis.evidenceDownloadFixture.identity;return subject?{userId:subject}:null}',
+      '@/lib/db/repositories/returns': `export async function getReturnEvidenceAccess(){const f=globalThis.evidenceDownloadFixture;return {objectKey:'private/evidence',originalName:f.name,mimeType:f.mimeType,receiptTokenHash:f.receiptHash,sellerId:'seller',customerId:'order-owner',uploadedByType:f.uploadedByType}}`,
       '@/lib/db/repositories/staff-permissions':
         'export async function hasStaffPermissionBySubject(){return false}',
     };
@@ -28,6 +30,24 @@ registerHooks({
       };
     return next(specifier, context);
   },
+});
+
+void test('a signed-in order owner can open customer-uploaded evidence without receiving seller uploads or exposing it to another customer', async () => {
+  const { GET } = await import('../app/api/return-evidence/[id]/route');
+  const download = () => GET(new Request('https://example.test/api/return-evidence/e'),
+    { params: Promise.resolve({ id: 'e' }) });
+  try {
+    fixture.identity = 'owner-subject';
+    assert.equal((await download()).status, 200);
+    fixture.identity = 'other-subject';
+    assert.equal((await download()).status, 403);
+    fixture.identity = 'owner-subject';
+    fixture.uploadedByType = 'seller';
+    assert.equal((await download()).status, 403);
+  } finally {
+    fixture.identity = null;
+    fixture.uploadedByType = 'customer';
+  }
 });
 
 void test('authorized return evidence preserves Nepali names in a valid UTF-8 download header', async () => {
