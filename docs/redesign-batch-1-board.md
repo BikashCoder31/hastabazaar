@@ -6,10 +6,10 @@ Branch `admin-redesign`. The checked preview is at `http://localhost:3018`. Refe
 
 | Task | Owner | Status |
 | --- | --- | --- |
-| 0.1 Local Super Admin sign-in | Main agent | `8615cb6`. Implemented and verified in the checked preview at 390, 768, 1024 and 1440 px. Typecheck, lint and 16 focused checks passed. Full suite running. |
-| 0.2 Own delivery off, couriers on | Main agent | `b574059`. Checked the parked settings at 390, 768, 1024 and 1440 px and Today at 390 and 1440 px. Typecheck, lint and 22 focused checks passed, with one fixture-dependent skip. Full suite pending. |
-| 0.3 Phone and tablet shells | Main agent | `cf84e71`. Checked both workspaces at 390, 768, 1024 and 1440 px. Both menus restore focus on Escape. The phone help sheet fits edge to edge. Typecheck, lint and 49 focused checks passed. Full suite pending. |
-| 0.4 Shared UI pieces | Main agent | `cb22b05`. Typecheck, lint and static component render checks passed. The admin preview fit at all four widths. Full suite pending. |
+| 0.1 Local Super Admin sign-in | Main agent | `8615cb6`. Implemented and verified in the checked preview at 390, 768, 1024 and 1440 px. Typecheck, lint and 16 focused checks passed. |
+| 0.2 Own delivery off, couriers on | Main agent | `b574059`. Checked the parked settings at 390, 768, 1024 and 1440 px and Today at 390 and 1440 px. Typecheck, lint and 22 focused checks passed, with one fixture-dependent skip. |
+| 0.3 Phone and tablet shells | Main agent | `cf84e71`. Checked both workspaces at 390, 768, 1024 and 1440 px. Both menus restore focus on Escape. The phone help sheet fits edge to edge. Typecheck, lint and 49 focused checks passed. |
+| 0.4 Shared UI pieces | Main agent | `cb22b05`. Typecheck, lint and static component render checks passed. The admin preview fit at all four widths. |
 
 ### Local preview sign-in
 
@@ -30,18 +30,18 @@ The rows below reserve work. Only the assigned helper may edit its active alloca
 
 | Task | Helper | Files owned | Status |
 | --- | --- | --- | --- |
-| A Orders | batch_orders | `app/admin/orders/**`, `app/admin/order-responses/**`, `app/admin/shipping/**`, `app/admin/exceptions/**`; admin `order-fulfillment-actions`, `parcel-controls`, `cod-reconciliation`, `exception-order-section`, `exception-work-form`, `cancellation-review-*`, `first-cod-confirmation`, `paid-order-release`, `order-email-retry` | `3a6a5e6`. Main typecheck and 10 focused checks passed. A lint was clean. Independently checked list and detail at 390 and 1440 px. Full suite pending. |
-| B Money | batch_money | `app/admin/{payouts,payments,accounting,financial-notices}/**`; admin `payout-*`, `refund-funding-review`, `customer-refund-reversal-review`, `manual-payment-review`, `accounting-workspace`, `recovery-*`, `seller-recovery-review`, `commercial-recovery` | `2a7a19d`. Typecheck and lint passed. Helper passed 46 focused checks. Main verified the board and mobile filters at 390, 768, 1024 and 1440 px. Full suite pending. |
-| C Settings | batch_settings | `app/admin/{business-settings,commission,fees,fee-waivers,delivery-rates}/**`; admin `business-settings-manager`, `setting-value-preview`, `commission-settings`, `company-bank-accounts`, `fee-*`, `common-fee-policy`, `delivery-rate-settings` | `5407772`. Main typecheck and 18 focused checks passed. C lint was clean and the in-progress B files still had two lint diagnostics. Checked Settings at 390 and 1440 px independently. Full suite pending. |
-| D Care, Sellers and Catalog | batch_care_catalog | `app/admin/{cases,sellers,seller-*,products,catalog,reviews}/**`; admin `return-*`, `complaint-case-actions`, `supported-case-intake`, `seller-*` except B's `seller-recovery-review`, `document-review-workspace`, `protected-*`, `public-profile-review`, `product-*`, `review-*`, `catalog-manager`, `category-*`; `tests/product-publication-browser.test.ts`, `tests/product-source-scope-browser.test.ts` | `d9e9450`. Typecheck and scoped lint passed. Main browser verified the three workspaces at 390 and 1440 px. Focused native and browser checks passed, with one timing-sensitive source-scope case passing on rerun. Full suite pending. |
-| E Seller Today, Orders and Returns | batch_seller_orders | `app/seller/page.tsx`, `app/seller/{orders,order-responses,cases,notifications}/**`; seller `seller-action-overview`, `seller-task-summary`, `workspace-task-list`, `seller-order-list`, `order-fulfillment-actions`, `case-response-form`, `onboarding-checklist`, `readiness-summary`; `components/commerce/order-preparation-workspace.tsx`; `tests/seller-workspace-pages.test.ts`, `tests/checkout-delivery-presentation.test.ts`, `tests/cancellation-fulfillment-browser.test.ts`, `tests/form-catalog-commerce.test.ts`, `tests/form-catalog-commerce-success.test.ts`, `tests/seller-dashboard-experience.test.ts`, `tests/form-catalog-seller-case-history.test.ts` | `b16f1b4`. Main scoped checks and 19 focused rerun checks passed. Independently checked Today, Orders and Returns at 390 and 1440 px. All four widths passed in the helper check. Full suite pending. |
-| F Seller Products and Earnings | batch_seller_products | `app/seller/{products,finance,analytics}/**`; seller `product-*`, `maker-product-workspace`, `inventory-editor`, `variant-editor`, `price-profit-preview`, `archive-product-button`, `seller-products-description`, `payout-request-form`, `bank-details-form`, `seller-earnings-summary`, `marketplace-fee-breakdown`, `order-marketplace-fees`, `commission-fee-notice`, `recovery-statement` | `14e056b`. Typecheck and lint passed. Main passed 14 product/workspace and 9 payout authority checks. Independently checked Products, New product and Earnings at 390 and 1440 px. Full suite pending. |
-| G Today handoffs | batch_today | `app/admin/page.tsx`, `components/admin/overview-*.ts(x)` | `722ae13`. Typecheck, lint, six focused checks and helper browser checks passed. Main confirmed zero overflow and 44 px actions at 390 and 1440 px. Full suite pending. |
-| H Button conventions | batch_buttons | Admin activity, business emails, feedback, form submissions, forms, gift cards, homepage, legal policies, loyalty, notifications, operational notices, order emails, privacy, progress, promo codes, referrals and staff form history TSX pages and related components listed below. Seller profile, registration, requests, reviews, shipping, form history and reminders TSX pages and related components. Loading files excluded. | `a1088ab`. Typecheck, lint and 17 isolated browser tests passed. Helper live-checked 27 views at four widths. Main checked ten representative routes at 390 and 1440 px. Full suite pending. |
-| I Background loading | batch_loading | `app/admin/loading.tsx`, `app/seller/loading.tsx`, `app/admin/referrals/loading.tsx`. `components/ui/workspace-refresh.tsx`, `components/admin/admin-workspace-ready.tsx`, an approved admin hydration fallback usage. Orders was completed by A. | `30cfe2f`. 21 focused checks passed. The helper verified retained content, filters and exact actor retirement at all four widths. Main checked Admin refresh at 390 and 1440 px. Full suite pending. |
-| J Single Super Admin decisions | batch_approval | `lib/marketplace/{policy,permissions}.ts`, relevant repositories, `lib/managed-commerce/{fixed-supply,activation,registered-transition}.ts`, `components/seller/registered-transition-form.tsx`, `lib/forms/access.ts`, relevant unowned tests, and any necessary unapplied migration. | `2567417`. Typecheck, lint and 76 helper focused checks passed. Main passed 14 payout-domain checks and verified protected history at 390 and 1440 px. No migration needed. Full suite pending. |
+| A Orders | batch_orders | `app/admin/orders/**`, `app/admin/order-responses/**`, `app/admin/shipping/**`, `app/admin/exceptions/**`; admin `order-fulfillment-actions`, `parcel-controls`, `cod-reconciliation`, `exception-order-section`, `exception-work-form`, `cancellation-review-*`, `first-cod-confirmation`, `paid-order-release`, `order-email-retry` | `3a6a5e6`. Main typecheck and 10 focused checks passed. A lint was clean. Independently checked list and detail at 390 and 1440 px. |
+| B Money | batch_money | `app/admin/{payouts,payments,accounting,financial-notices}/**`; admin `payout-*`, `refund-funding-review`, `customer-refund-reversal-review`, `manual-payment-review`, `accounting-workspace`, `recovery-*`, `seller-recovery-review`, `commercial-recovery` | `2a7a19d`. Typecheck and lint passed. Helper passed 46 focused checks. Main verified the board and mobile filters at 390, 768, 1024 and 1440 px. |
+| C Settings | batch_settings | `app/admin/{business-settings,commission,fees,fee-waivers,delivery-rates}/**`; admin `business-settings-manager`, `setting-value-preview`, `commission-settings`, `company-bank-accounts`, `fee-*`, `common-fee-policy`, `delivery-rate-settings` | `5407772`. Main typecheck and 18 focused checks passed. C lint was clean and the in-progress B files still had two lint diagnostics. Checked Settings at 390 and 1440 px independently. |
+| D Care, Sellers and Catalog | batch_care_catalog | `app/admin/{cases,sellers,seller-*,products,catalog,reviews}/**`; admin `return-*`, `complaint-case-actions`, `supported-case-intake`, `seller-*` except B's `seller-recovery-review`, `document-review-workspace`, `protected-*`, `public-profile-review`, `product-*`, `review-*`, `catalog-manager`, `category-*`; `tests/product-publication-browser.test.ts`, `tests/product-source-scope-browser.test.ts` | `d9e9450`. Typecheck and scoped lint passed. Main browser verified the three workspaces at 390 and 1440 px. Focused native and browser checks passed, with one timing-sensitive source-scope case passing on rerun. |
+| E Seller Today, Orders and Returns | batch_seller_orders | `app/seller/page.tsx`, `app/seller/{orders,order-responses,cases,notifications}/**`; seller `seller-action-overview`, `seller-task-summary`, `workspace-task-list`, `seller-order-list`, `order-fulfillment-actions`, `case-response-form`, `onboarding-checklist`, `readiness-summary`; `components/commerce/order-preparation-workspace.tsx`; `tests/seller-workspace-pages.test.ts`, `tests/checkout-delivery-presentation.test.ts`, `tests/cancellation-fulfillment-browser.test.ts`, `tests/form-catalog-commerce.test.ts`, `tests/form-catalog-commerce-success.test.ts`, `tests/seller-dashboard-experience.test.ts`, `tests/form-catalog-seller-case-history.test.ts` | `b16f1b4`. Main scoped checks and 19 focused rerun checks passed. Independently checked Today, Orders and Returns at 390 and 1440 px. All four widths passed in the helper check. |
+| F Seller Products and Earnings | batch_seller_products | `app/seller/{products,finance,analytics}/**`; seller `product-*`, `maker-product-workspace`, `inventory-editor`, `variant-editor`, `price-profit-preview`, `archive-product-button`, `seller-products-description`, `payout-request-form`, `bank-details-form`, `seller-earnings-summary`, `marketplace-fee-breakdown`, `order-marketplace-fees`, `commission-fee-notice`, `recovery-statement` | `14e056b`. Typecheck and lint passed. Main passed 14 product/workspace and 9 payout authority checks. Independently checked Products, New product and Earnings at 390 and 1440 px. |
+| G Today handoffs | batch_today | `app/admin/page.tsx`, `components/admin/overview-*.ts(x)` | `722ae13`. Typecheck, lint, six focused checks and helper browser checks passed. Main confirmed zero overflow and 44 px actions at 390 and 1440 px. |
+| H Button conventions | batch_buttons | Admin activity, business emails, feedback, form submissions, forms, gift cards, homepage, legal policies, loyalty, notifications, operational notices, order emails, privacy, progress, promo codes, referrals and staff form history TSX pages and related components listed below. Seller profile, registration, requests, reviews, shipping, form history and reminders TSX pages and related components. Loading files excluded. | `a1088ab`. Typecheck, lint and 17 isolated browser tests passed. Helper live-checked 27 views at four widths. Main checked ten representative routes at 390 and 1440 px. |
+| I Background loading | batch_loading | `app/admin/loading.tsx`, `app/seller/loading.tsx`, `app/admin/referrals/loading.tsx`. `components/ui/workspace-refresh.tsx`, `components/admin/admin-workspace-ready.tsx`, an approved admin hydration fallback usage. Orders was completed by A. | `30cfe2f`. 21 focused checks passed. The helper verified retained content, filters and exact actor retirement at all four widths. Main checked Admin refresh at 390 and 1440 px. |
+| J Single Super Admin decisions | batch_approval | `lib/marketplace/{policy,permissions}.ts`, relevant repositories, `lib/managed-commerce/{fixed-supply,activation,registered-transition}.ts`, `components/seller/registered-transition-form.tsx`, `lib/forms/access.ts`, relevant unowned tests, and any necessary unapplied migration. | `2567417`. Typecheck, lint and 76 helper focused checks passed. Main passed 14 payout-domain checks and verified protected history at 390 and 1440 px. No migration needed. |
 | K Responsive sweep | batch_responsive | `docs/redesign-batch-1-screens/**`; `app/admin/analytics/page.tsx` and `app/admin/activity/page.tsx` released. Business and Order Emails released. Now `app/admin/orders/page.tsx`, `app/admin/cases/intake/page.tsx`, one intake read scope in `lib/catalog/shop-query.ts`; main breadcrumb in `components/admin/admin-task-context.tsx`. | `3c2784f`. Helper checked 78 route variants at all four widths, saved 164 screenshots, and passed 42 focused checks. Main independently rechecked Activity, Orders and Case intake at 390 and 1440 px. Missing fixtures and four follow-up layouts are in the screenshot index. |
-| L Tests and cleanup | batch_tests | Historical MariaDB fixture tests, staff-access fixture, new UI state tests, parked wording in `components/admin/business-settings-manager.tsx`, `lib/staff/access.ts`, `lib/forms/plain-language.ts`, `app/admin/page.tsx`, `app/admin/staff-form-history/page.tsx`, and the park link in `app/admin/not-in-use/page.tsx`. | `58abf73`. Helper passed 37 checks and main passed 17 focused checks. Archive and Staff review history fit at 390, 768, 1024 and 1440 px. Full suite pending. |
+| L Tests and cleanup | batch_tests | Historical MariaDB fixture tests, staff-access fixture, new UI state tests, parked wording in `components/admin/business-settings-manager.tsx`, `lib/staff/access.ts`, `lib/forms/plain-language.ts`, `app/admin/page.tsx`, `app/admin/staff-form-history/page.tsx`, and the park link in `app/admin/not-in-use/page.tsx`. | `58abf73`. Helper passed 37 checks and main passed 17 focused checks. Archive and Staff review history fit at 390, 768, 1024 and 1440 px. |
 | M Dispatch | batch_dispatch | `app/admin/orders/dispatch/**`, `components/admin/dispatch-*.tsx`, seller order detail display only in `app/seller/orders/order-detail.tsx`, and optional slot metadata in `lib/operations/parcels.ts`. Main adds the tab. | `4fdd03b`. Full typecheck and lint passed, with 16 helper and 15 main focused checks. Checked Dispatch navigation and zero overflow at 390 and 1440 px, and helper verified all four widths with populated fixtures. |
 | N Courier cash | batch_courier_cash | `app/admin/payments/page.tsx`, `components/admin/cod-reconciliation.tsx`, new COD-only components, read-only projection in `lib/payments/manual-payment-workspace.ts` and legacy redirect in `app/admin/payments/exceptions/[id]/page.tsx` | `75d7019`. Typecheck and lint passed after the other in-progress changes resolved. Native COD and exact parcel handoff checks pass. The helper checked all four widths and standalone short/excess fixture flows. Main verified selection and recorded cash at 390 and 1440 px. |
 | O Parcel problems and delays | batch_parcel_problems | `app/admin/{shipping,exceptions,order-responses}/**`, opt-in form presentation in `components/commerce/order-preparation-workspace.tsx`; main kept the exact order Back link and added matching test coverage. | `017b103`. Full typecheck and lint passed. Main passed seven navigation and authority checks and verified both widths. Helper confirmed all four widths with each problem category and unchanged retry request data. |
@@ -107,9 +107,16 @@ The rows below reserve work. Only the assigned helper may edit its active alloca
 
 ## Final verification
 
-- The checked local preview is `http://localhost:3018`. Readiness passed with all 107 forms and sign-in ready. The local dev-only Super Admin notice is present, and the gate tests verify production, other hosts and other accounts are excluded.
+- The checked local preview is `http://localhost:3018`. `npm run local:check` passed on `82728d2` with all 107 forms and sign-in ready. The local dev-only Super Admin notice is present, and the gate tests verify production, other hosts and other accounts are excluded.
 - Responsive sweep evidence and routes without a fixture are in `docs/redesign-batch-1-screens/README.md`. The final comparison also covers the new Batch 2 workspaces in the ownership table above.
 - The UI text audit found the former delivery terminology only in the parked entry and its retained historical operations and help. SMS is Off in System health and listed in Not in use yet. No second-approver UI or hard-coded commission, payout hold or marketplace fee value was found in active workspaces. Seven-day date filters and the existing 3–7-day transit range are unrelated.
+
+### Repository checks
+
+- `npm run typecheck` passed with no diagnostics.
+- `npm run lint` passed with no diagnostics.
+- The full `npm run test` run passed at `82728d2`. The runner reported 5,727 tests, 5,689 passed, 0 failed, 38 skipped and 0 cancelled, in 94 minutes.
+- The earlier run exposed three stale assertions for seller product filtering, the native form permission inventory, and product history. The corrected files passed all 79 focused tests and the full rerun.
 
 ### Approved screens and observed differences
 
@@ -139,9 +146,47 @@ Several retained pages put their task breadcrumb or title below the shared secti
 
 The 35 detail patterns without a linked local fixture and two legal-policy routes that still require hosted verification are recorded in the screenshot index. The existing test fixtures cover the protected legal routes. No staging data was added to turn empty or guarded pages into populated views.
 
+### Local commits
+
+- `8615cb6` Local Super Admin sign-in
+- `b574059` Own delivery off, couriers on
+- `cf84e71` Phone and tablet shells
+- `cb22b05` Shared workflow UI
+- `5407772` Super Admin Settings
+- `3a6a5e6` Super Admin Orders
+- `d9e9450` Super Admin Care, Sellers and Catalog
+- `b16f1b4` Seller Studio Today, Orders and Returns
+- `2a7a19d` Super Admin Money
+- `14e056b` Seller Studio Products and Earnings
+- `722ae13` Today seller handoffs
+- `a1088ab` Workspace button conventions
+- `30cfe2f` Background workspace refresh
+- `2567417` Single Super Admin decisions
+- `58abf73` Tests and parked delivery cleanup
+- `3c2784f` Responsive workspace sweep
+- `4fdd03b` Orders dispatch
+- `75d7019` Courier cash
+- `017b103` Parcel problems and delays
+- `6c972dc` Refunds and recoveries
+- `4791619` Care customer directory
+- `603f89a` Seller record workspace
+- `d876ff4` Admin command search
+- `8841538` Money payout run
+- `bf31a06` Catalog help and publishing
+- `5c7452a` Team and access
+- `db47b8f` Business report
+- `933ffa6` All offers
+- `4fc14d6` System health and backups
+- `e268788` Final responsive and fixture cleanup
+- `fe51a97` Admin verification fixtures
+- `6f2a5fb` Workspace form inventory
+- `f680b26` Form query verification fixtures
+- `82728d2` Seller product history verification
+- `Batch 1: Final verification report` records the final evidence in this file.
+
 ### Changed files
 
-The list covers tracked changes since the start of this batch. Pending migration drafts are listed under For the owner.
+The list covers all 462 tracked files changed since the start of this batch. Pending migration drafts are listed under For the owner.
 
 <details>
 <summary>Full file list</summary>
