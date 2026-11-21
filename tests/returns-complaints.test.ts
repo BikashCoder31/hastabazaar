@@ -517,8 +517,17 @@ void test('tracking requires both matching details and excludes private fields a
         'estimatedMinDays',
         'estimatedMaxDays',
         'events',
+        'parcels',
       ].sort(),
     );
+    assert.equal(result?.parcels?.length, 1);
+    for (const parcel of result!.parcels ?? []) {
+      assert.deepEqual(Object.keys(parcel).sort(),
+        ['status', 'courierName', 'trackingReference', 'trackingUrl', 'stageTimes'].sort());
+      assert.ok(parcel.stageTimes);
+      assert.ok(Object.keys(parcel.stageTimes).every(stage =>
+        ['placed', 'preparing', 'packed', 'with-courier', 'delivered'].includes(stage)));
+    }
     for (const event of result!.events)
       assert.deepEqual(
         Object.keys(event).sort(),

@@ -6,7 +6,7 @@ import {sellerRegistrationScopeFixture} from './helpers/seller-registration-scop
 
 
 void test('public help provides accurate written seller guidance and native task destinations without needing media',async()=>{
- const page=(await import('../app/help/page')).default,html=renderToStaticMarkup(page());
+ const page=(await import('../app/help/page')).default,html=renderToStaticMarkup(await page());
  assert.match(html,/id="seller-guide"/);
  for(const href of ['/sell/apply','/seller/registration','/seller/products/new','/seller/products/intakes','/seller/requests','/seller/finance'])assert.ok(html.includes('href="'+href+'"'),href);
  for(const href of ['/track','/account/orders','/account/refunds'])assert.ok(html.includes('href="'+href+'"'),href);
