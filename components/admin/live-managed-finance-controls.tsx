@@ -12,7 +12,7 @@ function Action({actorId,sellerId,action,scope=action,label,revision,disabled,in
  async function submit(event:SubmitEvent<HTMLFormElement>){event.preventDefault();const data=new FormData(event.currentTarget);try{
   await command.submit({sourceFormId:formId,action,expectedRevision:revision,input:{...input,...(read?{scheduledFor:parseNepalDateTime(formText(data,'scheduledFor'))}:{}),reason:formText(data,'reason')}});
  }catch(error){command.setMessage(error instanceof Error?error.message:'Review the exact current payment fields.');}}
- return <details className="rounded-lg border p-4"><summary className="cursor-pointer font-medium">{label}</summary><RecoveryAttempt command={command}/><form aria-label={label} data-form-id={formId} onSubmit={submit}><fieldset disabled={disabled||command.busy||command.saved} className="mt-3 space-y-3">
+ return <details className="rounded-lg border p-4"><summary className="cursor-pointer font-medium max-md:min-h-11 max-md:content-center">{label}</summary><RecoveryAttempt command={command}/><form aria-label={label} data-form-id={formId} onSubmit={submit}><fieldset disabled={disabled||command.busy||command.saved} className="mt-3 space-y-3">
   {read?<label className="block">Processing date and time · Nepal time<input type="datetime-local" name="scheduledFor" required defaultValue={nepalDateTimeInput(Math.ceil((asOf??0)/60000)*60000)} className="mt-1 block rounded border p-2"/></label>:null}
   <label className="block">Reason for this actual payment review<textarea name="reason" required minLength={10} maxLength={1000} className="mt-1 block w-full rounded border p-2"/></label>
   <button className="min-h-11 rounded border px-4 py-2">{label}</button>

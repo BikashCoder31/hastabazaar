@@ -84,7 +84,7 @@ export function FormCompatibilityControls({ formId, versionId, version, previous
   }
 
   return <details className="rounded-xl border p-4" onToggle={event => { if (event.currentTarget.open && !policy) void load(); }}>
-    <summary className="cursor-pointer font-medium">Previous-version compatibility</summary>
+    <summary className="cursor-pointer font-medium max-md:min-h-11 max-md:content-center">Previous-version compatibility</summary>
     <div className="mt-4 grid gap-3 text-sm">
       <p>Compare published versions {version - 1} and {version}. Only an equivalent change in wording can be reviewed here. Required questions, choices, identity, consent and business rules keep their current checks.</p>
       {wordingChanges.length ? <div className="grid gap-3">{wordingChanges.map(change => <div key={change.id} className="grid gap-2 rounded-lg border p-3 sm:grid-cols-2">
@@ -98,7 +98,7 @@ export function FormCompatibilityControls({ formId, versionId, version, previous
         `Reviewed equivalent wording is accepted until ${new Intl.DateTimeFormat('en-NP', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kathmandu' }).format(new Date(policy.expiresAt!))} (Nepal time).`}</p> : null}
       <label htmlFor="compatibility-reason">Reason for compatibility decision</label>
       <Textarea id="compatibility-reason" value={reason} onChange={event => setReason(event.target.value)} maxLength={2000} disabled={disabled || busy || uncertain !== null} />
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 max-md:[&_button]:min-h-11">
         <Button type="button" variant="outline" disabled={disabled || busy || !reviewPossible || (uncertain !== null && uncertain !== 'review_equivalent') || policy?.mode === 'require_current'} onClick={() => void act('review_equivalent')}>
           {uncertain === 'review_equivalent' ? 'Retry identical wording review' : 'Approve equivalent wording for 24 hours'}
         </Button>

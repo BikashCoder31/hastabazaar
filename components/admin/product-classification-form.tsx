@@ -134,7 +134,7 @@ export function ProductClassificationForm({
           </div>
         </fieldset>
         {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={classificationBaseKeys} /> : null}
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" className="max-md:min-h-11" disabled={pending}>
           {pending ? 'Saving…' : 'Save classification'}
         </Button>
       </fieldset>

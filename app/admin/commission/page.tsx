@@ -142,7 +142,7 @@ export default async function CommissionPage({
         </div>
       </section>
       <details className="rounded-2xl border bg-card p-5 sm:p-6">
-        <summary className="cursor-pointer font-semibold">
+        <summary className="cursor-pointer font-semibold max-md:min-h-11 max-md:content-center">
           How commission is calculated
         </summary>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">

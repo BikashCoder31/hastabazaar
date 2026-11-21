@@ -118,7 +118,7 @@ export function SellerAgreementAcceptance({
       ) : null}
       <Button
         type="button"
-        className="mt-5"
+        className="mt-5 max-md:min-h-11"
         disabled={!accepted || pending || saved}
         onClick={submit}
       >

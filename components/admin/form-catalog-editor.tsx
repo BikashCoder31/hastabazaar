@@ -339,7 +339,7 @@ export function FormCatalogEditor({ form, versions: initialVersions, actorId, re
 
     <Card id="form-preview" className="scroll-mt-28">
       <CardHeader><CardTitle>Preview</CardTitle><CardDescription>The draft uses the same configured field renderer as live forms. Built-in controls are illustrative; their server rules stay in place.</CardDescription></CardHeader>
-      <CardContent><Tabs defaultValue="phone"><TabsList aria-label="Preview width"><TabsTrigger value="phone">Phone</TabsTrigger><TabsTrigger value="desktop">Desktop</TabsTrigger></TabsList><TabsContent value="phone" className="pt-4"><FormCatalogPreview form={form} config={previewConfig} mode="phone" /></TabsContent><TabsContent value="desktop" className="pt-4"><FormCatalogPreview form={form} config={previewConfig} mode="desktop" /></TabsContent></Tabs></CardContent>
+      <CardContent><Tabs defaultValue="phone"><TabsList aria-label="Preview width" className="max-md:min-h-13"><TabsTrigger value="phone">Phone</TabsTrigger><TabsTrigger value="desktop">Desktop</TabsTrigger></TabsList><TabsContent value="phone" className="pt-4"><FormCatalogPreview form={form} config={previewConfig} mode="phone" /></TabsContent><TabsContent value="desktop" className="pt-4"><FormCatalogPreview form={form} config={previewConfig} mode="desktop" /></TabsContent></Tabs></CardContent>
     </Card>
 
     <Card>

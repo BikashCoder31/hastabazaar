@@ -187,7 +187,7 @@ function OwnedAccountRecoveryAssistance({
             <span className="break-all">{email}</span>.
           </span>
         </label>
-        <Button type="submit" disabled={busy}>
+        <Button type="submit" className="max-md:min-h-11" disabled={busy}>
           {busy
             ? 'Sending invitation…'
             : kind === 'password'

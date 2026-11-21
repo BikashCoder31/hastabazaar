@@ -54,7 +54,7 @@ function FinanceForm({ action, maker, payment, asOf, disabled, onAttempt }: {
     {form.status === 'loading' ? <output className="block">Loading payment form…</output> : null}
     {form.message ? <p role="alert">{form.message} <button type="button" onClick={form.refresh} className="underline">Reload form</button></p> : null}
     {error ? <p role="alert">{error}</p> : null}
-    <button type="submit" disabled={disabled || !form.canSubmit} className="rounded-md border px-4 py-2 disabled:opacity-50">{titles[action]}</button>
+    <button type="submit" disabled={disabled || !form.canSubmit} className="rounded-md border px-4 py-2 disabled:opacity-50 max-md:min-h-11">{titles[action]}</button>
   </form>;
 }
 
@@ -150,7 +150,7 @@ export function ManagedSettlementControls({ownerId,workspace,asOf,simulationAllo
     <h2 id="maker-payments-heading" className="font-heading text-2xl">Sale-linked maker payments</h2>
     <p className="text-sm text-muted-foreground">Actual original live earnings use the protected payout workflow. Retained simulation history stays separate; fixed supplier payments remain in Supply &amp; payments.</p>
     {!simulationAllowed ? <p role="alert">Retained simulation actions are unavailable outside the verified simulation environment; actual live money has its own protected controls below.</p> : null}
-    {workspace.error ? <p role="alert">{workspace.error}</p> : !workspace.makers.length ? <p>No company-store maker financial records yet.</p> : workspace.makers.map(maker=><section key={maker.sellerId} className="space-y-4"><h3 className="font-semibold">{maker.name}</h3><LiveManagedFinanceControls key={ownerId+':'+maker.sellerId} actorId={ownerId} sellerId={maker.sellerId} initial={maker.live} error={maker.liveError}/><details className="rounded-xl border p-4"><summary className="cursor-pointer font-medium">Retained simulation history</summary><MakerPayments ownerId={ownerId} maker={maker} asOf={asOf} simulationAllowed={simulationAllowed} busy={busy} setBusy={setBusy}/></details></section>)}
+    {workspace.error ? <p role="alert">{workspace.error}</p> : !workspace.makers.length ? <p>No company-store maker financial records yet.</p> : workspace.makers.map(maker=><section key={maker.sellerId} className="space-y-4"><h3 className="font-semibold">{maker.name}</h3><LiveManagedFinanceControls key={ownerId+':'+maker.sellerId} actorId={ownerId} sellerId={maker.sellerId} initial={maker.live} error={maker.liveError}/><details className="rounded-xl border p-4"><summary className="cursor-pointer font-medium max-md:min-h-11 max-md:content-center">Retained simulation history</summary><MakerPayments ownerId={ownerId} maker={maker} asOf={asOf} simulationAllowed={simulationAllowed} busy={busy} setBusy={setBusy}/></details></section>)}
     {workspace.nextCursor ? <a className="section-link" href={`/admin/programs?financeAfter=${encodeURIComponent(workspace.nextCursor)}#maker-payments`}>Next 20 makers</a> : null}
   </section>;
 }

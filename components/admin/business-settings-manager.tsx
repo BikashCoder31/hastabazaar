@@ -894,6 +894,7 @@ function BusinessSettingsManagerScope({
             <div className="flex flex-wrap gap-2">
             <Button
               type="button"
+              className="max-md:min-h-11"
               disabled={busy || !catalog.canSubmit || reason.trim().length < 8 || Boolean(valueError) || Boolean(publicationLimitation)}
               onClick={() => saveSetting('save')}
             >
@@ -902,6 +903,7 @@ function BusinessSettingsManagerScope({
             <Button
               type="button"
               variant="outline"
+              className="max-md:min-h-11"
               disabled={busy || !catalog.canSubmit || reason.trim().length < 8 || Boolean(valueError)}
               onClick={() => saveSetting('draft')}
             >

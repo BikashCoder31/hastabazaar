@@ -7,9 +7,9 @@ Owner review baseline: `64f2158` on `admin-redesign`. Checked preview: `http://l
 | V1 · Legal & procedures access | V1 helper | Done | `d684a2c` | Typecheck and lint passed. 11 focused tests passed. Checked Super Admin at 390/768/1024/1440 and restricted staff at 390/1440. |
 | V2 · Taxonomy names and occasion images | V2 helper | In progress | — | — |
 | V3 · Today on phones | V3 helper | Done | `b8b4468` | Typecheck and lint passed. 8 focused tests passed. Chrome at 390/768/1024/1440. |
-| V4 · Phone tap targets | V4 helper | In progress | — | — |
+| V4 · Phone tap targets | V4 helper | Done | This task commit | Typecheck and lint passed. 64 focused tests passed. 81 phone route states and four-width checks on changed pages. |
 | V5 · Seller payout day | V5 helper | Done | `3767223` | Typecheck and lint passed. 10 focused tests passed. Earnings and Payout run at 390/768/1024/1440. |
-| V6 · Seller support entry point | V6 helper | Done | This task commit | Typecheck and lint passed. 44 focused tests passed. Chrome at 390/768/1024/1440 and disposable submissions at 390/1440. |
+| V6 · Seller support entry point | V6 helper | Done | `4b46e4d` | Typecheck and lint passed. 44 focused tests passed. Chrome at 390/768/1024/1440 and disposable submissions at 390/1440. |
 | V7 · Final check | Main agent | Waiting for V1–V6 | — | — |
 
 ## For the owner
@@ -27,3 +27,11 @@ Today at 390×844 places the first task title above 715 px and its Unassigned pi
 Seller Earnings and the admin Payout run both showed the same next run date, Wednesday 25 November, from the checked settings. The fixture also verified a different saved weekday and the cutoff boundary.
 
 The 390 px Ask a question action was 351×44 px. The top and empty-state actions select Seller support in the existing form. A fictional seller question submitted at each of 390 and 1440 px reached Admin › Contact & feedback. The ordinary contact and feedback topics keep their usual initial selection.
+
+The 390 px tap-target sweep covered 81 route states. The resized controls measured 44–48 px. The changed pages fit at 390, 768, 1024 and 1440 px.
+
+- Seller Studio. Agreement acceptance, product options help, craft experience and shop contact and address controls.
+- Admin operations. Company accounts, business settings, delivery rate overrides, commission explanation, seller review ownership, account recovery, seller public profile review and staff access checks for bank payments.
+- Admin configuration. Program finance, marketplace rules, product classification, form guides, form preview and compatibility, and Team & roles actions across all five tabs.
+
+The Catalog Add buttons and editor controls are covered by V2. Informational disclosures outside the primary flows retain compact styling, including recorded case history and published form question previews. Parked Rider settings were outside the active workspace sweep.
