@@ -299,7 +299,7 @@ function ManualPaymentClaimScope({ payment, actorId, orderSummary }: ClaimProps)
         ) : null}
 
         {editable ? (
-          <form className={card + ' space-y-3.5'} onSubmit={event => {
+          <form data-form-id="commerce.bank-transfer-claim" className={card + ' space-y-3.5'} onSubmit={event => {
             event.preventDefault();
             if (!busy && (!claim.pending || claim.canRetry)) void submit();
           }} aria-labelledby="claim-title">

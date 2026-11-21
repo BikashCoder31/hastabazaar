@@ -63,7 +63,7 @@ export default async function HelpPage({ searchParams }: { searchParams?: Promis
             <h1 className="break-words font-heading text-4xl leading-tight sm:text-5xl">How can we help{firstName ? ', ' + firstName : ''}?</h1>
             <p className="mt-2 text-sm text-white/80 sm:text-base">Most answers start from your order. Pick one below, or search.</p>
             <search aria-label="Search help">
-              <form action="/help" method="get" className="mt-4 flex min-w-0 max-w-2xl items-center gap-2 rounded-xl bg-white p-1 text-[#14213d] sm:gap-3">
+              <form data-form-id="public.help-search" action="/help" method="get" className="mt-4 flex min-w-0 max-w-2xl items-center gap-2 rounded-xl bg-white p-1 text-[#14213d] sm:gap-3">
                 <Search className="ml-2 hidden size-4 shrink-0 text-[#465573] sm:block" aria-hidden="true" />
                 <label className="sr-only" htmlFor="help-query">Search help</label>
                 <input id="help-query" name="q" defaultValue={query} maxLength={100} type="search" placeholder="e.g. change my address, return items" className="min-h-11 min-w-0 flex-1 rounded-lg px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[#14213d]" />

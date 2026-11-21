@@ -7,7 +7,7 @@ export function ShopSort({ entries, value, label, helpText }: {
   helpText?: string;
 }) {
   return (
-    <form action="/shop" method="get" className="max-w-full">
+    <form data-form-id="catalog.filters" action="/shop" method="get" className="max-w-full">
       {entries.map(([name, content], index) => <input key={`${name}-${index}`} type="hidden" name={name} value={content} />)}
       <label htmlFor="shop-results-sort" className="sr-only">{label}</label>
       <select id="shop-results-sort" name="sort" defaultValue={value} key={value}

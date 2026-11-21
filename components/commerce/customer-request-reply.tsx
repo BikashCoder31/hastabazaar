@@ -102,7 +102,7 @@ function ScopedReply({ endpoint, kind, actorId, viewerScope, prompt, isCurrent }
     <p>Account or case access changed. Reload the current order before using previous private reply content.</p>
     <button className={aftercareSecondary} type="button" onClick={() => window.location.reload()}>Reload current request</button>
   </div>;
-  return <form onSubmit={submit} className="mt-5 min-w-0 rounded-xl border border-[#E4DACA] bg-white p-4 sm:p-5">
+  return <form data-form-id={kind === 'return' ? 'commerce.return-reply' : 'commerce.complaint-reply'} onSubmit={submit} className="mt-5 min-w-0 rounded-xl border border-[#E4DACA] bg-white p-4 sm:p-5">
     <fieldset disabled={pending} className="min-w-0 space-y-3">
       <legend className="mb-2 font-semibold text-[#14213D]">{prompt ? 'Hastabazaar asks' : 'Reply to Hastabazaar'}</legend>
       {prompt ? <p className="whitespace-pre-wrap break-words text-sm font-semibold text-[#14213D]">{prompt}</p> : null}

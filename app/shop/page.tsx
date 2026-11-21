@@ -160,7 +160,7 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
       <SiteHeader />
       <main tabIndex={-1} id="main-content" className={`${shopShell} space-y-5 pb-16 pt-6 sm:pt-9`}>
         <search aria-label="Search the shop" className="max-w-[55rem]">
-          <form action="/shop" method="get"
+          <form data-form-id="catalog.filters" action="/shop" method="get"
             className="flex min-h-14 items-center gap-2 rounded-2xl border border-[#d9c8ae] bg-[#fffdf9] p-1.5 pl-3 focus-within:border-[#14213d] focus-within:ring-2 focus-within:ring-[#14213d]/15 sm:gap-3 sm:pl-5">
             <HiddenFilters entries={filterEntries(params, ['q'])} />
             <Search className="size-5 shrink-0 text-[#675b4e]" aria-hidden="true" />
@@ -211,7 +211,7 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
                 <summary className={`${chipClass} ${chipColour(maximumPricePaisa !== undefined)} list-none [&::-webkit-details-marker]:hidden`}>
                   {maximumPricePaisa === undefined ? 'Price' : `Up to ${money(maximumPricePaisa)}`}
                 </summary>
-                <form action="/shop" method="get" className="z-30 mt-2 w-48 max-w-[calc(100vw-3rem)] space-y-2 rounded-xl border border-[#e2d6c2] bg-[#fffdf9] p-3 shadow-lg sm:absolute">
+                <form data-form-id="catalog.filters" action="/shop" method="get" className="z-30 mt-2 w-48 max-w-[calc(100vw-3rem)] space-y-2 rounded-xl border border-[#e2d6c2] bg-[#fffdf9] p-3 shadow-lg sm:absolute">
                   <HiddenFilters entries={filterEntries(params, ['maxPrice'])} />
                   <label htmlFor="quick-max-price" className="block text-sm font-semibold">Maximum price in NPR</label>
                   <input id="quick-max-price" name="maxPrice" type="number" min="0" max="1000000000" step="0.01" inputMode="decimal"

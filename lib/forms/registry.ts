@@ -1,5 +1,6 @@
 import {GOVERNANCE_FORM_CONTRACTS} from '../operations/governance-form-contracts';
 import {NATIVE_SOURCE_FORM_CONTRACTS} from './native-source-contracts';
+import { CUSTOMER_EXPERIENCE_FORM_CONTRACTS } from './customer-experience-contracts';
 import {LIVE_MANAGED_FINANCE_FORM} from '../managed-commerce/live-finance-form-contract';
 import {LIVE_INVOICE_ADJUSTMENT_FORM} from '../managed-commerce/live-invoice-adjustment-form-contract';
 import {PAYOUT_FINANCE_FORM} from '../payments/payout-form-contract';
@@ -30,6 +31,7 @@ export interface ImplementedFormAdapter {
 
 // Integrations add an entry here only when their server adapter exists and is tested.
 export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormAdapter>> = Object.freeze({
+  ...Object.fromEntries(CUSTOMER_EXPERIENCE_FORM_CONTRACTS.map(({ id, route, mode }) => [id, { formId: id, route, mode }])),
   ...Object.fromEntries(Object.values(NATIVE_SOURCE_FORM_CONTRACTS).map(definition=>[definition.id,{formId:definition.id,route:definition.route,mode:definition.mode}])),
   ...Object.fromEntries(Object.values(GOVERNANCE_FORM_CONTRACTS).map(definition=>[definition.id,{formId:definition.id,route:definition.route,mode:definition.mode}])),
   ...Object.fromEntries([MANAGED_LIVE_FORM,MANAGED_LIVE_EVIDENCE_FORM,LIVE_MANAGED_FINANCE_FORM,LIVE_INVOICE_ADJUSTMENT_FORM].map(definition=>[definition.id,{formId:definition.id,route:definition.route,mode:definition.mode}])),
@@ -699,7 +701,7 @@ const FIRST_COD_CONFIRMATION_DEFINITION = Object.freeze({
 } satisfies FormDefinition);
 
 export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.freeze(
-  Object.assign({}, NATIVE_SOURCE_FORM_CONTRACTS, GOVERNANCE_FORM_CONTRACTS, RECOVERY_FORM_CONTRACTS, {[MANAGED_LIVE_FORM.id]:MANAGED_LIVE_FORM,[MANAGED_LIVE_EVIDENCE_FORM.id]:MANAGED_LIVE_EVIDENCE_FORM,[LIVE_MANAGED_FINANCE_FORM.id]:LIVE_MANAGED_FINANCE_FORM,[LIVE_INVOICE_ADJUSTMENT_FORM.id]:LIVE_INVOICE_ADJUSTMENT_FORM},
+  Object.assign(Object.fromEntries(CUSTOMER_EXPERIENCE_FORM_CONTRACTS.map(definition => [definition.id, definition])), NATIVE_SOURCE_FORM_CONTRACTS, GOVERNANCE_FORM_CONTRACTS, RECOVERY_FORM_CONTRACTS, {[MANAGED_LIVE_FORM.id]:MANAGED_LIVE_FORM,[MANAGED_LIVE_EVIDENCE_FORM.id]:MANAGED_LIVE_EVIDENCE_FORM,[LIVE_MANAGED_FINANCE_FORM.id]:LIVE_MANAGED_FINANCE_FORM,[LIVE_INVOICE_ADJUSTMENT_FORM.id]:LIVE_INVOICE_ADJUSTMENT_FORM},
   Object.assign({ [PAYOUT_FINANCE_FORM.id]:PAYOUT_FINANCE_FORM, ...REFUND_FORM_CONTRACTS, ...FEE_FORM_CONTRACTS, [CATEGORY_POLICY_FORM.id]:CATEGORY_POLICY_FORM, [COMPANY_BANK_ACCOUNT_FORM.id]:COMPANY_BANK_ACCOUNT_FORM, ...SELLER_DASHBOARD_FORM_CONTRACTS, [FEE_WAIVER_FORM.id]: FEE_WAIVER_FORM, ...SECURITY_FORM_CONTRACTS, [SUPPORT_ASSISTANT_FORM.id]: SUPPORT_ASSISTANT_FORM, [SERVICE_FEE_REFUND_FORM.id]:SERVICE_FEE_REFUND_FORM, [ACCOUNTING_FILTER_FORM.id]: ACCOUNTING_FILTER_FORM, ...INCENTIVE_WORKSPACE_FORM_CONTRACTS, 'staff.first-cod-confirmation': FIRST_COD_CONFIRMATION_DEFINITION, 'account.points-redemption': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['account.points-redemption'], adapterId: 'account.points-redemption' }), 'staff.loyalty-settings': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.loyalty-settings'], adapterId: 'staff.loyalty-settings' }), 'account.daily-reward': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['account.daily-reward'], adapterId: 'account.daily-reward' }), 'commerce.promo-quote': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['commerce.promo-quote'], adapterId: 'commerce.promo-quote' }), 'staff.promo-code': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.promo-code'], adapterId: 'staff.promo-code' }) }, Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
     const item = Object.hasOwn(PROGRAMMATIC_KEYS, row.split('|')[0])
       ? programmaticDefinition(row.split('|')[0] as ProgrammaticFormId)

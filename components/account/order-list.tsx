@@ -83,7 +83,7 @@ export function CustomerOrderList({ orders, tab, query }: {
             );
           })}
         </nav>
-        <form action="/account/orders" method="get" className="flex min-w-0 items-center gap-2 rounded-[10px] border border-[#D4C1A6] bg-white px-3 focus-within:outline-2 focus-within:outline-[#14213D]">
+        <form data-form-id="account.order-search" action="/account/orders" method="get" className="flex min-w-0 items-center gap-2 rounded-[10px] border border-[#D4C1A6] bg-white px-3 focus-within:outline-2 focus-within:outline-[#14213D]">
           <input type="hidden" name="tab" value={tab} />
           <Search className="size-4 shrink-0 text-[#655848]" aria-hidden="true" />
           <label htmlFor="my-order-search" className="sr-only">Search by order number, item or seller</label>
