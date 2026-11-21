@@ -216,16 +216,19 @@ void test('real tracking route finds a fictional order without exposing identity
   process.env.APP_ORIGIN = 'https://tracking-recovery.test';
   try {
     sqlite.exec(`CREATE TABLE orders(id TEXT,order_number TEXT,status TEXT,payment_status TEXT,
-      placed_at INTEGER,delivered_at INTEGER,updated_at INTEGER,customer_email TEXT);
+      placed_at INTEGER,delivered_at INTEGER,updated_at INTEGER,customer_email TEXT,payment_mode TEXT,created_at INTEGER);
       CREATE TABLE shipments(order_id TEXT,tracking_code TEXT,estimated_min_days INTEGER,estimated_max_days INTEGER);
-      CREATE TABLE delivery_assignments(order_id TEXT,method TEXT,rider_user_id TEXT);
-      CREATE TABLE shipping_jobs(id TEXT,order_id TEXT);
-      CREATE TABLE shipping_parcels(shipping_job_id TEXT,method TEXT,rider_user_id TEXT);
+      CREATE TABLE delivery_assignments(order_id TEXT,method TEXT,rider_user_id TEXT,courier_name TEXT,tracking_reference TEXT,tracking_url TEXT);
+      CREATE TABLE order_items(id TEXT,order_id TEXT,seller_id TEXT,seller_name_snapshot TEXT,product_id TEXT,product_name_snapshot TEXT,quantity INTEGER,fulfillment_status TEXT,created_at INTEGER);
+      CREATE TABLE order_item_status_events(order_item_id TEXT,created_at INTEGER,to_status TEXT);
+      CREATE TABLE shipping_jobs(id TEXT,order_id TEXT,seller_id TEXT,direction TEXT,status TEXT,tracking_code TEXT);
+      CREATE TABLE shipping_parcels(shipping_job_id TEXT,method TEXT,rider_user_id TEXT,cod_due_paisa INTEGER,delivered_at INTEGER,courier_name TEXT,tracking_url TEXT);
       CREATE TABLE order_status_events(order_id TEXT,to_status TEXT,created_at INTEGER);
       CREATE TABLE first_cod_reviews(order_id TEXT PRIMARY KEY,customer_id TEXT,total_paisa INTEGER,status TEXT,
         created_at INTEGER,confirmed_by TEXT,confirmed_at INTEGER,reason TEXT,request_id TEXT);
-      INSERT INTO orders VALUES('fictional','HK-FICTIONAL','confirmed','pending',1,NULL,2,'qa@example.invalid');
+      INSERT INTO orders VALUES('fictional','HK-FICTIONAL','confirmed','pending',1,NULL,2,'qa@example.invalid','cod',1);
       INSERT INTO shipments VALUES('fictional','FICTIONAL-DELIVERY',1,3);
+      INSERT INTO order_items VALUES('private-item','fictional','private-seller','Private seller snapshot','private-product','Private product snapshot',2,'confirmed',2);
       INSERT INTO order_status_events VALUES('fictional','confirmed',2);`);
     const { POST } = await import('../app/api/orders/track/route');
     const request = (
@@ -240,11 +243,13 @@ void test('real tracking route finds a fictional order without exposing identity
     const known = await POST(request('QA@EXAMPLE.INVALID'));
     assert.equal(known.status, 200);
     const knownBody = (await known.json()) as {
-      tracking: { orderNumber: string; trackingCode: string | null };
+      tracking: { orderNumber: string; trackingCode: string | null; parcels: unknown[] };
     };
     assert.equal(knownBody.tracking.orderNumber, 'HK-FICTIONAL');
     assert.equal(knownBody.tracking.trackingCode, 'FICTIONAL-DELIVERY');
-    sqlite.exec("INSERT INTO delivery_assignments VALUES ('fictional','own_rider','private-rider')");
+    assert.equal(knownBody.tracking.parcels.length, 1);
+    assert.match(JSON.stringify(knownBody.tracking.parcels), /FICTIONAL-DELIVERY/);
+    sqlite.exec("INSERT INTO delivery_assignments(order_id,method,rider_user_id) VALUES ('fictional','own_rider','private-rider')");
     const privateResponse = await POST(request('qa@example.invalid'));
     assert.equal(privateResponse.status, 200);
     const privateBody = (await privateResponse.json()) as { tracking: { trackingCode: string | null; status: string } };
@@ -253,7 +258,7 @@ void test('real tracking route finds a fictional order without exposing identity
     assert.doesNotMatch(JSON.stringify(privateBody), /FICTIONAL-DELIVERY|private-rider/);
     assert.doesNotMatch(
       JSON.stringify(knownBody),
-      /qa@example|customer|address|"id"/i,
+      /qa@example|customer|address|private-(item|product|seller)|private (seller|product) snapshot|codPaisa|"id"/i,
     );
     const absent = await POST(request('stranger@example.invalid'));
     assert.equal(absent.status, 404);

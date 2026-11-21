@@ -28,15 +28,13 @@ export default async function TrackPage({
       <main
         tabIndex={-1}
         id="main-content"
-        className="shell max-w-3xl py-12 sm:py-16"
+        className="shell max-w-3xl py-8 sm:py-12"
       >
-        <p className="eyebrow">From our makers to your door</p>
-        <h1 className="mt-3 font-heading text-4xl sm:text-5xl">
-          Where’s my order?
+        <h1 className="font-heading text-4xl tracking-tight sm:text-5xl">
+          Track an order
         </h1>
         <p className="mt-4 max-w-xl leading-7 text-muted-foreground">
-          Follow your order from confirmation to delivery. Have your order
-          number and checkout email ready—no account needed.
+          See where each parcel is using your order number and checkout email.
         </p>
         <OrderTracker
           presentationConfig={presentation.config}

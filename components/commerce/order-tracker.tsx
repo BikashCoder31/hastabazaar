@@ -1,26 +1,23 @@
 'use client';
 import Link from 'next/link';
 import { useState, type SyntheticEvent } from 'react';
-import { Check, Package, Truck } from 'lucide-react';
+import { Package } from 'lucide-react';
 import type { OrderTracking } from '@/lib/db/repositories/order-tracking';
-import { orderProgress, orderStages } from '@/lib/orders/progress';
+import { CustomerParcelCard } from '@/components/commerce/customer-parcel-card';
+import { customerDateTime, customerParcelState } from '@/lib/orders/customer-parcel-state';
 import { HttpResponseError, sendJson } from '@/lib/http/client-request';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { queryFieldPresentation } from '@/lib/catalog/shop-query';
 import type { PublishedFormConfig } from '@/lib/forms/types';
 
-const date = (value: number) =>
-  new Intl.DateTimeFormat('en-NP', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'Asia/Kathmandu',
-  }).format(value);
 export function OrderTracker({
   initialOrder,
+  compact = false,
   presentationConfig,
   presentationUnavailable = false,
 }: {
   initialOrder: string;
+  compact?: boolean;
   presentationConfig?: PublishedFormConfig | null;
   presentationUnavailable?: boolean;
 }) {
@@ -69,13 +66,15 @@ export function OrderTracker({
       setBusy(false);
     }
   }
-  const progress = tracking ? orderProgress(tracking.status) : null;
+  const parcels = tracking?.parcels?.length ? tracking.parcels : tracking ? [{
+    status: tracking.status, courierName: null, trackingReference: tracking.trackingCode, trackingUrl: null,
+    stageTimes: { placed: tracking.placedAt, delivered: tracking.deliveredAt ?? undefined },
+  }] : [];
   return (
-    <div className="mt-8 space-y-6">
-      <form data-form-id="commerce.order-tracking" onSubmit={lookup} className="rounded-3xl border bg-card p-6 sm:p-8">
-<p className="text-xs text-muted-foreground">* Required field</p>
-
-        <div className="grid gap-5 sm:grid-cols-2">
+    <div className={compact ? "min-w-0 space-y-4" : "mt-6 min-w-0 space-y-6"}>
+      <form data-form-id="commerce.order-tracking" onSubmit={lookup} className={compact ? "min-w-0 space-y-3" : "min-w-0 rounded-2xl border border-[#E3D6C3] bg-[#FDFAF5] p-4 sm:p-6"}>
+<p className="mb-2 text-xs text-muted-foreground">* Required field</p>
+        <div className={compact ? "grid gap-3" : "grid min-w-0 gap-4 sm:grid-cols-2"}>
           <label className="text-sm font-semibold">
             {orderField.label}
              <span aria-hidden="true">*</span><input
@@ -91,7 +90,7 @@ export function OrderTracker({
               }}
               placeholder={orderField.placeholder}
               aria-describedby={orderField.helpText ? 'tracking-order-help' : undefined}
-              className="mt-2 w-full rounded-xl border bg-background px-4 py-3"
+              className="mt-1.5 min-h-11 w-full min-w-0 rounded-lg border border-[#DACBB4] bg-white px-3 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#14213D]"
             />
             {orderField.helpText ? <span id="tracking-order-help" className="mt-1 block text-xs text-muted-foreground">{orderField.helpText}</span> : null}
           </label>
@@ -112,7 +111,7 @@ export function OrderTracker({
               }}
               placeholder={emailField.placeholder}
               aria-describedby={emailField.helpText ? 'tracking-email-help' : undefined}
-              className="mt-2 w-full rounded-xl border bg-background px-4 py-3"
+              className="mt-1.5 min-h-11 w-full min-w-0 rounded-lg border border-[#DACBB4] bg-white px-3 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#14213D]"
             />
             {emailField.helpText ? <span id="tracking-email-help" className="mt-1 block text-xs text-muted-foreground">{emailField.helpText}</span> : null}
           </label>
@@ -139,9 +138,9 @@ export function OrderTracker({
         </p>
         <button
           disabled={busy}
-          className="mt-5 rounded-full bg-primary px-7 py-3 font-semibold text-primary-foreground disabled:opacity-60"
+          className="mt-4 min-h-11 w-full rounded-[9px] bg-[#14213D] px-5 py-2.5 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#14213D] disabled:opacity-60 sm:w-auto"
         >
-          {busy ? 'Checking…' : error ? 'Retry tracking' : tracking ? 'Refresh tracking' : 'Track order'}
+          {busy ? 'Checking…' : error ? 'Retry tracking' : tracking ? 'Refresh tracking' : compact ? 'Find my order' : 'Track order'}
         </button>
         {error ? (
           <p role="alert" className="mt-4 text-sm text-destructive">
@@ -150,112 +149,34 @@ export function OrderTracker({
         ) : null}
       </form>
       <div aria-live="polite" aria-busy={busy}>
-        {tracking && progress ? (
-          <section
-            className="rounded-3xl border bg-card p-6 sm:p-8"
-            aria-label="Order progress"
-          >
-            {error ? <output className="mb-4 block rounded-xl bg-secondary p-3 text-sm">Last successful tracking is shown. It may be out of date.</output> : null}
-            <div className="flex items-start gap-4">
-              <span className="rounded-2xl bg-secondary p-3">
-                <Package aria-hidden="true" />
-              </span>
-              <div>
-                <p className="text-sm text-muted-foreground">
-                  {tracking.orderNumber}
-                </p>
-                <h2 className="mt-1 font-heading text-3xl">{progress.label}</h2>
-                <p className="mt-2 text-muted-foreground">{progress.detail}</p>
-              </div>
+        {tracking ? (
+          <section className="space-y-4" aria-label="Order progress">
+            {error ? <output className="block rounded-xl bg-secondary p-3 text-sm">Last successful tracking is shown. It may be out of date.</output> : null}
+            <div className="flex items-center gap-3">
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#E8E0D6]"><Package className="size-5" aria-hidden="true" /></span>
+              <h2 className="min-w-0 wrap-anywhere font-heading text-2xl">Order {tracking.orderNumber}</h2>
             </div>
-            {tracking.status !== 'cancelled' ? (
-              <ol className="mt-8 space-y-5">
-                {orderStages.map((stage, index) => {
-                  const recorded = tracking.events.find(
-                    (e) => e.status === stage.status,
-                  );
-                  const done = index <= progress.step;
-                  return (
-                    <li
-                      key={stage.status}
-                      aria-current={
-                        index === progress.step ? 'step' : undefined
-                      }
-                      className="flex gap-4"
-                    >
-                      <span
-                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${done ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}
-                      >
-                        {done ? (
-                          <Check size={16} aria-hidden="true" />
-                        ) : (
-                          index + 1
-                        )}
-                      </span>
-                      <div>
-                        <p
-                          className={
-                            done ? 'font-semibold' : 'text-muted-foreground'
-                          }
-                        >
-                          {stage.label}
-                        </p>
-                        {recorded ? (
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {date(recorded.occurredAt)} NPT
-                          </p>
-                        ) : null}
-                        {index === progress.step ? (
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            {stage.detail}
-                          </p>
-                        ) : null}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ol>
-            ) : (
-              <p className="mt-6 rounded-xl bg-secondary p-4">
-                This order has been cancelled. Any shopping credit used is
-                returned to your wallet.
-              </p>
-            )}
-            <div className="mt-7 space-y-3 border-t pt-6 text-sm">
-              {tracking.trackingCode ? (
-                <p className="flex gap-2">
-                  <Truck size={18} aria-hidden="true" />
-                  <span>
-                    Delivery reference:{' '}
-                    <strong className="break-all">
-                      {tracking.trackingCode}
-                    </strong>
-                  </span>
-                </p>
+            {parcels.map((parcel, index) => (
+              <CustomerParcelCard key={index} title={`Parcel ${index + 1}`} parcel={parcel}
+                state={customerParcelState({ status: parcel.status })} />
+            ))}
+            {tracking.status === 'cancelled' ? (
+              <p className="rounded-xl bg-secondary p-3 text-sm">This order has been cancelled. Any shopping credit used is returned to your wallet.</p>
+            ) : null}
+            <div className="space-y-2 text-sm text-[#465573]">
+              {!['cancelled', 'delivered'].includes(tracking.status) && tracking.estimatedMinDays !== null && tracking.estimatedMaxDays !== null ? (
+                <p>Delivery estimate at checkout: {tracking.estimatedMinDays}–{tracking.estimatedMaxDays} days from order placement.</p>
               ) : null}
-              {tracking.status !== 'cancelled' &&
-              tracking.status !== 'delivered' ? (
-                <p>
-                  Estimate at checkout: {tracking.estimatedMinDays}–
-                  {tracking.estimatedMaxDays} days from order placement. This is
-                  an estimate, not a guaranteed arrival date.
-                </p>
-              ) : null}
-              <p>Last order update: {date(tracking.updatedAt)} NPT</p>
-              <p className="text-muted-foreground">
-                Progress updates when our team records a change. Delivery
-                references are for support; live courier location is not
-                available.
-              </p>
+              <p>Last order update: {customerDateTime(tracking.updatedAt)} Nepal time</p>
             </div>
           </section>
         ) : null}
       </div>
-      <div className="flex flex-wrap gap-5 text-sm font-semibold">
-        <Link className="underline underline-offset-4" href="/account/orders">
+      <div className="flex flex-wrap gap-x-5 text-sm font-semibold">
+        <Link className="inline-flex min-h-11 items-center rounded-md text-[#A8232E] underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#14213D]" href="/account/orders">
           View my orders
         </Link>
-        <Link className="underline underline-offset-4" href="/help#tracking">
+        <Link className="inline-flex min-h-11 items-center rounded-md text-[#A8232E] underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#14213D]" href="/help#tracking">
           Need help with delivery?
         </Link>
       </div>

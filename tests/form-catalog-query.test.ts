@@ -148,21 +148,23 @@ void test('tracking lookup denies an order when the checkout email does not matc
   const sqlite = new DatabaseSync(':memory:');
   try {
     sqlite.exec(`CREATE TABLE orders(id TEXT,order_number TEXT,status TEXT,payment_status TEXT,
-      placed_at INTEGER,delivered_at INTEGER,updated_at INTEGER,customer_email TEXT);
+      placed_at INTEGER,delivered_at INTEGER,updated_at INTEGER,customer_email TEXT,payment_mode TEXT,created_at INTEGER);
       CREATE TABLE shipments(order_id TEXT,tracking_code TEXT,estimated_min_days INTEGER,estimated_max_days INTEGER);
-      CREATE TABLE delivery_assignments(order_id TEXT,method TEXT,rider_user_id TEXT);
-      CREATE TABLE shipping_jobs(id TEXT,order_id TEXT);
-      CREATE TABLE shipping_parcels(shipping_job_id TEXT,method TEXT,rider_user_id TEXT);
+      CREATE TABLE delivery_assignments(order_id TEXT,method TEXT,rider_user_id TEXT,courier_name TEXT,tracking_reference TEXT,tracking_url TEXT);
+      CREATE TABLE order_items(id TEXT,order_id TEXT,seller_id TEXT,seller_name_snapshot TEXT,product_id TEXT,product_name_snapshot TEXT,quantity INTEGER,fulfillment_status TEXT,created_at INTEGER);
+      CREATE TABLE order_item_status_events(order_item_id TEXT,created_at INTEGER,to_status TEXT);
+      CREATE TABLE shipping_jobs(id TEXT,order_id TEXT,seller_id TEXT,direction TEXT,status TEXT,tracking_code TEXT);
+      CREATE TABLE shipping_parcels(shipping_job_id TEXT,method TEXT,rider_user_id TEXT,cod_due_paisa INTEGER,delivered_at INTEGER,courier_name TEXT,tracking_url TEXT);
       CREATE TABLE order_status_events(order_id TEXT,to_status TEXT,created_at INTEGER);
       CREATE TABLE first_cod_reviews(order_id TEXT PRIMARY KEY,customer_id TEXT,total_paisa INTEGER,status TEXT,
         created_at INTEGER,confirmed_by TEXT,confirmed_at INTEGER,reason TEXT,request_id TEXT);
-      INSERT INTO orders VALUES ('private','HK-PRIVATE','placed','pending',1,NULL,1,'owner@example.test');
+      INSERT INTO orders VALUES ('private','HK-PRIVATE','placed','pending',1,NULL,1,'owner@example.test','cod',1);
       INSERT INTO shipments VALUES ('private','SECRET-TRACKING',2,5);`);
     const db = { prepare(sql: string) { return new Statement(sqlite.prepare(sql)); } } as unknown as D1Database;
     assert.equal(await findOrderTracking(db, 'HK-PRIVATE', 'stranger@example.test'), null);
     assert.equal((await findOrderTracking(db, 'HK-PRIVATE', 'owner@example.test'))?.trackingCode,
       'SECRET-TRACKING');
-    sqlite.exec("INSERT INTO delivery_assignments VALUES ('private','own_rider','private-rider')");
+    sqlite.exec("INSERT INTO delivery_assignments(order_id,method,rider_user_id) VALUES ('private','own_rider','private-rider')");
     assert.equal((await findOrderTracking(db, 'HK-PRIVATE', 'owner@example.test'))?.trackingCode, null);
     assert.equal(await findOrderTracking(db, 'HK-PRIVATE', 'stranger@example.test'), null);
   } finally { sqlite.close(); }

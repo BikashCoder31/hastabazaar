@@ -33,7 +33,7 @@ registerHooks({
     if (specifier === '@/lib/auth/customer') return { url: `data:text/javascript,
       export class CustomerAuthorizationError extends Error { constructor(message,status){super(message);this.status=status} }
       export async function requireCustomerApi(){const a=globalThis.accountCatalogActor;if(!a)throw new CustomerAuthorizationError('Authentication is required.',401);return a}
-      export async function requireCustomerPage(){const a=globalThis.accountCatalogActor;if(!a)throw new CustomerAuthorizationError('Authentication is required.',401);return {...a,email:'customer@example.test',displayName:'Asha Rai',phone:null,locale:'en-NP'}}`, shortCircuit: true };
+      export async function requireCustomerPage(){const a=globalThis.accountCatalogActor;if(!a)throw new CustomerAuthorizationError('Authentication is required.',401);return {...a,authSubject:a.userId,email:'customer@example.test',displayName:'Asha Rai',phone:null,locale:'en-NP'}}`, shortCircuit: true };
     if (specifier === '@/lib/http/rate-limit') return { url: `data:text/javascript,
       export async function consumePublicRequestRateLimit(){return {allowed:true}}
       export const consumeAuthenticatedPublicRateLimit=consumePublicRequestRateLimit;
@@ -122,7 +122,34 @@ async function fixture() {
     INSERT INTO orders VALUES ('order-1','HB-1001','customer','delivered','paid',10000,NULL,0,1,2,1),('order-other','HB-2002','other','delivered','paid',10000,NULL,0,1,2,1);
     INSERT INTO order_items VALUES ('item-1','order-1','product-1','delivered',1),('item-other','order-other','product-1','delivered',1);`);
   sqlite.exec("INSERT INTO products(id,name_en,slug) VALUES ('product-1','Handmade Item','handmade-item')");
-  sqlite.exec('ALTER TABLE order_items ADD COLUMN seller_id TEXT');
+  sqlite.exec(`
+    ALTER TABLE users ADD COLUMN auth_subject TEXT;
+    UPDATE users SET auth_subject=id;
+    ALTER TABLE orders ADD COLUMN payment_mode TEXT NOT NULL DEFAULT 'prepaid';
+    ALTER TABLE order_items ADD COLUMN seller_id TEXT;
+    ALTER TABLE order_items ADD COLUMN seller_name_snapshot TEXT NOT NULL DEFAULT 'Fictional store';
+    ALTER TABLE order_items ADD COLUMN product_name_snapshot TEXT NOT NULL DEFAULT 'Handmade Item';
+    ALTER TABLE order_items ADD COLUMN created_at INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE shipping_jobs ADD COLUMN order_id TEXT;
+    ALTER TABLE shipping_jobs ADD COLUMN direction TEXT;
+    ALTER TABLE shipping_jobs ADD COLUMN status TEXT;
+    ALTER TABLE shipping_jobs ADD COLUMN tracking_code TEXT;
+    CREATE TABLE manual_payment_cutoffs(order_id TEXT,deadline_at INTEGER,cutoff_at INTEGER,closed_at INTEGER,paid_at INTEGER,released_at INTEGER);
+    CREATE TABLE manual_payment_claims(order_id TEXT,current_state TEXT);
+    CREATE TABLE manual_payment_balances(order_id TEXT,payable_paisa INTEGER,received_paisa INTEGER);
+    CREATE TABLE manual_payment_exceptions(order_id TEXT,kind TEXT,state TEXT);
+    CREATE TABLE order_response_portions(id TEXT,order_id TEXT,seller_id TEXT);
+    CREATE TABLE order_response_cases(id TEXT,portion_id TEXT,kind TEXT,state TEXT,proposed_ready_at INTEGER,
+      created_at INTEGER,revision INTEGER,public_message TEXT,scope_json TEXT);
+    CREATE TABLE shipments(order_id TEXT,estimated_min_days INTEGER,estimated_max_days INTEGER,tracking_code TEXT);
+    CREATE TABLE delivery_assignments(order_id TEXT,method TEXT,rider_user_id TEXT,courier_name TEXT,tracking_reference TEXT,tracking_url TEXT);
+    CREATE TABLE shipping_parcels(shipping_job_id TEXT,method TEXT,rider_user_id TEXT,cod_due_paisa INTEGER,delivered_at INTEGER,courier_name TEXT,tracking_url TEXT);
+    CREATE TABLE product_media(id TEXT,product_id TEXT,sort_order INTEGER);
+    CREATE TABLE product_publication_heads(product_id TEXT,current_version_id TEXT);
+    CREATE TABLE product_publication_media(version_id TEXT,media_id TEXT,sort_order INTEGER);
+    CREATE TABLE order_item_status_events(order_item_id TEXT,to_status TEXT,created_at INTEGER);
+    CREATE TABLE order_item_offer_snapshots(order_item_id TEXT,snapshot_json TEXT);
+  `);
   const migration = await readFile(new URL('../drizzle/0056_form_catalog.sql', import.meta.url), 'utf8');
   for (const statement of migration.split('--> statement-breakpoint')) if (statement.trim()) sqlite.exec(statement);
   // Current native account receipts include the T30 form-health source columns. This fixture is :memory: only.
