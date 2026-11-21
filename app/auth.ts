@@ -115,8 +115,9 @@ export async function getAuthenticatedUser(
 
 export async function requireAuthenticatedUser(
   returnTo: string,
+  options: { readOnly?: boolean } = {},
 ): Promise<AuthenticatedUser> {
-  const user = await getAuthenticatedUser();
+  const user = await getAuthenticatedUser(options);
   if (user) return user;
   const requestHeaders = await headers();
   const safeReturnTo = safeRelativeReturnPath(returnTo);

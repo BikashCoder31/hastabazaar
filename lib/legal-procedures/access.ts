@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import { getLocalTestIdentity } from '@/lib/auth/local-test-access';
 import { hostedSessionHash, readHostedSession } from '@/lib/auth/hosted-session';
+import { requireStaffPage } from '@/lib/auth/staff';
 import { legacyStaffSetupAllowed,staffSessionIsVerified } from '@/lib/security/session';
 import {readSecurityInitialization,type SecurityPolicyBindings} from '@/lib/security/runtime-policy';
 import { requireDatabase } from '@/lib/db/d1';
@@ -54,19 +55,12 @@ export async function requireLegalProcedureReaderApi() {
 }
 
 export async function requireLegalProcedureReaderPage() {
-  try { return await requireLegalProcedureReaderApi(); }
-  catch (error) {
-    if (error instanceof LegalDraftAccessError)
-      redirect(error.status === 401 ? '/login?return_to=%2Fadmin%2Flegal-policies%2Factive' : '/staff-access-denied');
-    throw error;
-  }
+  const actor = await requireStaffPage('/admin/legal-policies/active', 'support.manage', { readOnly: true });
+  return { db: requireDatabase(env), actor };
 }
 
 export async function requireLegalDraftPage() {
-  try { return await requireLegalDraftApi(); }
-  catch (error) {
-    if (error instanceof LegalDraftAccessError)
-      redirect(error.status === 401 ? '/login?return_to=%2Fadmin%2Flegal-policies' : '/staff-access-denied');
-    throw error;
-  }
+  const actor = await requireStaffPage('/admin/legal-policies', 'legal_content.publish', { readOnly: true });
+  if (actor.role !== 'super_admin') redirect('/staff-access-denied');
+  return { db: requireDatabase(env), actor };
 }

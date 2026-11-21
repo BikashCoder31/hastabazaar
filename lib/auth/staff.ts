@@ -258,12 +258,13 @@ export async function getStaffUser(): Promise<StaffUser | null> {
 export async function requireStaffPage(
   returnTo: string,
   permission?: Permission | readonly Permission[],
+  options: { readOnly?: boolean } = {},
 ): Promise<StaffUser> {
-  const identity = await requireAuthenticatedUser(returnTo);
+  const identity = await requireAuthenticatedUser(returnTo, options);
   const database = databaseFromEnvironment();
   const staff =
     (await findStaffBySubject(database, identity.userId)) ??
-    (await acceptMatchingInvitation(database, identity));
+    (options.readOnly ? null : await acceptMatchingInvitation(database, identity));
 
   const allowed = permission === undefined ? [] : typeof permission === 'string' ? [permission] : permission;
   if (!staff || (permission !== undefined && !allowed.some(right => can(staff, right)))) {
@@ -271,7 +272,7 @@ export async function requireStaffPage(
   }
   // Invitation acceptance can promote an identity during this request. Run the
   // central assurance check again after that change before returning staff data.
-  await requireAuthenticatedUser(returnTo);
+  await requireAuthenticatedUser(returnTo, options);
   return staff;
 }
 
