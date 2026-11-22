@@ -176,9 +176,9 @@ try {
     for(const {n} of tables){const [rows]=await connection.query('SELECT * FROM `'+n+'` ORDER BY 1');before[n]={rows,columns:(await connection.query('SHOW COLUMNS FROM `'+n+'`'))[0].map(c=>c.Field)};}
     const preserved=async()=>{for(const [table,{rows,columns}]of Object.entries(before))assert.deepEqual((await connection.query('SELECT '+columns.map(c=>'`'+c+'`').join(',')+' FROM `'+table+'` ORDER BY 1'))[0],rows,table);};
     for(let repeat=0;repeat<2;repeat++)for(const step of upgrade.steps){await load('reviewed-staging-delta/'+step.name,step.sql);await preserved();}
-    // Later views and triggers depend on tables introduced by the historical upgrade.
+    // Later views need the upgraded tables. Apply the same maintained overlay as fresh bootstrap.
     await load('fixture-post-0074-bootstrap',laterSchema);
-    for(const migration of maintenance.slice(customerFeeIndex+1))await load(migration.path);
+    for(const migration of maintenance)await load(migration.path);
     assert.deepEqual(await inspectReadiness(adapter),{ready:true,missing:[]});
     assert.deepEqual((await connection.query('SELECT scheduled_revision,scheduled_for,scheduled_unpause,paused,current_revision,draft_revision,issued_points,redeemed_points,credited_paisa FROM loyalty_config'))[0][0],{scheduled_revision:null,scheduled_for:null,scheduled_unpause:0,paused:1,current_revision:1,draft_revision:2,issued_points:100,redeemed_points:100,credited_paisa:1000});
     for(const table of ['seller_participation_profiles','managed_commercial_snapshots'])assert.equal((await connection.query('SELECT COUNT(*) n FROM '+table+' WHERE accepted_managed_detail_id IS NOT NULL'))[0][0].n,0);
