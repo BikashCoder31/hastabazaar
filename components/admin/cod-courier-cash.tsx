@@ -274,6 +274,9 @@ function CourierCashView({ cash, actorId, superAdmin, incomingHref, returnTo, pa
 
   const picked = cash.parcels.filter(parcel => canSelect(parcel) && selection.has(parcel.id));
   const parcel = picked.find(row => row.id === allocationId) ?? picked[0];
+  const firstCourier = cash.parcels[0]?.courierName;
+  const onlyCourier = cash.parcels.every(row => row.courierName === firstCourier) ? firstCourier : null;
+  const statementCourier = parcel ? parcel.courierName : onlyCourier;
   const receipt = receipts.find(row => row.id === receiptId);
   const waitingForRefresh = recorded && (
     cash.parcels.some(row => row.id === recorded.input.jobId && String(row.version) === recorded.expectedRevision)
@@ -365,7 +368,9 @@ function CourierCashView({ cash, actorId, superAdmin, incomingHref, returnTo, pa
           <fieldset className="min-w-0 space-y-4" disabled={locked}>
             <AmountInput label="Amount received in our bank" value={bankAmount} onChange={setBankAmount} />
             <label className="block text-sm font-semibold">Courier’s statement or bank reference
-              <input value={reference} onChange={event => setReference(event.target.value)} maxLength={120} className={`${input} font-normal`} />
+              <input value={reference} onChange={event => setReference(event.target.value)} maxLength={120}
+                placeholder={statementCourier ? `${statementCourier} statement number` : 'Statement number or bank reference'}
+                className={`${input} font-normal`} />
             </label>
             <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-[7px] border-t pt-3 text-sm tabular-nums">
               <dt className="text-muted-foreground">Parcels ticked</dt><dd>{picked.length}</dd>

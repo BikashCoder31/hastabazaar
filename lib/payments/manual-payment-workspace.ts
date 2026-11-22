@@ -1,6 +1,7 @@
 import {staffMutationGuard,staffReadGuard} from '../db/repositories/staff-mutation-guard';
 import {ensureReviewTask,listReviewTasks} from '../workflows/review-tasks';
 import {checkoutCommitClock} from '../checkout/commit-policy-guards';
+import {deliveryPartnerSchemaAvailable} from '../delivery/partners';
 import {ManualPaymentError} from './manual-receipts';
 
 class FinanceAccessError extends ManualPaymentError{constructor(message:string){super(message,403);}}
@@ -114,6 +115,25 @@ type CourierCashDifference = {
   total: number;
 };
 
+async function readOutstandingCourierParcels(db: D1Database, actorId: string) {
+  const partnerName = await deliveryPartnerSchemaAvailable(db)
+    ? '(SELECT partner.name FROM delivery_partners partner WHERE partner.id=p.delivery_partner_id)'
+    : 'NULL';
+  const { results } = await db.prepare(`
+    SELECT j.id,j.order_id AS orderId,o.order_number AS orderNumber,p.version,
+      COALESCE(${partnerName},NULLIF(TRIM(p.courier_name),'')) AS courierName,
+      (SELECT s.trading_name FROM seller_profiles s WHERE s.id=j.seller_id) AS sellerName,
+      p.delivered_at AS deliveredAt,b.collected_paisa AS collectedPaisa,
+      b.approved_deductions_paisa AS approvedDeductionsPaisa,b.actual_cash_paisa AS actualCashPaisa,
+      b.remaining_paisa AS remainingPaisa,b.correction_held AS correctionHeld,
+      CASE WHEN o.customer_id=? OR EXISTS(SELECT 1 FROM seller_profiles s WHERE s.id=j.seller_id AND s.user_id=?)
+        THEN 1 ELSE 0 END AS personalInterest
+    ${deliveredCourierParcels} AND b.remaining_paisa>0
+    ORDER BY CASE WHEN p.delivered_at IS NULL THEN 1 ELSE 0 END,p.delivered_at,j.id LIMIT 100`)
+    .bind(actorId, actorId).all<CourierCashParcel>();
+  return results;
+}
+
 /** Read-only courier view. Historical own-rider and unrelated bank credits stay in the original workspace. */
 export async function readCourierCashWorkspace(db: D1Database, actorId: string) {
   const cashView = ['payment.receipt.verify', 'cod.view'] as const;
@@ -136,16 +156,6 @@ export async function readCourierCashWorkspace(db: D1Database, actorId: string) 
       (SELECT matchedBankPaisa FROM bank) AS matchedBankPaisa,
       (SELECT matchedBankReceipts FROM bank) AS matchedBankReceipts
     FROM courier_parcels`);
-  const parcelsStatement = db.prepare(`
-    SELECT j.id,j.order_id AS orderId,o.order_number AS orderNumber,p.version,
-      p.courier_name AS courierName,(SELECT s.trading_name FROM seller_profiles s WHERE s.id=j.seller_id) AS sellerName,
-      p.delivered_at AS deliveredAt,b.collected_paisa AS collectedPaisa,
-      b.approved_deductions_paisa AS approvedDeductionsPaisa,b.actual_cash_paisa AS actualCashPaisa,
-      b.remaining_paisa AS remainingPaisa,b.correction_held AS correctionHeld,
-      CASE WHEN o.customer_id=? OR EXISTS(SELECT 1 FROM seller_profiles s WHERE s.id=j.seller_id AND s.user_id=?)
-        THEN 1 ELSE 0 END AS personalInterest
-    ${deliveredCourierParcels} AND b.remaining_paisa>0
-    ORDER BY CASE WHEN p.delivered_at IS NULL THEN 1 ELSE 0 END,p.delivered_at,j.id LIMIT 100`).bind(actorId, actorId);
   const differencesStatement = db.prepare(`
     WITH courier_parcels AS (SELECT j.id,o.id AS orderId,b.remaining_paisa ${deliveredCourierParcels})
     SELECT e.id,e.kind,e.created_at AS createdAt,o.order_number AS orderNumber,
@@ -165,7 +175,7 @@ export async function readCourierCashWorkspace(db: D1Database, actorId: string) 
   const [clock, totals, parcels, differences, allReceipts, receiptConflicts] = await Promise.all([
     nowStatement.first<{ now: number }>(),
     totalsStatement.first<CourierCashTotals>(),
-    parcelsStatement.all<CourierCashParcel>(),
+    readOutstandingCourierParcels(db, actorId),
     differencesStatement.all<CourierCashDifference>(),
     authority.role === 'super_admin' ? readManualWorkspaceReceipts(db) : [],
     authority.role === 'super_admin' ? db.prepare(
@@ -175,7 +185,7 @@ export async function readCourierCashWorkspace(db: D1Database, actorId: string) 
   if (!clock || !totals) throw new Error('The courier cash balances could not be read.');
 
   // Look up costs for the parcels displayed here so the preview includes their original costs.
-  const parcelIds = parcels.results.map(parcel => parcel.id);
+  const parcelIds = parcels.map(parcel => parcel.id);
   const costs = parcelIds.length ? (await db.prepare(`
     SELECT c.id,c.shipping_job_id AS jobId,c.evidence_reference AS evidenceReference,
       c.amount_paisa-COALESCE((SELECT SUM(d.amount_paisa) FROM cod_approved_deductions d WHERE d.courier_cost_id=c.id),0) AS remainingPaisa
@@ -191,7 +201,7 @@ export async function readCourierCashWorkspace(db: D1Database, actorId: string) 
       && !r.reversalHold && r.unallocatedMinor > 0 && !blockedReceipts.has(r.id))
     .map(({ id, transactionIdentity, bankAt, amountMinor, unallocatedMinor, revision }) =>
       ({ id, transactionIdentity, bankAt, amountMinor, unallocatedMinor, revision }));
-  return { now: Number(clock.now), totals, parcels: parcels.results, differences: differences.results, costs, receipts };
+  return { now: Number(clock.now), totals, parcels, differences: differences.results, costs, receipts };
 }
 
 export async function getManualPaymentWorkspace(db:D1Database,actorId:string,orderFilter:string|null=null,focus?:IncomingParcelFocus){

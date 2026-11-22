@@ -5,8 +5,8 @@ Started from `1838eea7` on `admin-redesign`. The checked preview passed its 107 
 | Task | Owner | Status | Commit | Checks |
 | --- | --- | --- | --- | --- |
 | C1 · Delivery partners | Main | Done | `e78708ee` | Typecheck, lint and 24 focused tests passed. Chrome at 390, 768, 1024 and 1440 px passed on the local preview and a disposable schema-ready fixture. Verified partner edits, role denial and audit. |
-| C2 · Book by hand from Dispatch | Main | Done | `Couriers: Book by hand from Dispatch with every detail` | Typecheck, lint and 14 focused tests passed. Chrome checks at 390, 768, 1024 and 1440 px verified the pre-upgrade Dispatch page and an Upaya booking in a disposable fixture. Copy, CSV and audit, seller pickup and customer tracking were verified. |
-| C3 · Courier cash per partner | Main | Pending | | Group the existing outstanding parcels and keep matching and reconciliation intact. |
+| C2 · Book by hand from Dispatch | Main | Done | `c966c515` | Typecheck, lint and 14 focused tests passed. Chrome checks at 390, 768, 1024 and 1440 px verified the pre-upgrade Dispatch page and an Upaya booking in a disposable fixture. Copy, CSV and audit, seller pickup and customer tracking were verified. |
+| C3 · Courier cash per partner | Courier cash helper | Done | `Couriers: Courier cash per partner` | Typecheck, lint and 12 focused tests passed. Chrome at all four widths passed on the local preview and a disposable multi-partner fixture. Verified grouping and the reference field with two Upaya parcels, Nepal Can Move and a legacy courier. |
 | C4 · Final check | Main | Pending | | Recheck the changed pages and exercise cash and prepaid courier bookings. |
 
 ## For the owner
