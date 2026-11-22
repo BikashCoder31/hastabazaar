@@ -68,6 +68,7 @@ export type DispatchParcel = Pick<
   ncmBooking?: {
     state: 'booking' | 'needs_review' | 'rejected' | 'booked';
     trackingNumber: string | null;
+    partnerId?: string;
   };
 };
 

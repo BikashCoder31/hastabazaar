@@ -66,7 +66,7 @@ export async function readCustomerOrderList(db: D1Database, viewer: { id: string
       ORDER BY o.created_at DESC,o.id DESC LIMIT ?`).bind(viewer.id, viewer.authSubject, limit).all<OrderRow>(),
     readCustomerDelayQuestions(db, viewer),
   ]);
-  const parcels = await readCustomerOrderParcels(db, rows.results.map(row => row.id));
+  const parcels = await readCustomerOrderParcels(db, rows.results.map(row => row.id), {withNcmProgress:true});
   const byOrder = new Map<string, CustomerDelayQuestion[]>();
   for (const question of questions) {
     const orderQuestions = byOrder.get(question.orderId) ?? [];

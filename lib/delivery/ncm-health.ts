@@ -4,7 +4,7 @@ import { ncmSchemaAvailable } from './ncm-settings';
 
 const hour = 60 * 60 * 1000;
 const ownedBookings = `FROM ncm_bookings b
-  JOIN shipping_jobs j ON j.id=b.job_id AND j.direction='outbound' AND j.tracking_code=b.ncm_order_id
+  JOIN shipping_jobs j ON j.id=b.job_id AND j.direction='outbound' AND HEX(j.tracking_code)=HEX(b.ncm_order_id)
   JOIN shipping_parcels p ON p.shipping_job_id=j.id AND p.delivery_partner_id=b.partner_id
     AND p.method='courier' AND p.rider_user_id IS NULL`;
 

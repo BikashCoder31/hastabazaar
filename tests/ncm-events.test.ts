@@ -217,7 +217,7 @@ void test('untested bindings and exhausted view budgets never make external requ
   });
 });
 
-void test('bounded scheduled checks prioritize the open parcels that waited longest', async () => {
+void test('scheduled checks cover every open parcel within budget and withhold a heartbeat if deferred', async () => {
   await withFixture(async ({ sqlite, runtime, calls, statuses }) => {
     const job = sqlite.prepare("INSERT INTO shipping_jobs VALUES (?,'dispatched','outbound',?)");
     const parcel = sqlite.prepare("INSERT INTO shipping_parcels(shipping_job_id,delivery_partner_id,method) VALUES (?,'ncm','courier')");
@@ -234,14 +234,37 @@ void test('bounded scheduled checks prioritize the open parcels that waited long
     const deps = {clock: () => firstTick, applyProgress: async () => {} };
     const first = await runNcmUpdateCheck(runtime.DB, runtime, deps);
     assert.equal(first.ok, true);
-    assert.equal(first.deferred, true);
-    const firstIds = new Set(calls.flat());
-    assert.equal(firstIds.size, 120);
-    const firstCalls = calls.length;
-    const next = await runNcmUpdateCheck(runtime.DB, runtime, {...deps, clock: () => firstTick + 15 * 60_000});
-    assert.equal(next.ok, true);
-    assert.ok([747, ...orderIds].filter(id => !firstIds.has(id)).every(id => calls[firstCalls].includes(id)));
+    assert.equal(first.deferred, false);
+    assert.deepEqual(new Set(calls.flat()), new Set([747,...orderIds]));
     assert.ok(calls.every(ids => ids.length <= 40));
+    sqlite.prepare("UPDATE ncm_api_daily_usage SET used=? WHERE bucket='view'").run(ncmDailyLimit.view - 2);
+    const next = await runNcmUpdateCheck(runtime.DB, runtime, {...deps, clock: () => firstTick + 15 * 60_000});
+    assert.equal(next.ok, false);
+    assert.equal(next.deferred, true);
+    assert.equal(sqlite.prepare('SELECT last_check_at FROM ncm_partner_settings').get()?.last_check_at,firstTick);
+    assert.equal(calls.at(-1)?.length,2);
+  });
+});
+
+void test('a return receipt retains the charge while NCM bulk status catches up', async () => {
+  await withFixture(async ({ sqlite, runtime, statuses }) => {
+    const deferred: (() => Promise<unknown>)[] = [];
+    const applied: {status: string; payload?: Record<string,unknown>}[] = [];
+    let now = firstTick;
+    const deps = {clock:()=>now,applyProgress:async (_db:D1Database,input:{status:string;webhookEvent?:{payload:Record<string,unknown>}})=>{
+      applied.push({status:input.status,payload:input.webhookEvent?.payload});
+    }};
+    statuses.set(747,'Send to Vendor');
+    await receiveNcmWebhook(post({event:'rtv_delivery',order_ids:[747],orders:[{order_id:747,delivery_charge:120}],
+      timestamp:eventTime}),'delivery',runtime,task=>deferred.push(task),deps);
+    await deferred[0]();
+    assert.deepEqual(applied.map(({status,payload}) => [status,payload]),[['Send to Vendor',undefined]]);
+    assert.equal(sqlite.prepare('SELECT processed_at FROM ncm_webhook_events').get()?.processed_at,null);
+    now += 15 * 60_000;
+    statuses.set(747,'RTV Delivered');
+    await runNcmUpdateCheck(runtime.DB,runtime,deps);
+    assert.deepEqual(applied.find(entry=>entry.payload)?.payload?.orders,[{order_id:747,delivery_charge:120}]);
+    assert.equal(sqlite.prepare('SELECT processed_at FROM ncm_webhook_events').get()?.processed_at,now);
   });
 });
 
@@ -268,14 +291,16 @@ void test('nested return and refund records identify ours without following new 
         applied.push(input.webhookEvent?.event + ':' + input.booking.ncmOrderId);
       },
     });
-    statuses.set(747, 'Returning');
+    statuses.set(747, 'RTV Delivered');
     statuses.set(748, 'Delivered');
     assert.equal((await receive({event: 'rtv_delivery', orders: [{order_id: 747, delivery_charge: '120'}], timestamp: eventTime})).status, 200);
     assert.equal((await receive({event: 'refund_initiated', customer_order: {order_id: 747}, refund_order: {order_id: 748},
       timestamp: eventTime})).status, 200);
     assert.equal((await receive({event: 'exchange_initiated', customer_order: {order_id: 404}, exchange_order: {order_id: 748},
       timestamp: eventTime})).status, 200);
-    for (const task of deferred) await task();
+    await deferred[0]();
+    statuses.set(747,'Refund Initiated');
+    for (const task of deferred.slice(1)) await task();
     assert.deepEqual(calls, [[747], [747]]);
     assert.deepEqual(applied, ['rtv_delivery:747', 'refund_initiated:747']);
   });

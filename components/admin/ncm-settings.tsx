@@ -54,7 +54,7 @@ function PickupBranchForm({ pickup, assignedBranches, disabled, feedback, onSave
     }
   }
 
-  return <form onSubmit={submit} className="min-w-0 space-y-3 rounded-lg border border-[#E2D6C2] p-3 sm:p-4">
+  return <form data-form-id="system.ncm-pickup-branch" onSubmit={submit} className="min-w-0 space-y-3 rounded-lg border border-[#E2D6C2] p-3 sm:p-4">
     <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-end">
       <div className="min-w-0 space-y-1">
         <p className="wrap-anywhere text-sm font-semibold">{pickup.sellerName}</p>
@@ -153,7 +153,7 @@ export function NcmSettings({ view, actorId, partnerBusy }: {
         </div>
         <ActionFeedback value={feedback?.request.action === 'test' || feedback?.request.action === 'refresh' ? feedback : null} />
       </div>
-      <form onSubmit={saveDefaults} key={`${view.deliveryType}:${view.packageName}`} className="min-w-0 space-y-3">
+      <form data-form-id="system.ncm-booking-defaults" onSubmit={saveDefaults} key={`${view.deliveryType}:${view.packageName}`} className="min-w-0 space-y-3">
         <h3 className="font-semibold">Booking defaults</h3>
         <fieldset disabled={busy || !connected} className="grid min-w-0 justify-items-start gap-3">
           <label className="grid w-full min-w-0 gap-1 text-sm font-semibold">Default delivery type

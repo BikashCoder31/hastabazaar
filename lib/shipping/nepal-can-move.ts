@@ -112,6 +112,20 @@ async function json(response: Response): Promise<unknown> {
   }
 }
 
+function containsToken(payload: unknown, token: string) {
+  const pending = [payload];
+  while (pending.length) {
+    const value = pending.pop();
+    if (typeof value === 'string' && value.includes(token)) return true;
+    if (!value || typeof value !== 'object') continue;
+    for (const [key, entry] of Object.entries(value)) {
+      if (key.includes(token)) return true;
+      pending.push(entry);
+    }
+  }
+  return false;
+}
+
 function requireId(value: unknown) {
   const id = ncmOrderId(value);
   if (!id) throw new NcmApiError('rejected', 'Enter a valid NCM order number.');
@@ -145,7 +159,11 @@ export function createNcmClient(configuration: NcmApiConfiguration, fetchImpl: t
       await response.body?.cancel().catch(() => {});
       throw new NcmApiError('uncertain', 'NCM did not confirm the request.');
     }
-    try { return await json(response); } catch {
+    try {
+      const payload = await json(response);
+      if (containsToken(payload,token)) throw new Error('Unexpected NCM response.');
+      return payload;
+    } catch {
       throw new NcmApiError('uncertain', 'NCM returned an unreadable response.');
     }
   }

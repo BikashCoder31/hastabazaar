@@ -56,7 +56,7 @@ export async function readAccountOverview(db: D1Database, customer: CustomerUser
     getRewards(db, customer.userId, now, undefined, 1, customer.authSubject),
     readAccountYourTurn(db, customer),
   ]);
-  const parcels = await readCustomerOrderParcels(db, orders.results.map(order => order.id));
+  const parcels = await readCustomerOrderParcels(db, orders.results.map(order => order.id), {withNcmProgress:true});
   const questionSellers = new Map<string, Set<string>>();
   for (const question of questions) {
     const sellers = questionSellers.get(question.orderId) ?? new Set<string>();

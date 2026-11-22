@@ -1,5 +1,6 @@
 import { readUnbookedSellerParcelCash } from '@/lib/operations/parcels';
 import type { NepalAddress } from '@/lib/shipping/provider';
+import { ncmSchemaAvailable } from '@/lib/delivery/ncm-settings';
 import type { CourierParcelDetails, CourierParcelSelection } from './courier-details';
 import { readDispatchParcels } from './read-dispatch';
 
@@ -37,15 +38,24 @@ type ContactRow = {
 
 export async function readCourierBookingDetails(
   db: D1Database, selections: readonly CourierParcelSelection[],
+  options: { allowPrepared?: boolean } = {},
 ): Promise<CourierParcelDetails[]> {
   const current = new Map((await readDispatchParcels(db)).map(row => [row.key, row]));
   const parcels = selections.map(selection => {
     const row = current.get(`${selection.orderId}:${selection.sellerId}`);
-    if (!row || row.orderId !== selection.orderId || row.sellerId !== selection.sellerId ||
-      row.lane !== 'ready' || row.version !== selection.version ||
-      (row.version !== null && row.jobId !== selection.jobId)) throw new CourierSelectionChanged();
+    const prepared = options.allowPrepared && selection.version === null &&
+      (row?.version === null || row?.version === 0) && (selection.jobId === null || selection.jobId === row?.jobId);
+    if (!row || row.orderId !== selection.orderId || row.sellerId !== selection.sellerId || row.lane !== 'ready' ||
+      (!prepared && (row.version !== selection.version ||
+        (row.version !== null && row.jobId !== selection.jobId)))) throw new CourierSelectionChanged();
     return row;
   });
+  if (!options.allowPrepared && parcels.some(parcel => parcel.jobId) && await ncmSchemaAvailable(db)) {
+    for (const {jobId} of parcels) {
+      if (jobId && await db.prepare("SELECT 1 FROM ncm_bookings WHERE job_id=? AND state IN ('booking','needs_review','booked')")
+        .bind(jobId).first()) throw new CourierSelectionChanged();
+    }
+  }
   const computedCash = new Map<string, Awaited<ReturnType<typeof readUnbookedSellerParcelCash>>>();
   const details: CourierParcelDetails[] = [];
   for (const parcel of parcels) {

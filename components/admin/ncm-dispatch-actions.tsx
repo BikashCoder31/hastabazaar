@@ -632,6 +632,7 @@ export function NcmDispatchParcelActions({
   parcel,
   actorId,
   partnerId,
+  apiAvailable = true,
   disabled,
   uncertain,
   onBusy,
@@ -641,6 +642,7 @@ export function NcmDispatchParcelActions({
   parcel: DispatchParcel;
   actorId: string;
   partnerId: string | null;
+  apiAvailable?: boolean;
   disabled: boolean;
   uncertain: boolean;
   onBusy: (busy: boolean) => void;
@@ -667,8 +669,11 @@ export function NcmDispatchParcelActions({
     parcel.state !== 'returned' &&
     parcel.state !== 'return_to_origin';
   const availableActions: CardAction[] = review
-    ? ['found', 'retry']
-    : canReturn
+    ? booking?.state === 'booking' ? [] : [
+      ...(apiAvailable ? ['found' as const] : []),
+      ...(booking?.trackingNumber ? [] : ['retry' as const]),
+    ]
+    : !apiAvailable ? [] : canReturn
       ? ['note', 'return']
       : ['note'];
   if (!review && !booked) return null;
@@ -681,7 +686,7 @@ export function NcmDispatchParcelActions({
 
   async function submit(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (disabled || running.current || !partnerId || !action) return;
+    if (disabled || running.current || !partnerId || !action || !availableActions.includes(action)) return;
     const form = event.currentTarget;
     const data = new FormData(form);
     const body: Record<string, unknown> = payloadFor(action, parcel, partnerId);
@@ -727,7 +732,7 @@ export function NcmDispatchParcelActions({
       if (response.ok && reply?.ok === true) {
         const success = {
           found: `NCM booking recorded${reply.trackingNumber ? ` · ${reply.trackingNumber}` : ''}.`,
-          retry: 'You can now review this parcel and book it with NCM.',
+          retry: 'You can now review and book this parcel.',
           note: 'Note sent to NCM.',
           return: 'Return requested from NCM.',
         };
@@ -772,6 +777,7 @@ export function NcmDispatchParcelActions({
           NCM order number · {booking?.trackingNumber ?? parcel.trackingNumber}
         </p>
       )}
+      {review && !apiAvailable ? <p>Check the parcel on NCM. Reconnect API booking to verify an NCM order number.</p> : null}
       <div className="flex min-w-0 flex-wrap gap-2">
         {booked && parcel.jobId && partnerId ? (
           <a
@@ -799,7 +805,7 @@ export function NcmDispatchParcelActions({
       {action && partnerId ? (
         <form
           className="space-y-2"
-          data-form-id={action === 'found' ? formId : undefined}
+          data-form-id={action === 'found' ? formId : 'system.ncm-parcel-action'}
           onSubmit={(event) => void submit(event)}
         >
           {action === 'found' ? (

@@ -67,7 +67,7 @@ export function OverviewHealth({ checks: initial, returnTo = '/admin' }: {
   return <section className="today-panel today-side-panel" aria-labelledby="today-system-heading">
     <div className="today-side-heading">
       <h2 id="today-system-heading">System checks</h2>
-      <button type="button" className="today-button" disabled={!context || context.refreshing}
+      <button type="button" className="today-button min-h-11!" disabled={!context || context.refreshing}
         onClick={() => void context?.refresh()}>{context?.refreshing ? 'Refreshing…' : 'Refresh checks'}</button>
     </div>
     {context?.error ? <output>{context.error}</output> : null}

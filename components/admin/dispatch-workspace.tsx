@@ -144,7 +144,8 @@ export function DispatchWorkspace({
             <NcmDispatchParcelActions
               parcel={parcel}
               actorId={actorId}
-              partnerId={ncm?.partnerId ?? null}
+              partnerId={parcel.ncmBooking?.partnerId ?? ncm?.partnerId ?? null}
+              apiAvailable={Boolean(ncm)}
               disabled={busy || refreshing}
               uncertain={uncertain.has(parcel.key) && parcel.ncmBooking?.state !== 'booked'}
               onBusy={setBusy}

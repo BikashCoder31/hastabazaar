@@ -3,8 +3,8 @@ import { readCourierBookingDetails } from '@/app/admin/orders/dispatch/read-cour
 import type { CourierParcelSelection } from '@/app/admin/orders/dispatch/courier-details';
 import { staffMutationGuard } from '../db/repositories/staff-mutation-guard';
 import { operateParcel, prepareSellerParcels, type ParcelOperation } from '../operations/parcels';
-import { NcmApiError, ncmOrderId, type NcmOrderInput } from '../shipping/nepal-can-move';
-import { activeNcmConnection, ncmTransactionGuard, suggestNcmBranch } from './ncm-settings';
+import { NcmApiError, ncmOrderId, ncmRupeesToPaisa, type NcmOrderInput } from '../shipping/nepal-can-move';
+import { activeNcmConnection, ncmSchemaAvailable, ncmTransactionGuard, suggestNcmBranch } from './ncm-settings';
 import { ncmDailyLimit, ncmUsageStatements, ncmUsedToday, reserveNcmUsage } from './ncm-usage';
 
 const ncmBookingTimeoutMs = 30_000;
@@ -94,7 +94,7 @@ async function settingsStillActive(db: D1Database, context: Context) {
 
 async function reviewParcel(db: D1Database, context: Context, selection: CourierParcelSelection, branch?: string, priorReference?: string) {
   const [[details], options] = await Promise.all([
-    readCourierBookingDetails(db, [selection]),
+    readCourierBookingDetails(db, [selection], {allowPrepared:true}),
     db.prepare(`SELECT o.shipping_address_json AS addressJson,o.delivery_rate_snapshot_json AS deliveryJson,
        a.id AS pickupId,a.updated_at AS pickupUpdatedAt,m.branch AS pickupBranch,
        (SELECT COUNT(DISTINCT i.seller_id) FROM order_items i WHERE i.order_id=o.id AND i.fulfillment_status<>'cancelled') AS parcelCount
@@ -166,7 +166,10 @@ function existingBookingError(booking: NcmBookingRow, now: number) {
 
 async function resolvePrepared(db: D1Database, selection: CourierParcelSelection, actorId: string, requestId: string, now: number) {
   const [current] = await readDispatchParcels(db, selection);
-  if (!current || current.lane !== 'ready' || current.jobId !== selection.jobId || current.version !== selection.version)
+  const initialized = selection.version === null && (current?.version === null || current?.version === 0) &&
+    (selection.jobId === null || selection.jobId === current?.jobId);
+  if (!current || current.lane !== 'ready' || (!initialized &&
+    (current.jobId !== selection.jobId || current.version !== selection.version)))
     throw new NcmBookingError('The parcel changed. Refresh Dispatch and check it again.');
   if (current.jobId && current.version !== null) return {jobId:current.jobId, version:Number(current.version)};
   // The parcel may have a job without an initialized cash record on a legacy order.
@@ -288,13 +291,13 @@ export async function bookWithNcm(db: D1Database, runtime: unknown, actorId: str
 }
 
 export async function ncmDispatchState(db: D1Database, now: number, jobIds: (string | null)[]) {
-  const byJob = new Map<string,{state:BookingState; trackingNumber:string|null}>();
+  const byJob = new Map<string,{state:BookingState; trackingNumber:string|null; partnerId:string}>();
   const ids = [...new Set(jobIds.filter((id): id is string => id !== null))];
   for (let i = 0; i < ids.length; i += 80) {
     const group = ids.slice(i,i+80);
     const {results} = await db.prepare(bookingSelect + ` WHERE b.job_id IN (${group.map(() => '?').join(',')})`)
       .bind(...group).all<NcmBookingRow>();
-    for (const row of results) byJob.set(row.jobId, {state:ncmVisibleBookingState(row,now),trackingNumber:row.ncmOrderId});
+    for (const row of results) byJob.set(row.jobId, {state:ncmVisibleBookingState(row,now),trackingNumber:row.ncmOrderId,partnerId:row.partnerId});
   }
   return {byJob, usedToday:await ncmUsedToday(db, 'create', now), limit:ncmDailyLimit.create};
 }
@@ -303,13 +306,14 @@ export async function recoverNcmBooking(db: D1Database, runtime: unknown, actorI
   selection:CourierParcelSelection; partnerId:string; requestId:string; trackingNumber?:string;
   form?:NonNullable<ParcelOperation['form']>;
 }, now = Date.now()) {
-  const context = await getContext(db, runtime, input.partnerId);
   const authority = await staffMutationGuard(db, actorId, 'order.manage', NcmBookingError);
+  if (!await ncmSchemaAvailable(db)) throw new NcmBookingError('NCM recovery is available after the database update.');
   const prior = await ncmBookingForParcel(db, input.selection.orderId, input.selection.sellerId);
   if (!prior || prior.jobId !== input.selection.jobId || prior.partnerId !== input.partnerId ||
     ncmVisibleBookingState(prior, now) !== 'needs_review')
     throw new NcmBookingError('There is no NCM booking awaiting review for this parcel.');
   if (input.trackingNumber !== undefined) {
+    const context = await getContext(db, runtime, input.partnerId);
     const tracking = ncmOrderId(input.trackingNumber);
     if (!tracking || (prior.ncmOrderId && prior.ncmOrderId !== tracking) || !input.form || input.selection.version === null)
       throw new NcmBookingError('Enter the NCM order number for this parcel.', 400);
@@ -320,6 +324,21 @@ export async function recoverNcmBooking(db: D1Database, runtime: unknown, actorI
     if (ncmOrderId(label.orderid) !== tracking || !desc || typeof desc !== 'object' ||
       !('vendor_orderid' in desc) || desc.vendor_orderid !== prior.vendorReference)
       throw new NcmBookingError('The NCM order does not match this parcel’s vendor reference.', 409, 'needs_review');
+    await db.batch([
+      ...authority.statements,
+      ...ncmTransactionGuard(db, `EXISTS(SELECT 1 FROM ncm_bookings WHERE job_id=? AND request_id=?
+        AND state IN ('booking','needs_review') AND (ncm_order_id IS NULL OR ncm_order_id=?))`,prior.jobId,prior.requestId,tracking),
+      db.prepare("UPDATE ncm_bookings SET ncm_order_id=?,state='needs_review',updated_at=? WHERE job_id=? AND request_id=?")
+        .bind(tracking,now,prior.jobId,prior.requestId),
+    ]);
+    const expected = await db.prepare(`SELECT CASE WHEN o.payment_mode='cod' THEN p.cod_due_paisa ELSE 0 END AS cod
+      FROM shipping_parcels p JOIN shipping_jobs j ON j.id=p.shipping_job_id JOIN orders o ON o.id=j.order_id
+      WHERE p.shipping_job_id=? AND p.version=?`).bind(prior.jobId,input.selection.version).first<{cod:number}>();
+    if (!expected || !await reserveNcmUsage(db,'view',1,now) || !await settingsStillActive(db,context))
+      throw new NcmBookingError('The NCM order was found, but the current cash amount could not be verified.',409,'needs_review');
+    const details = await context.client.orderDetails(tracking);
+    if (ncmRupeesToPaisa(details.cod_charge) !== Number(expected.cod))
+      throw new NcmBookingError('The NCM order was found with a different cash amount. Contact NCM before booking it again.',409,'needs_review');
     return finalizeNcmBooking(db, context, {jobId:prior.jobId, version:input.selection.version, actorId,
       requestId:prior.requestId, operationId:input.requestId, trackingNumber:tracking, vendorReference:prior.vendorReference,
       form:input.form, now:Date.now()});

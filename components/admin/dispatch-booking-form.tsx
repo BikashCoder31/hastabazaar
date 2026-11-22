@@ -132,13 +132,14 @@ export function DispatchBookingForm({
   );
   const reviewOpen = Boolean(ncmSettings && reviewedSelection === selectionKey);
   const blocked = ncmBlocked ?? new Set<string>();
+  const handBlocked = !pickup && parcels.some(({key}) => blocked.has(key));
   const catalog = usePublishedFormConfig(formId, { actorId, enabled: !reviewOpen });
   const courierName = selectedPartner?.name ?? (selection === 'legacy' ? defaultCourier : otherCourier.trim());
   const cashCompatible = selectedPartner?.collectsCod !== false || parcels.every(parcel => parcel.codDuePaisa === 0);
   const bookingPlaceholder = courierName ? `${courierName} booking number` : 'Courier booking number';
   const trackingCode = reference.trim();
   const ready = Boolean(
-    pickup || (window && courierName.length >= 2 && trackingCode.length >= 2 && cashCompatible),
+    pickup || (!handBlocked && window && courierName.length >= 2 && trackingCode.length >= 2 && cashCompatible),
   );
   const sellers = [...new Set(parcels.map((parcel) => parcel.sellerName))].join(
     ', ',
@@ -302,7 +303,7 @@ export function DispatchBookingForm({
               {partners?.map(partner => <option key={partner.id} value={`partner:${partner.id}`}>{partner.name}</option>)}
               <option value="other">Other courier company</option>
             </select>
-            {!reviewOpen ? <p className="text-[13px] font-normal text-[#675B4E]">{courierName
+            {!reviewOpen && !handBlocked ? <p className="text-[13px] font-normal text-[#675B4E]">{courierName
               ? `Book with ${courierName}, then enter its booking number here.`
               : 'Enter the name of the courier you booked.'}</p> : null}
           </div>
@@ -313,14 +314,14 @@ export function DispatchBookingForm({
                 <button type="button" className={dispatchChip} aria-pressed={reviewOpen} disabled={disabled || parcels.every(({ key }) => blocked.has(key))} onClick={() => setReviewedSelection(selectionKey)}>
                   Book with NCM
                 </button>
-                <button type="button" className={dispatchChip} aria-pressed={!reviewOpen} disabled={disabled} onClick={() => setReviewedSelection(null)}>
+                <button type="button" className={dispatchChip} aria-pressed={!reviewOpen} disabled={disabled || handBlocked} onClick={() => setReviewedSelection(null)}>
                   Book by hand
                 </button>
               </fieldset>
               <p className="text-[#46536F]">{ncmSettings.usedToday.toLocaleString('en-IN')} of {ncmSettings.limit.toLocaleString('en-IN')} NCM bookings used today</p>
-              {parcels.some(({ key }) => blocked.has(key)) ? <p className="text-[#A8232E]">Check NCM before retrying the parcels flagged in the list.</p> : null}
             </>
           ) : null}
+          {handBlocked ? <p className="text-[#A8232E]">Check NCM before booking the flagged parcels again. Clear those selections to book other parcels by hand.</p> : null}
         </div>
       ) : null}
       {reviewOpen && ncmSettings ? (
@@ -337,7 +338,7 @@ export function DispatchBookingForm({
         />
       ) : null}
       <form
-        hidden={reviewOpen}
+        hidden={reviewOpen || handBlocked}
         data-form-id="staff.parcel-control"
         onSubmit={(event) => void submit(event)}
         className="space-y-4 text-sm [&>div:empty]:hidden"
@@ -513,7 +514,7 @@ export function DispatchBookingForm({
   return (
     <>
       {bookingForm}
-      {!pickup && !reviewOpen ? (
+      {!pickup && !reviewOpen && !handBlocked ? (
         <DispatchCourierDetails parcels={parcels} courierName={courierName} actorId={actorId} disabled={disabled} />
       ) : null}
     </>

@@ -3,9 +3,9 @@ import { requireDatabase } from '../db/d1';
 import { BodyTooLargeError } from '../http/bounded-body';
 import { readBoundedJsonObject } from '../http/form-json-body';
 import { ncmOrderId, type NcmApiClient } from '../shipping/nepal-can-move';
-import { applyConfirmedNcmProgress, recordNcmComment } from './ncm-progress';
+import { applyConfirmedNcmProgress, ncmConfirmedStage, recordNcmComment } from './ncm-progress';
 import { activeNcmConnection, ncmMariaDb, ncmSchemaAvailable } from './ncm-settings';
-import { reserveNcmUsage } from './ncm-usage';
+import { ncmDailyLimit, ncmUsedToday, reserveNcmUsage } from './ncm-usage';
 
 const quarterHourMs = 15 * 60_000;
 const claimLeaseMs = 5 * 60_000;
@@ -13,7 +13,7 @@ const workerBudgetMs = 48_000;
 const webhookBudgetMs = 32_000;
 const requestBudgetMs = 15_000;
 const bulkSize = 40;
-const orderWorkLimit = 120;
+const webhookWorkLimit = 120;
 const queueLimit = 20;
 
 const deliveryEvents = new Set([
@@ -21,6 +21,7 @@ const deliveryEvents = new Set([
   'returned_to_warehouse', 'delivery_completed', 'order_marked_rtv', 'send_to_vendor', 'rtv_delivery',
   'refund_initiated', 'exchange_initiated',
 ]);
+const receiptEvidenceEvents = new Set(['returned_to_warehouse','rtv_delivery','refund_initiated','exchange_initiated']);
 const activePartnerSql = "d.status='in_use' AND d.booking_mode='api' AND LOWER(TRIM(d.name))='nepal can move'";
 
 type WebhookKind = 'delivery' | 'comments';
@@ -170,7 +171,10 @@ async function confirmBatch(db: D1Database, bookings: Booking[], partnerId: stri
     const status = confirmed.get(booking.ncmOrderId);
     if (!status?.trim()) { complete = false; continue; }
     try {
-      await context.applyProgress(db, { booking, status, webhookEvent: receipt?.event, client, now: context.clock() });
+      const evidencePending = receipt && receiptEvidenceEvents.has(receipt.event.event) &&
+        ncmConfirmedStage(status) !== ncmConfirmedStage(receipt.event.event);
+      await context.applyProgress(db, { booking, status, webhookEvent: evidencePending ? undefined : receipt?.event, client, now: context.clock() });
+      if (evidencePending) { complete = false; continue; }
       receipt?.onConfirmed(booking.ncmOrderId);
     } catch { complete = false; }
   }
@@ -179,7 +183,7 @@ async function confirmBatch(db: D1Database, bookings: Booking[], partnerId: stri
 
 async function applyWebhook(db: D1Database, runtime: unknown, kind: WebhookKind, event: WebhookEvent,
   remaining: Set<string>, context: Worker, deadline: number) {
-  const lookupIds = [...remaining].slice(0, orderWorkLimit);
+  const lookupIds = [...remaining].slice(0, webhookWorkLimit);
   const bookings = await findWebhookBookings(db, lookupIds, deadline, context.clock);
   for (const id of lookupIds) remaining.delete(id);
   const byPartner = new Map<string, Booking[]>();
@@ -241,22 +245,24 @@ async function pollPartner(db: D1Database, runtime: unknown, partnerId: string, 
 
   let ok = false, checked = false, deferred = false;
   try {
+    const budget = Math.max(0, ncmDailyLimit.view - await ncmUsedToday(db,'view',now));
     const { results } = await db.prepare(`${ownedBookings(db)} AND b.partner_id=? AND ${openParcelSql}
-      ORDER BY b.updated_at,b.job_id LIMIT ?`).bind(partnerId, orderWorkLimit + 1).all<Booking>();
+      ORDER BY b.updated_at,b.job_id LIMIT ?`).bind(partnerId, budget + 1).all<Booking>();
     if (!results.length) return { ok: true, checked: false, deferred: false };
-    deferred = results.length > orderWorkLimit;
+    deferred = results.length > budget;
     const connection = await activeNcmConnection(db, partnerId, runtime);
     if (!connection) return { ok: !await partnerInApiMode(db, partnerId), checked, deferred };
 
     let complete = true;
-    for (let offset = 0; offset < Math.min(results.length, orderWorkLimit); offset += bulkSize) {
+    const count = Math.min(results.length,budget);
+    for (let offset = 0; offset < count; offset += bulkSize) {
       if (context.clock() > deadline - requestBudgetMs) return { ok: false, checked: false, deferred: true };
-      const rows = results.slice(offset, offset + bulkSize);
+      const rows = results.slice(offset, Math.min(count,offset + bulkSize));
       const batch = rows.filter(booking => ncmOrderId(booking.ncmOrderId));
       if (batch.length !== rows.length) complete = false;
       if (batch.length && !await confirmBatch(db, batch, partnerId, connection.client, context, deadline)) complete = false;
     }
-    ok = complete && await partnerInApiMode(db, partnerId);
+    ok = complete && !deferred && await partnerInApiMode(db, partnerId);
     checked = ok;
     return { ok, checked, deferred };
   } catch {

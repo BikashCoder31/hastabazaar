@@ -76,3 +76,13 @@ void test('a broken response or network timeout never retries a create', async (
     assert.equal(calls, 1);
   }
 });
+
+void test('successful provider responses cannot reflect credentials into client values', async () => {
+  const client = createNcmClient(config(), async () => Response.json(['KATHMANDU', 'Token fixture-only']));
+  await assert.rejects(() => client.assignedBranches(), (error: unknown) => {
+    assert.ok(error instanceof NcmApiError);
+    assert.equal(error.kind, 'uncertain');
+    assert.doesNotMatch(error.message, /fixture-only/);
+    return true;
+  });
+});

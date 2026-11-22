@@ -76,7 +76,7 @@ export async function readCustomerOrderParcels(db: D1Database, orderIds: readonl
     ? "CASE WHEN j.status='dispatched' AND ncm.last_status IN ('picked_up','in_transit','out_for_delivery') THEN ncm.last_status ELSE j.status END"
     : 'j.status';
   const ncmProgressJoin = hasNcmProgress ? `LEFT JOIN ncm_bookings ncm ON ncm.job_id=j.id AND ncm.state='booked'
-    AND ncm.ncm_order_id=j.tracking_code AND ncm.partner_id=p.delivery_partner_id AND p.method='courier' AND p.rider_user_id IS NULL` : '';
+    AND HEX(ncm.ncm_order_id)=HEX(j.tracking_code) AND ncm.partner_id=p.delivery_partner_id AND p.method='courier' AND p.rider_user_id IS NULL` : '';
   for (let offset = 0; offset < ids.length; offset += 40) {
     const chunk = ids.slice(offset, offset + 40), parameters = chunk.map(() => '?').join(',');
     const [orders, itemRows, parcels] = await Promise.all([

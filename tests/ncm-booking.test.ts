@@ -5,7 +5,9 @@ import { readDispatchParcels } from '../app/admin/orders/dispatch/read-dispatch'
 import { bookWithNcm, getNcmBookingDraft, ncmVendorReference, recoverNcmBooking } from '../lib/delivery/ncm-booking';
 import { getNcmLabel } from '../lib/delivery/ncm-booked-actions';
 import { applyConfirmedNcmProgress, completeNcmReview, recordNcmComment } from '../lib/delivery/ncm-progress';
+import { cancellationPreview } from '../lib/cancellation/repository';
 import { validateSellerFormSubmission } from '../lib/forms/submission';
+import { prepareSellerParcels } from '../lib/operations/parcels';
 import { readCourierCashWorkspace } from '../lib/payments/manual-payment-workspace';
 import { createNcmClient, ncmApiConfiguration, ncmConnectionFingerprint } from '../lib/shipping/nepal-can-move';
 import { listReviewTasks } from '../lib/workflows/review-tasks';
@@ -24,7 +26,7 @@ void test('one parcel uses its short order number and split parcels have stable 
   assert.equal(await ncmVendorReference({...one,singleParcel:false}), a);
 });
 
-async function fakeBooking(kind: 'ok'|'timeout'|'rejected') {
+async function fakeBooking(kind: 'ok'|'timeout'|'rejected'|'mode_off'|'mismatched'|'returned') {
   const f = await manualOrderFixture({method:'cod'});
   installFixtureTables(f.sqlite);
   installNcmFixtureTables(f.sqlite);
@@ -55,7 +57,8 @@ async function fakeBooking(kind: 'ok'|'timeout'|'rejected') {
     res.setHeader('Content-Type','application/json');
     if (req.url?.startsWith('/api/v1/shipping-rate?')) { res.end(JSON.stringify({charge:'110.25'})); return; }
     if (req.url === '/api/v1/order?id=747') {
-      res.end(JSON.stringify({cod_charge:f.order.grandTotalPaisa/100,delivery_charge:'110.25',last_delivery_status:'Delivered'}));
+      const codPaisa = f.order.grandTotalPaisa + (kind === 'mismatched' ? 100 : 0);
+      res.end(JSON.stringify({cod_charge:codPaisa/100,delivery_charge:'110.25',last_delivery_status:'Delivered'}));
       return;
     }
     if (req.url === '/api/v2/vendor/order/label/747') {
@@ -70,7 +73,7 @@ async function fakeBooking(kind: 'ok'|'timeout'|'rejected') {
       posted = JSON.parse(data) as Record<string,unknown>;
       savedBeforeRequest = f.sqlite.prepare('SELECT state FROM ncm_bookings').get()?.state;
       if (kind === 'rejected') { res.statusCode = 400; res.end(JSON.stringify({Error:{phone:'Review the phone.'}})); }
-      else if (kind === 'timeout') req.socket.destroy();
+      else if (kind !== 'ok' && kind !== 'returned') req.socket.destroy();
       else res.end(JSON.stringify({Message:'Order Successfully Created',orderid:747}));
     });
   });
@@ -96,12 +99,18 @@ async function fakeBooking(kind: 'ok'|'timeout'|'rejected') {
     const form = {requestId,versionId:validated.versionId,answers:validated.answers};
     const input = {selection,partnerId:'ncm',destinationBranch:'GODAWARI',reviewKey:draft.reviewKey,requestId,form};
     const book = () => bookWithNcm(f.db,runtime,'reviewer',input);
-    if (kind === 'ok') {
+    if (kind === 'ok' && before.version === null) {
+      // An earlier parcel in a batch can initialize the still-ready jobs.
+      await prepareSellerParcels(f.db,{orderId:f.orderId,actorId:'reviewer',requestId:'initialized-sibling',now:Date.now()});
+    }
+    if (kind === 'ok' || kind === 'returned') {
       assert.equal(await book(),'747');
       assert.equal(await book(),'747');
       const [after] = await readDispatchParcels(f.db,{orderId:f.orderId,sellerId});
       assert.equal(after.lane,'booked');
       assert.equal(after.trackingNumber,'747');
+      const preview = await cancellationPreview(f.db,{orderNumber:f.order.orderNumber,actorId:'reviewer'},[sellerId]);
+      assert.ok(preview.reviewRequired && preview.executionBlocked && preview.ncmBlocked);
       assert.equal((await getNcmLabel(f.db,runtime,after.jobId!)).description,'Fixture art');
       const jobId = after.jobId!;
       const booking = {jobId,actorId:'reviewer',partnerId:'ncm',ncmOrderId:'747'};
@@ -112,48 +121,66 @@ async function fakeBooking(kind: 'ok'|'timeout'|'rejected') {
       await update('future status','delivery_completed',{cod_charge:1,delivery_charge:1});
       assert.equal(f.sqlite.prepare('SELECT status FROM shipping_jobs WHERE id=?').get(jobId)?.status,after.state);
       await update('Pickup Complete');
-      await update('Dispatched');
-      await update('Sent for Delivery');
-      await update('Returned to Warehouse','returned_to_warehouse',{returnReason:'Customer could not be reached'});
-      const failed = f.sqlite.prepare('SELECT status,delivery_failure_reason AS reason FROM shipping_jobs WHERE id=?').get(jobId);
-      assert.deepEqual({...failed},{status:'delivery_failed',reason:'not_reached'});
-      await update('Sent for Delivery');
-      await update('Delivered','delivery_completed',{cod_charge:1,delivery_charge:1});
-      await update('Delivered');
-      assert.equal(f.sqlite.prepare('SELECT status FROM shipping_jobs WHERE id=?').get(jobId)?.status,'delivered');
-      assert.deepEqual({...f.sqlite.prepare('SELECT cod_reported_paisa AS cod,delivery_charge_paisa AS fee FROM ncm_bookings').get()},
-        {cod:f.order.grandTotalPaisa,fee:11_025});
-      assert.equal(f.sqlite.prepare('SELECT remitted_paisa AS value FROM shipping_parcels WHERE shipping_job_id=?').get(jobId)?.value,0);
-      const cash = await readCourierCashWorkspace(f.db,'reviewer');
-      assert.ok(cash.parcels.some(parcel => parcel.id === jobId && parcel.courierName === 'Nepal Can Move' && parcel.remainingPaisa === f.order.grandTotalPaisa));
-      const comment = (id:string,kind:string) => recordNcmComment(f.db,{
-        booking,eventId:'comment-fixture-'+id,payload:{comment_id:id,comment_type:kind,comment:'Fixture carrier comment'},now:Date.now(),
-      });
-      await comment('1','Info');
-      await comment('2','Action');
-      await comment('2','Action');
-      await update('Refund Initiated','refund_initiated',{refund_order:{order_id:748}});
-      await update('Refund Initiated');
-      await update('Exchange Initiated','exchange_initiated',{exchange_order:{order_id:749}});
-      assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM ncm_courier_notes').get()?.n,2);
-      assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM review_tasks WHERE source_type='ncm_action'").get()?.n,3);
-      const ncmTasks = await listReviewTasks(f.db,'reviewer',undefined,{sourceTypes:['ncm_action']});
-      assert.ok(ncmTasks.every(task=>task.status === 'awaiting_review' && task.orderId === f.orderId));
-      await completeNcmReview(f.db,'reviewer',ncmTasks[0].sourceId,'review-ncm-test');
-      assert.equal((await listReviewTasks(f.db,'reviewer',undefined,{sourceTypes:['ncm_action']}))
-        .filter(task=>task.status === 'completed').length,1);
-    } else if (kind === 'timeout') {
+      if (kind === 'returned') {
+        await update('Send to Vendor');
+        assert.equal(f.sqlite.prepare('SELECT status FROM shipping_jobs WHERE id=?').get(jobId)?.status,'returning');
+        await update('rtv_delivery','rtv_delivery',{orders:[{order_id:747,delivery_charge:'150.75'}]});
+        const returned = f.sqlite.prepare(`SELECT j.status,n.return_charge_paisa AS fee,p.collected_paisa AS collected,
+          p.remitted_paisa AS remitted FROM shipping_jobs j JOIN ncm_bookings n ON n.job_id=j.id
+          JOIN shipping_parcels p ON p.shipping_job_id=j.id WHERE j.id=?`).get(jobId);
+        assert.deepEqual({...returned},{status:'returned',fee:15_075,collected:0,remitted:0});
+      } else {
+        await update('Dispatched');
+        await update('Sent for Delivery');
+        await update('Returned to Warehouse','returned_to_warehouse',{returnReason:'Customer could not be reached'});
+        const failed = f.sqlite.prepare('SELECT status,delivery_failure_reason AS reason FROM shipping_jobs WHERE id=?').get(jobId);
+        assert.deepEqual({...failed},{status:'delivery_failed',reason:'not_reached'});
+        await update('Sent for Delivery');
+        await update('Delivered','delivery_completed',{cod_charge:1,delivery_charge:1});
+        await update('Delivered');
+        assert.equal(f.sqlite.prepare('SELECT status FROM shipping_jobs WHERE id=?').get(jobId)?.status,'delivered');
+        assert.deepEqual({...f.sqlite.prepare('SELECT cod_reported_paisa AS cod,delivery_charge_paisa AS fee FROM ncm_bookings').get()},
+          {cod:f.order.grandTotalPaisa,fee:11_025});
+        assert.equal(f.sqlite.prepare('SELECT remitted_paisa AS value FROM shipping_parcels WHERE shipping_job_id=?').get(jobId)?.value,0);
+        const cash = await readCourierCashWorkspace(f.db,'reviewer');
+        assert.ok(cash.parcels.some(parcel => parcel.id === jobId && parcel.courierName === 'Nepal Can Move' && parcel.remainingPaisa === f.order.grandTotalPaisa));
+        const comment = (id:string,kind:string) => recordNcmComment(f.db,{
+          booking,eventId:'comment-fixture-'+id,payload:{comment_id:id,comment_type:kind,comment:'Fixture carrier comment'},now:Date.now(),
+        });
+        await comment('1','Info');
+        await comment('2','Action');
+        await comment('2','Action');
+        await update('Refund Initiated','refund_initiated',{refund_order:{order_id:748}});
+        await update('Refund Initiated');
+        await update('Exchange Initiated','exchange_initiated',{exchange_order:{order_id:749}});
+        assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM ncm_courier_notes').get()?.n,2);
+        assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM review_tasks WHERE source_type='ncm_action'").get()?.n,3);
+        const ncmTasks = await listReviewTasks(f.db,'reviewer',undefined,{sourceTypes:['ncm_action']});
+        assert.ok(ncmTasks.every(task=>task.status === 'awaiting_review' && task.orderId === f.orderId));
+        await completeNcmReview(f.db,'reviewer',ncmTasks[0].sourceId,'review-ncm-test');
+        assert.equal((await listReviewTasks(f.db,'reviewer',undefined,{sourceTypes:['ncm_action']}))
+          .filter(task=>task.status === 'completed').length,1);
+      }
+    } else if (kind !== 'rejected') {
       await assert.rejects(book,{state:'needs_review'});
       await assert.rejects(book,{state:'needs_review'});
       await assert.rejects(() => bookWithNcm(f.db,runtime,'reviewer',{...input,requestId:'a-new-request'}),{state:'needs_review'});
       const [current] = await readDispatchParcels(f.db,{orderId:f.orderId,sellerId});
       assert.equal(current.trackingNumber,null);
       const operationId = 'staff-recovered';
-      const tracking = await recoverNcmBooking(f.db,runtime,'reviewer',{
-        selection:{...selection,jobId:current.jobId,version:current.version},partnerId:'ncm',requestId:operationId,
-        trackingNumber:'747',form:{...form,requestId:operationId},
-      });
-      assert.equal(tracking,'747');
+      const target = {selection:{...selection,jobId:current.jobId,version:current.version},partnerId:'ncm',requestId:operationId};
+      const found = () => recoverNcmBooking(f.db,runtime,'reviewer',{...target,trackingNumber:'747',form:{...form,requestId:operationId}});
+      if (kind === 'mode_off') {
+        f.sqlite.prepare("UPDATE delivery_partners SET booking_mode='manual' WHERE id='ncm'").run();
+        assert.equal(await recoverNcmBooking(f.db,runtime,'reviewer',target),null);
+        assert.equal(f.sqlite.prepare('SELECT state FROM ncm_bookings').get()?.state,'rejected');
+      } else if (kind === 'mismatched') {
+        await assert.rejects(found,/different cash amount/);
+        assert.equal(f.sqlite.prepare('SELECT ncm_order_id AS tracking FROM ncm_bookings').get()?.tracking,'747');
+        await assert.rejects(() => recoverNcmBooking(f.db,runtime,'reviewer',target),/saved NCM order number/);
+      } else {
+        assert.equal(await found(),'747');
+      }
     } else {
       await assert.rejects(book,{state:'rejected',fields:{phone:'Review the phone.'}});
       const [after] = await readDispatchParcels(f.db,{orderId:f.orderId,sellerId});
@@ -173,6 +200,6 @@ async function fakeBooking(kind: 'ok'|'timeout'|'rejected') {
   }
 }
 
-for (const kind of ['ok','timeout','rejected'] as const) {
+for (const kind of ['ok','timeout','rejected','mode_off','mismatched','returned'] as const) {
   void test('Dispatch preserves its manual safeguards when NCM returns ' + kind, () => fakeBooking(kind));
 }

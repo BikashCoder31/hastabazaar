@@ -31,6 +31,7 @@ import { buildEarningsAccrualStatements } from '../db/repositories/payouts';
 import { accrueManagedEntitlements } from '../db/repositories/managed-settlements';
 import { issueManagedInvoiceGroups } from '../db/repositories/managed-documents';
 import { customerCodSchemaAvailable } from '../orders/first-cod-review';
+import { ncmSchemaAvailable } from '../delivery/ncm-settings';
 export class CancellationConflictError extends Error {}
 export interface CancellationAccess {
   orderNumber: string;
@@ -240,10 +241,18 @@ export async function cancellationPreview(
   // Delivery may precede collection. An unpaid parcel can still receive its
   // recalculated COD balance, but collected cash must never acquire a new due.
   const collectedIncrease=parcels.some(p=>!selected.includes(p.sellerId)&&p.collected>0&&(next.parcels.find(r=>r.sellerId===p.sellerId)?.amount??0)>p.due);
-  const reviewRequired=['paid','captured'].includes(order.paymentStatus)||advancedCustody||Boolean(financial)||collectedIncrease||order.paymentMode!=='cod'||Boolean(paymentFacts?.claimRevision!==null&&paymentFacts?.claimRevision!==undefined)||Number(paymentFacts?.allocatedPaisa??0)>0||parcels.some(p=>selected.includes(p.sellerId)&&p.collected>0)||target.some(i=>i.status==='ready_for_pickup'||i.status==='packing'&&i.custom!==0);
-  const executionBlocked=advancedCustody||Boolean(financial)||collectedIncrease;
+  const ncmAvailable = parcels.length > 0 && await ncmSchemaAvailable(db);
+  const protectedNcm = ncmAvailable ? (await db.prepare(`SELECT b.job_id AS jobId FROM ncm_bookings b
+      JOIN shipping_jobs j ON j.id=b.job_id WHERE j.order_id=? AND b.state IN ('booking','needs_review','booked')
+        AND j.status NOT IN ('returned','cancelled')`).bind(order.id).all<{jobId:string}>()).results : [];
+  const ncmChanged = parcels.filter(parcel => protectedNcm.some(row => row.jobId === parcel.id) &&
+    (selected.includes(parcel.sellerId) || (order.paymentMode==='cod' &&
+      Math.max(next.parcels.find(part => part.sellerId===parcel.sellerId)?.amount ?? 0,Number(parcel.collected)) !== Number(parcel.due))))
+    .map(parcel => parcel.id);
+  const reviewRequired=Boolean(ncmChanged.length)||['paid','captured'].includes(order.paymentStatus)||advancedCustody||Boolean(financial)||collectedIncrease||order.paymentMode!=='cod'||Boolean(paymentFacts?.claimRevision!==null&&paymentFacts?.claimRevision!==undefined)||Number(paymentFacts?.allocatedPaisa??0)>0||parcels.some(p=>selected.includes(p.sellerId)&&p.collected>0)||target.some(i=>i.status==='ready_for_pickup'||i.status==='packing'&&i.custom!==0);
+  const executionBlocked=Boolean(ncmChanged.length)||advancedCustody||Boolean(financial)||collectedIncrease;
   const fingerprint = createHash('sha256')
-    .update(JSON.stringify({ order, items, parcels, selected, next,paymentFacts }))
+    .update(JSON.stringify({ order, items, parcels, selected, next,paymentFacts,...(ncmChanged.length ? {ncmChanged} : {}) }))
     .digest('hex');
   return {
     ...s,
@@ -253,6 +262,8 @@ export async function cancellationPreview(
     next,
     reviewRequired,
     executionBlocked,
+    ncmAvailable,
+    ncmBlocked: ncmChanged.length > 0,
     advancedCustody,
     paymentFacts,
     fingerprint,
@@ -608,6 +619,7 @@ export async function cancelSelectedParcels(
     ]);
     return { status: 'review_requested', id };
   }
+  if(p.ncmBlocked)throw new CancellationConflictError('Check the NCM booking in Dispatch before cancelling or changing the cash amount.');
   if(p.executionBlocked)throw new CancellationConflictError('Keep this case open for the actual custody, refund or collected-charge reconciliation. No cancellation or stock return has been executed.');
   const authority = a.actorId
     ? await staffMutationGuard(
@@ -709,12 +721,17 @@ export async function cancelSelectedParcels(
     );
     const amount =
       p.next.parcels.find((r) => r.sellerId === parcel.sellerId)?.amount ?? 0;
+    const nextDue = p.order.paymentMode==='cod' ? Math.max(amount,parcel.collected) : parcel.collected;
+    if (p.ncmAvailable && (p.selected.includes(parcel.sellerId) || Number(nextDue) !== Number(parcel.due))) {
+      statements.push(...guard(db, `NOT EXISTS(SELECT 1 FROM ncm_bookings b JOIN shipping_jobs j ON j.id=b.job_id
+        WHERE b.job_id=? AND b.state IN ('booking','needs_review','booked') AND j.status NOT IN ('returned','cancelled'))`,[parcel.id]));
+    }
     statements.push(
       db
         .prepare(
           'UPDATE shipping_parcels SET cod_due_paisa=?,version=version+1,operation_request_id=? WHERE shipping_job_id=?',
         )
-        .bind(p.order.paymentMode==='cod'?Math.max(amount,parcel.collected):parcel.collected, o.requestId, parcel.id),
+        .bind(nextDue, o.requestId, parcel.id),
     );
     if (p.selected.includes(parcel.sellerId))
       statements.push(

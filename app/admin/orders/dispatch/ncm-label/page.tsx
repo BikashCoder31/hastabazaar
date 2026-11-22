@@ -26,7 +26,7 @@ export default async function NcmLabelPage({searchParams}: {searchParams:Promise
     ['From branch',label.from],['To branch',label.to],['Sender',label.sender.join(' · ')],['Receiver',label.receiver.join(' · ')],
     ['Package',label.description],['Handling',label.handling],['Delivery type',label.deliveryType],
   ] : [];
-  return <section className="min-w-0 space-y-4 text-[#14213D] print:text-black">
+  return <section className="ncm-label-page min-w-0 space-y-4 text-[#14213D] print:text-black">
     <AdminPageHelpProvider help={{pathname,title:'Printing the NCM label',sentences:['Print this label and attach it to the matching parcel. Check the NCM order number before handing over the parcel.']}}>
       <AdminPageTitle><h1 className="section-title">NCM parcel label</h1></AdminPageTitle>
     </AdminPageHelpProvider>
@@ -34,7 +34,7 @@ export default async function NcmLabelPage({searchParams}: {searchParams:Promise
       <Link className="inline-flex min-h-11 items-center font-semibold underline" href="/admin/orders/dispatch?lane=booked">Back to Dispatch</Link>
       {label ? <PrintDocumentButton /> : null}
     </div>
-    {label ? <article className="min-w-0 max-w-xl rounded-xl border border-[#E2D6C2] bg-white p-5 print:rounded-none print:border-black">
+    {label ? <article className="ncm-print-label min-w-0 max-w-xl rounded-xl border border-[#E2D6C2] bg-white p-5 print:rounded-none print:border-black">
       <p className="font-semibold">Nepal Can Move</p>
       <p className="wrap-anywhere text-xl font-bold">{label.tracking}</p>
       <p className="wrap-anywhere text-sm">Hastabazaar order {label.orderNumber} · Courier reference {label.vendorReference}</p>

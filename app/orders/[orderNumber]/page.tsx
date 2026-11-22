@@ -98,7 +98,7 @@ export default async function OrderReceiptPage({
       awaitingCodConfirmation={codPending} />;
   }
   const access = { orderNumber, receiptTokenHash, customerId: customer?.userId ?? null };
-  const parcelsPromise = receiptOrder ? readCustomerOrderParcels(database, [receiptOrder.id]).then(rows => rows.get(receiptOrder.id) ?? []) : Promise.resolve([]);
+  const parcelsPromise = receiptOrder ? readCustomerOrderParcels(database, [receiptOrder.id], {withNcmProgress:true}).then(rows => rows.get(receiptOrder.id) ?? []) : Promise.resolve([]);
   const base = '/orders/' + encodeURIComponent(orderNumber);
   const scope = JSON.stringify([customer?.userId ?? null, ownedOrder ? 'account' : receiptTokenHash]);
   const canReviewCancellation = ['placed', 'confirmed', 'packing', 'ready_for_pickup', 'dispatched'].includes(receipt.status);

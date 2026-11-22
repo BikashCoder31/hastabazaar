@@ -30,6 +30,27 @@
   font-family: var(--font-heading);
 }
 
+@media print {
+  .admin-shell:has(.ncm-print-label) {
+    display: block;
+    min-height: 0;
+    background: white;
+  }
+  .admin-shell:has(.ncm-print-label) > .admin-rail,
+  .admin-shell > div:has(.ncm-print-label) > :not(.admin-workspace),
+  .admin-workspace:has(.ncm-print-label) > :not(.ncm-label-page),
+  .ncm-label-page:has(.ncm-print-label) > :not(.ncm-print-label) {
+    display: none;
+  }
+  .admin-workspace:has(.ncm-print-label) {
+    padding: 0;
+  }
+  .ncm-print-label {
+    margin: 0;
+    break-inside: avoid;
+  }
+}
+
 .admin-shell :where(h1) {
   font-weight: 600;
   line-height: 1.12;
