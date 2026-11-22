@@ -241,6 +241,23 @@ export async function signInPackagedBrowser(page: Page, origin: string, account:
   assert.ok(cookie?.secure && cookie.httpOnly && cookie.sameSite === 'Lax', 'Real sign-in must retain protected session cookie');
 }
 
+export async function openPackagedRegistration(page: Page, origin: string, account: { email: string; password: string }) {
+  await signInPackagedBrowser(page, origin, account, '/sell');
+  await page.waitForURL(origin + '/sell');
+  await page.getByRole('button', { name: 'Start your application', exact: true }).first().click();
+  await page.waitForURL(origin + '/sell/apply');
+  await page.getByRole('button', { name: 'Save progress', exact: true }).waitFor();
+}
+
+export async function continuePackagedRegistration(page: Page, currentStep: number, targetStep: number) {
+  const form = page.locator('form[data-form-id="seller.application"]');
+  for (let step = currentStep + 1; step <= targetStep; step++) {
+    await form.getByRole('button', { name: 'Continue', exact: true }).click();
+    await form.locator(`[data-registration-step="${step}"]`).waitFor();
+    if (step === 2) await form.getByText('Email verified for seller updates.', { exact: true }).waitFor();
+  }
+}
+
 type CapturedRegistrationRequest = { contentType: string; bytes: number[] };
 type RegistrationCaptureWindow = Window & {
   ownedRegistrationCapture?: { restore(): void; body?: Promise<CapturedRegistrationRequest> };
@@ -301,7 +318,7 @@ async function submitAndReplayRegistration(page: Page, account: string) {
     const response = await submitted;
     const receipt = await response.json() as { applicationReference?: string };
     assert.equal(response.status(), 201); assert.ok(receipt.applicationReference);
-    await page.getByRole('heading', { name: 'Application submitted', exact: true }).waitFor();
+    await page.getByRole('heading', { name: 'Application sent', exact: true }).waitFor();
     const captured = await page.evaluate(() => {
       const state = (window as RegistrationCaptureWindow).ownedRegistrationCapture;
       if (!state?.body) throw new Error('Genuine registration body was not observed');
@@ -334,6 +351,7 @@ export async function runRegistrationBrowser(options: {
   accounts: Awaited<ReturnType<typeof prepareRegistrationActors>>;
   publicOwner: Awaited<ReturnType<typeof preparePublicShopOwner>>;
   registeredTerms: Parameters<typeof assertRegisteredSellerTermsAcceptance>[3];
+  onStep?: (step: string) => void;
 }) {
   const { db, origin, accounts, publicOwner } = options;
   const checkpoint = () => options.signal.throwIfAborted();
@@ -348,11 +366,7 @@ export async function runRegistrationBrowser(options: {
     async function customer(account: typeof accounts[number]) {
       const context: BrowserContext = await browser.newContext(); contexts.push(context);
       const page = await context.newPage();
-      await signInPackagedBrowser(page, origin, account, '/sell');
-      await page.waitForURL(origin + '/sell');
-      await page.getByRole('button', { name: 'Start seller registration', exact: true }).click();
-      await page.waitForURL(origin + '/sell/apply');
-      await page.getByRole('button', { name: 'Save progress now', exact: true }).waitFor();
+      await openPackagedRegistration(page, origin, account);
       return { context, page };
     }
     // All fetches below execute in the browser's genuine cookie context. No route
@@ -360,13 +374,18 @@ export async function runRegistrationBrowser(options: {
     async function get(page: Page, path: string, headers: Record<string,string> = {}) {
       return page.evaluate(async ({ path, headers }) => { const response = await fetch(path, { headers, cache: 'no-store' }); return { status: response.status, cache: response.headers.get('cache-control'), body: await response.text() }; }, { path, headers });
     }
+    options.onStep?.('open applications after both real password sign-ins');
     const owner = await customer(accounts[0]), foreign = await customer(accounts[1]);
     const page = owner.page;
-    await page.locator('[name="hasBusinessTaxRegistration"]').selectOption('yes');
+    options.onStep?.('save a partial registered business application and document');
+    const registeredRoute = page.getByRole('radio', { name: /Registered business seller/ });
+    await registeredRoute.check();
+    await continuePackagedRegistration(page, 0, 1);
     await page.locator('[name="legalName"]').fill('Fictional incomplete registration');
+    await continuePackagedRegistration(page, 1, 3);
     await page.locator('[name="businessRegistration"]').setInputFiles({ name: 'fictional-registration.png', mimeType: 'image/png', buffer: bytes });
-    await page.getByRole('button', { name: 'Save progress now', exact: true }).click();
-    await page.getByText('Progress saved to your account.', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Save progress', exact: true }).click();
+    await page.getByText('Progress saved', { exact: true }).waitFor();
     const saved = await get(page, '/api/seller-applications/draft', { 'X-Draft-Account': accounts[0].id });
     assert.equal(saved.status, 200); assert.match(saved.cache!, /no-store/);
     const draft = JSON.parse(saved.body).draft;
@@ -374,13 +393,18 @@ export async function runRegistrationBrowser(options: {
     assert.ok(draft.files.businessRegistration.id);
     assert.equal((await get(foreign.page, '/api/seller-applications/draft', { 'X-Draft-Account': accounts[0].id })).status, 403);
     assert.equal((await get(foreign.page, '/api/seller-applications/draft?file=' + draft.files.businessRegistration.id, { 'X-Draft-Account': accounts[1].id })).status, 404);
-    await page.reload(); await page.getByText(/Saved progress restored/).waitFor();
+    options.onStep?.('restore the draft and submit the exact signed application');
+    await page.reload(); await page.getByText('Progress saved', { exact: true }).waitFor();
+    assert.equal(await registeredRoute.isChecked(), true);
+    await continuePackagedRegistration(page, 0, 3);
     assert.equal(await page.locator('[name="legalName"]').inputValue(), 'Fictional incomplete registration');
     await page.getByText(/Saved: fictional-registration.png/).waitFor();
     assert.equal(await page.locator('[name="phone"]').inputValue(), '');
     assert.equal(await page.locator('[name="taxRegistrationNumber"]').inputValue(), '');
+    await continuePackagedRegistration(page, 3, 4);
     await acknowledgeRegisteredSellerTerms(page);
     const { receipt, captured } = await submitAndReplayRegistration(page, accounts[0].id);
+    options.onStep?.('verify receipt replay, actor scope and private document access');
     const [profiles] = await db.query<RowDataPacket[]>('SELECT id,status,application_reference FROM seller_profiles WHERE user_id=?', [accounts[0].id]);
     assert.equal(profiles.length, 1); assert.equal(profiles[0].status, 'submitted');
     assert.equal(profiles[0].application_reference, receipt.applicationReference);
@@ -403,6 +427,7 @@ export async function runRegistrationBrowser(options: {
     assert.equal(foreignWrite, 403);
     assert.equal(JSON.parse((await get(foreign.page, '/api/seller-registrations')).body).registration, null);
     // A fixture-only retained evidence fact, never an application approval call.
+    options.onStep?.('verify the locked document and protected details');
     checkpoint();
     await db.query("UPDATE seller_documents SET status='verified' WHERE id=? AND seller_id=? AND status='pending'", [documents[0].id, sellerId]);
     await page.goto(origin + '/seller/registration');
@@ -442,6 +467,7 @@ export async function runRegistrationBrowser(options: {
     const [roles] = await db.query<RowDataPacket[]>("SELECT role FROM user_roles WHERE user_id=? AND role='seller'", [accounts[0].id]); assert.equal(roles.length, 0);
     const [final] = await db.query<RowDataPacket[]>('SELECT status FROM seller_profiles WHERE id=?', [sellerId]); assert.equal(final[0].status, 'submitted');
     checkpoint();
+    options.onStep?.('compare the private draft and published owner shop');
     await assertSellerProfilePublicShop({ owner: page, anonymous: anonymousPage, origin, sellerId, expected: { public: false } });
     checkpoint();
     const publicOwnerContext: BrowserContext = await browser.newContext();

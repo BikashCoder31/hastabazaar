@@ -562,11 +562,13 @@ async function main() {
       const registration = await runRegistrationBrowser({ db: source, origin,
         executablePath: recordedBrowsers.executablePath, reviewerState: statePath, accounts: registrationAccounts, publicOwner, registeredTerms,
         signal: cancellation.signal,
+        onStep: step => { phase = 'packaged registration: ' + step; },
         browserEnvironment: Object.fromEntries(Object.entries(childEnv).filter((entry): entry is [string, string] => typeof entry[1] === 'string')) });
       phase = 'genuine recorded work counts, filtering, read-only source and current role denials';
       const recordedWork = await runRecordedWorkBrowser({ db: source, origin, selectedViews,
         executablePath: recordedBrowsers.executablePath, accounts: recordedWorkAccounts, signal: cancellation.signal,
         releaseId: inventory.release, registeredTerms,
+        onStep: step => { phase = 'packaged recorded work: ' + step; },
         browserEnvironment: Object.fromEntries(Object.entries(childEnv).filter((entry): entry is [string, string] => typeof entry[1] === 'string')) });
       phase = 'packaged policy readiness after Super Admin enrollment';
       const readyAfterEnrollment = await owner.run(process.execPath, ['hosted-security.mjs', '--check-readiness'],

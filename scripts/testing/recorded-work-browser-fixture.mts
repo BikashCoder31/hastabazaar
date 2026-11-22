@@ -10,7 +10,7 @@ import { captureNativeInventory } from '../recovery/native-inventory.mjs';
 import type { bindSelectedBrowserViews } from '../recovery/selected-native-views.mjs';
 import {
   acknowledgeRegisteredSellerTerms, assertPreservedWithFormLoads, assertRegisteredSellerTermsAcceptance,
-  prepareRegistrationActors, signInPackagedBrowser, snapshotFormLoadObservations,
+  continuePackagedRegistration, openPackagedRegistration, prepareRegistrationActors, signInPackagedBrowser, snapshotFormLoadObservations,
 } from './registration-browser-fixture.mjs';
 
 const reviewStarted = 'seller.application.review_started';
@@ -166,6 +166,7 @@ export async function runRecordedWorkBrowser(options: {
   selectedViews?: BrowserViews;
   releaseId: string;
   registeredTerms: Parameters<typeof assertRegisteredSellerTermsAcceptance>[3];
+  onStep?: (step: string) => void;
 }) {
   const { db, origin, accounts, signal, selectedViews } = options;
   const url = new URL(origin);
@@ -183,21 +184,20 @@ export async function runRecordedWorkBrowser(options: {
     return context.newPage();
   }
   try {
+    options.onStep?.('submit registered business applications through the wizard');
     const applications = [];
     for (const account of accounts.applicants) {
       const page = await openPage();
-      await signInPackagedBrowser(page, origin, account, '/sell');
-      await page.waitForURL(origin + '/sell');
-      await page.getByRole('button', { name: 'Start seller registration', exact: true }).click();
-      await page.waitForURL(origin + '/sell/apply');
+      await openPackagedRegistration(page, origin, account);
       // Managed Maker evidence is restricted to Super Admin. This journey uses
       // the registered seller route that the limited reviewer can inspect.
-      await page.locator('[name="hasBusinessTaxRegistration"]').selectOption('yes');
+      await page.getByRole('radio', { name: /Registered business seller/ }).check();
+      await continuePackagedRegistration(page, 0, 4);
       await acknowledgeRegisteredSellerTerms(page);
       const submitted = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/seller-registrations');
       await page.getByRole('button', { name: 'Submit application', exact: true }).click();
       assert.equal((await submitted).status(), 201, 'Fictional source application submitted through the real receiver');
-      await page.getByRole('heading', { name: 'Application submitted', exact: true }).waitFor();
+      await page.getByRole('heading', { name: 'Application sent', exact: true }).waitFor();
       const [rows] = await db.query<RowDataPacket[]>('SELECT id,application_reference AS reference,status FROM seller_profiles WHERE user_id=?', [account.id]);
       assert.equal(rows.length, 1);
       assert.equal(rows[0].status, 'submitted');
@@ -207,6 +207,7 @@ export async function runRecordedWorkBrowser(options: {
       await page.close();
     }
 
+    options.onStep?.('sign staff in and enroll the Super Admin authenticator');
     const [reviewer, owner, blocked] = accounts.staff;
     const ownPage = await openPage(), enrollmentPage = await openPage(), deniedPage = await openPage();
     await signInPackagedBrowser(ownPage, origin, reviewer, progress);
@@ -221,6 +222,7 @@ export async function runRecordedWorkBrowser(options: {
     await signInPackagedBrowser(deniedPage, origin, blocked, '/admin/catalog');
     await deniedPage.waitForURL(origin + '/admin/catalog');
 
+    options.onStep?.('record each application review and requested change');
     for (const [index, application] of applications.entries()) {
       signal.throwIfAborted();
       const page = index < 2 ? ownPage : ownerPage;
@@ -279,12 +281,12 @@ export async function runRecordedWorkBrowser(options: {
     const group = (page: Page, actor: string) => groups(page).getByRole('row').filter({ hasText: actor });
     const widths = [320, 390, 1440];
     for (const width of widths) {
+      options.onStep?.('check the work log, filters and permission boundaries at ' + width + ' px');
       signal.throwIfAborted();
       for (const page of [ownPage, ownerPage, deniedPage]) await page.setViewportSize({ width, height: 1000 });
       await ownPage.goto(origin + progress);
       await ownPage.getByRole('heading', { name: 'Your recorded work', exact: true }).waitFor();
-      if (width < 1280) await ownPage.getByRole('button', { name: 'Browse tasks', exact: true }).click();
-      await ownPage.getByRole('navigation', { name: 'Staff workspace' }).getByRole('link', { name: 'Recorded work', exact: true }).waitFor();
+      await ownPage.getByRole('navigation', { name: 'Reports pages' }).getByRole('link', { name: 'Work log', exact: true }).waitFor();
       const own = group(ownPage, reviewer.id);
       assert.equal(await groups(ownPage).getByRole('row').count(), 2);
       await own.getByRole('cell', { name: '2', exact: true }).waitFor();
@@ -313,9 +315,9 @@ export async function runRecordedWorkBrowser(options: {
       await applyDate(from, to);
       await group(ownerPage, reviewer.id).getByRole('cell', { name: '2', exact: true }).waitFor();
       assert.equal(await groups(ownerPage).getByRole('row').count(), 2);
-      const history = ownerPage.getByRole('heading', { name: 'Recorded actions', exact: true }).locator('..').getByRole('table');
-      assert.equal(await history.getByRole('cell', { name: changesRequested, exact: true }).count(), 2);
-      assert.equal(await history.getByRole('cell', { name: reviewStarted, exact: true }).count(), 2);
+      const history = ownerPage.getByRole(width < 768 ? 'list' : 'table', { name: 'Recorded actions', exact: true });
+      assert.equal(await history.getByText(changesRequested, { exact: true }).count(), 2);
+      assert.equal(await history.getByText(reviewStarted, { exact: true }).count(), 2);
       assert.equal(await history.getByRole('link', { name: 'seller: ' + applications[2].id, exact: true }).count(), 0);
       await applyDate(previousDay, previousDay);
       await ownerPage.getByText('No matching completed steps were recorded in this range.', { exact: true }).waitFor();
@@ -326,10 +328,10 @@ export async function runRecordedWorkBrowser(options: {
       await ownPage.goto(origin + progress + '?from=2020-01-01&to=2022-01-01');
       await ownPage.getByRole('alert').filter({ hasText: 'Choose a date range of at most 366 days.' }).waitFor();
       await deniedPage.goto(origin + '/admin/catalog');
-      if (width < 1280) await deniedPage.getByRole('button', { name: 'Browse tasks', exact: true }).click();
-      const nav = deniedPage.getByRole('navigation', { name: 'Staff workspace' });
+      const nav = deniedPage.getByRole('navigation', { name: 'Catalog pages' });
       await nav.getByRole('link', { name: 'Categories & occasions', exact: true }).waitFor();
       assert.equal(await nav.locator('a[href="/admin/progress"],a[href="/admin/activity"]').count(), 0);
+      assert.equal(await deniedPage.locator('nav a[href="/admin/progress"],nav a[href="/admin/activity"]').count(), 0);
       for (const path of [progress, activity, '/admin/sellers/' + applications[0].id]) {
         await deniedPage.goto(origin + path);
         await deniedPage.waitForURL(origin + '/staff-access-denied');
