@@ -268,6 +268,7 @@ export function buildBusinessEmail(data: BusinessEmailData, origin: string,optio
   return {
     to: data.email,
     subject: marketplaceSubject(layout.subject, data.orderNumber ?? data.reference,
+      ['business.seller.checklist_request', 'business.seller.document.expiring'].includes(data.template ?? '') ||
       ['business.seller.document.review', 'business.seller.document.change'].includes(data.template ?? '') &&
       layout.subject.startsWith('Please fix your ')),
     ...renderMarketplaceEmail(layout),
@@ -296,6 +297,8 @@ export const supportedTemplates = [
   'business.product.priority',
   'business.seller.document.change',
   'business.seller.document.review',
+  'business.seller.checklist_request',
+  'business.seller.document.expiring',
   'business.seller.protected_change',
   'business.seller.public_profile',
   'business.seller.profile_correction',

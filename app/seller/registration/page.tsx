@@ -4,36 +4,44 @@ import { RegistrationGuide } from '@/components/seller/registration-guide';
 import { SellerRegistrationApplicationOverview } from '@/components/seller/registration-application-overview';
 import { SellerRegistrationIntakeForm } from '@/components/seller/seller-registration-intake-form';
 import { SellerDocumentHistory } from '@/components/seller/document-history';
-import { SellerPayoutFixes } from '@/components/seller/seller-payout-fixes';
+import { SellerShopChecklist } from '@/components/seller/shop-checklist';
 import { requireSellerCenterPage } from '@/lib/auth/seller-center';
 import { requireDatabase } from '@/lib/db/d1';
 import { readRegistrationPageEvidence } from '@/lib/sellers/registration-page';
 import { protectedRegistrationFields } from '@/lib/sellers/registration-protection';
 import { hasVerifiedRegistrationEmail } from '@/lib/sellers/registration-email';
-import { readSellerPayoutFixes } from '@/lib/sellers/payout-fixes';
+import { emptySellerChecklist, getSellerChecklist, sellerChecklistView } from '@/lib/sellers/shop-checklist';
+import { sellerDate } from '@/lib/seller/presentation';
 
 export const dynamic = 'force-dynamic';
+const registrationObservedAt = () => Date.now();
 
 export default async function SellerRegistrationPage() {
   const viewer = await requireSellerCenterPage('/seller/registration');
   const db = requireDatabase(env as unknown as { DB?: D1Database });
-  const [page, accountEmailVerified, fixes] = await Promise.all([
-    readRegistrationPageEvidence(db, viewer),
+  const now = registrationObservedAt();
+  const [page, accountEmailVerified, checklist] = await Promise.all([
+    readRegistrationPageEvidence(db, viewer, now),
     hasVerifiedRegistrationEmail(db, viewer, viewer.email.toLowerCase()),
-    viewer.approvedSeller && viewer.sellerId ? readSellerPayoutFixes(db, viewer.sellerId) : [],
+    viewer.sellerId ? getSellerChecklist(db, viewer.sellerId, { ownerId: viewer.userId, audience: 'seller', now }) : emptySellerChecklist(),
   ]);
   const { record, terms, documents, lockedKinds, initial } = page;
   const applicant = !viewer.approvedSeller && Boolean(viewer.sellerId);
 
   return <div className="min-w-0 space-y-7 text-[#14213D]">
-    {applicant ? <SellerRegistrationApplicationOverview db={db} viewer={viewer} record={record} documents={documents} /> : (
-      <header>
-        <h1 className="section-title">Documents &amp; agreement</h1>
-        <p className="mt-3 text-[#465573]">Complete registration and send documents for review. Payouts require completed registration and verified receiving details.</p>
-      </header>
-    )}
-    <SellerPayoutFixes fixes={fixes} place="documents" />
-    {viewer.approvedSeller ? <Link className="section-link" href="/seller#managed-program">Program &amp; agreements</Link> : null}
+    <header><h1 className="section-title">Documents &amp; agreement</h1></header>
+    <SellerShopChecklist checklist={sellerChecklistView(checklist)} />
+    {viewer.approvedSeller ? <section className="space-y-1 rounded-[1.125rem] border border-[#E2D6C2] bg-white px-4 py-4 shadow-sm sm:px-5" aria-labelledby="seller-agreement-and-documents">
+      <h2 id="seller-agreement-and-documents" className="font-bold">Agreement and documents</h2>
+      {viewer.sellerAgreementAcceptedAt ?
+        <p className="text-sm text-[#465573]">Seller Marketplace Agreement accepted {sellerDate(viewer.sellerAgreementAcceptedAt)}.</p> : null}
+      <div className="flex flex-wrap gap-x-4">
+        <Link className="section-link inline-flex min-h-11 items-center" href="/sell/application#selling-fee-terms">Agreement and fee terms</Link>
+        <a className="section-link inline-flex min-h-11 items-center" href="#seller-registration-details">Registration details</a>
+        <Link className="section-link inline-flex min-h-11 items-center" href="/seller#managed-program">Program &amp; agreements</Link>
+      </div>
+    </section> : null}
+    {applicant ? <SellerRegistrationApplicationOverview db={db} viewer={viewer} record={record} documents={documents} /> : null}
     {!viewer.sellerId ? <RegistrationGuide /> : null}
     <section className="space-y-4" aria-labelledby="seller-registration-details">
       {applicant ? <header>

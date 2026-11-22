@@ -6,6 +6,10 @@ export type NotificationAudience = 'customer' | 'seller' | 'staff';
 export function notificationDestination(workspace:NotificationAudience,audience:string,type:string|null,id:string|null,context?:{orderNumber?:string|null;productStatus?:string|null;requiredPermission?:string|null}):string|null {
  if(workspace==='staff'&&audience==='staff'&&type==='form_configuration'&&id&&/^[a-z][a-z0-9_-]*(\.[a-z0-9_-]+){1,3}$/.test(id))return '/admin/forms/'+encodeURIComponent(id);
  if(type==='order_response_event'&&workspace===audience&&id&&/^[a-zA-Z0-9:_-]{1,240}$/.test(id))return '/'+(workspace==='staff'?'admin':workspace==='seller'?'seller':'account')+'/order-responses/'+encodeURIComponent(id);
+ if(type==='seller_checklist_item'&&workspace==='seller'&&audience==='seller'&&id){
+  const item=/^[a-zA-Z0-9_-]{1,160}:([a-z_]{2,40})$/.exec(id)?.[1];
+  return item?'/seller/registration#seller-checklist-'+encodeURIComponent(item):null;
+ }
  if(workspace!==audience||!id||!/^[a-zA-Z0-9_-]{1,160}$/.test(id))return null;
  if(type==='email_service_health')return workspace==='staff'?'/admin/system-health/incidents?incident='+encodeURIComponent(id):null;
  if(type==='wallet')return workspace==='customer'?'/account/wallet':null;

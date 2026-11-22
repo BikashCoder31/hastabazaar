@@ -120,6 +120,8 @@ export const messageEventCatalog: readonly MessageEvent[] = [
   notification('business.seller.document.review', 'Document review decision', 'Your {document} was verified / Your {document} was rejected', ['seller', 'super_admin']),
   notification('business.seller.document.review', 'Document re-uploaded', reviewMessages.staffDocumentReplacement, ['super_admin'], { overview: true }),
   notification('business.seller.document.change', 'Protected document replacement', 'Replacement requested / Replacement approved / Replacement rejected / We received your replacement document', ['seller', 'super_admin']),
+  notification('business.seller.checklist_request', 'Shop checklist request or reminder', 'Please update your {detail} / Please renew your {document} / Reminder: please update your {detail}', ['seller'], { overview: true }),
+  notification('business.seller.document.expiring', 'Required document expires soon', 'Your {document} expires on {date}', ['seller'], { overview: true }),
   notification('business.seller.payout_fix_ready', 'Earnings waiting while a fix is open', 'Your earnings are ready · Fix before your first payout', ['seller'], { overview: true }),
   notification('business.product.submitted', 'Product submitted', 'Product submitted / Product review needed', ['seller', 'super_admin']),
   notification('business.product.result', 'Product decision', 'Product approved / Product published / Product needs changes / Product rejected', ['seller', 'super_admin'], { overview: true }),

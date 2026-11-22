@@ -46,6 +46,8 @@ A working row means the producer queues the indicated channel and its existing s
 | `business.seller.document.review` | Document review decision | Seller, Super Admin | Yes | Yes | Your {document} was verified / Your {document} was rejected | Queues on the current event |
 | `business.seller.document.review` | Document re-uploaded | Super Admin | Yes | Yes | A seller re-uploaded a document | Queues on replacement with a specific subject |
 | `business.seller.document.change` | Protected document replacement | Seller, Super Admin | Yes | Yes | Replacement requested / Replacement approved / Replacement rejected / We received your replacement document | Queues on the current event |
+| `business.seller.checklist_request` | Shop checklist request or reminder | Seller | Yes | Yes | Please update your {detail} / Please renew your {document} / Reminder: please update your {detail} | Queues the saved seller-facing note. Staff can remind once every 24 hours per item. |
+| `business.seller.document.expiring` | Required document expires soon | Seller | Yes | Yes | Your {document} expires on {date} | Queues once during the 14-day window through the existing bounded reminder worker. |
 | `business.seller.payout_fix_ready` | Earnings waiting while a fix is open | Seller | Yes | Yes | Your earnings are ready · Fix before your first payout | Queues on the current event |
 | `business.product.submitted` | Product submitted | Seller, Super Admin | Yes | Yes | Product submitted / Product review needed | Queues on the current event |
 | `business.product.result` | Product decision | Seller, Super Admin | Yes | Yes | Product approved / Product published / Product needs changes / Product rejected | Queues on the current event |

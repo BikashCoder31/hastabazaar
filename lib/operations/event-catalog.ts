@@ -1,6 +1,7 @@
 import {independentProductStaffSql,independentProductIntakeStaffSql} from '../products/party-scope';
 import { isCourierNoticeTemplate, readCourierEmailNoticeSource } from './courier-email-notices';
 import { pairedMessageChannels, referralWalletMessage } from './message-event-catalog';
+import { checklistRequestTemplate, documentExpiryTemplate } from '../sellers/shop-checklist-evidence';
 import { isCurrentOrderAccountMessage, orderMessageStatus } from './order-message-statements';
 /** Source adapters keep their own transaction guards; this catalogue owns shared
  * channel identity and current-version suppression for implemented families. */
@@ -62,6 +63,8 @@ const operationalSources: Readonly<Record<string, string>> = {
 const dynamicOperationalSources=new Set(['business.workflow.assignment','business.team.governance','business.team.handoff','business.system.incident','business.programme.updated','business.finance.refund','business.finance.payout','business.finance.fee_refund_authorized','business.finance.invoice_adjustment','business.finance.funding_verified','business.seller.live_clearance','business.company.live_financial_scope','business.workflow.reminder','business.system.email_health']);
 export const hasOperationalNoticeSource = (template: string) => Object.hasOwn(operationalSources, template)||dynamicOperationalSources.has(template)||isCourierNoticeTemplate(template);
 dynamicOperationalSources.add('business.seller.payout_fix_ready');
+dynamicOperationalSources.add(checklistRequestTemplate);
+dynamicOperationalSources.add(documentExpiryTemplate);
 dynamicOperationalSources.add('business.gift.issued');dynamicOperationalSources.add('business.gift.redeemed');
 dynamicOperationalSources.add(referralWalletMessage.key);
 
@@ -97,6 +100,8 @@ export async function isCurrentOperationalNotice(db: D1Database, notice: {
   if(notice.template==='business.system.incident')return(await import('./incident-review')).isCurrentIncidentNotice(db,notice,now);
   if(notice.template==='business.system.email_health')return (await import('./service-health-notifications')).isCurrentHealthNotice(db,notice);
   if(notice.template==='business.programme.updated')return (await import('./programme-notice-sources')).isCurrentProgrammeNotice(db,notice,now);
+  if (notice.template === checklistRequestTemplate || notice.template === documentExpiryTemplate)
+    return (await import('../sellers/shop-checklist-notices')).isCurrentSellerChecklistNotice(db, notice, now);
   if(notice.template==='business.seller.payout_fix_ready')return (await import('../sellers/payout-fix-reminder-source')).isCurrentPayoutFixReminderNotice(db,notice,now);
   if(notice.template==='business.workflow.reminder')return (await import('./reminder-notice-sources')).isCurrentReminderNotice(db,notice,now);
   if(['business.finance.refund','business.finance.payout','business.finance.fee_refund_authorized','business.finance.invoice_adjustment','business.finance.funding_verified','business.seller.live_clearance','business.company.live_financial_scope'].includes(notice.template))return (await import('./financial-notice-sources')).isCurrentFinancialNotice(db,notice,now);

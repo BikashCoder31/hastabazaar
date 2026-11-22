@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { WhoseTurn } from '@/components/ui/whose-turn';
 import { SellerPayoutFixFirst } from './seller-payout-fixes';
 import type { OnboardingStep, SellerOnboardingChecklistModel } from '@/lib/sellers/onboarding-checklist';
-import type { SellerPayoutFix } from '@/lib/sellers/payout-fixes';
+import type { SellerChecklistItemView } from '@/lib/sellers/shop-checklist';
 import type { SellerReadiness } from '@/lib/sellers/readiness';
 import { sellerSupportHref } from '@/lib/sellers/workspace-navigation';
 
@@ -44,16 +44,16 @@ function setupState(step: SetupStep): State {
   return 'Later';
 }
 
-function bankSteps(status: BankStatus, fix?: SellerPayoutFix): SetupStep[] {
+function bankSteps(status: BankStatus, fix?: SellerChecklistItemView): SetupStep[] {
   const add: SetupStep = { id: 'bank', title: 'Add your bank account', status: 'Done', detail: 'Bank details are on file.' };
   const verify: SetupStep = { id: 'verify-bank', title: 'Hastabazaar verifies it', status: 'Pending', detail: 'Verification starts after you add your bank account.' };
   if (fix) return [add, {
     ...verify,
-    title: fix.waitingFor === 'seller' ? 'Fix your bank document' : 'Hastabazaar checks the new bank document',
-    detail: fix.note,
-    action: fix.waitingFor === 'seller'
-      ? { actor: 'seller', href: fix.sellerHref, label: 'Upload new file' }
-      : { actor: 'admin', href: fix.sellerHref, label: 'View bank details' },
+    title: fix.turn === 'seller' ? 'Fix your bank document' : 'Hastabazaar checks the new bank document',
+    detail: fix.note ?? fix.detail,
+    action: fix.turn === 'seller'
+      ? { actor: 'seller', href: fix.action?.href ?? bankDetailsHref, label: 'Upload new file' }
+      : { actor: 'admin', href: bankDetailsHref, label: 'View bank details' },
   }];
   if (status === 'missing') return [{
     ...add, status: 'Pending', detail: 'A verified account is needed before your first payout. You can add it now.',
@@ -133,21 +133,22 @@ function FirstSetupTask({ first, waiting }: { first?: SetupStep; waiting: boolea
   </section>;
 }
 
-export function SellerGettingStarted({ model, bankStatus, tradingName, date, agreement, payoutFixes = [] }: {
+export function SellerGettingStarted({ model, bankStatus, tradingName, date, agreement, payoutFixes = [], canSell = null }: {
   model: SellerOnboardingChecklistModel;
   bankStatus: BankStatus;
   tradingName: string;
   date: string;
   agreement: ReactNode;
-  payoutFixes?: readonly SellerPayoutFix[];
+  payoutFixes?: readonly SellerChecklistItemView[];
+  canSell?: boolean | null;
 }) {
-  const openFix = payoutFixes.find(fix => fix.waitingFor === 'seller') ?? payoutFixes[0];
-  const bankFix = payoutFixes.find(fix => fix.kind === 'bank_verification');
+  const openFix = payoutFixes.find(fix => fix.turn === 'seller') ?? payoutFixes[0];
+  const bankFix = payoutFixes.find(fix => fix.id === 'bank_verification');
   const payoutStage: SetupStage = {
     title: openFix ? 'Before first payout' : 'Getting paid',
     steps: bankSteps(bankStatus, bankFix),
-    state: openFix && (openFix.waitingFor === 'seller' ? 'Your turn' : 'With Hastabazaar'),
-    summary: openFix && (openFix.waitingFor === 'staff' ? 'Checking your new file'
+    state: openFix && (openFix.turn === 'seller' ? 'Your turn' : 'With Hastabazaar'),
+    summary: openFix && (openFix.turn === 'staff' ? 'Checking your new file'
       : `${payoutFixes.length} ${payoutFixes.length === 1 ? 'fix' : 'fixes'} needed`),
   };
   const stages: SetupStage[] = [
@@ -192,7 +193,7 @@ export function SellerGettingStarted({ model, bankStatus, tradingName, date, agr
       </ol>
     </section>
 
-    {openFix ? <SellerPayoutFixFirst fix={openFix} /> : <FirstSetupTask first={first} waiting={waiting} />}
+    {openFix ? <SellerPayoutFixFirst fix={openFix} canSell={canSell} /> : <FirstSetupTask first={first} waiting={waiting} />}
 
     <div className="grid min-w-0 items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
       <section id="seller-onboarding" className={`${surface} scroll-mt-28`} aria-labelledby="seller-onboarding-title">

@@ -13,16 +13,30 @@ export function verifiedIdentitySql(sellerExpression:string,now:number) {
   return identityEvidenceAtSql(sellerExpression,String(now));
 }
 export function verifiedIdentityAtCommitSql(db:D1Database,sellerExpression:string){return identityEvidenceAtSql(sellerExpression,checkoutCommitClock(db));}
-function identityEvidenceAtSql(sellerExpression:string,now:string){
-  if(!/^(?:\?|[a-z_]+\.[a-z_]+)$/.test(sellerExpression))throw new Error('Invalid identity evidence lookup.');
-  const proof=(kind:string)=>`EXISTS(SELECT 1 FROM seller_documents proof WHERE proof.seller_id=identity_seller.id AND ${kind}
+export function sellerNeedsBusinessRegistrationSql(alias:string) { return `${alias}.applicant_type='company'`; }
+export function sellerNeedsPanSql(alias:string) { return `${alias}.tax_mode<>'NONE'`; }
+function verifiedIdentityProofSql(sellerExpression:string, now:string, kind:string) {
+  return `EXISTS(SELECT 1 FROM seller_documents proof WHERE proof.seller_id=${sellerExpression} AND ${kind}
     AND proof.status='verified' AND proof.reviewed_by IS NOT NULL AND proof.reviewed_at IS NOT NULL AND (proof.valid_until IS NULL OR proof.valid_until>${now})
     AND NOT EXISTS(SELECT 1 FROM seller_documents later WHERE later.seller_id=proof.seller_id AND later.kind=proof.kind AND later.status='verified'
       AND (later.uploaded_at>proof.uploaded_at OR later.uploaded_at=proof.uploaded_at AND later.id>proof.id)))`;
+}
+/** Required evidence should stay visible even when another, independent payout check is incomplete. */
+export function requiredIdentityChecklistDocumentSql() {
+  const idAtExpiry = verifiedIdentityProofSql('s.id', 'd.valid_until', "proof.kind='representative_identity'");
+  // If both acceptable proofs expire together, ask for PAN once.
+  const panUntilExpiry = verifiedIdentityProofSql('s.id', '(d.valid_until-1)', "proof.kind='pan_certificate'");
+  return `((d.kind='business_registration' AND ${sellerNeedsBusinessRegistrationSql('s')})
+    OR (d.kind='pan_certificate' AND (${sellerNeedsPanSql('s')} OR NOT ${idAtExpiry}))
+    OR (d.kind='representative_identity' AND NOT (${sellerNeedsPanSql('s')}) AND NOT ${panUntilExpiry}))`;
+}
+function identityEvidenceAtSql(sellerExpression:string,now:string){
+  if(!/^(?:\?|[a-z_]+\.[a-z_]+)$/.test(sellerExpression))throw new Error('Invalid identity evidence lookup.');
+  const proof=(kind:string)=>verifiedIdentityProofSql('identity_seller.id',now,kind);
   return `EXISTS(SELECT 1 FROM seller_profiles identity_seller WHERE identity_seller.id=${sellerExpression} AND trim(identity_seller.legal_name)<>''
     AND ${proof("proof.kind IN ('representative_identity','pan_certificate')")}
     AND (identity_seller.tax_mode='NONE' OR ${proof("proof.kind='pan_certificate'")})
-    AND (identity_seller.applicant_type='individual' OR identity_seller.applicant_type='company' AND ${proof("proof.kind='business_registration'")}))`;
+    AND (identity_seller.applicant_type='individual' OR ${sellerNeedsBusinessRegistrationSql('identity_seller')} AND ${proof("proof.kind='business_registration'")}))`;
 }
 export function noProtectedHoldSql(sellerExpression:string,capability:ProtectedCapability) {
   if(!/^(?:\?|[a-z_]+\.[a-z_]+)$/.test(sellerExpression))throw new Error('Invalid protected capability source.');

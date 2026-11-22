@@ -145,6 +145,7 @@ type RecordProps = {
   documents: SellerApplicationDetail['documents'];
   bank: { label: string; status: string; href: string } | null;
   agreement: number | null;
+  checklist?: ReactNode;
   notes: ReactNode;
   messages?: ReactNode;
   workUnavailable: boolean;
@@ -186,6 +187,7 @@ export function SellerRecord(props: RecordProps) {
           {mayManageSeller ? <div className="basis-full min-[420px]:basis-auto"><SellerOrderControls sellerId={sellerId} sellerName={name} restricted={restricted} restriction={restriction} /></div> : null}
         </div>
       </header>
+      {props.checklist}
       <SellerStanding standing={standing} />
       <nav aria-label="Seller record" className="flex flex-wrap items-center border-b border-[#E4D7C3]">
         {tabs.map(([id, label]) => (

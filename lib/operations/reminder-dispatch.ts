@@ -1,3 +1,5 @@
+import { checklistExpirySelectionSql, enqueueChecklistExpiry } from '../sellers/shop-checklist-notices';
+import { documentExpiryWindowMs } from '../sellers/shop-checklist-evidence';
 import {checkoutCommitClock} from '../checkout/commit-policy-guards';
 import {processOrderResponseFollowup} from '../orders/response-followup';
 import {processPreparationCaseSupervision} from '../orders/response-supervision';
@@ -15,7 +17,7 @@ import {reconcileStaffAccessCoverage} from './team-access-reconciliation';
 import {reconcileTeamTaskCoverage} from './team-coverage-dispatch';
 import {enqueuePayoutFixReadyReminder,payoutFixReminderSelectionSql} from '../sellers/payout-fix-reminder-source';
 
-const families=['order_response','order_supervision','manual_payment','terms','return_request','complaint','recovery','refund_obligation','review_task','system_incident','team_governance','team_access','team_coverage','discount_advisory','promo_campaign','loyalty_programme','fee_waiver_campaign','stale_notices','seller_payout_fix'] as const;
+const families=['order_response','order_supervision','manual_payment','terms','return_request','complaint','recovery','refund_obligation','review_task','system_incident','team_governance','team_access','team_coverage','discount_advisory','promo_campaign','loyalty_programme','fee_waiver_campaign','stale_notices','seller_payout_fix','seller_document_expiry'] as const;
 type Family=typeof families[number];
 export interface ReminderDispatchOptions{now?:number;limit?:number;deadlineMs?:number}
 export interface ReminderDispatchResult{scanned:number;created:number;cancelled:number;cursor:Record<string,string>;failures:{family:string;sourceId:string|null;code:string}[];busy:boolean;budgetExhausted:boolean}
@@ -36,6 +38,7 @@ function selection(family:Family){
   case'loyalty_programme':return 'SELECT id FROM loyalty_config WHERE id>? ORDER BY id LIMIT 1';
   case'fee_waiver_campaign':return "SELECT c.id FROM customer_fee_waiver_campaigns c JOIN customer_fee_waiver_revisions r ON r.campaign_id=c.id AND r.revision=c.revision WHERE c.id>? AND r.state IN('published','paused') ORDER BY c.id LIMIT 1";
   case'seller_payout_fix':return payoutFixReminderSelectionSql();
+  case'seller_document_expiry':return checklistExpirySelectionSql();
   case'stale_notices':return "SELECT id FROM notification_messages WHERE id>? AND template_key LIKE 'business.%' AND (status IN('queued','failed') OR status='cancelled' AND failure_reason='obsolete_or_access_changed') ORDER BY id LIMIT 1";
   default:throw new Error('Terms owns its existing durable cursor.');
  }
@@ -65,6 +68,7 @@ async function sourceReminders(db:D1Database,family:ReminderFamily,id:string,now
 }
 async function processOne(db:D1Database,family:Family,id:string,now:number){
  if(family==='seller_payout_fix')return enqueuePayoutFixReadyReminder(db,id,now);
+ if(family==='seller_document_expiry')return enqueueChecklistExpiry(db,id,now);
  if(family==='system_incident'){const {ensureReviewTask}=await import('../workflows/review-tasks');await ensureReviewTask(db,{sourceType:'system_incident',sourceId:id,now});}
  if(family==='order_response'){const row=await db.prepare('SELECT order_id orderId FROM order_response_portions WHERE id=?').bind(id).first<{orderId:string}>();if(!row)return 0;const result=await processOrderResponseFollowup(db,1,{portionId:id,orderId:row.orderId});return result.reminders+result.escalations+result.checkpoints+result.customerUpdates;}
  if(family==='order_supervision')return (await processPreparationCaseSupervision(db,1,id)).alerts;
@@ -103,7 +107,8 @@ export async function processReminderDispatch(db:D1Database,options:ReminderDisp
    }else{
     await db.prepare('INSERT OR IGNORE INTO operational_reminder_cursors(family) VALUES(?)').bind(family).run();
     const state=(await db.prepare('SELECT `cursor`,revision FROM operational_reminder_cursors WHERE family=?').bind(family).first<{cursor:string;revision:number}>())!;
-    const values=family==='refund_obligation'?[state.cursor,now,now]:family==='seller_payout_fix'?[state.cursor,now]:[state.cursor];
+    const values=family==='refund_obligation'?[state.cursor,now,now]:family==='seller_payout_fix'?[state.cursor,now]:
+      family==='seller_document_expiry'?[now,now+documentExpiryWindowMs,state.cursor]:[state.cursor];
     const entry=await db.prepare(selection(family)).bind(...values).first<{id:string}>();
     if(!entry){await db.prepare('UPDATE operational_reminder_cursors SET `cursor`=\'\',revision=revision+1 WHERE family=? AND revision=?').bind(family,state.revision).run();result.cursor[family]='';exhausted.add(family);}
     else{

@@ -65,6 +65,8 @@ import { cancellationCauseSchemaAvailable } from '@/lib/cancellation/attribution
 import { listSellerStaffNotes } from '@/lib/admin/seller-notes';
 import { SellerNotesCard } from './seller-notes-card';
 import { readApplicationDocumentProblems, readSellerPayoutFixes } from '@/lib/sellers/payout-fixes';
+import { AdminShopChecklist } from '@/components/seller/shop-checklist';
+import { getSellerChecklist } from '@/lib/sellers/shop-checklist';
 import { AdminSellerPayoutFixes } from '@/components/admin/seller-payout-fixes';
 
 export const dynamic = 'force-dynamic';
@@ -217,6 +219,9 @@ export default async function SellerApplicationPage({
     canSetDocumentDeadline ? readApplicationDocumentProblems(database,id) : [],
     registered && independent && staff.role==='super_admin' && application.status==='approved' ? readSellerPayoutFixes(database,id) : [],
   ]);
+  const checklist = staff.role === 'super_admin' && independent ? await getSellerChecklist(database, id, {
+    ownerId: application.userId, actorId: staff.id, audience: 'staff', now: observedAt, readiness, onboarding, fixes: payoutFixes,
+  }) : null;
   const registrationIntake = Boolean(intake);
   const restricted = restrictionIsActive(governance.restriction, observedAt);
   const since = application.history.reduce<number | null>((approvedAt, event) => event.toStatus === 'approved'
@@ -282,6 +287,7 @@ export default async function SellerApplicationPage({
         standing={standing} money={money} registered={registered} payoutsHref={payoutsHref} recoveryHref={recoveryHref}
         documents={application.documents} bank={bankSummary} agreement={application.sellerAgreementAcceptedAt}
         messages={<RecordMessages db={database} actor={staff} scope={{ kind: 'seller', id }} />}
+        checklist={checklist ? <AdminShopChecklist checklist={checklist} sellerId={id} actorId={staff.id} now={observedAt} /> : null}
         notes={<SellerNotesCard key={staff.id + ':' + application.id} actorId={staff.id} sellerId={application.id}
           staffNotes={staffNotes} restrictionNotes={restrictionNotes} />}
       />

@@ -14,7 +14,7 @@ import { sellerPayoutRequestReadiness } from '@/lib/payments/payout-request-read
 import { getSellerEarnings } from '@/lib/seller/earnings';
 import { sellerDate, sellerMoney } from '@/lib/seller/presentation';
 import { assertSellerWorkspaceViewer, readSellerLivePayoutHistory } from '@/lib/seller/workspace-tasks';
-import { readSellerPayoutFixes } from '@/lib/sellers/payout-fixes';
+import { getSellerChecklist, sellerChecklistView } from '@/lib/sellers/shop-checklist';
 import { readEarningsOverview } from './overview-data';
 import { EarningsExample, financePanel, openPayoutTracker, PayoutHistory, PayoutTracker, WhereMoneyIs } from './payout-overview';
 
@@ -26,7 +26,7 @@ export default async function SellerFinancePage() {
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const now = new Date().getTime();
   const sellerId = seller.sellerId;
-  const [earnings, ledger, payouts, requests, readiness, overview, livePayouts, fixes] = await Promise.all([
+  const [earnings, ledger, payouts, requests, readiness, overview, livePayouts, checklist] = await Promise.all([
     getSellerEarnings(database, sellerId, now),
     listSellerLedger(database, sellerId, 150, now),
     listSellerPayouts(database, sellerId),
@@ -37,12 +37,13 @@ export default async function SellerFinancePage() {
     })),
     readEarningsOverview(database, sellerId, seller.userId, now),
     readSellerLivePayoutHistory(database, seller.userId, sellerId),
-    readSellerPayoutFixes(database, sellerId),
+    getSellerChecklist(database, sellerId, { ownerId: seller.userId, audience: 'seller', now }),
   ]);
   await assertSellerWorkspaceViewer(database, seller.userId, sellerId, seller.authSubject);
   const showRegistered = earnings.participationRoute !== 'managed_maker' || earnings.hasRegisteredRecords;
   const open = openPayoutTracker(payouts, requests);
   const bank = overview.bank;
+  const { payoutFixes: fixes } = sellerChecklistView(checklist);
   return <div className="min-w-0 space-y-5 text-[#14213D]">
     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E4DACA] pb-4">
       <h1 className="font-heading text-[1.75rem] font-semibold leading-tight">Earnings</h1>
@@ -58,9 +59,9 @@ export default async function SellerFinancePage() {
         {showRegistered ? <PayoutRequestForm actorId={seller.userId} sellerId={sellerId}
           availablePaisa={earnings.registered.availablePaisa} readiness={readiness}
           hasOpenRequest={requests.some(request => request.status === 'submitted')} /> : null}
-        <SellerPayoutFixes fixes={fixes} place="earnings" />
+        <SellerPayoutFixes fixes={fixes} place="earnings" canSell={checklist.canSell} />
         <div id="seller-bank-evidence" className="scroll-mt-20">
-          <SellerBankDetailsForm accountId={seller.userId} overview correctionRequired={fixes.some(fix => fix.kind === 'bank_verification' && fix.waitingFor === 'seller')}
+          <SellerBankDetailsForm accountId={seller.userId} overview correctionRequired={fixes.some(fix => fix.id === 'bank_verification' && fix.turn === 'seller')}
             maskedAccount={bank ? { bankName: bank.bankName, lastFour: bank.lastFour, beneficiary: bank.beneficiary } : null} />
         </div>
       </div>
