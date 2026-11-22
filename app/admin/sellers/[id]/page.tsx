@@ -339,6 +339,7 @@ export default async function SellerApplicationPage({
                   {canReview ? <SellerDocumentReview actorId={staff.id} sellerId={id} documentId={document.id} expectedReviewId={document.reviewId??null}
                     canDecide={latest&&document.status==='pending'}
                     canSetDeadline={canSetDocumentDeadline} bankProblemOnly={isBank}
+                    needsReplacement={Boolean(problem) || openFix?.waitingFor === 'seller'}
                     problemNote={problem?.note??openFix?.note} initialDeadline={problem?.neededBefore}/> : null}
                   </div>
                 </div>;
@@ -432,7 +433,7 @@ export default async function SellerApplicationPage({
             payoutFix={payoutFixes.some(fix=>fix.kind==='bank_verification')}
             canDecide={independent&&bank.change?.status==='open'&&!!bank.proposed&&
               !payoutFixes.some(fix=>fix.kind==='bank_verification'&&fix.waitingFor==='seller')&&
-              !documentProblems.some(problem=>problem.kind==='bank_verification')}/>:null}
+              !documentProblems.some(problem=>problem.documentId===bank.proposed?.documentId)}/>:null}
           {bank?.change?.status==='open'&&bank.proposed&&application.userId===staff.id?<p>You cannot review your own bank evidence. An eligible nonconflicted Super Admin must review this case.</p>:null}
           {managedTerms ? <CompanySellingIdentity terms={managedTerms}/> : null}
           {application.participationRoute === 'managed_maker' ? <Card id="seller-identity" className="scroll-mt-28"><CardHeader><CardTitle>Private Managed Maker agreement and identity</CardTitle></CardHeader><CardContent>

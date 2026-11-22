@@ -4,6 +4,7 @@ import { reviewSellerApplication, type SellerReviewAction } from '../lib/db/repo
 import { sellerBankState, submitSellerBankDetails, reviewSellerBankDetails } from '../lib/sellers/bank-details';
 import { applicationDocumentProblemsGuard, readApplicationDocumentProblems, readSellerPayoutFixes } from '../lib/sellers/payout-fixes';
 import { reviewSellerDocument, submitUnverifiedDocumentCorrection } from '../lib/sellers/document-review';
+import { validateSellerFormSubmission } from '../lib/forms/submission';
 import { completeVersionFixture } from './helpers/complete-version-fixture';
 
 const approveWithFixes: SellerReviewAction = 'approve_fix_before_payout';
@@ -33,9 +34,15 @@ void test('approval retains an open fix, sends exactly one note via each seller 
     const problem = { sellerId:'registered', documentId:id, actorId:'reviewer',
       decision:'request_correction' as const, reason:note, now, neededBefore:'first_payout' as const };
     await reviewSellerDocument(db, problem);
+    const requestId = 'approve-this-payout-fix';
+    const form = await validateSellerFormSubmission(db,'staff.seller-review-action',1,[],requestId);
     const approval = { sellerId:'registered', actorId:'reviewer', action:approveWithFixes,
-      reason:'Allow this applicant to start selling while replacing the document.', now:now+1 };
-    assert.equal((await reviewSellerApplication(db, approval)).to, 'approved');
+      reason:'Allow this applicant to start selling while replacing the document.', now:now+1, requestId, form,
+      expectedProblemReviews:(await readApplicationDocumentProblems(db,'registered')).map(item=>item.reviewId) };
+    const approved = await reviewSellerApplication(db, approval);
+    assert.equal(approved.to, 'approved');
+    assert.deepEqual(await reviewSellerApplication(db, approval),approved);
+    assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM audit_logs WHERE request_id=?').get(requestId)?.n,1);
     assert.equal(sqlite.prepare("SELECT status FROM seller_documents WHERE id=?").get(id)?.status, 'pending');
     const open = async () => readSellerPayoutFixes(db, 'registered');
     assert.deepEqual((await open()).map((row: { note: string; waitingFor: string }) => [row.note,row.waitingFor]), [[note,'seller']]);
@@ -44,10 +51,18 @@ void test('approval retains an open fix, sends exactly one note via each seller 
     assert.deepEqual(notices.map(row=>row.channel), ['email','in_app']);
     assert.ok(notices.every(row=>row.subject_en==='Your shop is approved · 1 thing to fix before your first payout' && String(row.body_en).includes(note)));
 
+    const verify = (documentId: string, at: number) => reviewSellerDocument(db,{
+      sellerId:'registered',documentId,actorId:'reviewer',decision:'verify',
+      reason:'Compare the whole file with the recorded business.',now:at,
+    });
+    await assert.rejects(verify(id,now+2),/needs to upload/i);
     const replacementId = 'payout-fix-replacement';
-    await submitUnverifiedDocumentCorrection(db,{ sellerId:'registered', actorId:'registered-owner',
-      documentId:id, now:now+2,document:{ id:replacementId, originalName:'replacement.pdf', kind:'business_registration',
-        objectKey:'private/seller-documents/registered/'+replacementId, mimeType:'application/pdf', sizeBytes:60 } });
+    const replace = (sourceId: string, newId: string, at: number) => submitUnverifiedDocumentCorrection(db,{
+      sellerId:'registered',actorId:'registered-owner',documentId:sourceId,now:at,
+      document:{id:newId,originalName:'replacement.pdf',kind:'business_registration',
+        objectKey:'private/seller-documents/registered/'+newId,mimeType:'application/pdf',sizeBytes:60},
+    });
+    await replace(id,replacementId,now+2);
     assert.equal((await open())[0].waitingFor, 'staff');
     await reviewSellerDocument(db,{ ...problem,documentId:replacementId,reason:replacementNote,neededBefore:undefined,now:now+3 });
     assert.deepEqual((await open()).map((row: { note: string; waitingFor: string }) => [row.note,row.waitingFor]), [[replacementNote,'seller']]);
@@ -55,7 +70,10 @@ void test('approval retains an open fix, sends exactly one note via each seller 
       AND recipient_user_id='registered-owner' AND template_key='business.seller.document.review' AND created_at=?`).all(replacementId,now+3);
     assert.equal(correctionNotices.length,2);
     assert.ok(correctionNotices.every(row=>String(row.subject_en).includes('business registration') && String(row.body_en).includes(replacementNote)));
-    await reviewSellerDocument(db,{ ...problem,documentId:replacementId,decision:'verify',neededBefore:undefined,now:now+4 });
+    await assert.rejects(verify(replacementId,now+4),/needs to upload/i);
+    const correctedId = 'payout-fix-corrected-certificate';
+    await replace(replacementId,correctedId,now+5);
+    await verify(correctedId,now+6);
     assert.deepEqual(await open(),[]);
   } finally { f.dispose(); }
 });
@@ -65,6 +83,8 @@ void test('approval-level issues block every approval action until they are reso
   try {
     await reviewSellerDocument(f.db, { sellerId:'registered', documentId:id, actorId:'reviewer',
       decision:'request_correction', reason:'This certificate belongs to a different business.', now:f.now, neededBefore:'approval' });
+    await assert.rejects(reviewSellerDocument(f.db,{sellerId:'registered', documentId:id, actorId:'reviewer',
+      decision:'verify', reason:'Recheck the originally flagged file.',now:f.now+1}),/needs to upload/i);
     for (const action of ['approve',approveWithFixes] as const) {
       await assert.rejects(reviewSellerApplication(f.db, { sellerId:'registered', actorId:'reviewer', action,
         reason:'Approval is still blocked.', now:f.now+1 }), /approval|before accepting/i);

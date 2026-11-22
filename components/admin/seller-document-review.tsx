@@ -145,13 +145,14 @@ function OwnedDecision({actorId,action,sourceId,url,fields,options,canDecide,can
 }
 
 export function SellerDocumentReview({
- actorId,sellerId,documentId,expectedReviewId=null,canDecide=true,canSetDeadline,bankProblemOnly,problemNote,initialDeadline,
+ actorId,sellerId,documentId,expectedReviewId=null,canDecide=true,canSetDeadline,bankProblemOnly,needsReplacement,problemNote,initialDeadline,
 }:{
  actorId:string;sellerId:string;documentId:string;expectedReviewId?:string|null;canDecide?:boolean;canSetDeadline?:boolean;
- bankProblemOnly?:boolean;problemNote?:string;initialDeadline?:PayoutFixDeadline;
+ bankProblemOnly?:boolean;needsReplacement?:boolean;problemNote?:string;initialDeadline?:PayoutFixDeadline;
 }){
  const options: [string,string][] = bankProblemOnly ? [['request_correction','Problem']]
-   : [['verify','Matches'],['request_correction','Problem'],['reject','Reject document']];
+   : [['request_correction','Problem'],['reject','Reject document']];
+ if (!bankProblemOnly && !needsReplacement) options.unshift(['verify','Matches']);
  return <DocumentDecisionForm actorId={actorId} action="review" sourceId={documentId} url={`/api/admin/seller-documents/${encodeURIComponent(documentId)}/review`}
    fields={{sellerId,expectedReviewId}} canDecide={canDecide} canSetDeadline={canSetDeadline} problemNote={problemNote} initialDeadline={initialDeadline} options={options}/>;
 }

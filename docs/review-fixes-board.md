@@ -195,8 +195,8 @@ The refreshed 22 November references were present. Work started from `8736c1d` o
 | --- | --- | --- | --- |
 | S1 · The Seller Studio frame | Done | `ad5442a` | Typecheck, lint and 37 focused tests passed. Chrome checked 17 route states at 390, 768, 1024 and 1440 px. |
 | S2 · Getting started | Done | `7774dd4` | Typecheck, lint and 9 focused tests passed. Chrome checked the local seller and disposable waiting and live states at all four widths. |
-| S3 · Approve now, fix before the first payout | Done | This task commit | Typecheck and lint passed. 91 affected tests passed, followed by a final run of the new regression tests. Chrome checked the approval, open fix, re-upload and new order states at all four widths. |
-| S4 · Final check | Pending | | |
+| S3 · Approve now, fix before the first payout | Done | `89f6c92` | Typecheck and lint passed. 91 affected tests passed, followed by all 6 new regression tests. Chrome checked the approval, open fix, re-upload and new order states at all four widths. |
+| S4 · Final check | Done | This task commit | Typecheck, lint and 170 affected tests passed, including the Seller and Admin Chrome tests. The checked preview and in-memory walkthrough passed at the four requested widths. |
 
 S1 moved navigation into the full-height sidebar and compact toolbar. Existing sidebar destinations are accessible from the new menu, the notification bell, or links on the relevant page. Both account menus switched to Customer account and back in Chrome. At 390 px the phone menu controls measured at least 44 px, and content cleared the bottom tabs.
 
@@ -207,6 +207,74 @@ The approved local test shop showed two completed steps and the existing agreeme
 - The toolbar shows the existing refresh control. Seller Studio has no search field, so the area to the left of the desktop actions is empty.
 
 - S3 needs no migration. It records the deadline and approving decision in the existing document and audit history. The existing payout and bank checks still apply. The MariaDB query branch was tested with a disposable compatibility fixture.
-- The existing email job queues one reminder when unreserved earnings first become available with a seller fix outstanding. The scheduled check uses recorded ledger availability and the existing delivery hold.
+- The existing email job queues one reminder per channel when unreserved earnings first become available with a seller fix outstanding. The scheduled check uses recorded ledger availability and the existing delivery hold. An undelivered reminder updates in place if the balance or requested fix changes. Sent mail and read notices retain their recorded content.
 
 In the disposable workflow, Super Admin marked the bank document as a problem, kept its note and approved the shop. The seller received one captured email and one in-app notice with that note. Today, Documents & agreement and Earnings showed the fix. One revised and published product received a COD order while payout remained on hold. Uploading a new file moved the Admin Today work item to Recheck document. The existing bank Matches review cleared the fix and payout hold.
+
+
+### Final checks and remaining differences
+
+- The checked preview passed 107 of 107 form checks and sign-in readiness. Chrome covered 68 Seller route and viewport combinations and 16 Super Admin combinations at 390, 768, 1024 and 1440 px. The phone menu and desktop account menu both switched to the Customer account and back. The phone tabs cleared the content at the bottom.
+- In-memory fixtures covered 68 more viewport and state combinations, including a live shop, first public listing, bank-document correction, Admin Today waiting and recheck states, the original document review bookmark, and the existing bank verification clearing the hold. A separate Chrome fixture exercised the Applications decision controls on all four widths. The new bank form and approval controls measured at least 44 px on phones.
+- The approved local seller’s agreement form and the disposable shop’s upcoming fee test record appear where their saved terms require them. This shifts the greeting and cards below the fee notice in those states. Counts, progress, day labels, orders and seller details come from the active records.
+- The phone menu opens as a full-screen sheet with the close button beside the account block. The application’s correction form sits inside the flagged document’s card. Seller Studio still uses the original refresh control and phone tabs.
+- The final review verified exact approval retries, a fresh replacement before Matches, the bank review action on the latest proposal, and the product-specific help link from requested changes. Regression checks also cover refreshing an undelivered reminder in place and retaining its original delivery history.
+- The two live Today tests now publish a fictional listing before checking existing payout links and access revocation. A separate Getting started regression verifies access revocation while its private product read is in progress.
+
+<details>
+<summary>Files changed in Seller frame</summary>
+
+- `app/admin/seller-documents/[id]/review/page.tsx`
+- `app/admin/sellers/[id]/page.tsx`
+- `app/api/admin/seller-applications/[id]/review/route.ts`
+- `app/api/admin/seller-documents/[id]/verify/route.ts`
+- `app/globals.css`
+- `app/seller/finance/page.tsx`
+- `app/seller/layout.tsx`
+- `app/seller/page.tsx`
+- `app/seller/products/page.tsx`
+- `app/seller/registration/page.tsx`
+- `app/seller/requests/page.tsx`
+- `components/admin/document-review-workspace.tsx`
+- `components/admin/overview-today-data.ts`
+- `components/admin/seller-bank-review.tsx`
+- `components/admin/seller-document-review.tsx`
+- `components/admin/seller-payout-fixes.tsx`
+- `components/admin/seller-review-actions.tsx`
+- `components/seller/bank-details-form.tsx`
+- `components/seller/product-intake-workspace.tsx`
+- `components/seller/seller-getting-started.tsx`
+- `components/seller/seller-navigation.tsx`
+- `components/seller/seller-payout-fixes.tsx`
+- `docs/review-fixes-board.md`
+- `lib/db/repositories/payouts.ts`
+- `lib/db/repositories/seller-applications.ts`
+- `lib/email/business-message-details.ts`
+- `lib/email/business-message.ts`
+- `lib/operations/business-notifications.ts`
+- `lib/operations/event-catalog.ts`
+- `lib/operations/notification-links.ts`
+- `lib/operations/reminder-dispatch.ts`
+- `lib/payments/payout-bank-file.ts`
+- `lib/payments/payout-registration-readiness.ts`
+- `lib/products/public-catalogue-query.ts`
+- `lib/sellers/bank-details.ts`
+- `lib/sellers/document-review.ts`
+- `lib/sellers/onboarding-checklist.ts`
+- `lib/sellers/order-readiness-guards.ts`
+- `lib/sellers/payout-fix-reminder-source.ts`
+- `lib/sellers/payout-fixes.ts`
+- `lib/sellers/readiness.ts`
+- `lib/sellers/workspace-navigation.ts`
+- `tests/seller-dashboard-experience.test.ts`
+- `tests/seller-onboarding-checklist.test.ts`
+- `tests/seller-payout-evidence-ordering.test.ts`
+- `tests/seller-payout-fix-reminder.test.ts`
+- `tests/seller-payout-fix-review.test.ts`
+- `tests/seller-workspace-pages.test.ts`
+- `tests/workspace-navigation.test.ts`
+- `tests/workspace-notification-browser.test.ts`
+
+</details>
+
+Seller frame complete — ready for your review

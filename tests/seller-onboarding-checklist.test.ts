@@ -35,6 +35,14 @@ void test('getting started picks the saved draft ahead of bank setup and keeps d
   assert.match(html, /href="\/seller\/products\/new\?draftId=fixture#product-help"[^>]*>Get help with a product/);
   assert.match(html, /Review starts after submission\.[\s\S]*?Later/);
   assert.match(html, /Existing agreement controls/);
+
+  const requestedChanges = renderToStaticMarkup(createElement(SellerGettingStarted, {
+    model: { ...setupModel, steps: setupModel.steps.map(step => step.id === 'send' ? {
+      ...step, action: { actor: 'seller' as const, href: '/seller/products/intakes/fixture-case', label: 'Open requested changes' },
+    } : step) },
+    bankStatus: 'missing', tradingName: 'Fixture shop', date: 'Sunday, November 22', agreement: null,
+  }));
+  assert.match(requestedChanges, /href="\/seller\/products\/intakes\/fixture-case#product-help"[^>]*>Get help with a product/);
 });
 
 void test('getting started preserves staff review, hold and unavailable states and their existing links', async () => {

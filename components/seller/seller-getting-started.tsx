@@ -111,7 +111,7 @@ function FirstSetupTask({ first, waiting }: { first?: SetupStep; waiting: boolea
 
   const Icon = first.id === 'send' || first.id === 'approve' || first.id === 'publish' ? Package :
     first.id === 'bank' ? Landmark : FileText;
-  const productHelpHref = action.href.startsWith('/seller/products/new')
+  const productHelpHref = action.href.startsWith('/seller/products/new') || action.href.startsWith('/seller/products/intakes/')
     ? `${action.href}#product-help` : '/help#seller-product-help';
   return <section className="flex min-w-0 flex-wrap items-center gap-4 rounded-[1.125rem] bg-[#14213D] p-6 text-white">
     <div className="flex min-w-0 flex-1 basis-[26rem] flex-col items-start gap-4 sm:flex-row sm:items-center">

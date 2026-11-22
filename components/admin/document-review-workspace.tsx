@@ -6,7 +6,7 @@ import {documentChangeState} from '@/lib/sellers/document-display-state';
 import {StaffReviewAccessBoundary} from './staff-review-access-boundary';
 import {sellerDocumentLabel} from './seller-document-label';
 const date=(value:number)=>new Intl.DateTimeFormat('en-NP',{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kathmandu'}).format(value);
-export function DocumentReviewWorkspace({workspace,sellerId,documentId,requestId,viewerId}:{workspace:SellerDocumentWorkspace;sellerId:string;documentId?:string;requestId?:string;viewerId:string}) {
+export function DocumentReviewWorkspace({workspace,sellerId,documentId,requestId,viewerId,needsReplacement}:{workspace:SellerDocumentWorkspace;sellerId:string;documentId?:string;requestId?:string;viewerId:string;needsReplacement?:boolean}) {
   const request=workspace.requests.find(item=>item.id===requestId);
   const selected=workspace.documents.find(item=>item.id===(documentId??request?.replacementId??request?.documentId));
   const original=workspace.documents.find(item=>item.id===request?.documentId);
@@ -30,6 +30,6 @@ export function DocumentReviewWorkspace({workspace,sellerId,documentId,requestId
     dependencies={<p className="mt-3">Inspect the actual file and the applicable holder, name, number and authority. Text similarity alone is not verification. Bank review, commercial activation, product publication and payout eligibility remain separate decisions; recorded holds require their own disposition.</p>}
     decision={<>{personalConflict?<p>You cannot review your own seller evidence. Assign an eligible Super Admin.</p>:null}
       {request?<DocumentChangeReview actorId={viewerId} requestId={request.id} expectedOperationId={request.operationId} canDecide={!personalConflict&&permissionAvailable}/>:null}
-      {selected?<SellerDocumentReview actorId={viewerId} sellerId={sellerId} documentId={selected.id} expectedReviewId={selected.reviewId} canDecide={!personalConflict&&!permissionAvailable&&!!selected.currentSubmission&&selected.status==='pending'&&(registrationEvidenceKinds as readonly string[]).includes(selected.kind)}/>:<p>No document decision is currently available. The saved status is shown above.</p>}</>}
+      {selected?<SellerDocumentReview actorId={viewerId} sellerId={sellerId} documentId={selected.id} expectedReviewId={selected.reviewId} needsReplacement={needsReplacement} canDecide={!personalConflict&&!permissionAvailable&&!!selected.currentSubmission&&selected.status==='pending'&&(registrationEvidenceKinds as readonly string[]).includes(selected.kind)}/>:<p>No document decision is currently available. The saved status is shown above.</p>}</>}
     history={<ol className="mt-4 space-y-3">{workspace.history.map(event=><li key={event.id}><p>{event.action.replace('seller.document.','').replaceAll('_',' ')} · {date(event.createdAt)}{event.actor?` · ${event.actor}`:''}</p><p>{event.reason}</p></li>)}</ol>}/></StaffReviewAccessBoundary>
 }

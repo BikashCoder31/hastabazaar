@@ -37,8 +37,8 @@ const openPayoutFix = `payout_fix_seller.status='approved'
   AND NOT EXISTS(SELECT 1 FROM seller_documents verified_fix
     WHERE verified_fix.seller_id=payout_fix_source.seller_id AND verified_fix.kind=payout_fix_source.kind
       AND verified_fix.status='verified' AND verified_fix.reviewed_at>=payout_fix_event.created_at
-      AND (verified_fix.reviewed_by IS NULL OR verified_fix.reviewed_by<>payout_fix_seller.user_id)
-      AND (verified_fix.id=payout_fix_source.id OR verified_fix.uploaded_at>payout_fix_source.uploaded_at
+      AND verified_fix.reviewed_by IS NOT NULL AND verified_fix.reviewed_by<>payout_fix_seller.user_id
+      AND (verified_fix.uploaded_at>payout_fix_source.uploaded_at
         OR (verified_fix.uploaded_at=payout_fix_source.uploaded_at AND verified_fix.id>payout_fix_source.id)))`;
 
 /** The immutable opening decision, plus the existing evidence history, is the payout hold source. */
@@ -100,6 +100,15 @@ const problemDeadlineSql = (db: D1Database, alias = 'problem_review') => {
   return `${jsonValue}(${alias}.next_json,'$.neededBefore')`;
 };
 
+/** The caller supplies the current seller_documents row as d. */
+export function sellerDocumentNeedsReplacementSql(db: D1Database) {
+  return `EXISTS(SELECT 1 FROM audit_logs current_problem WHERE current_problem.id=d.review_request_id
+    AND current_problem.action='seller.document.correction_requested'
+    AND (${problemDeadlineSql(db,'current_problem')} IN ('first_payout','approval')
+      OR EXISTS(SELECT 1 ${payoutFixJoin}
+        WHERE payout_fix_source.seller_id=d.seller_id AND payout_fix_source.kind=d.kind AND ${openPayoutFix})))`;
+}
+
 const documentProblemsSql = (db: D1Database) => `FROM seller_documents problem_document
   JOIN audit_logs problem_review ON problem_review.id=problem_document.review_request_id
   WHERE problem_document.seller_id=? AND problem_document.status IN ('pending','rejected')
@@ -143,9 +152,10 @@ export function applicationDocumentProblemsGuard(
 export function openApplicationPayoutFix(
   db: D1Database, input: { sellerId: string; actorId: string; requestId: string; now: number; problem: ApplicationDocumentProblem },
 ) {
+  const id = crypto.randomUUID();
   return db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,next_json,request_id,created_at)
     VALUES(?,?,'${payoutFixOpened}','seller_document',?,?,?,?,?)`)
-    .bind(crypto.randomUUID(),input.actorId,input.problem.documentId,input.problem.note,
-      JSON.stringify({ sellerId:input.sellerId,neededBefore:'first_payout',reviewId:input.problem.reviewId }),
-      input.requestId,input.now);
+    .bind(id,input.actorId,input.problem.documentId,input.problem.note,
+      JSON.stringify({ sellerId:input.sellerId,neededBefore:'first_payout',reviewId:input.problem.reviewId,approvalRequestId:input.requestId }),
+      id,input.now);
 }

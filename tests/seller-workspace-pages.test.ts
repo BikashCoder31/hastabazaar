@@ -4,6 +4,8 @@ import {registerHooks} from 'node:module';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {completeVersionFixture} from './helpers/complete-version-fixture';
+import {productPublicationFixture} from './helpers/product-publication-fixture';
+import {getProductPublicationReview, reviewProductPublication} from '../lib/products/publication';
 
 declare global {var sellerPageDb:D1Database;var sellerPageUserId:string;var sellerPageElement:typeof createElement;}
 globalThis.sellerPageElement=createElement;
@@ -17,8 +19,26 @@ registerHooks({resolve(specifier,context,next){
  return next(specifier,context);
 }});
 
-void test('actual Seller Home, Requests and Finance mount one original payout identity and truthful native destination',async()=>{
- const f=await completeVersionFixture(Date.now());try{globalThis.sellerPageDb=f.db;globalThis.sellerPageUserId='registered-owner';
+async function liveSellerPageFixture() {
+ const f=await productPublicationFixture('',Date.now()-60_000,true);
+ try {
+  const review=await getProductPublicationReview(f.db,'reviewer',f.sent.caseId);
+  await reviewProductPublication(f.db,{
+   actorId:'reviewer',requestId:'workspace-page-publish',expectedRevision:String(review.revision),now:Date.now(),
+  },{
+   caseId:f.sent.caseId,versionId:review.candidate.versionId,expectedCaseRevision:String(review.caseRevision),
+   action:'approve_and_publish',reason:'Publish the reviewed fictional listing for the live Today branch.',
+   checks:{sameItem:true,accurateCover:true,eligibilityEvidence:[]},
+  });
+  return f;
+ } catch(error) {
+  f.dispose();
+  throw error;
+ }
+}
+
+void test('live Seller Home, Requests and Finance mount one original payout identity and truthful native destination',async()=>{
+ const f=await liveSellerPageFixture();try{globalThis.sellerPageDb=f.db;globalThis.sellerPageUserId='registered-owner';
   const home=await import('../app/seller/page'),requests=await import('../app/seller/requests/page'),finance=await import('../app/seller/finance/page');
   const homeHtml=renderToStaticMarkup(await home.default()),requestHtml=renderToStaticMarkup(await requests.default({searchParams:Promise.resolve({view:'all'})})),financeHtml=renderToStaticMarkup(await finance.default());
   for(const html of [homeHtml,requestHtml]){assert.match(html,/legacy-payout/);assert.match(html,/href="\/seller\/finance#payout-request-legacy-payout"/);assert.doesNotMatch(html,/private_reason|processingNote|evidence_reference/);}
@@ -26,12 +46,17 @@ void test('actual Seller Home, Requests and Finance mount one original payout id
  }finally{f.dispose();}
 });
 
-void test('actual Home rejects an offboard during its last private product and earnings reads',async()=>{
- const f=await completeVersionFixture(Date.now());try{globalThis.sellerPageUserId='registered-owner';let changed=false;const db=Object.create(f.db)as D1Database;
-  db.prepare=(sql:string)=>{if(!changed&&sql.includes('ORDER BY quantity, products.updated_at DESC LIMIT 4')){changed=true;f.sqlite.prepare("UPDATE users SET status='disabled' WHERE id='registered-owner'").run();}return f.db.prepare(sql);};globalThis.sellerPageDb=db;
-  const home=await import('../app/seller/page');await assert.rejects(home.default(),/access|changed|owner|viewer/i);assert.equal(changed,true);
- }finally{f.dispose();}
-});
+for (const [view, fixture, privateRead] of [
+ ['Live Today',liveSellerPageFixture,'ORDER BY quantity, products.updated_at DESC LIMIT 4'],
+ ['Getting started',completeVersionFixture,'WITH milestones AS ('],
+] as const) {
+ void test(view+' rejects an offboard during its private product read',async()=>{
+  const f=await fixture();try{globalThis.sellerPageUserId='registered-owner';let changed=false;const db=Object.create(f.db)as D1Database;
+   db.prepare=(sql:string)=>{if(!changed&&sql.includes(privateRead)){changed=true;f.sqlite.prepare("UPDATE users SET status='disabled' WHERE id='registered-owner'").run();}return f.db.prepare(sql);};globalThis.sellerPageDb=db;
+   const home=await import('../app/seller/page');await assert.rejects(home.default(),/access|changed|owner|viewer/i);assert.equal(changed,true);
+  }finally{f.dispose();}
+ });
+}
 
 void test('Earnings terms show the saved payout weekday and the next eligible run', async () => {
  const f = await completeVersionFixture(Date.now());

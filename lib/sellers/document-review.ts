@@ -1,5 +1,5 @@
 import {registrationEvidenceKinds} from './document-policy';
-import { payoutFixDocumentNames, readApplicationDocumentProblems, readSellerPayoutFixes, sellerPayoutFixOpenSql, type PayoutFixDeadline } from './payout-fixes';
+import { payoutFixDocumentNames, readApplicationDocumentProblems, readSellerPayoutFixes, sellerDocumentNeedsReplacementSql, sellerPayoutFixOpenSql, type PayoutFixDeadline } from './payout-fixes';
 import { staffMutationGuard } from '@/lib/db/repositories/staff-mutation-guard';
 import type { SellerApplicationDocument, SellerDocumentKind } from './application';
 import { commandReceipt } from '../workflows/contracts';
@@ -239,6 +239,11 @@ export async function reviewSellerDocument(db: D1Database, input: { sellerId: st
   const expectedReviewId=input.expectedReviewId===undefined?current.reviewId:input.expectedReviewId;
   if(current.status!=='pending'||(current.reviewId??'')!==(expectedReviewId??''))
     throw new DocumentDecisionBeforeWriteError('This evidence changed. Review its current source before a new decision.');
+  const keepReplacementPending = input.decision==='verify' ? sellerDocumentNeedsReplacementSql(db) : null;
+  if (keepReplacementPending && await db.prepare(`SELECT 1 FROM seller_documents d WHERE d.id=? AND d.seller_id=? AND ${keepReplacementPending}`)
+    .bind(input.documentId,input.sellerId).first()) {
+    throw new DocumentDecisionBeforeWriteError('The seller still needs to upload the requested replacement file.');
+  }
   const existingPayoutFix = current.sellerStatus==='approved' && input.decision==='request_correction'
     ? (await readSellerPayoutFixes(db,input.sellerId)).find(fix=>fix.documentId===input.documentId)
     : undefined;
@@ -282,6 +287,7 @@ export async function reviewSellerDocument(db: D1Database, input: { sellerId: st
       ${applicationProblem ? `AND s.status='under_review' AND NOT EXISTS(SELECT 1 FROM seller_participation_profiles p
         WHERE p.seller_id=s.id AND p.participation_route<>'registered_seller')` : ''}
       ${existingPayoutFix ? `AND ${sellerPayoutFixOpenSql('s.id','?')}` : ''}
+      ${keepReplacementPending ? `AND NOT (${keepReplacementPending})` : ''}
       AND NOT EXISTS(SELECT 1 FROM seller_documents newer WHERE newer.seller_id=d.seller_id AND newer.kind=d.kind
         AND (newer.uploaded_at>d.uploaded_at OR (newer.uploaded_at=d.uploaded_at AND newer.id>d.id)))
       ) THEN 1 ELSE 0 END`).bind(guard,input.documentId,input.sellerId,expectedReviewId,input.actorId,...(existingPayoutFix?[existingPayoutFix.id]:[])),
