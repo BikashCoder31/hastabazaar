@@ -222,15 +222,16 @@ export async function runRecordedWorkBrowser(options: {
     await signInPackagedBrowser(deniedPage, origin, blocked, '/admin/catalog');
     await deniedPage.waitForURL(origin + '/admin/catalog');
 
-    options.onStep?.('record each application review and requested change');
     for (const [index, application] of applications.entries()) {
       signal.throwIfAborted();
       const page = index < 2 ? ownPage : ownerPage;
       const sellerUrl = origin + '/admin/sellers/' + application.id;
       const reviewUrl = origin + '/api/admin/seller-applications/' + application.id + '/review';
+      options.onStep?.('open the seller record for application ' + (index + 1));
       await page.goto(sellerUrl);
       const form = page.locator('form[data-form-id="staff.seller-review-action"]');
-      for (const [label, status] of [['Start review', 'under_review'], ['Request changes', 'needs_changes']]) {
+      for (const [label, status] of [['Start review', 'under_review'], ['Ask seller to fix details', 'needs_changes']]) {
+        options.onStep?.(label + ' on application ' + (index + 1));
         if (status === 'needs_changes') await form.getByLabel('Review note', { exact: true }).fill('Fictional test review requests more business details.');
         await form.getByRole('button', { name: label, exact: true }).click();
         const beforeBankViews = page === ownerPage && status === 'needs_changes'
@@ -245,6 +246,7 @@ export async function runRecordedWorkBrowser(options: {
         const [profiles] = await db.query<RowDataPacket[]>('SELECT status FROM seller_profiles WHERE id=?', [application.id]);
         assert.equal(profiles[0]?.status, status, 'The real source application must retain the transition');
         if (refresh && beforeBankViews) {
+          options.onStep?.('verify the final review refresh and protected bank-view audit');
           const refreshed = await refresh;
           assert.equal(refreshed?.status(), 200, 'Observe the successful review-triggered Seller Flight before the read-only inventory');
           // The Flight can keep streaming after the application writes the protected view audit.
