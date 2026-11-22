@@ -283,7 +283,8 @@ export async function runRecordedWorkBrowser(options: {
     const group = (page: Page, actor: string) => groups(page).getByRole('row').filter({ hasText: actor });
     const widths = [320, 390, 1440];
     for (const width of widths) {
-      options.onStep?.('check the work log, filters and permission boundaries at ' + width + ' px');
+      const atWidth = (step: string) => options.onStep?.(step + ' at ' + width + ' px');
+      atWidth('check the reviewer’s work log tab and scoped counts');
       signal.throwIfAborted();
       for (const page of [ownPage, ownerPage, deniedPage]) await page.setViewportSize({ width, height: 1000 });
       await ownPage.goto(origin + progress);
@@ -294,14 +295,16 @@ export async function runRecordedWorkBrowser(options: {
       await own.getByRole('cell', { name: '2', exact: true }).waitFor();
       await own.getByRole('cell', { name: 'Application revision requested', exact: true }).waitFor();
       assert.equal(await ownPage.getByRole('link', { name: 'seller: ' + applications[2].id, exact: true }).count(), 0);
+      atWidth('open the exact seller record from the reviewer’s filtered work log');
       await own.getByRole('link', { name: 'View matching records', exact: true }).click();
       await ownPage.waitForURL(url => url.pathname === progress && url.searchParams.get('action') === changesRequested);
       for (const application of applications.slice(0, 2)) await ownPage.getByRole('link', { name: 'seller: ' + application.id, exact: true }).waitFor();
       await ownPage.getByRole('link', { name: 'seller: ' + applications[0].id, exact: true }).click();
       await ownPage.waitForURL(origin + '/admin/sellers/' + applications[0].id);
-      await ownPage.getByText(applications[0].reference, { exact: true }).waitFor();
+      await ownPage.locator('[data-seller-record] header p').filter({ hasText: applications[0].reference }).waitFor();
       await ownPage.locator('#seller-decision').getByText('Application decision', { exact: true }).waitFor();
 
+      atWidth('check Super Admin’s two actor groups and apply the matching dates');
       await ownerPage.goto(origin + activity);
       await group(ownerPage, reviewer.id).getByRole('cell', { name: '2', exact: true }).waitFor();
       await group(ownerPage, owner.id).getByRole('cell', { name: '1', exact: true }).waitFor();
@@ -315,6 +318,7 @@ export async function runRecordedWorkBrowser(options: {
           url.searchParams.get('from') === start && url.searchParams.get('to') === end);
       };
       await applyDate(from, to);
+      atWidth('check the filtered activity entries and empty date range');
       await group(ownerPage, reviewer.id).getByRole('cell', { name: '2', exact: true }).waitFor();
       assert.equal(await groups(ownerPage).getByRole('row').count(), 2);
       const history = ownerPage.getByRole(width < 768 ? 'list' : 'table', { name: 'Recorded actions', exact: true });
@@ -325,6 +329,7 @@ export async function runRecordedWorkBrowser(options: {
       await ownerPage.getByText('No matching completed steps were recorded in this range.', { exact: true }).waitFor();
       await ownerPage.getByText('No recorded actions match these filters.', { exact: true }).waitFor();
 
+      atWidth('check invalid filters and denied staff links');
       await ownPage.goto(origin + progress + '?actor=' + owner.id);
       await ownPage.getByRole('alert').filter({ hasText: 'Admins can view only their own recorded work.' }).waitFor();
       await ownPage.goto(origin + progress + '?from=2020-01-01&to=2022-01-01');
@@ -334,6 +339,7 @@ export async function runRecordedWorkBrowser(options: {
       await nav.getByRole('link', { name: 'Categories & occasions', exact: true }).waitFor();
       assert.equal(await nav.locator('a[href="/admin/progress"],a[href="/admin/activity"]').count(), 0);
       assert.equal(await deniedPage.locator('nav a[href="/admin/progress"],nav a[href="/admin/activity"]').count(), 0);
+      atWidth('verify denied direct navigation to both reports and the seller record');
       for (const path of [progress, activity, '/admin/sellers/' + applications[0].id]) {
         await deniedPage.goto(origin + path);
         await deniedPage.waitForURL(origin + '/staff-access-denied');
