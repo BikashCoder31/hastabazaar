@@ -620,7 +620,8 @@ async function main() {
         appendedOptionalAdminRetainedForRecovery: true, sourceInventoryCapturedAfterBrowserShutdown: after };
     });
   } catch (error) {
-    if (evidence) await writeFile(resolve(evidence, 'failure.json'), JSON.stringify({ status: 'FAIL', phase, message: 'Required packaged browser acceptance failed; inspect sanitized gate TAP when present. No transport/auth downgrade was attempted.' }), { flag: 'wx', mode: 0o600 });
+    const fixtureLocation = error instanceof Error ? error.stack?.match(/\b((?:registration-browser-fixture|recorded-work-browser-fixture|verify-packaged-browser-gates)\.mts:\d+:\d+)\b/)?.[1] : undefined;
+    if (evidence) await writeFile(resolve(evidence, 'failure.json'), JSON.stringify({ status: 'FAIL', phase, fixtureLocation, message: 'Required packaged browser acceptance failed; inspect sanitized gate TAP when present. No transport/auth downgrade was attempted.' }), { flag: 'wx', mode: 0o600 });
     throw new Error(`Packaged browser acceptance failed during ${phase}: ${redacted(error instanceof Error ? error.message : 'unknown failure')}`);
   } finally {
     process.removeListener('SIGTERM', cancel); process.removeListener('SIGINT', cancel);

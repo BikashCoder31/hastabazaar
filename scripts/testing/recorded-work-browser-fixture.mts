@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
+import { isDeepStrictEqual } from 'node:util';
 import type { Connection, RowDataPacket } from 'mysql2/promise';
 import type { BrowserContext, Page, Request } from 'playwright-core';
 import { reportingDayIso } from '../../lib/dates/nepal-calendar';
@@ -340,16 +341,30 @@ export async function runRecordedWorkBrowser(options: {
       assert.equal(await nav.locator('a[href="/admin/progress"],a[href="/admin/activity"]').count(), 0);
       assert.equal(await deniedPage.locator('nav a[href="/admin/progress"],nav a[href="/admin/activity"]').count(), 0);
       atWidth('verify denied direct navigation to both reports and the seller record');
-      for (const path of [progress, activity, '/admin/sellers/' + applications[0].id]) {
+      for (const [label, path] of [['Work log', progress], ['Staff history', activity], ['seller record', '/admin/sellers/' + applications[0].id]]) {
+        atWidth('verify direct access denial for ' + label);
         await deniedPage.goto(origin + path);
         await deniedPage.waitForURL(origin + '/staff-access-denied');
         assert.equal(await deniedPage.getByText(applications[0].reference, { exact: true }).count(), 0);
       }
     }
+    options.onStep?.('capture the business and audit inventory after read-only navigation');
     const { formLoads: afterLoads, ...afterRead } = await readOnlyInventory(db, selectedViews);
+    if (!isDeepStrictEqual(afterRead, beforeRead)) {
+      // Report schema names only. Row values and captured digests stay private.
+      const beforeTables = new Map(beforeRead.tables.map(table => [table.name, table]));
+      const afterTables = new Map(afterRead.tables.map(table => [table.name, table]));
+      const affected = [...new Set([...beforeTables.keys(), ...afterTables.keys()])].filter(name =>
+        /^[a-z0-9_]+$/.test(name) && !isDeepStrictEqual(beforeTables.get(name), afterTables.get(name)));
+      if (beforeRead.schemaSha256 !== afterRead.schemaSha256) affected.push('schema');
+      if (!isDeepStrictEqual(beforeRead.settings, afterRead.settings)) affected.push('public settings');
+      options.onStep?.('read-only inventory changed in ' + affected.join(', '));
+    }
     assert.deepEqual(afterRead, beforeRead, 'Recorded work and linked source reads preserved every business and audit row');
+    options.onStep?.('verify that only permitted runtime form-load telemetry appended');
     const runtimeFormLoadsAppended = assertPreservedWithFormLoads(beforeLoads, afterLoads, options.releaseId);
     signal.throwIfAborted();
+    options.onStep?.('finish the recorded-work checks and close their browser contexts');
     return { tests: 1, skipped: 0, widths, completedSteps: { reviewer: 2, superAdmin: 1 }, source: 'seller application review',
       startedReviewsExcludedFromCounts: 3, superAdminAuthenticator: 'verified by current hosted setup, TOTP activation and one-use recovery sign-in',
       transport: 'real packaged HTTP with genuine browser password sessions', businessTablesUnchanged: beforeRead.tables.length,
