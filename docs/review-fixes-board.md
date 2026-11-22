@@ -193,12 +193,14 @@ The refreshed 22 November references were present. Work started from `8736c1d` o
 
 | Task | Status | Commit | Checks |
 | --- | --- | --- | --- |
-| S1 · The Seller Studio frame | Done | This task commit | Typecheck and lint passed. Focused tests passed. Chrome checked 17 route states at 390, 768, 1024 and 1440 px. |
-| S2 · Getting started | Pending | | |
+| S1 · The Seller Studio frame | Done | `ad5442a` | Typecheck, lint and 37 focused tests passed. Chrome checked 17 route states at 390, 768, 1024 and 1440 px. |
+| S2 · Getting started | Done | This task commit | Typecheck, lint and 9 focused tests passed. Chrome checked the local seller and disposable waiting and live states at all four widths. |
 | S3 · Approve now, fix before the first payout | Pending | | |
 | S4 · Final check | Pending | | |
 
 S1 moved navigation into the full-height sidebar and compact toolbar. Existing sidebar destinations are accessible from the new menu, the notification bell, or links on the relevant page. Both account menus switched to Customer account and back in Chrome. At 390 px the phone menu controls measured at least 44 px, and content cleared the bottom tabs.
+
+The approved local test shop showed two completed steps and the existing agreement form. Taking orders asks the seller to accept the current terms. Chrome checked the product help link, Seller support destination, Shop readiness and Program & agreements. In a disposable fixture, publishing the first product brought up normal Today with the compact bank setup card.
 
 ### For the owner
 

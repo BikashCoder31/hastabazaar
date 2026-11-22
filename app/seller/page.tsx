@@ -1,11 +1,11 @@
 import { env } from 'cloudflare:workers';
 import Image from 'next/image';
 import Link from 'next/link';
-import { CalendarDays, Package } from 'lucide-react';
+import { CalendarDays, Check, Package } from 'lucide-react';
 import { InventoryEditor } from '@/components/seller/inventory-editor';
 import { SellerAgreementAcceptance } from '@/components/seller/seller-agreement-acceptance';
 import { SellerManagedProgramWorkspace } from '@/components/seller/managed-program-workspace';
-import { SellerOnboardingChecklist } from '@/components/seller/onboarding-checklist';
+import { SellerGettingStarted } from '@/components/seller/seller-getting-started';
 import { SellerProgramDetails } from '@/components/seller/seller-program-details';
 import { SellerReadinessSummary } from '@/components/seller/readiness-summary';
 import { SellerRegistrationApplicationOverview } from '@/components/seller/registration-application-overview';
@@ -15,6 +15,7 @@ import { requireSellerCenterPage } from '@/lib/auth/seller-center';
 import { SELLER_AGREEMENT_VERSION } from '@/lib/content/legal-policies';
 import { requireDatabase } from '@/lib/db/d1';
 import { CommissionRateUnavailableError, getEffectiveBusinessSetting } from '@/lib/db/repositories/business-settings';
+import { getPublicMakerProfile } from '@/lib/db/repositories/customers';
 import { getRegisteredSellerTerms, sellerAcceptedCommissionVersion } from '@/lib/db/repositories/marketplace-settings';
 import { listPayoutRequests, listSellerPayouts } from '@/lib/db/repositories/payouts';
 import { listSellerProducts } from '@/lib/db/repositories/products';
@@ -74,25 +75,71 @@ export default async function SellerDashboardPage() {
   const db = requireDatabase(env as unknown as { DB?: D1Database });
   if (!seller.approvedSeller || !seller.sellerId) return <SellerRegistrationApplicationOverview db={db} viewer={seller} />;
   const now = sellerDashboardObservedAt();
-  const [work, readiness, products, stock, earnings, orders, commission, program, payouts, payoutRequests, holdSetting, weekday, cutoff, zone] = await Promise.all([
-    readSellerWorkspaceTasks(db, seller.userId, { now, limit: 60 }).catch(() => null),
+  const [readiness, commission, program] = await Promise.all([
     getSellerReadiness(db, seller.sellerId, now).catch(() => null),
+    getRegisteredSellerTerms(db, now).catch(error => { if (error instanceof CommissionRateUnavailableError) return null; throw error; }),
+    getManagedProgramWorkspace(db, seller.sellerId),
+  ]);
+  const [commissionAccepted, publicCount] = await Promise.all([
+    commission ? sellerAcceptedCommissionVersion(db, seller.sellerId, commission, now) : false,
+    readiness?.publicProductCount ?? getPublicMakerProfile(db, seller.sellerId)
+      .then(shop => shop?.productCount ?? 0).catch(() => null),
+  ]);
+  const isManaged = program.participationRoute === 'managed_maker';
+  const termsAccepted = isManaged ? readiness?.checks.some(check => check.id === 'terms' && check.status === 'ready') :
+    seller.sellerAgreementVersion === SELLER_AGREEMENT_VERSION && commissionAccepted;
+  const termsHref = isManaged ? '/sell/application#selling-fee-terms' : '/seller/registration';
+  const termsForm = !isManaged && commission && !termsAccepted ? <SellerAgreementAcceptance termsContext={commission.context} /> : null;
+  const hasProgramHistory = isManaged || program.supplies.length > 0 || program.transitions.length > 0;
+  const shopDetails = <>
+    <details id="seller-readiness" className="scroll-mt-28 rounded-xl border bg-card px-4">
+      <summary className="flex min-h-11 cursor-pointer items-center font-semibold">Shop readiness</summary>
+      <div className="pb-4"><SellerReadinessSummary readiness={readiness} /></div>
+    </details>
+    <section id="managed-program" aria-labelledby="program-details-title" className="scroll-mt-28">
+      <SellerProgramDetails>
+        {hasProgramHistory ? <>
+          <SellerManagedProgramWorkspace workspace={program} sellerId={seller.sellerId} />
+          <div className="flex flex-wrap gap-4 text-sm">
+            <Link className="section-link min-h-11" href="/seller/form-history?kind=managed-supply">Managed supply answer history</Link>
+            <Link className="section-link min-h-11" href="/seller/form-history?kind=managed-transition">Managed route answer history</Link>
+          </div>
+        </> : null}
+        <Link className="section-link min-h-11" href="/seller-agreement">Seller Marketplace Agreement</Link>
+        <Link className="section-link min-h-11" href="/seller/form-history?kind=payout-request">Payout request answer history</Link>
+      </SellerProgramDetails>
+    </section>
+  </>;
+  if (publicCount === 0) {
+    const onboarding = await getSellerOnboardingChecklist(db, {
+      sellerId: seller.sellerId, ownerId: seller.userId, stage: readiness?.stage ?? seller.status, readiness, viewer: { kind: 'seller' },
+    });
+    await assertSellerWorkspaceViewer(db, seller.userId, seller.sellerId, seller.authSubject);
+    return <div className="space-y-6">
+      <SellerGettingStarted model={onboarding} bankStatus={readiness?.bankStatus ?? null}
+        date={localDay.format(now)} tradingName={seller.tradingName} agreement={termsForm ?? <>
+          {termsAccepted ? <p className="flex items-start gap-2 text-sm text-[#465573]">
+            <Check className="mt-0.5 size-4 shrink-0 text-[#236548]" aria-hidden="true" />
+            <span>Seller agreement accepted. Selling fee terms come from your agreement.</span>
+          </p> : <p className="text-sm text-[#465573]">Review the current terms for your selling route.</p>}
+          <Link className="section-link min-h-11 text-sm text-[#A8232E] underline" href={termsHref}>View agreement and fee terms</Link>
+        </>} />
+      {shopDetails}
+    </div>;
+  }
+
+  const [work, products, stock, earnings, orders, payouts, payoutRequests, holdSetting, weekday, cutoff, zone] = await Promise.all([
+    readSellerWorkspaceTasks(db, seller.userId, { now, limit: 60 }).catch(() => null),
     listSellerProducts(db, seller.sellerId).catch(() => null),
     readLowStock(db, seller.sellerId).catch(() => null),
     getSellerEarnings(db, seller.sellerId, now),
     readSellerOrderQueue(db, seller.sellerId),
-    getRegisteredSellerTerms(db, now).catch(error => { if (error instanceof CommissionRateUnavailableError) return null; throw error; }),
-    getManagedProgramWorkspace(db, seller.sellerId),
     listSellerPayouts(db, seller.sellerId),
     listPayoutRequests(db, seller.sellerId, { status: 'submitted', limit: 1 }),
     getEffectiveBusinessSetting(db, 'seller_delivery_hold_days', now).catch(() => null),
     getEffectiveBusinessSetting(db, 'payout_processing_weekday', now).catch(() => null),
     getEffectiveBusinessSetting(db, 'payout_cutoff_local_time', now).catch(() => null),
     getEffectiveBusinessSetting(db, 'payout_timezone', now).catch(() => null),
-  ]);
-  const [commissionAccepted, onboarding] = await Promise.all([
-    commission ? sellerAcceptedCommissionVersion(db, seller.sellerId, commission, now) : false,
-    getSellerOnboardingChecklist(db, { sellerId: seller.sellerId, ownerId: seller.userId, stage: readiness?.stage ?? seller.status, readiness, viewer: { kind: 'seller' } }),
   ]);
   await assertSellerWorkspaceViewer(db, seller.userId, seller.sellerId, seller.authSubject);
 
@@ -143,13 +190,23 @@ export default async function SellerDashboardPage() {
     return product ? [{ ...row, product }] : [];
   });
 
-  const hasProgramHistory = program.participationRoute === 'managed_maker' || program.supplies.length > 0 || program.transitions.length > 0;
+  const bankStatus = readiness?.bankStatus;
   return <div className="space-y-5 text-[#14213D]">
+    {bankStatus && bankStatus !== 'verified' ? <section aria-labelledby="seller-finish-bank"
+      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-card px-4 py-3">
+      <div className="min-w-0">
+        <p className="text-xs font-semibold text-muted-foreground">Finish setting up</p>
+        <h2 id="seller-finish-bank" className="mt-1 text-sm font-semibold">{bankStatus === 'missing' ? 'Add your bank account' : 'Verify your bank account'}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{bankStatus === 'missing' ? 'Add bank details for your first payout.' : 'Hastabazaar needs to verify your saved details before a payout.'}</p>
+      </div>
+      <Link href="/seller/finance#bank-details" className="section-link min-h-11">
+        {bankStatus === 'missing' ? 'Add bank details' : 'View bank details'}
+      </Link>
+    </section> : null}
     <header>
       <h1 className="break-words font-heading text-3xl md:text-4xl">{greeting}, {seller.tradingName}</h1>
       <p className="mt-2 text-sm text-muted-foreground">{localDay.format(now)} · <strong className="text-[#14213D]">{required.length} {required.length === 1 ? 'thing needs' : 'things need'} you</strong> · {waiting.length} {waiting.length === 1 ? 'is' : 'are'} with Hastabazaar</p>
     </header>
-    {!onboarding.steps.every(step => step.status === 'Done') || readiness?.bankStatus !== 'verified' ? <SellerOnboardingChecklist model={onboarding} bankStatus={readiness?.bankStatus ?? null} /> : null}
     <SellerActionOverview first={first} remaining={remaining} waiting={waiting} unavailable={!work || work.unavailableFamilies.length > 0} />
     <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
       <section aria-labelledby="seller-today-money" className="min-w-0 rounded-2xl border bg-card p-4 md:p-5">
@@ -190,26 +247,8 @@ export default async function SellerDashboardPage() {
       </section>
     </div>
     <section id="selling-fee-terms" className="scroll-mt-28">
-      {program.participationRoute !== 'managed_maker' && commission && (seller.sellerAgreementVersion !== SELLER_AGREEMENT_VERSION || !commissionAccepted)
-        ? <SellerAgreementAcceptance termsContext={commission.context} />
-        : <Link href={program.participationRoute === 'managed_maker' ? '/sell/application#selling-fee-terms' : '/seller/registration'} className="section-link min-h-11">Review agreements and selling terms</Link>}
+      {termsForm ?? <Link href={termsHref} className="section-link min-h-11">Review agreements and selling terms</Link>}
     </section>
-    <details id="seller-readiness" className="scroll-mt-28 rounded-xl border bg-card px-4">
-      <summary className="flex min-h-11 cursor-pointer items-center font-semibold">Shop readiness</summary>
-      <div className="pb-4"><SellerReadinessSummary readiness={readiness} /></div>
-    </details>
-    <section id="managed-program" aria-labelledby="program-details-title" className="scroll-mt-28">
-      <SellerProgramDetails>
-        {hasProgramHistory ? <>
-          <SellerManagedProgramWorkspace workspace={program} sellerId={seller.sellerId} />
-          <div className="flex flex-wrap gap-4 text-sm">
-            <Link className="section-link min-h-11" href="/seller/form-history?kind=managed-supply">Managed supply answer history</Link>
-            <Link className="section-link min-h-11" href="/seller/form-history?kind=managed-transition">Managed route answer history</Link>
-          </div>
-        </> : null}
-        <Link className="section-link min-h-11" href="/seller-agreement">Seller Marketplace Agreement</Link>
-        <Link className="section-link min-h-11" href="/seller/form-history?kind=payout-request">Payout request answer history</Link>
-      </SellerProgramDetails>
-    </section>
+    {shopDetails}
   </div>;
 }

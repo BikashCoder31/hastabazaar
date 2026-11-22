@@ -209,7 +209,7 @@ function ProductIntakeWorkspaceBody({categories,occasions,materialSuggestions=[]
         {id:'review',label:'Hastabazaar checks it',state:reviewedVersionInShop?'complete':inReview?'current':'upcoming',detail:'Photos, details and price'},
         {id:'live',label:'It goes live',state:reviewedVersionInShop?'complete':'upcoming',detail:'Or we tell you what to change'},
       ]} />
-      <button type="button" className="min-h-11 text-left text-sm font-semibold text-[#A8232E] underline underline-offset-4 disabled:opacity-50" disabled={editor.busy||operating||!!pendingAction} onClick={()=>void openHelp('help')}>Stuck? Ask Hastabazaar to help fill this in</button>
+      <button id="product-help" type="button" className="min-h-11 scroll-mt-24 text-left text-sm font-semibold text-[#A8232E] underline underline-offset-4 disabled:opacity-50" disabled={editor.busy||operating||!!pendingAction} onClick={()=>void openHelp('help')}>Stuck? Ask Hastabazaar to help fill this in</button>
     </section>
     <section className={panelClass} aria-labelledby="customer-preview-heading">
       <h2 id="customer-preview-heading" className="font-bold">How customers will see it</h2>
