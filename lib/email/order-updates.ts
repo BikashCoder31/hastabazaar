@@ -56,15 +56,25 @@ const placedCopy = {
   subject: orderStatusMessages.checkoutCod.subject,
 };
 
+function orderEmailCopy(data: Pick<OrderEmailData, 'firstCodPending' | 'eventStatus' | 'currentStatus' | 'paymentMode'>) {
+  const status = data.firstCodPending && data.currentStatus !== 'cancelled' ? 'awaiting_cod_confirmation' : data.eventStatus;
+  const cash = !data.paymentMode || data.paymentMode === 'cod';
+  const copy = status === 'confirmed' && cash ? placedCopy : orderCopy[status] ?? { actor: 'Hastabazaar' as const };
+  return { status, cash, copy };
+}
+
+export function orderEmailSubject(data: Pick<OrderEmailData, 'firstCodPending' | 'eventStatus' | 'currentStatus' | 'paymentMode' | 'orderNumber'>) {
+  const { status, copy } = orderEmailCopy(data);
+  return marketplaceSubject(copy.subject ?? orderProgress(status).label, data.orderNumber);
+}
+
 export function buildOrderEmail(data: OrderEmailData, origin: string, options: { transport?: 'provider' | 'capture' } = {}) {
   const base = emailApplicationOrigin(origin, options.transport);
   const trackingUrl = new URL('/track', base);
   trackingUrl.searchParams.set('order', data.orderNumber);
   const orderUrl = data.customerId ? new URL('/orders/' + encodeURIComponent(data.orderNumber), base) : trackingUrl;
-  const status = data.firstCodPending && data.currentStatus !== 'cancelled' ? 'awaiting_cod_confirmation' : data.eventStatus;
+  const { status, cash, copy } = orderEmailCopy(data);
   const progress = orderProgress(status);
-  const cash = !data.paymentMode || data.paymentMode === 'cod';
-  const copy = status === 'confirmed' && cash ? placedCopy : orderCopy[status] ?? { actor: 'Hastabazaar' as const };
   const facts: EmailFact[] = [
     ['Order', data.orderNumber],
     ['Recorded', emailDate(data.occurredAt, true)],
@@ -109,7 +119,7 @@ export function buildOrderEmail(data: OrderEmailData, origin: string, options: {
       : { label: status === 'dispatched' ? 'Track this parcel' : 'Track your order', url: orderUrl };
   return {
     to: data.email,
-    subject: marketplaceSubject(copy.subject ?? progress.label, data.orderNumber),
+    subject: orderEmailSubject(data),
     ...renderMarketplaceEmail({
       actor: copy.actor,
       headline: copy.headline ?? progress.label,
@@ -168,6 +178,7 @@ export async function deliverOrderEmails(
   options: {
     orderId?: string;
     orderNumber?: string;
+    jobId?: string;
     limit?: number;
     now?: number;
     deadlineMs?: number;
@@ -198,7 +209,7 @@ export async function deliverOrderEmails(
     .prepare(`SELECT j.id,j.attempts FROM order_email_jobs j INNER JOIN orders o ON o.id=j.order_id
  WHERE j.status IN ('queued','retry','sending') AND j.next_attempt_at<=? AND j.lease_until<=?
  AND j.attempts<? AND j.created_at>? AND o.status=j.order_status AND ${eligibleDeliverySql('order','j.id')} AND ${accountedDeliveryAttemptsSql('order','j.id','j.attempts')}
- AND (? IS NULL OR o.id=?) AND (? IS NULL OR o.order_number=?) ORDER BY j.next_attempt_at,j.created_at,j.id LIMIT ?`)
+ AND (? IS NULL OR o.id=?) AND (? IS NULL OR o.order_number=?) AND (? IS NULL OR j.id=?) ORDER BY j.next_attempt_at,j.created_at,j.id LIMIT ?`)
     .bind(
       now,
       now,
@@ -208,6 +219,8 @@ export async function deliverOrderEmails(
       options.orderId ?? null,
       options.orderNumber ?? null,
       options.orderNumber ?? null,
+      options.jobId ?? null,
+      options.jobId ?? null,
       limit,
     )
     .all<{ id: string; attempts: number }>();

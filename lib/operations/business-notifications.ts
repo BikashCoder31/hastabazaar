@@ -349,7 +349,7 @@ export async function deliverBusinessEmails(
   db: D1Database,
   mail: OrderMailService,
   origin: string,
-  options: { limit?: number; now?: number; deadlineMs?:number; deliveryTransport?:'capture'|'provider' } = {},
+  options: { limit?: number; jobId?: string; now?: number; deadlineMs?:number; deliveryTransport?:'capture'|'provider' } = {},
 ) {
   if(options.deliveryTransport!==undefined&&!['capture','provider'].includes(options.deliveryTransport))throw new Error('Use the actual configured email transport.');
   const isolatedCaptureOrigin = mail.transport === 'capture'
@@ -366,9 +366,9 @@ export async function deliverBusinessEmails(
     .prepare(
       "SELECT id,delivery_attempts AS attempts FROM notification_messages WHERE channel='email' AND business_event_key=template_key AND template_key IN (" +
         allowed +
-        ") AND status IN ('queued','failed') AND " + eligibleDeliverySql('business','notification_messages.id') + " AND "+accountedDeliveryAttemptsSql('business','notification_messages.id','notification_messages.delivery_attempts')+" AND delivery_attempts<? AND delivery_next_attempt_at<=? AND delivery_lease_until<=? ORDER BY CASE WHEN template_key='delivery.authorization' THEN 0 ELSE 1 END,delivery_next_attempt_at,created_at,id LIMIT ?",
+        ") AND status IN ('queued','failed') AND " + eligibleDeliverySql('business','notification_messages.id') + " AND "+accountedDeliveryAttemptsSql('business','notification_messages.id','notification_messages.delivery_attempts')+" AND delivery_attempts<? AND delivery_next_attempt_at<=? AND delivery_lease_until<=? AND (? IS NULL OR id=?) ORDER BY CASE WHEN template_key='delivery.authorization' THEN 0 ELSE 1 END,delivery_next_attempt_at,created_at,id LIMIT ?",
     )
-    .bind(...supportedTemplates, maximumEmailAttempts, now, now, limit)
+    .bind(...supportedTemplates, maximumEmailAttempts, now, now, options.jobId ?? null, options.jobId ?? null, limit)
     .all<{ id: string; attempts:number }>();
   let accepted = 0,
     failed = 0,

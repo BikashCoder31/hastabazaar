@@ -13,7 +13,9 @@ import {financeQueueItem,reviewTaskLabels} from '@/lib/admin/review-queue-view';
 import {resolveRuntimeEnvironment} from '@/lib/staging/environment';
 import {formHealthRuntimeScope} from '@/lib/operations/form-health';
 import {readSystemHealthWorkspace} from '@/lib/operations/system-health-workspace';
-import {readEmailHealthRuntimeConfig} from '@/lib/operations/email-delivery-overview';
+import {readEmailDeliveryOverview,readEmailHealthRuntimeConfig} from '@/lib/operations/email-delivery-overview';
+import {emailDeliveryWarning,emailSenderStatus,readAdminMessages} from '@/lib/operations/admin-message-history';
+import {EmailWarning} from '@/components/admin/email-delivery-view';
 import {ReviewTaskConflict} from '@/lib/workflows/review-tasks';
 import {staffMutationGuard} from '@/lib/db/repositories/staff-mutation-guard';
 import { can, isMoneyViewOnly } from '@/lib/marketplace/permissions';
@@ -331,11 +333,21 @@ export default async function AdminDashboardPage({ searchParams }: {
   const auditHref = tasks.find(task => task.href === '/admin/activity')?.href;
   const checks = health ? overviewHealthChecks(health) : health;
   const bankTransfers = can(staff, 'payment.receipt.verify') ? await readAdminBankTransferCount(database, staff.id) : null;
+  const emailWarning = staff.role === 'super_admin' && can(staff, 'email.delivery.manage') ? await (async () => {
+    const overview = email.environment ? await readEmailDeliveryOverview(database, {
+      actorId: staff.id, environment: email.environment, expectedSince: email.expectedSince, now,
+    }) : null;
+    const { summary, messages } = await readAdminMessages(database, staff.id, { now, view: 'needs-you', limit: 12 });
+    return emailDeliveryWarning(emailSenderStatus(overview, now), summary, messages, now);
+  })().catch(() => null) : null;
   return <div className="space-y-8">
     <OverviewHealthProvider key={staff.id} actorId={staff.id} initial={checks}>
       <TodayOverview actorId={staff.id} firstName={staff.displayName.trim().split(/\s+/)[0]} observedAt={now}
         returnTo={returnTo} tasks={today.rows} partialSources={[...partialSources, ...today.partial]}
-        metrics={<TodayWorkSummaries orders={today.orders} courierCash={today.courierCash} cases={cases} checks={checks}/>}
+        metrics={<>
+          {emailWarning && <EmailWarning warning={emailWarning} />}
+          <TodayWorkSummaries orders={today.orders} courierCash={today.courierCash} cases={cases} checks={checks}/>
+        </>}
         sidebar={<aside className="today-sidebar" aria-label="Operations updates">
           {bankTransfers ? <section className="today-panel today-side-panel" aria-labelledby="today-bank-transfer-heading">
             <div className="today-side-heading">

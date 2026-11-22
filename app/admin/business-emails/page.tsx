@@ -1,189 +1,143 @@
-import { AdminPageTitle } from '@/components/admin/page-help';
 import Link from 'next/link';
-import type { DeliveryMailService } from '@/lib/email/delivery-attempts';
 import { env } from 'cloudflare:workers';
+import { AdminPageTitle } from '@/components/admin/page-help';
+import { SendWaitingEmails } from '@/components/admin/email-delivery-controls';
+import { emailHistoryHref, emailLink, emailPanel, emailTime, MessageActions, MessageStatus } from '@/components/admin/email-delivery-view';
+import { EmailDeliveryHealth } from '@/components/admin/email-delivery-health';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
-import { readBusinessEmailPageEvidence } from '@/lib/operations/business-email-page';
-import { BusinessEmailProcessor } from '@/components/admin/business-email-processor';
-import { EmailDeliveryHealth } from '@/components/admin/email-delivery-health';
+import { emailSenderStatus, messageViews, readAdminMessages, type MessageScope, type MessageView } from '@/lib/operations/admin-message-history';
+import { readEmailDeliveryOverview, readEmailHealthRuntimeConfig } from '@/lib/operations/email-delivery-overview';
+import { messageEventsForAudience } from '@/lib/operations/message-event-catalog';
+
 export const dynamic = 'force-dynamic';
 
-const recordColumns = [
-  { title: 'Update', width: 'w-[28%]' },
-  { title: 'Audience / masked recipient', width: 'w-[21%]' },
-  { title: 'Status', width: 'w-[24%]' },
-  { title: 'Attempts', width: 'w-[11%]' },
-  { title: 'Next eligible attempt', width: 'w-[16%]' },
-];
+const tabs: Record<MessageView, string> = {
+  'needs-you': 'Needs you', waiting: 'Waiting', delivered: 'Delivered', all: 'All',
+};
+const audiences = [
+  { key: 'customer', label: 'Customers' },
+  { key: 'seller', label: 'Sellers' },
+  { key: 'super_admin', label: 'You (Super Admin)' },
+] as const;
+const pageLink = 'inline-flex min-h-11 items-center rounded-full border border-[#DACAB1] px-3 text-sm font-semibold outline-offset-2 focus-visible:outline-2';
+const observedAt = () => Date.now();
 
-export default async function BusinessEmails() {
-  const actor = await requireStaffPage(
-    '/admin/business-emails',
-    'email.delivery.manage',
-  );
-  const database = requireDatabase(env as unknown as { DB?: D1Database });
-  const { rows, summary, overview } = await readBusinessEmailPageEvidence(
-    database,
-    actor.id,
-    {
-      ...env,
-      NODE_ENV: process.env.NODE_ENV,
-      EMAIL: (env as unknown as { EMAIL?: DeliveryMailService }).EMAIL,
-    },
-  );
-  const records = rows.map((row) => ({
-    id: row.id,
-    update: (
-      <>
-        <p className="font-medium">{row.subject}</p>
-        {row.sourceReference ? (
-          <Link
-            className="section-link mt-1 underline"
-            href={row.sourceReference}
-          >
-            Open authorized source
-          </Link>
-        ) : null}
-      </>
-    ),
-    details: [
-      <>
-        <p>{row.audience}</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {row.maskedRecipient ?? 'No eligible recipient recorded'}
-        </p>
-      </>,
-      <>
-        <p>{row.displayStatus}</p>
-        {row.failureCategory ? (
-          <p className="mt-1 text-xs">
-            {row.failureCategory === 'permanent_recipient'
-              ? 'Correct the verified recipient through the source account.'
-              : row.failureCategory === 'configuration'
-                ? 'An authorized operator must correct email setup.'
-                : row.failureCategory === 'unknown'
-                  ? 'Reconcile provider evidence before another send.'
-                  : 'Temporary failure; automatic backoff applies.'}
-          </p>
-        ) : null}
-      </>,
-      row.attempts,
-      ['uncertain', 'intervention', 'accepted', 'captured'].includes(
-        row.deliveryState,
-      )
-        ? 'No automatic resend'
-        : new Date(
-            Math.max(row.nextAt, row.leaseUntil, row.createdAt),
-          ).toLocaleString('en-NP', { timeZone: 'Asia/Kathmandu' }),
-    ],
-  }));
-  return (
-    <div className="space-y-6">
-      <AdminPageTitle>
-        <h1 className="font-heading text-3xl">Email delivery</h1>
-      </AdminPageTitle>
-      <Link href="/admin/business-emails/preview" className="section-link min-h-11 underline underline-offset-4">
-        Preview email templates
-      </Link>
-      <p>
-        Automatic sending and due reminders use the shared saved notification
-        work. Delivery failures do not undo completed business actions.
-      </p>
-      <EmailDeliveryHealth overview={overview} />
-      <details className="rounded-xl border p-4">
-        <summary className="min-h-11 content-center cursor-pointer font-semibold">
-          Recovery tools
-        </summary>
-        <p className="my-3 text-sm">
-          Optional exceptional processing respects current claims, provider
-          backoff, authorization and uncertain outcomes. It is not required to
-          restart normal automatic sending.
-        </p>
-        <BusinessEmailProcessor />
-      </details>
-      <section
-        className="rounded-xl border p-4"
-        aria-label="Business email queue attention"
-      >
-        <h2 className="font-semibold">Operations queue attention</h2>
-        <p className="mt-2">
-          Pending: {summary.pending}. Due now: {summary.due}. Oldest pending:{' '}
-          {summary.oldestAgeMinutes} minutes. Failed: {summary.failures}. Needs
-          intervention: {summary.intervention}. Outcome uncertain:{' '}
-          {summary.uncertain}. Active sending leases: {summary.activeLeases}.
-        </p>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Delivery authorization emails are claimed first. Expired codes and
-          obsolete or unauthorized messages are suppressed with a retained
-          reason instead of being replayed.
-        </p>
-      </section>
-      <p className="text-sm text-muted-foreground">
-        Temporary failures retry after 5, 10, 20, 40 and 60 minutes, then hourly
-        while still relevant. Attempts remain cumulative. Recipient or setup
-        faults need correction; uncertain outcomes require reconciliation and
-        are never blindly resent. Sent to mail service confirms provider
-        acceptance, not inbox delivery or reading.
-      </p>
-      <section aria-labelledby="business-email-records">
-        <h2
-          id="business-email-records"
-          className="px-3 py-2 text-sm font-semibold"
-        >
-          Latest 100 explicit business email records
-        </h2>
-        <ul className="divide-y text-sm md:hidden">
-          {records.map((record) => (
-            <li key={record.id} className="space-y-3 px-3 py-4 wrap-anywhere">
-              {record.update}
-              <dl className="grid grid-cols-2 gap-3">
-                {record.details.map((detail, index) => (
-                  <div key={recordColumns[index + 1].title} className="min-w-0">
-                    <dt className="font-medium text-muted-foreground">
-                      {recordColumns[index + 1].title}
-                    </dt>
-                    <dd>{detail}</dd>
-                  </div>
-                ))}
-              </dl>
-            </li>
-          ))}
-        </ul>
-        <table
-          aria-labelledby="business-email-records"
-          className="hidden w-full table-fixed text-left text-sm md:table"
-        >
-          <thead>
-            <tr>
-              {recordColumns.map((column) => (
-                <th
-                  key={column.title}
-                  scope="col"
-                  className={'wrap-anywhere p-3 ' + column.width}
-                >
-                  {column.title}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {records.map((record) => (
-              <tr key={record.id} className="border-t">
-                <td className="wrap-anywhere p-3">{record.update}</td>
-                {record.details.map((detail, index) => (
-                  <td
-                    key={recordColumns[index + 1].title}
-                    className="wrap-anywhere p-3"
-                  >
-                    {detail}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+function messageScope(params: Record<string, string | string[] | undefined>): MessageScope | undefined {
+  for (const kind of ['seller', 'customer', 'order'] as const) {
+    const id = params[kind];
+    if (typeof id === 'string' && /^[A-Za-z0-9:_-]{1,160}$/.test(id)) return { kind, id };
+  }
+}
+
+export default async function BusinessEmails({ searchParams }: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const actor = await requireStaffPage('/admin/business-emails', 'email.delivery.manage');
+  const db = requireDatabase(env as unknown as { DB?: D1Database });
+  const now = observedAt();
+  const params = await searchParams ?? {};
+  const scope = messageScope(params);
+  const view = messageViews.find(value => value === params.view) ?? (scope ? 'all' : 'needs-you');
+  const requested = typeof params.page === 'string' ? Number(params.page) : 1;
+  const page = Number.isSafeInteger(requested) && requested > 0 ? requested : 1;
+  const runtime = readEmailHealthRuntimeConfig({ ...env, NODE_ENV: process.env.NODE_ENV }, now);
+  const overview = runtime.environment ? await readEmailDeliveryOverview(db, {
+    actorId: actor.id, environment: runtime.environment, expectedSince: runtime.expectedSince, now,
+  }) : null;
+  const history = await readAdminMessages(db, actor.id, { scope, view, page, now });
+  const { summary, messages } = history;
+  const status = emailSenderStatus(overview, now);
+  const age = status.lastRan == null ? null : Math.floor((now - status.lastRan) / 60_000);
+  const lastRan = age === null ? 'Hasn’t run yet' : age < 1 ? 'Last ran under a minute ago' : 'Last ran ' + age + ' min ago';
+  const metrics = [
+    { label: 'Waiting to send', value: summary.waiting },
+    { label: 'Failed, needs you', value: summary.failures },
+    { label: 'Delivered today', value: summary.deliveredToday, caption: summary.capturedToday ? summary.capturedToday + ' captured locally' : undefined },
+  ];
+  const counts = { 'needs-you': summary.failures, waiting: summary.waiting, delivered: summary.sent, all: summary.total };
+
+  return <div className="min-w-0 space-y-5 text-[#14213D]">
+    <div className="flex min-w-0 flex-wrap items-start gap-3">
+      <AdminPageTitle><h1 className="font-heading text-3xl">Email delivery</h1></AdminPageTitle>
+      <SendWaitingEmails />
     </div>
-  );
+    <section aria-label="Sender status" className={emailPanel + ' grid gap-3 p-4 xl:grid-cols-[minmax(10rem,0.9fr)_minmax(0,2.1fr)] xl:items-center'}>
+      <div className="flex items-center gap-2">
+        <span aria-hidden="true" className={'size-3 shrink-0 rounded-full ' + (status.stopped ? 'bg-[#A8232E]' : status.healthy ? 'bg-[#29664D]' : 'bg-[#A47829]')} />
+        <div>
+          <h2 className="font-bold">{status.stopped ? 'Sender stopped' : status.healthy ? 'Sending normally' : age === null ? 'Sender hasn’t run yet' : 'Check sender status'}</h2>
+          {(age !== null || status.stopped) && <p className="text-sm text-[#465573]">{status.healthy ? 'Runs every minute · ' : ''}{lastRan}</p>}
+        </div>
+      </div>
+      <dl className="grid gap-3 xl:grid-cols-3">
+        {metrics.map((metric, index) => <div key={metric.label} className="rounded-xl border border-[#E2D6C2] p-3">
+          <dt className="text-sm text-[#465573]">{metric.label}</dt>
+          <dd className={'font-heading text-2xl ' + (index === 1 && metric.value ? 'text-[#A8232E]' : '')}>{metric.value}</dd>
+          {metric.caption && <dd className="text-xs text-[#465573]">{metric.caption}</dd>}
+        </div>)}
+      </dl>
+    </section>
+    <section aria-labelledby="email-messages-heading" className={emailPanel}>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E2D6C2] p-4">
+        <h2 id="email-messages-heading" className="font-bold">{scope ? 'Messages for this ' + scope.kind : 'Messages'}</h2>
+        <nav aria-label="Filter email messages" className="flex flex-wrap items-center gap-2">
+          {messageViews.map(key => <Link key={key} href={emailHistoryHref({ scope, view: key })}
+            aria-current={key === view ? 'page' : undefined}
+            className={pageLink + (key === view ? ' border-[#14213D] bg-[#14213D] text-white' : ' hover:bg-[#F3ECDF]')}>
+            {tabs[key]} <span className="ms-1 opacity-80">{counts[key]}</span>
+          </Link>)}
+        </nav>
+      </div>
+      {scope && <div className="px-2"><Link className={emailLink} href={emailHistoryHref({ view })}>Clear record filter</Link></div>}
+      {messages.length ? <>
+        <div aria-hidden="true" className="hidden gap-3 border-b border-[#E2D6C2] px-4 py-2 text-xs font-semibold xl:grid xl:grid-cols-[1fr_1.5fr_0.9fr_1fr]">
+          <span>To</span><span>Message</span><span>Email status</span>
+        </div>
+        <ul className="divide-y divide-[#E2D6C2]">
+          {messages.map(message => <li key={message.kind + ':' + message.id} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 px-4 py-3 text-sm xl:grid-cols-[1fr_1.5fr_0.9fr_1fr] xl:items-center">
+            <div className="min-w-0 wrap-anywhere">
+              <p className="font-semibold">{message.name}</p>
+              <p className="text-xs text-[#465573]">{message.audience}{message.address ? ' · ' + message.address : ''}</p>
+            </div>
+            <div className="col-span-2 row-start-2 min-w-0 wrap-anywhere xl:col-span-1 xl:row-start-1">
+              <p>{message.subject}</p>
+              <p className="text-xs text-[#465573]">{emailTime(message.sentAt ?? message.createdAt)}{message.inApp ? ' · also in app' : ''}</p>
+            </div>
+            <div className="max-w-32 justify-self-end xl:col-start-3 xl:row-start-1 xl:max-w-none xl:justify-self-start">
+              <MessageStatus message={message} now={now} />
+            </div>
+            <div className="col-span-2 xl:col-span-1 xl:col-start-4 xl:row-start-1">
+              <MessageActions message={message} />
+            </div>
+          </li>)}
+        </ul>
+      </> : <p className="p-4 text-sm text-[#465573]">{view === 'needs-you' ? 'No emails need your attention.'
+        : view === 'waiting' ? 'No emails are waiting to send.' : view === 'delivered' ? 'No sent emails to show yet.' : 'There are no messages to show yet.'}</p>}
+      {history.pages > 1 && <nav aria-label="Message pages" className="flex flex-wrap items-center gap-2 border-t border-[#E2D6C2] p-3 text-sm">
+        {history.page > 1 && <Link className={pageLink} href={emailHistoryHref({ scope, view, page: history.page - 1 })}>Previous</Link>}
+        <span>Page {history.page} of {history.pages}</span>
+        {history.page < history.pages && <Link className={pageLink} href={emailHistoryHref({ scope, view, page: history.page + 1 })}>Next</Link>}
+      </nav>}
+    </section>
+    <section className={emailPanel + ' space-y-2 p-4'} aria-labelledby="which-emails-heading">
+      <h2 id="which-emails-heading" className="font-bold">Which messages go out</h2>
+      <p className="text-sm text-[#465573]">Important updates go by email and in the app. Sign-in codes go straight away. The sender checks the queue each minute when it’s running.</p>
+      <dl className="grid gap-3 xl:grid-cols-3">
+        {audiences.map(({ key, label }) => <div key={key}>
+          <dt className="text-sm font-bold">{label}</dt>
+          <dd className="mt-1 text-sm">{messageEventsForAudience(key).map(event => event.label).join(' · ')}</dd>
+        </div>)}
+      </dl>
+    </section>
+    <details className={emailPanel + ' p-4'}>
+      <summary className="min-h-11 content-center cursor-pointer font-semibold">Delivery details and recovery</summary>
+      <p className="text-sm text-[#465573]">Delivered means the mail service accepted the message. Capture records confirm a local test. Temporary failures continue at their scheduled time. Check provider evidence when a delivery outcome is uncertain.</p>
+      <div className="flex flex-wrap gap-2">
+        <Link className={emailLink} href="/admin/order-emails">Order email history</Link>
+        <Link className={emailLink} href="/admin/business-emails/preview">Preview email templates</Link>
+      </div>
+      <EmailDeliveryHealth overview={overview} />
+    </details>
+  </div>;
 }

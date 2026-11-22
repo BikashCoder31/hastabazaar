@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import { requireDatabase } from '@/lib/db/d1';
 import { deliverOrderEmails, type OrderMailService } from './order-updates';
 export async function sendPendingOrderUpdates(
-  options: { orderId?: string; orderNumber?: string; limit?: number } = {},
+  options: { orderId?: string; orderNumber?: string; jobId?: string; limit?: number } = {},
 ) {
   try {
     const config = env as unknown as {

@@ -30,7 +30,7 @@ export interface OrderEmailHistoryRow {
 }
 
 /** Read-only classification also explains blocked work before the next sender records its outcome. */
-function historySource(now: number) {
+export function orderEmailHistorySource(now: number) {
   return {
     sql: `SELECT source.*,CASE
       WHEN source.deliveryPhase='accepted' THEN 'sent'
@@ -64,7 +64,7 @@ export async function listOrderEmailHistory(
   pageSize = 50,
 ) {
   const filters = normalizeQueueFilters(params, emailQueueStatuses),
-    source = historySource(now);
+    source = orderEmailHistorySource(now);
   const conditions: string[] = [],
     values: (string | number)[] = [];
   if(params.reference){conditions.push('queue.id=?');values.push(params.reference);}
@@ -144,7 +144,7 @@ export async function emailQueueSummary(
     : null;
   const providerBlockedUntil =
     backoff && backoff.blockedUntil > now ? backoff.blockedUntil : null;
-  const source = historySource(now);
+  const source = orderEmailHistorySource(now);
   const pending = "displayStatus IN ('queued','retry','sending')";
   const row = await db
     .prepare(`SELECT
