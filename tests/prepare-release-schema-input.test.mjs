@@ -13,6 +13,29 @@ const destination = () => `.test-artifacts/t35/ci-schema-test-${randomUUID()}`;
 const run = args => spawnSync(process.execPath, [helper, ...args], { cwd: root, encoding: 'utf8' });
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 
+void test('legacy fixture discovery leaves owner-applied SQL available for explicit inspection', () => {
+  const preload = resolve(root, 'scripts/testing/legacy-d1-fixture-migrations.mjs');
+  const result = spawnSync(process.execPath, ['--import', preload, '--input-type=module', '--eval', `
+    import assert from 'node:assert/strict';
+    import { readdir, readdirSync, readFileSync } from 'node:fs';
+    import { readdir as list } from 'node:fs/promises';
+    import { promisify } from 'node:util';
+    import { pathToFileURL } from 'node:url';
+    const manifest = JSON.parse(readFileSync('deployment/babal/release-manifest.json', 'utf8'));
+    const ownerPaths = manifest.ownerAppliedMigrations.map(migration => migration.d1.path);
+    assert.equal(ownerPaths.length, 9);
+    const listings = [readdirSync('drizzle'), await promisify(readdir)('drizzle'),
+      (await list(new URL('./drizzle/', pathToFileURL(process.cwd() + '/')), { withFileTypes: true })).map(entry => entry.name)];
+    for (const files of listings) {
+      assert.ok(files.includes('0163_priced_order_acceptance_lock.sql'));
+      assert.ok(ownerPaths.every(path => !files.includes(path.split('/').at(-1))));
+    }
+    for (const path of ownerPaths) assert.ok(readFileSync(path).length > 0);
+    assert.ok((await list('deployment/babal')).includes('release-manifest.json'));
+  `], { cwd: root, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+});
+
 void test('fresh source generation selects only the reviewed schema bytes and preserves public release assets', async () => {
   const retained = ['mariadb-schema.sql', 'mariadb-reset-empty-import.sql', 'release-manifest.json'];
   const before = await Promise.all(retained.map(path => readFile(resolve(root, 'deployment/babal', path))));

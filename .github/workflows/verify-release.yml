@@ -49,6 +49,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          # Browser comparisons use a checked-in historical source reference.
+          fetch-depth: 0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22.23.2'
@@ -61,6 +63,8 @@ jobs:
           printf 'FRONTEND_RECOVERY_EVIDENCE_ROOT=%s/frontend-recovery-%s\n' "$RUNNER_TEMP" '${{ matrix.shard }}' >> "$GITHUB_ENV"
           node --input-type=module -e "import {chromium} from 'playwright'; console.log('CHROME_PATH='+chromium.executablePath())" >> "$GITHUB_ENV"
       - run: node --import tsx --test --test-concurrency=1 --test-shard=${{ matrix.shard }}/4 tests/*.test.ts tests/seller-registration-browser.test.mjs tests/prepare-release-schema-input.test.mjs
+        env:
+          NODE_OPTIONS: --import=${{ github.workspace }}/scripts/testing/legacy-d1-fixture-migrations.mjs
 
   native:
     # Both the historical and selected-artifact gates must finish before packaging.
@@ -103,10 +107,13 @@ jobs:
           [[ "$image_id" =~ ^sha256:[a-f0-9]{64}$ ]]
           printf 'image_id=%s\n' "$image_id" >> "$GITHUB_OUTPUT"
       - name: Require preserved historical bootstrap and upgrade native gate
+        env:
+          NODE_OPTIONS: --import=${{ github.workspace }}/scripts/testing/legacy-d1-fixture-migrations.mjs
         run: node --import tsx scripts/verify-staging-native.mjs --historical-only
       - name: Require selected artifact native journeys, browsers and isolated recovery
         env:
           HASTABAZAAR_REVIEWED_MARIADB_IMAGE_ID: ${{ steps.mariadb.outputs.image_id }}
+          NODE_OPTIONS: --import=${{ github.workspace }}/scripts/testing/legacy-d1-fixture-migrations.mjs
         run: HASTABAZAAR_NATIVE_ARTIFACT_DIRECTORY="$GITHUB_WORKSPACE/outputs/$HASTABAZAAR_RELEASE_ID" node --import tsx scripts/testing/verify-current-artifact-native.mjs
       - name: Retain enumerated non-secret browser acceptance evidence
         if: always()

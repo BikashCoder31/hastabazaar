@@ -5,8 +5,8 @@ The candidate starts from `admin-redesign` at `f7110503`. The fetched `origin/ma
 | Task | Owner | Status | Checks |
 | --- | --- | --- | --- |
 | G1 · Prepare the branch | Main | Done | Typecheck, lint, 100 focused tests, additional readiness and byte-lock checks, the nine migration pairs and the Linux package passed. The full suite recorded 5,855 passes, 38 skips and two early SQL byte-lock failures. Both failures passed after the line-ending fix. |
-| G2 · Push and open the pull request | Main | In progress | Owner approved the first push. GitHub received `d0ceda5d`, then the workflow fix at `f92e443c`. PR #19 is open. The workflow changes passed 38 focused tests. |
-| G3 · Hand over | Main | Pending | Record the pull request, run and each job result after CI. |
+| G2 · Push and open the pull request | Main | In progress | PR #19 is open. GitHub passed lint, types, the artifact build, both MariaDB gates, the browser journeys and isolated recovery on `38a77dba`. Test shards exposed a fixture that applied the owner-only D1 SQL. |
+| G3 · Hand over | Main | Pending | Record all four shard results after the corrected fixture run. |
 
 ## For the owner
 
@@ -27,6 +27,7 @@ The candidate starts from `admin-redesign` at `f7110503`. The fetched `origin/ma
 - [Seventeenth run](https://github.com/BikashCoder31/hastabazaar/actions/runs/45043120497) reached the note field but timed out waiting for all browser network activity to stop. [Eighteenth run](https://github.com/BikashCoder31/hastabazaar/actions/runs/45044096386) showed the review response can stay open while streaming. The fixture now requires the actual successful response, the rendered note field and the committed audit evidence before taking the read-only baseline.
 - [Nineteenth run](https://github.com/BikashCoder31/hastabazaar/actions/runs/45045814548) passed the recorded-work browser journeys and their exact read-only inventory comparison. The wider comparison after browser shutdown found a protected table difference. The next run reports only affected table names and row counts while retaining the exact comparison.
 - [Twentieth run](https://github.com/BikashCoder31/hastabazaar/actions/runs/45046846449) identified `wallet_accounts` as the only changed table. The storefront created empty wallets for the fictional applicants. The browser harness now uses the existing wallet initializer during setup and verifies the original rows, the new fixtures’ zero balances and exact preservation of every wallet after the browser runs.
+- [Run with the passing artifact](https://github.com/BikashCoder31/hastabazaar/actions/runs/45047956881) passed lint, typecheck, the pinned MariaDB image check, historical upgrades, 309 exact selected-schema checks, the packaged browser journeys and isolated encrypted recovery. Test shard 3 exposed that older D1 fixtures enumerated and applied the owner-only files automatically. The test runner now excludes the manifest’s nine owner-applied files from bootstrap discovery, and explicit source checks can still read them. Test checkouts retain history for browser comparisons that read an exact earlier commit.
 
 - First push approval covers `origin/main..redesign-release-20261122`, starting after `1addd7e9`. The delivery branch adds 119 commits and changes 3,476 files against the fetched base. It contains the 117 source commits, the reviewed SQL byte fix and this board.
 - The pre-push scan covered the tip tree and incoming Git history. It found zero restricted file paths and zero matching credential patterns. The full suite finished before this approval checkpoint. The two pre-fix source-byte failures passed in the focused reruns, and the package rebuilt from the committed fix.
