@@ -1,4 +1,5 @@
 import { AdminPageTitle } from '@/components/admin/page-help';
+import { RecordMessages } from '@/components/admin/record-messages';
 import { SellerApplicationQueue } from '@/components/admin/seller-application-queue';
 import { sellerDocumentLabel } from '@/components/admin/seller-document-label';
 import { StepLine, type StepLineStep } from '@/components/ui/step-line';
@@ -280,6 +281,7 @@ export default async function SellerApplicationPage({
         rows={tab === 'work' ? work : tab === 'history' ? history : tabRows}
         standing={standing} money={money} registered={registered} payoutsHref={payoutsHref} recoveryHref={recoveryHref}
         documents={application.documents} bank={bankSummary} agreement={application.sellerAgreementAcceptedAt}
+        messages={<RecordMessages db={database} actor={staff} scope={{ kind: 'seller', id }} />}
         notes={<SellerNotesCard key={staff.id + ':' + application.id} actorId={staff.id} sellerId={application.id}
           staffNotes={staffNotes} restrictionNotes={restrictionNotes} />}
       />

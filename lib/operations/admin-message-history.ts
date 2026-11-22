@@ -1,6 +1,6 @@
 import { staffMutationGuard } from '../db/repositories/staff-mutation-guard';
 import { nepalDayIso } from '../dates/nepal-calendar';
-import { accountedDeliveryAttemptsSql, eligibleDeliverySql } from '../email/delivery-attempts';
+import { accountedDeliveryAttemptsSql, deliveryFingerprint, eligibleDeliverySql, readDeliveryAttempt } from '../email/delivery-attempts';
 import { marketplaceSubject } from '../email/message-layout';
 import { orderEmailSubject } from '../email/order-updates';
 import { sellerNotificationEmail } from '../sellers/registration-email';
@@ -228,6 +228,30 @@ export async function readMessageResendTarget(db: D1Database, actorId: string, k
   await requireAdminMessageAccess(db, actorId);
   if (row && row.state === 'failed') return present(row);
   return null;
+}
+
+export async function readFailedAddresses(db: D1Database, actorId: string, now: number) {
+  await requireAdminMessageAccess(db, actorId);
+  const source = queueSource(now);
+  const rows = await db.prepare(`SELECT * FROM (SELECT messages.*,
+    ROW_NUMBER() OVER (PARTITION BY COALESCE(recipientId,LOWER(address),orderId,id) ORDER BY createdAt DESC,id DESC) AS positionInRecipient
+    FROM ${source.sql} WHERE state='failed' AND failureCategory='permanent_recipient') AS failures
+    WHERE positionInRecipient=1 ORDER BY createdAt DESC,id DESC LIMIT 101`).bind(...source.values).all<QueueRow>();
+  const people = [];
+  for (const row of rows.results.slice(0, 100)) {
+    const message = present(row);
+    const attempt = await readDeliveryAttempt(db, row.kind, row.id);
+    if (attempt?.failureCategory !== 'permanent_recipient') continue;
+    if (message.address && attempt.recipientFingerprint &&
+        attempt.recipientFingerprint !== await deliveryFingerprint(message.address.trim().toLowerCase())) continue;
+    const href = row.sellerId ? '/admin/sellers/' + encodeURIComponent(row.sellerId)
+      : row.recipientId && row.audience === 'customer' ? '/admin/customers?customer=' + encodeURIComponent(row.recipientId) + '#customer-record'
+      : message.href;
+    people.push({ key: row.recipientId ?? row.id, name: message.name, href,
+      failedAt: attempt.completedAt ?? attempt.startedAt });
+  }
+  await requireAdminMessageAccess(db, actorId);
+  return { people, partial: rows.results.length > 100 };
 }
 
 export function emailSenderStatus(overview: EmailDeliveryOverview | null, now: number) {

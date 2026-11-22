@@ -14,6 +14,7 @@ import { withAdminReturnTo } from '@/lib/admin/return-context';
 import { payableOrderTotalSql } from '@/lib/db/repositories/platform-service-fee';
 import { customerCodSchemaAvailable } from '@/lib/orders/first-cod-review';
 import { listSellerPayoutFixes } from '@/lib/sellers/payout-fixes';
+import { readFailedAddresses } from '@/lib/operations/admin-message-history';
 import type { AdminStaffAccess } from './admin-sections';
 import { todayReviewTask, todayShortDate, type TodayTask } from './overview-today-model';
 import { readSellerPickupHandoffs, readSellerReviewHandoffs } from './overview-seller-handoff-data';
@@ -167,11 +168,23 @@ export async function readTodaySources({
     else rows[index] = row;
   }
   rows.push(...(pickups ?? []), ...(codConfirmations ?? []));
+  const emailAddresses = actor.role === 'super_admin' && can(actor, 'email.delivery.manage')
+    ? await readFailedAddresses(db, actor.id, now).catch(() => null) : undefined;
+  for (const person of emailAddresses?.people ?? []) {
+    rows.push({
+      id: 'email-address:' + person.key, section: 'Settings', type: 'Email delivery',
+      title: 'Couldn’t email ' + person.name + ' · check their email address',
+      context: 'Check the address with them by phone.', startedAt: person.failedAt,
+      dueAt: null, state: 'action', ownerId: null, ownerName: null, assignment: null,
+      href: withAdminReturnTo(person.href ?? '/admin/business-emails?view=needs-you', returnTo), action: person.href ? 'Open record' : 'Open Emails',
+    });
+  }
   const partial = [
     ...(handoffs.partial ? ['Some seller action details unavailable'] : []),
     ...(pickups === null ? ['Pickup tasks unavailable'] : []),
     ...(codConfirmations === null ? ['COD confirmation tasks unavailable'] : []),
     ...(payoutFixes === null ? ['Seller payout fixes unavailable'] : []),
+    ...(emailAddresses === null ? ['Email address follow-up unavailable'] : emailAddresses?.partial ? ['Email follow-up shows the latest records'] : []),
     ...(exceptions === null || unrecorded === null ? ['Parcel follow-up unavailable'] : []),
     ...(exceptions?.partial || unrecorded?.length === 100 ? ['Parcel follow-up shows the latest records'] : []),
     ...(cash === null ? ['Courier cash unavailable'] : []),

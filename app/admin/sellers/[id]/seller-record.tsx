@@ -146,6 +146,7 @@ type RecordProps = {
   bank: { label: string; status: string; href: string } | null;
   agreement: number | null;
   notes: ReactNode;
+  messages?: ReactNode;
   workUnavailable: boolean;
 };
 
@@ -244,6 +245,7 @@ export function SellerRecord(props: RecordProps) {
             </ul>
             {sideDocuments.length === 0 ? <p className="text-sm text-[#46536F]">No reviewable documents recorded.</p> : null}
           </Panel>
+          {props.messages}
           {notes}
         </aside>
       </div>

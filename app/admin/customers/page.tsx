@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { Search, Smartphone, TriangleAlert } from 'lucide-react';
 import Link from 'next/link';
+import { RecordMessages } from '@/components/admin/record-messages';
 import {
   AdminPageHelpProvider,
   AdminPageTitle,
@@ -446,13 +447,16 @@ export default async function CustomersPage({
         </section>
 
         {customer ? (
-          <CustomerRecord
-            customer={customer}
-            orders={recentOrders}
-            canOpenOrder={can(staff, 'order.manage')}
-            codActorId={staff.role === 'super_admin' ? staff.id : undefined}
-            returnTo={returnTo}
-          />
+          <div className="min-w-0 space-y-4">
+            <CustomerRecord
+              customer={customer}
+              orders={recentOrders}
+              canOpenOrder={can(staff, 'order.manage')}
+              codActorId={staff.role === 'super_admin' ? staff.id : undefined}
+              returnTo={returnTo}
+            />
+            <RecordMessages db={db} actor={staff} scope={{ kind: 'customer', id: customer.id }} />
+          </div>
         ) : null}
       </div>
     </>
