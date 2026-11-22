@@ -42,17 +42,21 @@ export function orderEmailHistorySource(now: number) {
       WHEN source.deliveryPhase='not_accepted' AND COALESCE(source.failureCategory,'unknown')<>'temporary' THEN 'intervention'
       ELSE source.status END AS displayStatus FROM (
     SELECT j.id,j.order_id AS orderId,o.order_number AS orderNumber,j.order_status AS orderStatus,
-      o.status AS currentStatus,j.status,j.attempts,j.created_at AS createdAt,j.sent_at AS sentAt,
-      j.failure_code AS failureCode,j.next_attempt_at AS nextAttemptAt,j.lease_until AS leaseUntil,
-      (SELECT da.phase FROM email_delivery_attempts da WHERE da.queue_kind='order' AND da.queue_id=j.id ORDER BY da.attempt_number DESC LIMIT 1) AS deliveryPhase,
-      (SELECT da.failure_category FROM email_delivery_attempts da WHERE da.queue_kind='order' AND da.queue_id=j.id ORDER BY da.attempt_number DESC LIMIT 1) AS failureCategory,
+      o.status AS currentStatus,j.status,j.attempts,j.created_at AS createdAt,
+      COALESCE(j.sent_at,CASE WHEN attempt.phase IN ('accepted','captured') THEN attempt.completed_at END) AS sentAt,
+      j.failure_code AS failureCode,
+      CASE WHEN attempt.retry_at>j.next_attempt_at THEN attempt.retry_at ELSE j.next_attempt_at END AS nextAttemptAt,
+      j.lease_until AS leaseUntil,
+      attempt.phase AS deliveryPhase,attempt.failure_category AS failureCategory,
       CASE WHEN ${accountedDeliveryAttemptsSql('order','j.id','j.attempts')} THEN 1 ELSE 0 END AS accountedHistory,
       CASE WHEN ${eligibleDeliverySql('order', 'j.id')} AND ${accountedDeliveryAttemptsSql('order','j.id','j.attempts')} THEN 1 ELSE 0 END AS safeToAttempt,
       CASE WHEN j.status='cancelled' THEN j.failure_code
         WHEN j.status IN ('queued','retry','sending') AND j.lease_until<=? AND o.status<>j.order_status THEN 'obsolete_order_state'
         WHEN j.status IN ('queued','retry','sending') AND j.lease_until<=? AND j.created_at<=? THEN 'expired_order_update'
         ELSE NULL END AS skipReason
-    FROM order_email_jobs j INNER JOIN orders o ON o.id=j.order_id) AS source`,
+    FROM order_email_jobs j INNER JOIN orders o ON o.id=j.order_id
+    LEFT JOIN email_delivery_attempts attempt ON attempt.id=(SELECT da.id FROM email_delivery_attempts da
+      WHERE da.queue_kind='order' AND da.queue_id=j.id ORDER BY da.attempt_number DESC LIMIT 1)) AS source`,
     values: [now, now, now, now - orderEmailMaxAgeMs],
   };
 }

@@ -1,5 +1,5 @@
 import { AdminPageTitle } from '@/components/admin/page-help';
-import { RecordMessages } from '@/components/admin/record-messages';
+import { readRecordMessages, RecordMessages } from '@/components/admin/record-messages';
 import { SellerApplicationQueue } from '@/components/admin/seller-application-queue';
 import { sellerDocumentLabel } from '@/components/admin/seller-document-label';
 import { StepLine, type StepLineStep } from '@/components/ui/step-line';
@@ -273,6 +273,7 @@ export default async function SellerApplicationPage({
     : '#seller-managed-program' : null;
   const recoveryHref = allowedFinance && registered ? withAdminReturnTo('/admin/payments/recoveries', hrefFor(tab, page)) : null;
 
+  const messages = await readRecordMessages({ db: database, actor: staff, scope: { kind: 'seller', id } });
   return (
     <StaffReviewAccessBoundary actorId={staff.id} sourceId={id}><div className="space-y-5">
       <ReviewBackLink actorId={staff.id} returnTo={backHref}/>
@@ -286,7 +287,7 @@ export default async function SellerApplicationPage({
         rows={tab === 'work' ? work : tab === 'history' ? history : tabRows}
         standing={standing} money={money} registered={registered} payoutsHref={payoutsHref} recoveryHref={recoveryHref}
         documents={application.documents} bank={bankSummary} agreement={application.sellerAgreementAcceptedAt}
-        messages={<RecordMessages db={database} actor={staff} scope={{ kind: 'seller', id }} />}
+        messages={<RecordMessages record={messages} />}
         checklist={checklist ? <AdminShopChecklist checklist={checklist} sellerId={id} actorId={staff.id} now={observedAt} /> : null}
         notes={<SellerNotesCard key={staff.id + ':' + application.id} actorId={staff.id} sellerId={application.id}
           staffNotes={staffNotes} restrictionNotes={restrictionNotes} />}

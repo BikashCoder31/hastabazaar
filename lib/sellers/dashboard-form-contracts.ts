@@ -15,6 +15,8 @@ export const SELLER_DASHBOARD_FORM_CONTRACTS: Readonly<Record<string, FormDefini
     'Private payout details and evidence require independent review before payouts.'),
   'staff.seller-bank-review': fixed('staff.seller-bank-review', 'super_admin', '/api/admin/seller-applications/:id/bank-details',
     ['sellerId', 'revision', 'reference', 'reason'], 'Only Super Admin can record independent bank verification against the current evidence.'),
+  'staff.seller-checklist-request': fixed('staff.seller-checklist-request', 'super_admin', '/api/admin/sellers/:id/checklist',
+    ['sellerId', 'actorId', 'itemId', 'note', 'remind', 'requestId'], 'Super Admin queues an audited message about one current checklist item.'),
   'seller.products-description': fixed('seller.products-description', 'seller', '/api/seller/products-description',
     ['businessDescription', 'productCategories', 'expectedVersion', 'requestId'], 'An applicant may update the product description without public product approval.'),
 });

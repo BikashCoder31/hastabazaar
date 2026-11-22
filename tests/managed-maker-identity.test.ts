@@ -675,8 +675,9 @@ void test('Super Admin downgrade at the transaction boundary rolls back managed 
         reason: 'Approve managed evidence',
         now: 1800000000002,
       }),
-      /CHECK constraint|staff_permission_guards|permission/i,
+      /The application changed while it was being reviewed/,
     );
+    assert.equal(sqlite.prepare("SELECT role FROM user_roles WHERE user_id='super'").get()?.role, 'admin');
     assert.equal(
       (await getSellerParticipationProfile(database, 'maker'))
         ?.applicationStage,

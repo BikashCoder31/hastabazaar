@@ -1282,20 +1282,16 @@ void test('verified gift checkout creates one order; identical retry remains ava
       'buyer',
     );
     assert.equal(placed.grandTotalPaisa, 25000);
-    const notifications = f.sqlite
+    const notice = f.sqlite
       .prepare(
-        "SELECT template_key,subject_en,body_en FROM notification_messages WHERE recipient_user_id='buyer' AND audience_role='customer'",
+        "SELECT channel,template_key,subject_en,body_en FROM notification_messages WHERE recipient_user_id='buyer' AND audience_role='customer'",
       )
       .all();
-    assert.equal(notifications.length, 3);
-    for (const notification of notifications) {
-      assert.equal(notification.template_key, 'order.received');
-      assert.equal(notification.subject_en, 'Order received');
-      assert.match(
-        String(notification.body_en),
-        /received.*confirmation and delivery progress/,
-      );
-    }
+    assert.equal(notice.length, 1);
+    assert.equal(notice[0].channel, 'in_app');
+    assert.equal(notice[0].template_key, 'order.received');
+    assert.equal(notice[0].subject_en, 'Order placed');
+    assert.match(String(notice[0].body_en), /received.*confirmation and delivery progress/);
     f.sqlite.exec("UPDATE users SET phone='9833333333' WHERE id='buyer'");
     assert.deepEqual(
       await createCodOrder(f.db, 'cart', 'receipt', input, 1001, 'buyer'),
@@ -1305,6 +1301,10 @@ void test('verified gift checkout creates one order; identical retry remains ava
       f.sqlite.prepare('SELECT count(*) AS n FROM orders').get()?.n,
       1,
     );
+    assert.equal(f.sqlite.prepare(`SELECT COUNT(*) AS n FROM order_email_jobs j
+      JOIN orders o ON o.id=j.order_id WHERE o.customer_id='buyer' AND j.order_status='confirmed'`).get()?.n, 1);
+    assert.equal(f.sqlite.prepare(`SELECT COUNT(*) AS n FROM notification_messages
+      WHERE recipient_user_id='buyer' AND template_key='order.received'`).get()?.n, 1);
     const row = f.sqlite
       .prepare('SELECT customer_phone,shipping_address_json FROM orders')
       .get()!;

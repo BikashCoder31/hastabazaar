@@ -37,6 +37,16 @@ const nepaliSellerCopy = {
   changes: { headline: 'तपाईंको आवेदनमा थप जानकारी चाहिन्छ', paragraph: 'अनुरोध हेर्नुहोस् र आवश्यक कागजात वा जवाफ पठाउनुहोस्।', action: 'आवेदन हेर्नुहोस्' },
 } as const;
 
+function bankPaymentTimeLeft(issuedAt?: number | null, deadlineAt?: number | null) {
+  const hours = deadlineAt != null && issuedAt != null ? (deadlineAt - issuedAt) / 3_600_000 : 0;
+  return Number.isInteger(hours) && hours > 0 ? ' within ' + hours + ' hours' : '';
+}
+
+export function bankPaymentInstructionsSubject(issuedAt?: number | null, deadlineAt?: number | null) {
+  const window = bankPaymentTimeLeft(issuedAt, deadlineAt);
+  return window ? 'Pay' + window : 'Pay by bank transfer';
+}
+
 export function businessEmailLayout(data: BusinessEmailData, link: URL): EmailLayout & { subject: string } {
   const registeredSellerApproval = data.audience === 'seller' &&
     ['seller_registered_application','seller_registered_payout_fixes'].includes(data.relatedType ?? '');
@@ -79,9 +89,8 @@ export function businessEmailLayout(data: BusinessEmailData, link: URL): EmailLa
 
   if (customer && data.template === 'business.payment.order') {
     if (data.subject === 'Bank payment instructions ready') {
-      const hours = data.deadlineAt != null && data.issuedAt != null ? (data.deadlineAt - data.issuedAt) / 3_600_000 : 0;
-      const window = Number.isInteger(hours) && hours > 0 ? ' within ' + hours + ' hours' : '';
-      return layout('Your turn', window ? 'Pay' + window : 'Pay by bank transfer',
+      const window = bankPaymentTimeLeft(data.issuedAt, data.deadlineAt);
+      return layout('Your turn', bankPaymentInstructionsSubject(data.issuedAt, data.deadlineAt),
         amount ? 'Please transfer ' + amount + window : 'Pay by bank transfer',
         'Sellers start preparing after the transfer is matched and the order is released. Pay by the deadline to keep your order.',
         'See bank details', { navy: true, note: 'Already paid? Tell us on the payment page so we can match it.',

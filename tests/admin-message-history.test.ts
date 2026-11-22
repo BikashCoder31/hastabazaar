@@ -40,22 +40,52 @@ void test('the email workspace preserves capture and failure evidence and scopes
     }
     // Two queued message ledgers coexist and the native projection marks outdated jobs as expired.
     f.sqlite.prepare("INSERT INTO order_email_jobs (id,order_id,order_status,created_at,status,next_attempt_at) VALUES('old-order-email','legacy-order','confirmed',?,'queued',?)").run(now - 15_000, now);
+    f.sqlite.prepare("INSERT INTO order_email_jobs (id,order_id,order_status,created_at,status,next_attempt_at) VALUES('accepted-order-email','legacy-order','packing',?,'queued',?)").run(now - 17_000, now);
+    f.sqlite.prepare(`INSERT INTO email_delivery_attempts(id,queue_kind,queue_id,claim_token,attempt_number,phase,
+      message_id,started_at,completed_at,transport,provider_receipt)
+      VALUES('attempt-accepted','order','accepted-order-email','claim-accepted',1,'accepted','fictional-acceptance',?,?,'provider','fixture-only')`).run(now - 15_000, now - 14_000);
+    f.sqlite.prepare(`INSERT INTO notification_messages(id,recipient_user_id,audience_role,channel,template_key,subject_en,
+      subject_ne,body_en,body_ne,status,request_id,created_at,business_event_key,delivery_attempts,delivery_lease_until)
+      VALUES('leased-email','foreign','customer','email',?,'In progress','','','','queued','fixture:leased:email',?,?,1,?)`)
+      .run(eventKey, now - 40_000, eventKey, now + 60_000);
     const all = await readAdminMessages(f.db, 'reviewer', { view: 'all', now });
     assert.deepEqual({ ...all.summary }, {
-      total: 5, waiting: 1, failures: 2, sent: 1, deliveredToday: 0, capturedToday: 1, oldestWaitingAt: now - 11 * 60_000,
+      total: 7, waiting: 2, failures: 2, sent: 2, deliveredToday: 1, capturedToday: 1, oldestWaitingAt: now - 11 * 60_000,
     });
+    assert.equal(all.messages.find(row => row.id === 'leased-email')?.state, 'waiting');
+    assert.equal(all.messages.find(row => row.id === 'accepted-order-email')?.sentAt, now - 14_000);
     const seller = await readAdminMessages(f.db, 'reviewer', { view: 'all', scope: { kind: 'seller', id: 'registered' }, now });
     assert.deepEqual(seller.messages.map(row => [row.id, row.readAt, row.resendAllowed]), [['temporary-email', now - 2_000, true]]);
     const order = await readAdminMessages(f.db, 'reviewer', { view: 'all', scope: { kind: 'order', id: 'legacy-order' }, now });
     assert.deepEqual(order.messages.map(row => [row.id, row.state, row.permanentAddressFailure]), [
-      ['old-order-email','expired',false], ['permanent-email','failed',true],
+      ['old-order-email','expired',false], ['accepted-order-email','delivered',false], ['permanent-email','failed',true],
     ]);
+    assert.equal(order.messages[0].reason, 'Order moved on');
     assert.equal((await readMessageResendTarget(f.db, 'reviewer', 'business', 'permanent-email', now))?.resendAllowed, false);
     await assert.rejects(readAdminMessages(f.db, 'delegate', { now, view: 'all' }), { status: 403 });
     assert.equal(emailDeliveryWarning(emailSenderStatus(null, now), all.summary, all.messages, now)?.tone, 'red');
     const amber = emailDeliveryWarning(emailSenderStatus(null, now), { ...all.summary, oldestWaitingAt: now }, all.messages.filter(row => row.state === 'failed'), now);
     assert.match(amber?.message ?? '', /Fictional Shop/);
     assert.equal(emailSenderStatus({ expectedSince: now - 300_000, services: [] } as never, now).stopped, true);
+  } finally { f.dispose(); }
+});
+
+void test('seller applications include the applicant’s account copy and order history follows recorded response events', async () => {
+  const f = await completeVersionFixture(now - 60_000);
+  try {
+    const seller = await readAdminMessages(f.db, 'reviewer', { view: 'all', scope: { kind: 'seller', id: 'maker' }, now });
+    assert.ok(seller.messages.some(row => row.inApp && row.audience === 'Seller' && row.href === '/admin/sellers/maker'));
+    const eventId = 'order-response-fixture';
+    f.sqlite.prepare(`INSERT INTO order_response_events(id,order_id,kind,scope_json,source_key,note,created_at)
+      VALUES(?,'legacy-order','released','{}',?,'Fictional recorded response',?)`).run(eventId, eventId, now - 15_000);
+    f.sqlite.prepare(`INSERT INTO notification_messages(id,recipient_user_id,audience_role,channel,
+      template_key,subject_en,subject_ne,body_en,body_ne,related_type,related_id,status,request_id,created_at,business_event_key)
+      VALUES('response-mail','registered-owner','seller','email','business.order.response','New order to prepare',
+      '','','','order_response_event',?,'queued','fixture:response:email',?,'business.order.response')`).run(eventId, now - 15_000);
+    const order = await readAdminMessages(f.db, 'reviewer', { view: 'all', scope: { kind: 'order', id: 'legacy-order' }, now });
+    assert.ok(order.messages.some(row => row.id === 'response-mail' && row.href === '/admin/orders/legacy-order'));
+    const other = await readAdminMessages(f.db, 'reviewer', { view: 'all', scope: { kind: 'order', id: 'other' }, now });
+    assert.deepEqual(other.messages, []);
   } finally { f.dispose(); }
 });
 

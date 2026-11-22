@@ -6655,7 +6655,7 @@ void test('outdated status wins over expiry and does not consume the useful send
     const subjects: string[] = [];
     assert.deepEqual(await deliverOrderEmails(db, {send:async message => {subjects.push(message.subject);}}, 'https://hastabazaar.com', {now,limit:1}), {sent:1,failed:0,cancelled:1});
     assert.equal(subjects.length, 1);
-    assert.match(subjects[0], /Delivered/);
+    assert.equal(subjects[0], 'Hastabazaar · Your order was delivered · HK-TEST-1');
     assert.equal((await db.prepare("SELECT failure_code AS reason FROM order_email_jobs WHERE order_status='packing'").first<{reason:string}>())?.reason, 'obsolete_order_state');
   } finally { await f.dispose(); }
 });

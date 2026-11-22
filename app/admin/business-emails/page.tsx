@@ -96,18 +96,18 @@ export default async function BusinessEmails({ searchParams }: {
         </div>
         <ul className="divide-y divide-[#E2D6C2]">
           {messages.map(message => <li key={message.kind + ':' + message.id} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 px-4 py-3 text-sm xl:grid-cols-[1fr_1.5fr_0.9fr_1fr] xl:items-center">
-            <div className="min-w-0 wrap-anywhere">
+            <div className="min-w-0 wrap-anywhere xl:col-start-1 xl:row-start-1">
               <p className="font-semibold">{message.name}</p>
               <p className="text-xs text-[#465573]">{message.audience}{message.address ? ' · ' + message.address : ''}</p>
             </div>
-            <div className="col-span-2 row-start-2 min-w-0 wrap-anywhere xl:col-span-1 xl:row-start-1">
+            <div className="col-span-2 row-start-3 min-w-0 wrap-anywhere xl:col-span-1 xl:col-start-2 xl:row-start-1">
               <p>{message.subject}</p>
               <p className="text-xs text-[#465573]">{emailTime(message.sentAt ?? message.createdAt)}{message.inApp ? ' · also in app' : ''}</p>
             </div>
             <div className="max-w-32 justify-self-end xl:col-start-3 xl:row-start-1 xl:max-w-none xl:justify-self-start">
               <MessageStatus message={message} now={now} />
             </div>
-            <div className="col-span-2 xl:col-span-1 xl:col-start-4 xl:row-start-1">
+            <div className="col-span-2 row-start-2 xl:col-span-1 xl:col-start-4 xl:row-start-1">
               <MessageActions message={message} />
             </div>
           </li>)}

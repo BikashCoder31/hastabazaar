@@ -49,8 +49,12 @@ void test('bank checkout pairs order placement and bank instructions for its cus
       ['order.placed', 'customer', 'in_app'],
     ]);
     const { messages, mail } = capture();
+    const instructions = f.sqlite.prepare(`SELECT id FROM notification_messages WHERE channel='email'
+      AND template_key='business.payment.order' AND related_id=? AND recipient_user_id='customer'
+      AND subject_en='Bank payment instructions ready'`).get(f.orderId);
+    assert.ok(typeof instructions?.id === 'string');
     const orderResult = await deliverOrderEmails(f.db, mail, origin, { now: Date.now() + 100, orderId: f.orderId });
-    const businessResult = await deliverBusinessEmails(f.db, mail, origin, { now: Date.now() + 100, limit: 20 });
+    const businessResult = await deliverBusinessEmails(f.db, mail, origin, { now: Date.now() + 100, jobId: instructions.id, limit: 1 });
     const orderMail = messages.filter(message => message.to === 'customer@local.hastabazaar.test');
     assert.equal(orderMail.length, 2, JSON.stringify({ orderResult, businessResult, subjects: orderMail.map(message => message.subject) }));
     assert.ok(orderMail.some(message => message.subject.includes('· Order placed ·')));

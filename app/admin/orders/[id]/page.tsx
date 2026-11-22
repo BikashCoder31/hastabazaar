@@ -1,5 +1,5 @@
 import { AdminPageTitle } from '@/components/admin/page-help';
-import { RecordMessages } from '@/components/admin/record-messages';
+import { readRecordMessages, RecordMessages } from '@/components/admin/record-messages';
 import { StaffReviewAccessBoundary } from '@/components/admin/staff-review-access-boundary';
 import { ReviewBackLink } from '@/components/admin/review-back-link';
 import {
@@ -424,6 +424,7 @@ export default async function AdminOrderPage({
     };
   })();
 
+  const messages = await readRecordMessages({ db, actor: staff, scope: { kind: 'order', id } });
   return (
     <StaffReviewAccessBoundary actorId={staff.id} sourceId={id}>
       <div className="min-w-0 space-y-5 text-[#14213D]">
@@ -921,7 +922,7 @@ export default async function AdminOrderPage({
             ),
           }}
         />
-        <RecordMessages db={db} actor={staff} scope={{ kind: 'order', id }} />
+        <RecordMessages record={messages} />
       </div>
     </StaffReviewAccessBoundary>
   );

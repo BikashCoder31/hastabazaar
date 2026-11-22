@@ -2,6 +2,7 @@ import { staffMutationGuard } from '../db/repositories/staff-mutation-guard';
 import { nepalDayIso } from '../dates/nepal-calendar';
 import { accountedDeliveryAttemptsSql, deliveryFingerprint, eligibleDeliverySql, readDeliveryAttempt } from '../email/delivery-attempts';
 import { marketplaceSubject } from '../email/message-layout';
+import { bankPaymentInstructionsSubject } from '../email/business-message';
 import { orderEmailSubject } from '../email/order-updates';
 import { sellerNotificationEmail } from '../sellers/registration-email';
 import { supportedTemplates } from './business-notifications';
@@ -22,6 +23,10 @@ interface QueueRow {
   kind: QueueKind;
   state: MessageState;
   subject: string;
+  template: string | null;
+  reference: string | null;
+  issuedAt: number | null;
+  deadlineAt: number | null;
   name: string | null;
   recipientId: string | null;
   audience: 'customer' | 'seller' | 'staff';
@@ -51,14 +56,14 @@ export async function requireAdminMessageAccess(db: D1Database, actorId: string)
   await staffMutationGuard(db, actorId, 'email.delivery.manage', EmailDeliveryOverviewError, 'super_admin');
 }
 
-function queueSource(now: number, scope?: MessageScope, target?: { kind: QueueKind; id: string }) {
+function queueSource(db: D1Database, now: number, scope?: MessageScope, target?: { kind: QueueKind; id: string }) {
   const order = orderEmailHistorySource(now);
   const businessTests = [];
   const orderTests = [];
   const businessValues: string[] = [];
   const orderValues: string[] = [];
   if (scope?.kind === 'seller') {
-    businessTests.push("n.audience_role='seller' AND s.id=?");
+    businessTests.push('s.id=?');
     businessValues.push(scope.id);
     orderTests.push('1=0');
   }
@@ -80,38 +85,55 @@ function queueSource(now: number, scope?: MessageScope, target?: { kind: QueueKi
     (target.kind === 'business' ? businessValues : orderValues).push(target.id);
   }
   // The request identity differs only in channel for notices saved as a pair.
+  const giftRequest = (db as D1Database & { dialect?: string }).dialect === 'mariadb'
+    ? "CONCAT('gift:', n.related_id, ':redeemed')" : "'gift:' || n.related_id || ':redeemed'";
   const business = `SELECT n.id,'business' AS kind,CASE
     WHEN a.phase='accepted' THEN 'delivered'
     WHEN a.phase='captured' THEN 'captured'
     WHEN n.status='sent' THEN 'sent_record'
     WHEN n.status='cancelled' OR a.phase='cancelled' THEN 'expired'
-    WHEN n.delivery_lease_until>? AND a.phase NOT IN ('accepted','captured') THEN 'waiting'
+    WHEN n.delivery_lease_until>? THEN 'waiting'
     WHEN n.status='failed' OR a.phase IN ('handoff_started','uncertain','not_accepted')
       OR NOT ${accountedDeliveryAttemptsSql('business','n.id','n.delivery_attempts')} THEN 'failed'
     ELSE 'waiting' END AS state,
-    n.subject_en AS subject,COALESCE(s.trading_name,u.display_name) AS name,n.recipient_user_id AS recipientId,
-    n.audience_role AS audience,COALESCE(u.email,n.guest_email) AS address,i.answers_json AS sellerEmailAnswers,
+    n.subject_en AS subject,n.template_key AS template,
+    CASE WHEN n.related_type IN ('seller_application','seller_registered_application','seller_registered_payout_fixes') THEN s.application_reference END AS reference,
+    windowInfo.issued_at AS issuedAt,windowInfo.deadline_at AS deadlineAt,
+    COALESCE(s.trading_name,u.display_name) AS name,n.recipient_user_id AS recipientId,
+    CASE WHEN s.id IS NOT NULL THEN 'seller' ELSE n.audience_role END AS audience,
+    COALESCE(u.email,n.guest_email) AS address,i.answers_json AS sellerEmailAnswers,
     s.id AS sellerId,o.id AS orderId,o.order_number AS orderNumber,NULL AS orderStatus,NULL AS currentStatus,
     NULL AS paymentMode,NULL AS firstCodPending,n.related_type AS relatedType,n.related_id AS relatedId,
     n.created_at AS createdAt,COALESCE(n.sent_at,a.completed_at) AS sentAt,p.id AS inAppId,p.read_at AS readAt,
-    n.delivery_next_attempt_at AS nextAt,n.delivery_lease_until AS leaseUntil,
+    CASE WHEN a.retry_at>n.delivery_next_attempt_at THEN a.retry_at ELSE n.delivery_next_attempt_at END AS nextAt,
+    n.delivery_lease_until AS leaseUntil,
     a.failure_category AS failureCategory,COALESCE(a.failure_code,n.failure_reason) AS failureCode,
     CASE WHEN n.status IN ('queued','failed') AND a.phase='not_accepted' AND a.failure_category='temporary'
       AND ${eligibleDeliverySql('business','n.id')} AND ${accountedDeliveryAttemptsSql('business','n.id','n.delivery_attempts')}
       THEN 1 ELSE 0 END AS resendAllowed
     FROM notification_messages n LEFT JOIN users u ON u.id=n.recipient_user_id
-    LEFT JOIN seller_profiles s ON n.audience_role='seller' AND s.user_id=u.id
+    LEFT JOIN seller_profiles s ON s.user_id=u.id AND (n.audience_role='seller' OR
+      (n.audience_role='customer' AND n.related_type='seller_application' AND n.related_id=s.id
+        AND n.template_key IN ('business.seller_application.submitted','business.seller_application.result')))
     LEFT JOIN seller_registration_intakes i ON i.user_id=u.id AND
       (n.audience_role='seller' OR (n.audience_role='customer' AND n.related_type='seller_application'))
     LEFT JOIN return_requests r ON n.related_type='return_request' AND r.id=n.related_id
     LEFT JOIN order_items item ON item.id=r.order_item_id
     LEFT JOIN complaints c ON n.related_type='complaint' AND c.id=n.related_id
-    LEFT JOIN orders o ON o.id=COALESCE(n.guest_order_id,item.order_id,c.order_id,
+    LEFT JOIN order_response_events response ON n.related_type='order_response_event' AND response.id=n.related_id
+    LEFT JOIN manual_payment_exceptions payment ON n.related_type='payment_exception' AND payment.id=n.related_id
+    LEFT JOIN receipt_return_bank_satisfactions returned ON n.related_type='receipt_return_bank_satisfaction' AND returned.id=n.related_id
+    LEFT JOIN receipt_return_bank_losses loss ON n.related_type='receipt_return_bank_loss' AND loss.id=n.related_id
+    LEFT JOIN refund_obligations refund ON refund.id=COALESCE(returned.obligation_id,loss.obligation_id,
+      CASE WHEN n.related_type='refund_obligation' THEN n.related_id END)
+    LEFT JOIN orders o ON o.id=COALESCE(n.guest_order_id,item.order_id,c.order_id,response.order_id,payment.order_id,refund.order_id,
       CASE WHEN n.related_type IN ('order','order_payment') THEN n.related_id END)
+    LEFT JOIN manual_payment_windows windowInfo ON windowInfo.order_id=o.id AND n.related_type='order_payment'
     LEFT JOIN email_delivery_attempts a ON a.id=(SELECT latest.id FROM email_delivery_attempts latest
       WHERE latest.queue_kind='business' AND latest.queue_id=n.id ORDER BY latest.attempt_number DESC LIMIT 1)
     LEFT JOIN notification_messages p ON n.request_id LIKE '%:email'
-      AND p.request_id=REPLACE(n.request_id,':email',':in_app') AND p.channel='in_app'
+      AND p.request_id=CASE WHEN n.template_key='business.gift.redeemed' AND n.audience_role='customer' THEN ${giftRequest}
+        ELSE REPLACE(n.request_id,':email',':in_app') END AND p.channel='in_app'
       AND p.recipient_user_id=n.recipient_user_id AND p.audience_role=n.audience_role AND p.template_key=n.template_key
     WHERE n.channel='email' AND n.business_event_key=n.template_key
       AND n.template_key IN (${supportedTemplates.map(() => '?').join(',')})
@@ -121,12 +143,13 @@ function queueSource(now: number, scope?: MessageScope, target?: { kind: QueueKi
     WHEN 'sent' THEN 'delivered' WHEN 'captured' THEN 'captured' WHEN 'sent_record' THEN 'sent_record'
     WHEN 'skipped' THEN 'expired' WHEN 'retry' THEN 'failed' WHEN 'intervention' THEN 'failed'
     WHEN 'uncertain' THEN CASE WHEN q.leaseUntil>? THEN 'waiting' ELSE 'failed' END
-    ELSE 'waiting' END AS state,'' AS subject,u.display_name AS name,o.customer_id AS recipientId,
+    ELSE 'waiting' END AS state,'' AS subject,NULL AS template,NULL AS reference,NULL AS issuedAt,NULL AS deadlineAt,
+    u.display_name AS name,o.customer_id AS recipientId,
     'customer' AS audience,o.customer_email AS address,NULL AS sellerEmailAnswers,NULL AS sellerId,
     o.id AS orderId,o.order_number AS orderNumber,q.orderStatus,q.currentStatus,o.payment_mode AS paymentMode,
     EXISTS(SELECT 1 FROM first_cod_reviews review WHERE review.order_id=o.id AND review.status='pending') AS firstCodPending,
     'order' AS relatedType,o.id AS relatedId,q.createdAt,q.sentAt,p.id AS inAppId,p.read_at AS readAt,
-    q.nextAttemptAt AS nextAt,q.leaseUntil,q.failureCategory,q.failureCode,
+    q.nextAttemptAt AS nextAt,q.leaseUntil,q.failureCategory,COALESCE(q.skipReason,q.failureCode) AS failureCode,
     CASE WHEN q.displayStatus='retry' AND q.deliveryPhase='not_accepted' AND q.failureCategory='temporary'
       AND q.safeToAttempt=1 THEN 1 ELSE 0 END AS resendAllowed
     FROM (${order.sql}) AS q JOIN orders o ON o.id=q.orderId
@@ -148,12 +171,12 @@ function queueSource(now: number, scope?: MessageScope, target?: { kind: QueueKi
 }
 
 function messageReason(row: QueueRow) {
+  if (row.state === 'expired') return ['expired_order_update','obsolete_order_state'].includes(row.failureCode ?? '')
+    ? 'Order moved on' : null;
   if (row.failureCategory === 'permanent_recipient') return 'Address rejected';
   if (row.failureCategory === 'configuration') return 'Email setup needs attention';
   if (row.failureCategory === 'temporary') return 'Temporary mail error';
   if (row.state === 'failed') return 'Delivery could not be confirmed';
-  if (row.state === 'expired' && ['expired_order_update','obsolete_order_state'].includes(row.failureCode ?? ''))
-    return 'Order moved on';
   return null;
 }
 
@@ -167,10 +190,14 @@ function present(row: QueueRow) {
       : row.audience === 'customer' && row.recipientId
         ? '/admin/customers?customer=' + encodeURIComponent(row.recipientId) + '#customer-record'
         : notificationDestination('staff', 'staff', row.relatedType, row.relatedId);
+  const headline = row.template === 'business.payment.order' && row.audience === 'customer' && row.subject === 'Bank payment instructions ready'
+    ? bankPaymentInstructionsSubject(row.issuedAt, row.deadlineAt) : row.subject.replace(/[\r\n]+/g, ' ');
+  const brandLast = row.template === 'business.seller.checklist_request' || row.template === 'business.seller.document.expiring' ||
+    ['business.seller.document.review', 'business.seller.document.change'].includes(row.template ?? '') && headline.startsWith('Please fix your ');
   const subject = row.kind === 'order' && row.orderStatus && row.currentStatus && row.orderNumber
     ? orderEmailSubject({ eventStatus: row.orderStatus, currentStatus: row.currentStatus,
       orderNumber: row.orderNumber, firstCodPending: !!row.firstCodPending, paymentMode: row.paymentMode ?? undefined })
-    : marketplaceSubject(row.subject.replace(/[\r\n]+/g, ' '), row.orderNumber);
+    : marketplaceSubject(headline, row.orderNumber ?? row.reference, brandLast);
   return {
     id: row.id, kind: row.kind, state: row.state, name, address, subject, href,
     audience: row.audience === 'staff' ? 'Super Admin' : row.audience === 'seller' ? 'Seller' : 'Customer',
@@ -194,7 +221,7 @@ export async function readAdminMessages(
   input: { now: number; scope?: MessageScope; view: MessageView; page?: number; limit?: number },
 ) {
   await requireAdminMessageAccess(db, actorId);
-  const source = queueSource(input.now, input.scope);
+  const source = queueSource(db, input.now, input.scope);
   const start = Date.parse(nepalDayIso(input.now) + 'T00:00:00+05:45');
   const summary = await db.prepare(`SELECT
     COUNT(*) AS total,
@@ -223,7 +250,7 @@ export async function readAdminMessages(
 
 export async function readMessageResendTarget(db: D1Database, actorId: string, kind: QueueKind, id: string, now: number) {
   await requireAdminMessageAccess(db, actorId);
-  const source = queueSource(now, undefined, { kind, id });
+  const source = queueSource(db, now, undefined, { kind, id });
   const row = await db.prepare(`SELECT * FROM ${source.sql}`).bind(...source.values).first<QueueRow>();
   await requireAdminMessageAccess(db, actorId);
   if (row && row.state === 'failed') return present(row);
@@ -232,7 +259,7 @@ export async function readMessageResendTarget(db: D1Database, actorId: string, k
 
 export async function readFailedAddresses(db: D1Database, actorId: string, now: number) {
   await requireAdminMessageAccess(db, actorId);
-  const source = queueSource(now);
+  const source = queueSource(db, now);
   const rows = await db.prepare(`SELECT * FROM (SELECT messages.*,
     ROW_NUMBER() OVER (PARTITION BY COALESCE(recipientId,LOWER(address),orderId,id) ORDER BY createdAt DESC,id DESC) AS positionInRecipient
     FROM ${source.sql} WHERE state='failed' AND failureCategory='permanent_recipient') AS failures
@@ -272,7 +299,7 @@ export function emailDeliveryWarning(
 ) {
   if (status.stopped || (summary.oldestWaitingAt != null && now - summary.oldestWaitingAt > 10 * 60_000)) {
     return { tone: 'red', title: 'Emails are not going out',
-      message: status.stopped ? 'The sender has missed its last five minutes.' : 'An email has been waiting for more than ten minutes.' } as const;
+      message: status.stopped ? 'No sender run was recorded in the last five minutes.' : 'An email has been waiting for more than ten minutes.' } as const;
   }
   if (summary.failures === 0) return null;
   const names = [...new Set(failures.map(row => row.name))].slice(0, 3);

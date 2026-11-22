@@ -76,8 +76,9 @@ void test('customer, seller, and staff navigation wrap labels instead of truncat
   assert.doesNotMatch(account, /(?:className="[^"]*|const baseLink = '[^']*)\b(?:truncate|whitespace-nowrap)\b/);
   assert.match(seller, /<nav aria-label="Seller quick links" className="seller-mobile-tabs">/);
   assert.match(seller, /aria-label="Open seller menu" aria-haspopup="dialog"/);
-  assert.match(seller, /<nav aria-label="All seller pages"[^>]*>\s*<ul className="grid\b[^"]*\bgap-1\b[^"]*\bsm:grid-cols-2\b[^"]*">/);
-  assert.match(seller, /<span className="whitespace-normal">\{section\.label\}<\/span>/);
+  assert.match(seller, /<WorkspaceLinks\b[^>]*label="All seller pages"[^>]*\/>/);
+  assert.match(seller, /<nav aria-label=\{label\}>\s*<ul className="grid\b[^"]*">\{rows\(false\)\}<\/ul>/);
+  assert.match(seller, /<span className="min-w-0 flex-1">\{section\.label\}<\/span>/);
   assert.doesNotMatch(seller, /className="[^"]*\b(?:truncate|whitespace-nowrap)\b[^"]*"/);
   // The searchable staff menu now collapses on mobile; labels must still wrap.
   assert.match(admin, /className="min-w-0 whitespace-normal"/);

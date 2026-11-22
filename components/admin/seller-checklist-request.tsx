@@ -53,7 +53,7 @@ export function SellerChecklistRequest({ sellerId, actorId, itemId, label, note,
   return <div className="min-w-0">
     <details ref={disclosure} className="min-w-0 sm:min-w-32">
       <summary className={control + ' w-full cursor-pointer list-none'}>{label}</summary>
-      <form className="mt-2 grid min-w-0 gap-2" onSubmit={event => {
+      <form data-form-id="staff.seller-checklist-request" className="mt-2 grid min-w-0 gap-2" onSubmit={event => {
         event.preventDefault();
         void submit(event.currentTarget);
       }}>

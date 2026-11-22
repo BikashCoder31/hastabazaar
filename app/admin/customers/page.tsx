@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { Search, Smartphone, TriangleAlert } from 'lucide-react';
 import Link from 'next/link';
-import { RecordMessages } from '@/components/admin/record-messages';
+import { readRecordMessages, RecordMessages } from '@/components/admin/record-messages';
 import {
   AdminPageHelpProvider,
   AdminPageTitle,
@@ -278,6 +278,7 @@ export default async function CustomersPage({
     page,
     customer: customer?.id,
   });
+  const messages = customer ? await readRecordMessages({ db, actor: staff, scope: { kind: 'customer', id: customer.id } }) : null;
   const empty = q
     ? `No customer matches “${q}”.`
     : view === 'risk'
@@ -455,7 +456,7 @@ export default async function CustomersPage({
               codActorId={staff.role === 'super_admin' ? staff.id : undefined}
               returnTo={returnTo}
             />
-            <RecordMessages db={db} actor={staff} scope={{ kind: 'customer', id: customer.id }} />
+            <RecordMessages record={messages} />
           </div>
         ) : null}
       </div>
