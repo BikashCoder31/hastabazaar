@@ -106,6 +106,12 @@ function addChecks(requirements, exact, migration) {
   }
 }
 
+function addUniqueIndexes(indexes, migration) {
+  for (const [key, columns] of Object.entries(indexes ?? {})) {
+    add('unique-index', ...objectKey(key), columns.join(','), { migration, columnCount: columns.length });
+  }
+}
+
 addTables(manifest.requiredTables, '');
 addTriggers(manifest.requiredTriggers ?? {}, manifest.requiredTriggerShapes ?? {}, manifest.requiredExactTriggerDefinitions ?? {}, '');
 addChecks(manifest.requiredChecks ?? {}, manifest.requiredExactChecks ?? {}, '');
@@ -115,9 +121,7 @@ for (const [key, fragments] of Object.entries(manifest.requiredGeneratedColumns 
 for (const [key, collation] of Object.entries(manifest.requiredColumnCollations ?? {})) {
   add('collation', ...objectKey(key), collation);
 }
-for (const [key, columns] of Object.entries(manifest.requiredUniqueIndexes ?? {})) {
-  add('unique-index', ...objectKey(key), columns.join(','), { columnCount: columns.length });
-}
+addUniqueIndexes(manifest.requiredUniqueIndexes, '');
 for (const [key, { columns, referencedTable, referencedColumns }] of Object.entries(manifest.requiredForeignKeys ?? {})) {
   add('foreign-key', ...objectKey(key), columns.join(','), {
     columnCount: columns.length,
@@ -132,6 +136,7 @@ for (const companion of manifest.ownerAppliedMigrations ?? []) {
   addTables(companion.requiredTables, migration);
   addTriggers({}, companion.requiredTriggerShapes ?? {}, companion.requiredExactTriggerDefinitions ?? {}, migration);
   addChecks({}, companion.requiredChecks ?? {}, migration);
+  addUniqueIndexes(companion.requiredUniqueIndexes, migration);
   if (requirements.length === priorLength) throw new Error('Owner migration ' + migration + ' has no schema requirements');
 }
 

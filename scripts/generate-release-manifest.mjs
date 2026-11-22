@@ -70,12 +70,25 @@ function ownerNamedChecks(sql) {
   }
   return checks;
 }
+function ncmUniqueIndexes(tables) {
+  const indexes = {};
+  for (const { name, definitions } of tables) {
+    for (const definition of definitions) {
+      const key = /^(?:PRIMARY\s+KEY|UNIQUE\s+KEY\s+`?(\w+)`?)\s*\(([^)]+)\)$/i.exec(definition);
+      if (!key) continue;
+      indexes[name + '.' + (key[1] ?? 'PRIMARY')] =
+        key[2].split(',').map(column => column.trim().replaceAll('`', ''));
+    }
+  }
+  return indexes;
+}
 const ownerAppliedMigrations = await Promise.all(ownerCompanions.map(async companion => {
   const path = 'deployment/babal/mariadb-' + companion.slice(5).replaceAll('_', '-') + '.sql';
   const d1Path = 'drizzle/' + companion + '.sql';
   const [source, d1Source] = await Promise.all([readSource(path), readSource(d1Path)]);
   const sql = source.toString('utf8');
-  const requiredTables = Object.fromEntries(extractCreateTables(sql).map(
+  const tables = extractCreateTables(sql);
+  const requiredTables = Object.fromEntries(tables.map(
     table => [table.name, table.columns.map(column => column.name)],
   ));
   for (const [, table, changes] of sql.matchAll(/ALTER TABLE\s+`?(\w+)`?\s+([\s\S]*?);/gi)) {
@@ -101,6 +114,7 @@ const ownerAppliedMigrations = await Promise.all(ownerCompanions.map(async compa
     d1: { path: d1Path, sha256: sha256(d1Source) },
     requiresWriterPause: companion === '0164_customer_cod_confirmation',
     requiredTables, requiredChecks: ownerNamedChecks(sql), requiredTriggerShapes, requiredExactTriggerDefinitions,
+    ...(companion === '0172_ncm_api' ? { requiredUniqueIndexes: ncmUniqueIndexes(tables) } : {}),
   };
 }));
 if (options['refresh-owner-inventory']) {

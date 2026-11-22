@@ -27,6 +27,7 @@ interface Manifest {
     requiredExactTriggerDefinitions: Record<string, string>;
     requiredTables: Record<string, string[]>;
     requiredTriggerShapes: Record<string, { timing: string; event: string; table: string }>;
+    requiredUniqueIndexes?: Record<string, string[]>;
   }[];
   requiredTables: Record<string, string[]>;
   requiredTriggers: Record<string, string[]>;
@@ -180,6 +181,17 @@ void test('historical release generation covers its maintained non-reset SQL inv
           assert.equal(entry.requiredExactTriggerDefinitions.first_cod_review_immutable, body);
         }
         if (entry.path === 'deployment/babal/mariadb-ncm-api.sql') {
+          assert.deepEqual(entry.requiredUniqueIndexes, {
+            'ncm_partner_settings.PRIMARY': ['partner_id'],
+            'ncm_pickup_branches.PRIMARY': ['pickup_address_id'],
+            'ncm_bookings.PRIMARY': ['job_id'],
+            'ncm_bookings.idx_ncm_booking_reference': ['vendor_reference'],
+            'ncm_bookings.idx_ncm_booking_order': ['ncm_order_id'],
+            'ncm_bookings.idx_ncm_booking_request': ['request_id'],
+            'ncm_api_daily_usage.PRIMARY': ['usage_day', 'bucket'],
+            'ncm_webhook_events.PRIMARY': ['id'],
+            'ncm_courier_notes.PRIMARY': ['ncm_order_id', 'comment_id'],
+          });
           assert.equal(entry.requiredChecks['ncm_bookings.ncm_booking_state'], "state IN ('booking','needs_review','rejected','booked')");
           assert.equal(entry.requiredChecks['ncm_api_daily_usage.ncm_usage_bucket'], "bucket IN ('create','view')");
           assert.equal(entry.requiredChecks['ncm_api_daily_usage.ncm_usage_nonnegative'], 'used>=0');

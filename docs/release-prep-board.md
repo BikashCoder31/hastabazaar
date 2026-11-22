@@ -9,6 +9,16 @@ Started on `admin-redesign` at `650b3aad` after the Seller tools completion mark
 | R3 · Read-only production schema check | Main | Done | `25ac9f41` | Generator tests passed. On MariaDB 10.11, all eight migrations changed from Missing to Present. A partially applied 0164 fixture reported Partial. With no database selected, the script reported that condition alone. |
 | R4 · Release notes and local final check | Main | Done | `Release prep: Release notes and local final check` | Typecheck, lint, local preview preflight and Linux package checks passed. The full suite finished, and its sole failed test passed after a fixture fix. |
 
+## Post-NCM release prep
+
+Repeated R2, R3 and R4 on `admin-redesign` after NCM API finished at `8b406d68`.
+
+| Task | Owner | Status | Commit | Checks |
+| --- | --- | --- | --- | --- |
+| R2 · Release manifest and MariaDB rehearsal | Main | Done | `Release prep: Release manifest and MariaDB rehearsal` | Regression failed before adding unique keys to the inventory and passed after generation. MariaDB 10.11.19 applied 0164–0172. The pre-NCM build started and its storefront read the upgraded database. |
+| R3 · Read-only production schema check | Main | In progress | | Added NCM booking and receipt keys to the metadata report. |
+| R4 · Release notes and local final check | Main | In progress | | Full suite running, and production package verification pending. |
+
 ## R1 reconciliation
 
 The old commit includes the application snapshot alongside the corrections. The correction names come from its readiness remediation plan.
@@ -52,12 +62,15 @@ mariadb --host='<PRODUCTION_HOST>' --user='<PRODUCTION_REVIEW_USER>' --password 
 - `PRESENT` means every listed requirement for that row is visible and matches the manifest. `MISSING` means none of an owner file's requirements matched. `PARTIAL` means some matched. The Core schema row covers the package's shared prerequisites and flags any missing or different metadata.
 - The detail rows name the table, column, trigger, check or index to investigate. Verify the review account can see the relevant metadata, including triggers. Limited visibility can look the same as a missing object.
 - The report reads only MariaDB's schema metadata. Check application health and the smoke list separately, including runtime security and settings.
+- For 0172, verify the core and 0171 rows first. A missing NCM booking key appears under Migration 0172 even when all six tables exist. Resolve each detail row before turning on API booking.
 
 ### MariaDB review and apply commands
 
 The rehearsal used the reviewed production-equivalent schema, the release's 0157–0163 prerequisites and an isolated MariaDB 10.11.19 database. The eight owner files left the same row count in each of the 374 existing tables, with 39 schema-provided configuration rows in total. The pre-redesign application at `3fe4d9a6` started against the upgraded database, returned HTTP 200 on its database-backed storefront and reported zero missing schema requirements. The credential-free rehearsal returned `SECURITY_STATE_UNAVAILABLE` from the aggregate health endpoint.
 
 The rehearsal found that MariaDB treats the original `first_cod_reviews.total_paisa` check as part of the column definition. The 0164 companion now replaces that column definition and adds the two intended checks in the same statement. Use the updated file.
+
+The post-NCM rehearsal repeated the full upgrade in a fresh, network-isolated MariaDB 10.11.19 container with temporary storage. The reviewed core schema and prerequisites came from the earlier rehearsal. Each of the 374 original tables kept its row count through all nine owner files. The 380 tables present before 0172 also kept their counts, and all six new NCM tables were empty. The Linux build of the last pre-NCM commit, `4acd0f9a`, returned HTTP 200 for liveness and its storefront, which queried the upgraded database through a disposable read-only account.
 
 Run the schema report on the intended database first and review the individual findings. The commands below are for an owner-approved database that already has the core release prerequisites. Run each applicable line separately, in order, and stop at the first error. If a file appears partially applied or the core schema differs, resolve the findings before continuing. MariaDB DDL can commit between statements. Leave writers stopped if 0164 fails, capture the error and inspect the resulting schema before retrying.
 
@@ -73,6 +86,9 @@ Run the schema report on the intended database first and review the individual f
 | 0169 | Occasion groups and season windows | `drizzle/0169_occasion_discovery.sql` |
 | 0170 | Occasion images | `drizzle/0170_occasion_images.sql` |
 | 0171 | Delivery partners | `drizzle/0171_delivery_partners.sql` |
+| 0172 | Nepal Can Move API storage | `drizzle/0172_ncm_api.sql` |
+
+Apply 0172 after 0171. It adds six empty tables, has no triggers and has no specific writer-stop requirement. The owner controls the NCM credentials and API enablement. [NCM API setup](ncm-api-board.md)
 
 For staging, substitute the approved host and account. The MariaDB client asks for the password.
 
@@ -89,6 +105,7 @@ apply_staging deployment/babal/mariadb-packed-parcel-weight.sql
 apply_staging deployment/babal/mariadb-occasion-discovery.sql
 apply_staging deployment/babal/mariadb-occasion-images.sql
 apply_staging deployment/babal/mariadb-delivery-partners.sql
+apply_staging deployment/babal/mariadb-ncm-api.sql
 ```
 
 For production, use the separate production host and account.
@@ -106,6 +123,7 @@ apply_production deployment/babal/mariadb-packed-parcel-weight.sql
 apply_production deployment/babal/mariadb-occasion-discovery.sql
 apply_production deployment/babal/mariadb-occasion-images.sql
 apply_production deployment/babal/mariadb-delivery-partners.sql
+apply_production deployment/babal/mariadb-ncm-api.sql
 ```
 
 ### Files changed in release prep

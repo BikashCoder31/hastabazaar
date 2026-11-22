@@ -1364,7 +1364,38 @@
         "ncm_courier_notes.ncm_note_kind": "kind IN ('Info','Action')"
       },
       "requiredTriggerShapes": {},
-      "requiredExactTriggerDefinitions": {}
+      "requiredExactTriggerDefinitions": {},
+      "requiredUniqueIndexes": {
+        "ncm_partner_settings.PRIMARY": [
+          "partner_id"
+        ],
+        "ncm_pickup_branches.PRIMARY": [
+          "pickup_address_id"
+        ],
+        "ncm_bookings.PRIMARY": [
+          "job_id"
+        ],
+        "ncm_bookings.idx_ncm_booking_reference": [
+          "vendor_reference"
+        ],
+        "ncm_bookings.idx_ncm_booking_order": [
+          "ncm_order_id"
+        ],
+        "ncm_bookings.idx_ncm_booking_request": [
+          "request_id"
+        ],
+        "ncm_api_daily_usage.PRIMARY": [
+          "usage_day",
+          "bucket"
+        ],
+        "ncm_webhook_events.PRIMARY": [
+          "id"
+        ],
+        "ncm_courier_notes.PRIMARY": [
+          "ncm_order_id",
+          "comment_id"
+        ]
+      }
     }
   ],
   "requiredTables": {
