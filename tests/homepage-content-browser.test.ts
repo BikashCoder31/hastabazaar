@@ -200,12 +200,15 @@ void test('publishing each homepage editor changes the corresponding public stor
           const publishedResponse = await published;
           assert.equal(publishedResponse.status(),200);
 
+          // The editor can reload itself after publishing while the storefront opens.
+          const storefront = await context.newPage();
           asOf = effectiveAt - 1;
-          await page.goto('http://localhost:3018/');
-          assert.equal(await page.getByRole('heading',{name:new RegExp(changedHeading)}).count(),0);
+          await storefront.goto('http://localhost:3018/');
+          const publishedHeading = storefront.getByRole('heading',{name:new RegExp(changedHeading)});
+          assert.equal(await publishedHeading.count(),0);
           asOf = effectiveAt;
-          await page.reload();
-          await page.getByRole('heading',{name:new RegExp(changedHeading)}).waitFor();
+          await storefront.reload();
+          await publishedHeading.waitFor();
         } finally {
           await context.close();
         }

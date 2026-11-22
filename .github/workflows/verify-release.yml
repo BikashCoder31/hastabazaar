@@ -38,13 +38,13 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=4096
 
   tests:
-    name: Tests ${{ matrix.shard }}/4
+    name: Tests ${{ matrix.shard }}/8
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -62,7 +62,7 @@ jobs:
           printf 'PLAYWRIGHT_MODULE=file://%s/node_modules/playwright/index.mjs\n' "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
           printf 'FRONTEND_RECOVERY_EVIDENCE_ROOT=%s/frontend-recovery-%s\n' "$RUNNER_TEMP" '${{ matrix.shard }}' >> "$GITHUB_ENV"
           node --input-type=module -e "import {chromium} from 'playwright'; console.log('CHROME_PATH='+chromium.executablePath())" >> "$GITHUB_ENV"
-      - run: node --import tsx --test --test-concurrency=1 --test-shard=${{ matrix.shard }}/4 tests/*.test.ts tests/seller-registration-browser.test.mjs tests/prepare-release-schema-input.test.mjs
+      - run: node --import tsx --test --test-concurrency=1 --test-shard=${{ matrix.shard }}/8 tests/*.test.ts tests/seller-registration-browser.test.mjs tests/prepare-release-schema-input.test.mjs
         env:
           NODE_OPTIONS: --import=${{ github.workspace }}/scripts/testing/legacy-d1-fixture-migrations.mjs
 
