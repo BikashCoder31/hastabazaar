@@ -3,7 +3,7 @@
 import { Package } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { DispatchParcel } from '@/app/admin/orders/dispatch/read-dispatch';
 import { pickupWindowLabel } from '@/app/admin/orders/dispatch/pickup-window';
 import { withAdminReturnTo } from '@/lib/admin/return-context';
@@ -77,6 +77,7 @@ export function DispatchParcelList({
   onToggle,
   onToggleAll,
   onMark,
+  renderParcelActions,
 }: {
   label: string;
   parcels: DispatchParcel[];
@@ -87,6 +88,7 @@ export function DispatchParcelList({
   onToggle: (key: string) => void;
   onToggleAll: () => void;
   onMark: (key: string) => void;
+  renderParcelActions?: (parcel: DispatchParcel) => ReactNode;
 }) {
   const groups = Map.groupBy(parcels, (parcel) => parcel.pickupGroup);
   const allSelected =
@@ -207,6 +209,11 @@ export function DispatchParcelList({
                       </Link>
                     ) : null}
                   </div>
+                  {renderParcelActions ? (
+                    <div className="col-span-full min-w-0 empty:hidden">
+                      {renderParcelActions(parcel)}
+                    </div>
+                  ) : null}
                 </li>
               ))}
             </ul>

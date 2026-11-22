@@ -121,6 +121,16 @@ export async function testedNcmConnection(db: D1Database, partnerId: string, run
   return { settings, client: createNcmClient(config) };
 }
 
+export async function activeNcmConnection(db: D1Database, partnerId: string, runtime: unknown) {
+  const connection = await testedNcmConnection(db, partnerId, runtime);
+  if (!connection) return null;
+  const partner = await db.prepare(`SELECT id,name,collects_cod AS collectsCod FROM delivery_partners
+    WHERE id=? AND status='in_use' AND booking_mode='api'`).bind(partnerId)
+    .first<{id: string; name: string; collectsCod: number}>();
+  if (partner?.id !== partnerId || !ncmPartnerName(partner.name)) return null;
+  return { ...connection, partner: { ...partner, collectsCod: Number(partner.collectsCod) === 1 } };
+}
+
 export class NcmSettingsError extends Error {
   constructor(message: string, readonly status = 409) { super(message); }
 }

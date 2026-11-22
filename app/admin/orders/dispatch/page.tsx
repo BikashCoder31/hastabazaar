@@ -8,6 +8,8 @@ import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import { can } from '@/lib/marketplace/permissions';
 import { listDeliveryPartners } from '@/lib/delivery/partners';
+import { ncmDispatchState } from '@/lib/delivery/ncm-booking';
+import { activeNcmConnection, ncmPartnerName } from '@/lib/delivery/ncm-settings';
 import { pickupOptions } from './pickup-window';
 import { dispatchLanes, readDispatchParcels } from './read-dispatch';
 
@@ -25,6 +27,12 @@ export default async function DispatchPage({ searchParams }: { searchParams?: Pr
   const [parcels, query, partners] = await Promise.all([
     readDispatchParcels(db), searchParams, listDeliveryPartners(db, { activeOnly: true }),
   ]);
+  const ncmPartner = partners?.find(partner => partner.bookingMode === 'api' && ncmPartnerName(partner.name));
+  const activeNcm = ncmPartner ? await activeNcmConnection(db,ncmPartner.id,env) : null;
+  const ncm = activeNcm ? await ncmDispatchState(db,observedAt(),parcels.map(parcel => parcel.jobId)) : null;
+  const dispatchParcels = ncm ? parcels.map(parcel => ({
+    ...parcel, ncmBooking: parcel.jobId ? ncm.byJob.get(parcel.jobId) : undefined,
+  })) : parcels;
   const initialLane = dispatchLanes.find(({ id }) => id === query?.lane)?.id;
   return (
     <div className="min-w-0 space-y-4">
@@ -48,7 +56,8 @@ export default async function DispatchPage({ searchParams }: { searchParams?: Pr
       <DispatchWorkspace
         key={initialLane}
         initialLane={initialLane}
-        parcels={parcels}
+        parcels={dispatchParcels}
+        ncm={activeNcm && ncm ? {partnerId:activeNcm.partner.id,usedToday:ncm.usedToday,limit:ncm.limit} : null}
         actorId={staff.id}
         options={pickupOptions(observedAt())}
         partners={partners?.map(({ id, name, collectsCod, trackingPattern }) =>

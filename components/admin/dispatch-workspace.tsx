@@ -15,12 +15,19 @@ import {
   dispatchChip,
   dispatchPanel,
 } from './dispatch-parcel-list';
+import {
+  NcmDispatchParcelActions,
+  NcmDispatchResults,
+  type NcmDispatchResult,
+  type NcmDispatchSettings,
+} from './ncm-dispatch-actions';
 
 export function DispatchWorkspace({
   parcels,
   actorId,
   options,
   partners,
+  ncm,
   canManagePartners,
   initialLane = 'ready',
 }: {
@@ -28,6 +35,7 @@ export function DispatchWorkspace({
   actorId: string;
   options: (PickupWindow & { label: string })[];
   partners: readonly DispatchPartner[] | null;
+  ncm?: NcmDispatchSettings | null;
   canManagePartners: boolean;
   initialLane?: DispatchLane;
 }) {
@@ -36,6 +44,7 @@ export function DispatchWorkspace({
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [marked, setMarked] = useState<string | null>(null);
   const [notice, setNotice] = useState({ message: '', error: false });
+  const [ncmResults, setNcmResults] = useState<NcmDispatchResult[]>([]);
   const [busy, setBusy] = useState(false);
   const [refreshing, startTransition] = useTransition();
   const grouped = Map.groupBy(parcels, (parcel) => parcel.lane);
@@ -50,6 +59,9 @@ export function DispatchWorkspace({
           (parcel) => parcel.key === marked && parcel.canMarkPickedUp,
         )
       : undefined;
+  const uncertain = new Set(ncmResults.filter(({ status }) => status === 'uncertain').map(({ key }) => key));
+  const ncmBlocked = new Set(chosen.filter(({ key, ncmBooking }) =>
+    uncertain.has(key) || ncmBooking?.state === 'needs_review' || ncmBooking?.state === 'booking').map(({ key }) => key));
 
   function toggle(key: string) {
     setSelected((previous) => {
@@ -67,6 +79,15 @@ export function DispatchWorkspace({
     });
     if (marked && keys.includes(marked)) setMarked(null);
     startTransition(() => router.refresh());
+  }
+
+  function showNotice(message: string, error: boolean) {
+    setNotice({ message, error });
+  }
+
+  function settled(key: string) {
+    setNcmResults((previous) => previous.filter((entry) => entry.key !== key || entry.status !== 'uncertain'));
+    saved([key]);
   }
 
   return (
@@ -99,6 +120,7 @@ export function DispatchWorkspace({
           {notice.message}
         </p>
       ) : null}
+      {ncmResults.length ? <NcmDispatchResults results={ncmResults} /> : null}
       <div className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(290px,40%)] xl:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
         <DispatchParcelList
           label={dispatchLanes.find(({ id }) => id === lane)!.label}
@@ -118,6 +140,18 @@ export function DispatchWorkspace({
           onMark={(key) =>
             setMarked((previous) => (previous === key ? null : key))
           }
+          renderParcelActions={(parcel) => parcel.ncmBooking || uncertain.has(parcel.key) ? (
+            <NcmDispatchParcelActions
+              parcel={parcel}
+              actorId={actorId}
+              partnerId={ncm?.partnerId ?? null}
+              disabled={busy || refreshing}
+              uncertain={uncertain.has(parcel.key) && parcel.ncmBooking?.state !== 'booked'}
+              onBusy={setBusy}
+              onNotice={showNotice}
+              onSettled={settled}
+            />
+          ) : null}
         />
         <aside aria-label="Book courier" className="min-w-0 space-y-3.5">
           {chosen.length || pickup ? (
@@ -127,10 +161,13 @@ export function DispatchWorkspace({
               actorId={actorId}
               options={options}
               partners={partners}
-              refreshing={refreshing}
+              ncm={ncm}
+              ncmBlocked={ncmBlocked}
+              refreshing={refreshing || busy}
               onBusy={setBusy}
               onSaved={saved}
-              onNotice={(message, error) => setNotice({ message, error })}
+              onNotice={showNotice}
+              onNcmResults={setNcmResults}
             />
           ) : (
             <section className={`${dispatchPanel} space-y-3 p-5`}>
@@ -143,7 +180,7 @@ export function DispatchWorkspace({
             </section>
           )}
           <section className={`${dispatchPanel} space-y-2 p-5 text-sm`}>
-            <h2 className="font-semibold">Booked by hand for now</h2>
+            <h2 className="font-semibold">{ncm ? 'Booking by hand' : 'Booked by hand for now'}</h2>
             <p className="text-[#46536F]">
               Book on the courier’s website or by phone, then record the booking here.
               {partners === null ? ' Delivery partner settings are available after the database update.' : null}

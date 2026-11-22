@@ -29,6 +29,7 @@ import { digestFormRequest } from '../forms/submission';
 import type { FormAnswerSnapshot } from '../forms/types';
 import { safeCourierUrl, parseLocation } from '../delivery/validation';
 import { deliveryPartnerSchemaAvailable, readDeliveryPartner } from '../delivery/partners';
+import { ncmPartnerName, ncmSchemaAvailable } from '../delivery/ncm-settings';
 import { partnerTrackingUrl } from '../delivery/partner-tracking';
 import { buildEarningsAccrualStatements } from '../db/repositories/payouts';
 import { accrueManagedEntitlements } from '../db/repositories/managed-settlements';
@@ -542,7 +543,11 @@ export interface ParcelOperation {
     formId?: 'staff.parcel-control' | 'staff.rider-control-1';
   };
 }
-export async function operateParcel(db: D1Database, o: ParcelOperation) {
+export async function operateParcel(
+  db: D1Database,
+  o: ParcelOperation,
+  ncmBooking?: { requestId: string; orderId: string },
+) {
   const authority = await staffMutationGuard(
     db,
     o.actorId,
@@ -877,7 +882,7 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
       throw new ParcelConflictError('Use a public HTTPS tracking link.');
     }
     if (
-      tracking.length < 2 ||
+      tracking.length < (ncmBooking ? 1 : 2) ||
       tracking.length > 80 ||
       (o.method === 'courier' && (courier.length < 2 || courier.length > 120))
     )
@@ -886,7 +891,8 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
       );
     const partner = o.deliveryPartnerId ? await readDeliveryPartner(db, o.deliveryPartnerId) : null;
     if (o.deliveryPartnerId) {
-      if (o.method !== 'courier' || !partner || partner.status !== 'in_use' || partner.bookingMode !== 'manual' || partner.name !== courier)
+      if (o.method !== 'courier' || !partner || partner.status !== 'in_use' ||
+        (partner.bookingMode !== 'manual' && !ncmPartnerName(partner.name)) || partner.name !== courier)
         throw new ParcelConflictError('This delivery partner is no longer available. Refresh Dispatch and choose a courier.');
       if (p.codDuePaisa > 0 && !partner.collectsCod)
         throw new ParcelConflictError('This courier does not collect cash. Choose a courier that accepts cash on delivery.');
@@ -897,9 +903,29 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
       }
       statements.push(
         db.prepare('UPDATE delivery_partners SET revision=revision WHERE id=?').bind(partner.id),
-        ...assertion(db, "EXISTS(SELECT 1 FROM delivery_partners WHERE id=? AND revision=? AND status='in_use' AND booking_mode='manual')",
-          [partner.id, partner.revision]),
+        ...assertion(db, "EXISTS(SELECT 1 FROM delivery_partners WHERE id=? AND revision=? AND status='in_use' AND booking_mode=?)",
+          [partner.id, partner.revision, partner.bookingMode]),
       );
+    }
+    const hasNcmStorage = await ncmSchemaAvailable(db);
+    if (ncmBooking) {
+      if (!hasNcmStorage || !partner || !ncmPartnerName(partner.name) || p.method !== null ||
+        tracking !== ncmBooking.orderId || !['pickup_requested','label_pending','label_ready','pickup_scheduled'].includes(p.status))
+        throw new ParcelConflictError('The parcel changed after the NCM request. Review the saved booking.');
+      statements.push(
+        ...assertion(db, `EXISTS(SELECT 1 FROM ncm_bookings WHERE job_id=? AND partner_id=? AND request_id=?
+          AND ncm_order_id=? AND state IN ('booking','needs_review'))
+          AND NOT EXISTS(SELECT 1 FROM order_items i WHERE i.order_id=? AND i.seller_id=?
+            AND i.fulfillment_status NOT IN ('ready_for_pickup','cancelled'))
+          AND NOT EXISTS(SELECT 1 FROM order_items i JOIN order_fulfillment_holds h ON h.order_item_id=i.id
+            WHERE i.order_id=? AND i.seller_id=? AND h.ended_at IS NULL AND h.prevents_handoff=1)`,
+          [o.jobId, partner.id, ncmBooking.requestId, tracking, p.orderId, p.sellerId, p.orderId, p.sellerId]),
+        db.prepare("UPDATE ncm_bookings SET state='booked',updated_at=? WHERE job_id=? AND request_id=?")
+          .bind(o.now, o.jobId, ncmBooking.requestId),
+      );
+    } else if (hasNcmStorage) {
+      statements.push(...assertion(db,
+        "NOT EXISTS(SELECT 1 FROM ncm_bookings WHERE job_id=? AND state IN ('booking','needs_review','booked'))", [o.jobId]));
     }
     const partnerColumn = partner ? 'delivery_partner_id=?,'
       : await deliveryPartnerSchemaAvailable(db)

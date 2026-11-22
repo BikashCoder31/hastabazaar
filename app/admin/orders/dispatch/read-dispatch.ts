@@ -65,6 +65,10 @@ export type DispatchParcel = Pick<
   destination: string;
   canMarkPickedUp: boolean;
   canRecordFailure: boolean;
+  ncmBooking?: {
+    state: 'booking' | 'needs_review' | 'rejected' | 'booked';
+    trackingNumber: string | null;
+  };
 };
 
 const waiting =

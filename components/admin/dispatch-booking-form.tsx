@@ -27,6 +27,12 @@ import {
 import { ACTOR_INTENT_HEADER } from '@/lib/http/actor-intent';
 import { DispatchCourierDetails } from './dispatch-courier-details';
 import {
+  dispatchConfiguredControlSize,
+  NcmDispatchReview,
+  type NcmDispatchResult,
+  type NcmDispatchSettings,
+} from './ncm-dispatch-actions';
+import {
   dispatchChip,
   dispatchMoney,
   dispatchPanel,
@@ -69,21 +75,27 @@ export function DispatchBookingForm({
   pickup,
   options,
   partners,
+  ncm,
+  ncmBlocked,
   actorId,
   refreshing,
   onBusy,
   onSaved,
   onNotice,
+  onNcmResults,
 }: {
   parcels: DispatchParcel[];
   pickup: DispatchParcel | undefined;
   options: (PickupWindow & { label: string })[];
   partners: readonly DispatchPartner[] | null;
+  ncm?: NcmDispatchSettings | null;
+  ncmBlocked?: ReadonlySet<string>;
   actorId: string;
   refreshing: boolean;
   onBusy: (busy: boolean) => void;
   onSaved: (keys: readonly string[]) => void;
   onNotice: (message: string, error: boolean) => void;
+  onNcmResults: (results: NcmDispatchResult[]) => void;
 }) {
   const courierFieldId = useId();
   const [courier, setCourier] = useState('');
@@ -99,7 +111,7 @@ export function DispatchBookingForm({
   const [customEnd, setCustomEnd] = useState('');
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const catalog = usePublishedFormConfig(formId, { actorId });
+  const [reviewedSelection, setReviewedSelection] = useState<string | null>(null);
   const disabled = busy || refreshing;
   const chosen = options.find((option) => option.start === slot);
   const manualStart = parsePickupTime(customStart);
@@ -114,6 +126,13 @@ export function DispatchBookingForm({
   const activeChoice = partners?.find(partner => `partner:${partner.id}` === courier);
   const selectedPartner = activeChoice ?? (courier !== 'other' ? partners?.[0] : undefined);
   const selection = selectedPartner ? `partner:${selectedPartner.id}` : partners === null && courier !== 'other' ? 'legacy' : 'other';
+  const ncmSettings = !pickup && selectedPartner?.id === ncm?.partnerId ? ncm : null;
+  const selectionKey = JSON.stringify(
+    parcels.map(({ key, jobId, version }) => [key, jobId, version]),
+  );
+  const reviewOpen = Boolean(ncmSettings && reviewedSelection === selectionKey);
+  const blocked = ncmBlocked ?? new Set<string>();
+  const catalog = usePublishedFormConfig(formId, { actorId, enabled: !reviewOpen });
   const courierName = selectedPartner?.name ?? (selection === 'legacy' ? defaultCourier : otherCourier.trim());
   const cashCompatible = selectedPartner?.collectsCod !== false || parcels.every(parcel => parcel.codDuePaisa === 0);
   const bookingPlaceholder = courierName ? `${courierName} booking number` : 'Courier booking number';
@@ -131,7 +150,7 @@ export function DispatchBookingForm({
 
   async function submit(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!ready || !catalog.config || !catalog.canSubmit || disabled) return;
+    if (reviewOpen || !ready || !catalog.config || !catalog.canSubmit || disabled) return;
     const form = event.currentTarget;
     const targets = pickup ? [pickup] : parcels;
     const saved: string[] = [];
@@ -247,7 +266,78 @@ export function DispatchBookingForm({
       <h2 id="book-courier-title" className="text-lg font-semibold">
         {pickup ? 'Record courier pickup' : 'Book a courier pickup'}
       </h2>
+      {!pickup ? (
+        <div className="space-y-4 text-sm">
+          <p className="break-words text-[#46536F]">
+            <strong className="text-[#14213D]">
+              {parcelCount(parcels.length)}
+            </strong>{' '}
+            from {sellers}
+            {cash === null ? (
+              ' · See the parcel details below for cash to collect.'
+            ) : (
+              <>
+                {' '}
+                · cash to collect{' '}
+                <strong className="whitespace-nowrap text-[#14213D]">
+                  {dispatchMoney(cash)}
+                </strong>
+              </>
+            )}
+          </p>
+          {weightSummary ? <p className="text-[#46536F]">{weightSummary}</p> : null}
+          <div className="space-y-1.5 font-semibold">
+            <label htmlFor={courierFieldId}>Courier</label>
+            <select
+              id={courierFieldId}
+              className={fieldClass}
+              value={selection}
+              disabled={disabled}
+              onChange={(event) => {
+                setCourier(event.target.value);
+                setReviewedSelection(null);
+              }}
+            >
+              {partners === null ? <option value="legacy">{defaultCourier}</option> : null}
+              {partners?.map(partner => <option key={partner.id} value={`partner:${partner.id}`}>{partner.name}</option>)}
+              <option value="other">Other courier company</option>
+            </select>
+            {!reviewOpen ? <p className="text-[13px] font-normal text-[#675B4E]">{courierName
+              ? `Book with ${courierName}, then enter its booking number here.`
+              : 'Enter the name of the courier you booked.'}</p> : null}
+          </div>
+          {ncmSettings ? (
+            <>
+              <fieldset className="flex flex-wrap gap-2">
+                <legend className="sr-only">NCM booking method</legend>
+                <button type="button" className={dispatchChip} aria-pressed={reviewOpen} disabled={disabled || parcels.every(({ key }) => blocked.has(key))} onClick={() => setReviewedSelection(selectionKey)}>
+                  Book with NCM
+                </button>
+                <button type="button" className={dispatchChip} aria-pressed={!reviewOpen} disabled={disabled} onClick={() => setReviewedSelection(null)}>
+                  Book by hand
+                </button>
+              </fieldset>
+              <p className="text-[#46536F]">{ncmSettings.usedToday.toLocaleString('en-IN')} of {ncmSettings.limit.toLocaleString('en-IN')} NCM bookings used today</p>
+              {parcels.some(({ key }) => blocked.has(key)) ? <p className="text-[#A8232E]">Check NCM before retrying the parcels flagged in the list.</p> : null}
+            </>
+          ) : null}
+        </div>
+      ) : null}
+      {reviewOpen && ncmSettings ? (
+        <NcmDispatchReview
+          key={selectionKey}
+          parcels={parcels}
+          actorId={actorId}
+          settings={ncmSettings}
+          disabled={disabled}
+          blocked={blocked}
+          onBusy={onBusy}
+          onSaved={onSaved}
+          onResults={onNcmResults}
+        />
+      ) : null}
       <form
+        hidden={reviewOpen}
         data-form-id="staff.parcel-control"
         onSubmit={(event) => void submit(event)}
         className="space-y-4 text-sm [&>div:empty]:hidden"
@@ -259,41 +349,6 @@ export function DispatchBookingForm({
           </p>
         ) : (
           <>
-            <p className="break-words text-[#46536F]">
-              <strong className="text-[#14213D]">
-                {parcelCount(parcels.length)}
-              </strong>{' '}
-              from {sellers}
-              {cash === null ? (
-                ' · See the parcel details below for cash to collect.'
-              ) : (
-                <>
-                  {' '}
-                  · cash to collect{' '}
-                  <strong className="whitespace-nowrap text-[#14213D]">
-                    {dispatchMoney(cash)}
-                  </strong>
-                </>
-              )}
-            </p>
-            {weightSummary ? <p className="text-[#46536F]">{weightSummary}</p> : null}
-            <div className="space-y-1.5 font-semibold">
-              <label htmlFor={courierFieldId}>Courier</label>
-              <select
-                id={courierFieldId}
-                className={fieldClass}
-                value={selection}
-                disabled={disabled}
-                onChange={(event) => setCourier(event.target.value)}
-              >
-                {partners === null ? <option value="legacy">{defaultCourier}</option> : null}
-                {partners?.map(partner => <option key={partner.id} value={`partner:${partner.id}`}>{partner.name}</option>)}
-                <option value="other">Other courier company</option>
-              </select>
-              <p className="text-[13px] font-normal text-[#675B4E]">{courierName
-                ? `Book with ${courierName}, then enter its booking number here.`
-                : 'Enter the name of the courier you booked.'}</p>
-            </div>
             {selection === 'other' ? (
               <label className="block space-y-1.5 font-semibold">
                 <span>Courier name</span>
@@ -397,11 +452,13 @@ export function DispatchBookingForm({
           </>
         )}
         {catalog.config ? (
-          <ConfiguredFields
-            config={catalog.config}
-            baseKeys={formKeys}
-            errors={errors}
-          />
+          <div className={`${dispatchConfiguredControlSize} [&>div:empty]:hidden [&:not(:has([data-configured-field]))]:hidden`}>
+            <ConfiguredFields
+              config={catalog.config}
+              baseKeys={formKeys}
+              errors={errors}
+            />
+          </div>
         ) : null}
         {catalog.message ? (
           <div className="text-[#A8232E]">
@@ -456,7 +513,9 @@ export function DispatchBookingForm({
   return (
     <>
       {bookingForm}
-      {!pickup ? <DispatchCourierDetails parcels={parcels} courierName={courierName} actorId={actorId} disabled={disabled} /> : null}
+      {!pickup && !reviewOpen ? (
+        <DispatchCourierDetails parcels={parcels} courierName={courierName} actorId={actorId} disabled={disabled} />
+      ) : null}
     </>
   );
 }
