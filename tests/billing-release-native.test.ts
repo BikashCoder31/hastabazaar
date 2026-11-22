@@ -22,6 +22,12 @@ void test('native MariaDB product revision, checkout and delivery preserve captu
   try {
     for(const table of ['users','user_roles','seller_profiles','business_setting_versions','seller_agreement_acceptance_history']) {
       for(const row of fixture.sqlite.prepare(`SELECT * FROM ${table}`).all()) {
+        // Billing does not opt in to per-customer COD calls. The native release
+        // fixture also runs before the owner applies that optional migration.
+        if(table==='users' && Object.hasOwn(row,'cod_confirmation_required')) {
+          assert.equal(row.cod_confirmation_required,0);
+          delete row.cod_confirmation_required;
+        }
         const columns=Object.keys(row);
         await db.prepare(`INSERT INTO ${table} (${columns.map(column=>'`'+column+'`').join(',')}) VALUES (${columns.map(()=>'?').join(',')})`).bind(...Object.values(row)).run();
       }
