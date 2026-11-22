@@ -161,6 +161,11 @@ async function readOnlyInventory(db: Connection, selectedViews?: BrowserViews) {
   };
 }
 
+async function auditActionCounts(db: Connection) {
+  const [rows] = await db.query<(RowDataPacket & { action: string; count: number })[]>('SELECT action,COUNT(*) AS count FROM audit_logs GROUP BY action');
+  return new Map(rows.map(row => [row.action, Number(row.count)]));
+}
+
 export async function runRecordedWorkBrowser(options: {
   db: Connection; origin: string; executablePath: string; browserEnvironment: Record<string, string>; signal: AbortSignal;
   accounts: Awaited<ReturnType<typeof prepareRecordedWorkActors>>;
@@ -278,7 +283,13 @@ export async function runRecordedWorkBrowser(options: {
     const day = (event: RowDataPacket) => reportingDayIso(Number(event.at));
     const from = day(events[0]), to = day(events[events.length - 1]);
     const previousDay = reportingDayIso(Number(events[0].at) - 86_400_000);
+    // Leave the review pages before starting the read-only window. A protected
+    // seller render from the final review is allowed to finish writing its audit.
+    options.onStep?.('finish review-page requests before the read-only inventory');
+    await ownPage.goto(origin + progress, { waitUntil: 'networkidle' });
+    await ownerPage.goto(origin + activity, { waitUntil: 'networkidle' });
     const { formLoads: beforeLoads, ...beforeRead } = await readOnlyInventory(db, selectedViews);
+    const auditBefore = await auditActionCounts(db);
 
     const groups = (page: Page) => page.getByRole('table', { name: 'Completed steps recorded in this date range', exact: true });
     const group = (page: Page, actor: string) => groups(page).getByRole('row').filter({ hasText: actor });
@@ -358,6 +369,14 @@ export async function runRecordedWorkBrowser(options: {
         /^[a-z0-9_]+$/.test(name) && !isDeepStrictEqual(beforeTables.get(name), afterTables.get(name)));
       if (beforeRead.schemaSha256 !== afterRead.schemaSha256) affected.push('schema');
       if (!isDeepStrictEqual(beforeRead.settings, afterRead.settings)) affected.push('public settings');
+      if (affected.includes('audit_logs')) {
+        const auditAfter = await auditActionCounts(db);
+        const changes = [...new Set([...auditBefore.keys(), ...auditAfter.keys()])].flatMap(action => {
+          const delta = (auditAfter.get(action) ?? 0) - (auditBefore.get(action) ?? 0);
+          return delta && /^[a-z][a-z_.-]{0,95}$/.test(action) ? [action + ' (' + delta + ')'] : [];
+        });
+        affected.push(...changes);
+      }
       options.onStep?.('read-only inventory changed in ' + affected.join(', '));
     }
     assert.deepEqual(afterRead, beforeRead, 'Recorded work and linked source reads preserved every business and audit row');
