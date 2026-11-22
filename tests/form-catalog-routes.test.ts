@@ -322,6 +322,7 @@ void test('every staff form keeps its page or receiver permission, including ret
       'system.security-password-bootstrap', 'system.security-mfa-verify',
       'system.security-mfa-setup', 'system.security-mfa-activation',
       'system.security-recovery-codes', 'system.fee-terms-followup',
+      'system.ncm-parcel-action',
     ];
     const registered = Object.values(FORM_REGISTRY).filter((form) => form.audience === 'staff').map((form) => form.id).sort();
     assert.deepEqual([...adminForms, ...superAdminForms].sort(), registered);

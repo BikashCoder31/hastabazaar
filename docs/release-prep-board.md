@@ -16,8 +16,8 @@ Repeated R2, R3 and R4 on `admin-redesign` after NCM API finished at `8b406d68`.
 | Task | Owner | Status | Commit | Checks |
 | --- | --- | --- | --- | --- |
 | R2 · Release manifest and MariaDB rehearsal | Main | Done | `c491df66` | Regression failed before adding unique keys to the inventory and passed after generation. MariaDB 10.11.19 applied 0164–0172. The pre-NCM build started and its storefront read the upgraded database. |
-| R3 · Read-only production schema check | Main | Done | `Release prep: Read-only production schema check` | MariaDB reported 0172 as Missing before installation, Partial after an incomplete install and Present after installation. The final report detected a missing booking key and passed again after restoration. |
-| R4 · Release notes and local final check | Main | In progress | | Full suite running, and production package verification pending. |
+| R3 · Read-only production schema check | Main | Done | `f830085f` | MariaDB reported 0172 as Missing before installation, Partial after an incomplete install and Present after installation. The final report detected a missing booking key and passed again after restoration. |
+| R4 · Release notes and local final check | Main | Done | `Release prep: Release notes and local final check` | Typecheck, lint, 59 focused tests, preview readiness and Linux package checks passed. The full run recorded 5,855 passes, 38 skips and two failures. Both failed cases passed on targeted reruns. |
 
 ## R1 reconciliation
 
@@ -45,6 +45,15 @@ The old commit includes the application snapshot alongside the corrections. The 
 - The full 1,070-file run finished with 5,818 passes, 38 skips and one category migration test failure. The test was missing a copy of the owner migration files in its scratch directory. After the fixture fix, it passed both on its own and in the 54-test focused run.
 - Six additional archival tests outside the npm and CI suite require the original 0152, 0153, 0155 or bootstrap SQL evidence under `.test-artifacts`. Those artifacts are absent from this checkout, so those six checks remain unverified. The separate mocked Windows fixture tests now pass from the Mac checkout path, which contains a space.
 - Before release, confirm the settings and run the three-role smoke checks on an approved environment. [Release notes and smoke checks](release-notes-redesign.md)
+
+### Post-NCM package checks
+
+- The Linux x64 archive built from `f830085f` with Node 22.23.2 and the reviewed schema, and passed its extracted-package smoke test. It contained 4,838 files. The generated schema report matches the one verified in MariaDB. SHA-256 `1dc49418470085fc9700eafa8d3b743b0dbaa8dcef84b1fd4efc633bb20b49af`. [Local archive](/private/tmp/hb-release-linux.xZ7IWO/post-ncm-src/outputs/hastabazaar-release-local-post-ncm-f830085f/hastabazaar-release-local-post-ncm-f830085f.tar.gz)
+- The archive lists both 0172 companions and their reviewed hashes under owner-applied migrations. Use the SQL files in the reviewed checkout for the owner apply commands below. The automatic migration list is separate.
+- The archive contains zero `.env*` paths. In the extracted production build, both local testing pages and the local rider decoder returned 404 with the local flags set. The role switch returned 404 for POST and DELETE with no session cookie. The local Super Admin cookie led to sign-in. Both NCM webhook POST routes and the NCM job POST returned 401 without their credentials.
+- The canonical local preflight passed 107 of 107 form checks and the sign-in check. The checked preview served `/local-testing` with HTTP 200. The 59 focused tests covered NCM, Dispatch, Courier cash, the release manifest, the schema report and production access guards.
+- The full npm and CI inventory ran 5,895 tests. One failure came from a stale staff form access fixture. The fixture now includes the fixed NCM parcel action under the existing generic Super Admin configuration guard. All 20 route tests passed after the correction.
+- The other full-run failure was an existing recovery history test whose deadline differed by one millisecond. The nine-test recovery file passed on an isolated rerun. The 38 skips include tests that require separate native database or platform fixtures.
 
 ### Read the production schema report
 
@@ -91,6 +100,8 @@ Run the schema report on the intended database first and review the individual f
 
 Apply 0172 after 0171. It adds six empty tables, has no triggers and has no specific writer-stop requirement. The owner controls the NCM credentials and API enablement. [NCM API setup](ncm-api-board.md)
 
+For an application-only rollback after using NCM, reconcile any booking that still needs a portal check, switch Nepal Can Move to By hand and pause the NCM job. Keep the upgraded schema and the saved courier references.
+
 For staging, substitute the approved host and account. The MariaDB client asks for the password.
 
 ```sh
@@ -133,5 +144,11 @@ apply_production deployment/babal/mariadb-ncm-api.sql
 - Generators. `scripts/generate-release-manifest.mjs`, `scripts/generate-production-schema-check.mjs`
 - Owner documentation. `docs/release-prep-board.md`, `docs/release-notes-redesign.md`
 - Tests and fixture setup. `tests/backend-script-quality.test.mjs`, `tests/category-images-deployment.test.ts`, `tests/helpers/copy-release-manifest-inputs.ts`, `tests/production-schema-check.test.ts`, `tests/promo-schema.test.ts`, `tests/release-manifest-completeness.test.ts`, `tests/release-schema-assets.test.ts`, `tests/seller-registration-release.test.ts`
+
+### Files changed in the post-NCM pass
+
+- Generated release files and generators. `deployment/babal/release-manifest.json`, `deployment/babal/check-production-schema.sql`, `scripts/generate-release-manifest.mjs`, `scripts/generate-production-schema-check.mjs`
+- Owner documentation. `docs/release-prep-board.md`, `docs/release-notes-redesign.md`
+- Tests. `tests/release-manifest-completeness.test.ts`, `tests/production-schema-check.test.ts`, `tests/form-catalog-routes.test.ts`
 
 Release prep complete — ready for your review
