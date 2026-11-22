@@ -63,6 +63,8 @@ import { StaffReviewAccessBoundary } from '@/components/admin/staff-review-acces
 import { cancellationCauseSchemaAvailable } from '@/lib/cancellation/attribution';
 import { listSellerStaffNotes } from '@/lib/admin/seller-notes';
 import { SellerNotesCard } from './seller-notes-card';
+import { readApplicationDocumentProblems, readSellerPayoutFixes } from '@/lib/sellers/payout-fixes';
+import { AdminSellerPayoutFixes } from '@/components/admin/seller-payout-fixes';
 
 export const dynamic = 'force-dynamic';
 
@@ -165,6 +167,7 @@ export default async function SellerApplicationPage({
   const allowedFinance = independent && can(staff, 'payout.prepare');
   const allowedRestrictions = can(staff, 'seller.suspend');
   const registered = application.participationRoute !== 'managed_maker';
+  const canSetDocumentDeadline = registered && independent && staff.role==='super_admin' && application.status==='under_review';
   const tabs = sellerRecordTabs.filter(([key]) => key === 'orders' ? allowedOrders : key === 'products' ? allowedProducts : true);
   const tab = tabs.find(([key]) => key === query?.tab)?.[0] ?? 'work';
   const requestedPage = Number(query?.page);
@@ -183,6 +186,7 @@ export default async function SellerApplicationPage({
     onboarding, intake, recoveryTarget, managedDetails, managedTerms,
     operationalAddresses, governance, managedProgram, acceptedManagedTerms,
     applications, publicExtras, standing, money, extraWork, tabRows, payoutHistory, staffNotes,
+    documentProblems, payoutFixes,
   ] = await Promise.all([
     staff.role === 'super_admin' ? getSellerOnboardingChecklist(database, {
       sellerId: application.id, ownerId: application.userId, stage: application.applicationStage ?? application.status,
@@ -209,6 +213,8 @@ export default async function SellerApplicationPage({
     tab === 'orders' ? readSellerOrders(database, id, staff.id, page, cancellationSchema) : tab === 'products' ? readSellerProducts(database, id, page) : [],
     tab === 'history' && allowedFinance && registered ? readPaidPayoutHistory(database, id) : [],
     independent ? listSellerStaffNotes(database, application.id) : null,
+    canSetDocumentDeadline ? readApplicationDocumentProblems(database,id) : [],
+    registered && independent && staff.role==='super_admin' && application.status==='approved' ? readSellerPayoutFixes(database,id) : [],
   ]);
   const registrationIntake = Boolean(intake);
   const restricted = restrictionIsActive(governance.restriction, observedAt);
@@ -277,6 +283,7 @@ export default async function SellerApplicationPage({
         notes={<SellerNotesCard key={staff.id + ':' + application.id} actorId={staff.id} sellerId={application.id}
           staffNotes={staffNotes} restrictionNotes={restrictionNotes} />}
       />
+      <AdminSellerPayoutFixes fixes={payoutFixes}/>
       <div className={applying ? 'grid min-w-0 items-start gap-6 xl:grid-cols-[minmax(13rem,15rem)_minmax(0,1fr)]' : 'min-w-0'}>
         {applying ? <SellerApplicationQueue applications={applications} selected={id} /> : null}
         <article aria-label="Seller application and evidence" className="min-w-0 space-y-6">
@@ -293,8 +300,15 @@ export default async function SellerApplicationPage({
             <CardContent>
               {!application.documents.length ? <p className="text-sm text-muted-foreground">No documents yet.</p> : null}
               <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
-              {application.documents.map((document) => (
-                <div
+              {application.documents.map((document) => {
+                const latest = !application.documents.some(other=>other.kind===document.kind &&
+                  (other.uploadedAt>document.uploadedAt || other.uploadedAt===document.uploadedAt && other.id>document.id));
+                const problem = documentProblems.find(problem=>problem.documentId===document.id);
+                const openFix = payoutFixes.find(fix=>fix.documentId===document.id);
+                const isBank = document.kind==='bank_verification';
+                const canReview = staff.role==='super_admin' && independent && ((registrationEvidenceKinds as readonly string[]).includes(document.kind)
+                  || isBank && (canSetDocumentDeadline || Boolean(openFix)));
+                return <div
                   key={document.id}
                   className="min-w-0 overflow-hidden rounded-xl border bg-card"
                 >
@@ -319,10 +333,16 @@ export default async function SellerApplicationPage({
 
                   </div>
                   {staff.role === 'super_admin' && (registrationEvidenceKinds as readonly string[]).includes(document.kind) ? <Link className="section-link inline-flex min-h-11 items-center" href={`/admin/seller-documents/${document.id}/review`}>Document history</Link> : null}
-                  {staff.role === 'super_admin' && (registrationEvidenceKinds as readonly string[]).includes(document.kind) ? <SellerDocumentReview actorId={staff.id} sellerId={id} documentId={document.id} expectedReviewId={document.reviewId??null} canDecide={document.status==='pending'}/> : null}
+                  {problem ? <p className="wrap-anywhere rounded-lg bg-[#F8E1DE] p-2 text-sm text-[#6E1219]">
+                    <strong>Problem · {problem.neededBefore==='approval'?'Needed before approval':'Needed before first payout'}</strong><br/>{problem.note}
+                  </p> : null}
+                  {canReview ? <SellerDocumentReview actorId={staff.id} sellerId={id} documentId={document.id} expectedReviewId={document.reviewId??null}
+                    canDecide={latest&&document.status==='pending'}
+                    canSetDeadline={canSetDocumentDeadline} bankProblemOnly={isBank}
+                    problemNote={problem?.note??openFix?.note} initialDeadline={problem?.neededBefore}/> : null}
                   </div>
-                </div>
-              ))}
+                </div>;
+              })}
               </div>
             </CardContent>
           </Card>
@@ -384,6 +404,8 @@ export default async function SellerApplicationPage({
                 participationRoute={application.participationRoute}
                 applicationStage={application.applicationStage}
                 registrationIntake={registrationIntake}
+                documentProblems={documentProblems}
+                canApproveWithFixes={canSetDocumentDeadline}
               />
               {application.participationRoute === 'managed_maker' && application.applicationStage === 'approved_for_activation' && managedTerms?.version!==MANAGED_SUPPLIER_AGREEMENT_VERSION ? (
                 <div className="mt-5"><ManagedMakerActivationForm sellerId={application.id} companyAccount={managedTerms?.account} acceptedTerms={acceptedManagedTerms ? { detailId: acceptedManagedTerms.detailId, retentionBps: acceptedManagedTerms.retentionBps, agreementVersion: acceptedManagedTerms.agreementVersion } : null}/></div>
@@ -406,7 +428,11 @@ export default async function SellerApplicationPage({
       <div className="min-w-0">
         <div className="space-y-6">
           {bank?<div id="seller-bank" className="scroll-mt-28"><SellerBankEvidence workspace={bank}/></div>:null}
-          {bank?<SellerBankReview actorId={staff.id} sellerId={id} revision={bank.revision} canDecide={application.userId!==staff.id&&bank.change?.status==='open'&&!!bank.proposed}/>:null}
+          {bank?<SellerBankReview actorId={staff.id} sellerId={id} revision={bank.revision}
+            payoutFix={payoutFixes.some(fix=>fix.kind==='bank_verification')}
+            canDecide={independent&&bank.change?.status==='open'&&!!bank.proposed&&
+              !payoutFixes.some(fix=>fix.kind==='bank_verification'&&fix.waitingFor==='seller')&&
+              !documentProblems.some(problem=>problem.kind==='bank_verification')}/>:null}
           {bank?.change?.status==='open'&&bank.proposed&&application.userId===staff.id?<p>You cannot review your own bank evidence. An eligible nonconflicted Super Admin must review this case.</p>:null}
           {managedTerms ? <CompanySellingIdentity terms={managedTerms}/> : null}
           {application.participationRoute === 'managed_maker' ? <Card id="seller-identity" className="scroll-mt-28"><CardHeader><CardTitle>Private Managed Maker agreement and identity</CardTitle></CardHeader><CardContent>

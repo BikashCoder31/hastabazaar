@@ -6,6 +6,7 @@ import { ApplicantSection } from '@/components/seller/applicant-section';
 import { SellerBankDetailsForm } from '@/components/seller/bank-details-form';
 import { PayoutRequestForm } from '@/components/seller/payout-request-form';
 import { SellerEarningsSummary } from '@/components/seller/seller-earnings-summary';
+import { SellerPayoutFixes } from '@/components/seller/seller-payout-fixes';
 import { requireSellerCenterPage } from '@/lib/auth/seller-center';
 import { requireDatabase } from '@/lib/db/d1';
 import { listPayoutRequests, listSellerLedger, listSellerPayouts } from '@/lib/db/repositories/payouts';
@@ -13,6 +14,7 @@ import { sellerPayoutRequestReadiness } from '@/lib/payments/payout-request-read
 import { getSellerEarnings } from '@/lib/seller/earnings';
 import { sellerDate, sellerMoney } from '@/lib/seller/presentation';
 import { assertSellerWorkspaceViewer, readSellerLivePayoutHistory } from '@/lib/seller/workspace-tasks';
+import { readSellerPayoutFixes } from '@/lib/sellers/payout-fixes';
 import { readEarningsOverview } from './overview-data';
 import { EarningsExample, financePanel, openPayoutTracker, PayoutHistory, PayoutTracker, WhereMoneyIs } from './payout-overview';
 
@@ -24,7 +26,7 @@ export default async function SellerFinancePage() {
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const now = new Date().getTime();
   const sellerId = seller.sellerId;
-  const [earnings, ledger, payouts, requests, readiness, overview, livePayouts] = await Promise.all([
+  const [earnings, ledger, payouts, requests, readiness, overview, livePayouts, fixes] = await Promise.all([
     getSellerEarnings(database, sellerId, now),
     listSellerLedger(database, sellerId, 150, now),
     listSellerPayouts(database, sellerId),
@@ -35,6 +37,7 @@ export default async function SellerFinancePage() {
     })),
     readEarningsOverview(database, sellerId, seller.userId, now),
     readSellerLivePayoutHistory(database, seller.userId, sellerId),
+    readSellerPayoutFixes(database, sellerId),
   ]);
   await assertSellerWorkspaceViewer(database, seller.userId, sellerId, seller.authSubject);
   const showRegistered = earnings.participationRoute !== 'managed_maker' || earnings.hasRegisteredRecords;
@@ -55,8 +58,11 @@ export default async function SellerFinancePage() {
         {showRegistered ? <PayoutRequestForm actorId={seller.userId} sellerId={sellerId}
           availablePaisa={earnings.registered.availablePaisa} readiness={readiness}
           hasOpenRequest={requests.some(request => request.status === 'submitted')} /> : null}
-        <SellerBankDetailsForm accountId={seller.userId} overview
-          maskedAccount={bank ? { bankName: bank.bankName, lastFour: bank.lastFour, beneficiary: bank.beneficiary } : null} />
+        <SellerPayoutFixes fixes={fixes} place="earnings" />
+        <div id="seller-bank-evidence" className="scroll-mt-20">
+          <SellerBankDetailsForm accountId={seller.userId} overview correctionRequired={fixes.some(fix => fix.kind === 'bank_verification' && fix.waitingFor === 'seller')}
+            maskedAccount={bank ? { bankName: bank.bankName, lastFour: bank.lastFour, beneficiary: bank.beneficiary } : null} />
+        </div>
       </div>
       <div className="min-w-0 space-y-5">
         {showRegistered || payouts.length || requests.length ? <PayoutHistory payouts={payouts} requests={requests} /> :

@@ -1,5 +1,6 @@
 import { isRiderPortalEnabled } from '../riders/availability';
 import { sellerNotificationEmail } from '../sellers/registration-email';
+import { payoutFixDocumentNames, type ApplicationDocumentProblem } from '../sellers/payout-fixes';
 import {independentProductStaffSql,independentProductIntakeStaffSql} from '../products/party-scope';
 import {emailApplicationOrigin} from '../email/origin';
 import { catalogNotificationRequestId, isCurrentCatalogNotice, operationalNotificationChannels, hasOperationalNoticeSource, isCurrentOperationalNotice, isCurrentCaseNotice } from './event-catalog';
@@ -34,6 +35,8 @@ export interface BusinessEvent {
   reviewRequestId?: string;
   actorId?: string;
   registrationIntake?: boolean;
+  registeredApproval?: boolean;
+  payoutFixes?: ReadonlyArray<Pick<ApplicationDocumentProblem, 'kind' | 'note'>>;
   now: number;
   kind: 'submitted' | 'result';
 }
@@ -66,6 +69,9 @@ export async function businessNotificationStatements(
   const participationOutcome = event.sourceType === 'seller_application' && event.status === 'approved_for_activation';
   const registrationApproval = event.registrationIntake && event.kind === 'result' &&
     event.sourceType === 'seller_application' && (event.status === 'approved' || participationOutcome);
+  const registeredApproval = event.registeredApproval && event.kind === 'result'
+    && event.sourceType === 'seller_application' && event.status === 'approved';
+  const fixes = event.payoutFixes ?? [];
   const sourcePredicate = participationOutcome
     ? 'EXISTS(SELECT 1 FROM seller_profiles source_seller INNER JOIN seller_participation_profiles source_participation ON source_participation.seller_id=source_seller.id WHERE source_seller.id=? AND source_participation.application_stage=?' +
       (event.reviewRequestId ? ' AND source_seller.review_request_id=?' : '') + ')'
@@ -98,6 +104,7 @@ export async function businessNotificationStatements(
     body: string,
     extraPredicate = '1=1',
     extraValues: unknown[] = [],
+    copy?: { subjectNe: string; bodyNe: string; relatedType: string },
   ) {
     for (const channel of operationalNotificationChannels)
       statements.push(
@@ -117,10 +124,10 @@ export async function businessNotificationStatements(
             channel,
             eventKey,
             subject,
-            subject,
+            copy?.subjectNe ?? subject,
             body,
-            body,
-            event.sourceType,
+            copy?.bodyNe ?? body,
+            copy?.relatedType ?? event.sourceType,
             event.sourceId,
             await catalogNotificationRequestId(eventKey, event.eventId, recipientKey, audience, channel),
             event.now,
@@ -132,7 +139,23 @@ export async function businessNotificationStatements(
           ),
       );
   }
-  await add(
+  if (registeredApproval) {
+    const subject = fixes.length
+      ? `Your shop is approved · ${fixes.length} ${fixes.length === 1 ? 'thing' : 'things'} to fix before your first payout`
+      : 'Your shop is approved';
+    const body = fixes.length
+      ? ['You can start adding products now. Please fix these items before your first payout.',
+        ...fixes.map(fix => `${payoutFixDocumentNames[fix.kind].en}: ${fix.note}`)].join('\n')
+      : 'Your shop is approved. Add your first product to go live.';
+    const bodyNe = fixes.length
+      ? ['अब उत्पादनहरू थप्न सक्नुहुन्छ। पहिलो भुक्तानीअघि यी कागजातहरू सच्याउनुहोस्।',
+        ...fixes.map(fix => `${payoutFixDocumentNames[fix.kind].ne}: ${fix.note}`)].join('\n')
+      : 'तपाईंको पसल स्वीकृत भएको छ। पसल सुरु गर्न पहिलो उत्पादन थप्नुहोस्।';
+    await add(ownerSelect, [event.sourceId], 'seller', 'owner', null, subject, body, '1=1', [], {
+      subjectNe: fixes.length ? `तपाईंको पसल स्वीकृत भयो · पहिलो भुक्तानीअघि ${fixes.length} कागजात सच्याउनुहोस्` : 'तपाईंको पसल स्वीकृत भयो',
+      bodyNe, relatedType: fixes.length ? 'seller_registered_payout_fixes' : 'seller_registered_application',
+    });
+  } else await add(
     ownerSelect,
     [event.sourceId],
     event.sourceType === 'product' ? 'seller' : 'customer',
@@ -290,6 +313,7 @@ const supportedTemplates = [
   'business.rider.update',
   'business.seller_application.submitted',
   'business.seller_application.result',
+  'business.seller.payout_fix_ready',
   'business.product.submitted',
   'business.product.result',
   'business.payout.requested',
@@ -844,6 +868,7 @@ export interface OperationalBusinessEvent {
   now: number;
   status?: string;
   detail?:string;
+  correctionDocument?: { en:string;ne:string;bank:boolean;note:string };
   assignment?:import('./review-task-assignment-notices').ReviewTaskAssignmentEvidence;
   /** Native fee producer only; never accepted from a browser payload. */
   ownerEmail?:boolean;
@@ -969,8 +994,9 @@ export async function operationalBusinessNotificationStatements(
     ownerSql='SELECT s.user_id FROM seller_protected_change_cases c JOIN seller_profiles s ON s.id=c.seller_id WHERE c.id=?';ownerValues=[e.sourceId];audience='seller';
   } else if (e.kind === 'seller.document.change' || e.kind === 'seller.document.review') {
     const change = e.kind === 'seller.document.change';
-    relatedType = change ? 'seller_document_change' : 'seller_document';
-    subject = change ? 'Document change request updated' : 'Document review updated';
+    relatedType = change ? 'seller_document_change' : e.correctionDocument?.bank ? 'seller_bank_document' : 'seller_document';
+    subject = e.correctionDocument ? 'Please fix your ' + e.correctionDocument.en
+      : change ? 'Document change request updated' : 'Document review updated';
     guard = change ? 'EXISTS(SELECT 1 FROM seller_document_change_requests WHERE id=? AND operation_request_id=?)'
       : 'EXISTS(SELECT 1 FROM seller_documents WHERE id=? AND review_request_id=?)';
     guardValues = [e.sourceId, e.eventId];
@@ -1123,6 +1149,7 @@ export async function operationalBusinessNotificationStatements(
   }
   const template = 'business.' + e.kind;
   const body =
+    e.correctionDocument ? subject + ': ' + e.correctionDocument.note :
     e.kind==='gift.issued'?'A gift card issuance was recorded. Open the authorized original record. Secret codes are never included in notices.':e.kind==='gift.redeemed'?'A gift card redemption and shopping-credit addition were recorded. Open the authorized original record and current wallet; this notice does not state the current balance.':e.detail??(e.kind === 'account.status'
       ? 'Your account status was updated. Contact support@hastabazaar.com if you need help. '
       : 'A business update requires your attention. Sign in to review the authorized record and its current next action.');
@@ -1146,6 +1173,8 @@ export async function operationalBusinessNotificationStatements(
     ).join('');
     const notificationSubject = role === 'staff' && e.kind === 'account.status' ? `Account status changed: ${e.status}` : subject;
     const notificationBody = role === 'staff' && e.kind === 'account.status' ? 'An account status change was recorded. Open the authorized account workspace for the current state.' : body;
+    const subjectNe = e.correctionDocument ? `आफ्नो ${e.correctionDocument.ne} सच्याउनुहोस्` : notificationSubject;
+    const bodyNe = e.correctionDocument ? subjectNe + ': ' + e.correctionDocument.note : notificationBody;
     const ownerInAppHandled=role==='staff'&&permission==='admin.invite'&&supplementalOwnerEmail&&!!ownerSql;
     for (const channel of role==='staff'&&permission==='admin.invite'?['in_app','email']:e.kind==='fee.holds'?['email']:e.kind==='fee.terms'&&((role==='staff'&&e.status==='hold_started')||(role!=='staff'&&e.ownerEmail===false))?['in_app']:role !== 'staff' && e.kind === 'account.status' && e.status === 'disabled'
       ? ['email']
@@ -1170,9 +1199,9 @@ export async function operationalBusinessNotificationStatements(
             channel,
             template,
             notificationSubject,
-            notificationSubject,
+            subjectNe,
             notificationBody,
-            notificationBody,
+            bodyNe,
             relatedType,
             e.sourceId,
             key==='owner'&&channel==='in_app'&&(e.kind==='gift.issued'||e.kind==='gift.redeemed')?'gift:'+e.sourceId+':'+(e.kind==='gift.issued'?'issued':'redeemed'):'business:' + digest + ':' + channel,

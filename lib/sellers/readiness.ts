@@ -13,6 +13,7 @@ import {managedMakerModelIsLiveSelectable} from '../configuration/capabilities';
 import type {ManagedMakerCommercialModel} from '../configuration/types';
 import {makerOwnerPredicate} from '../managed-commerce/maker-authority';
 import {readManagedLiveEligibility} from '../managed-commerce/live-activation';
+import {sellerPayoutFixOpenSql} from './payout-fixes';
 
 type Capability='dashboard'|'submitProducts'|'publicListings'|'newOrders'|'payouts';
 export interface SellerReadinessCheck {id:string;label:string;status:'ready'|'action_needed'|'waiting_review'|'unavailable';detail:string;nextActor:string;ownerHref:string;staffHref:string;sourceId:string;reviewedAt:number|null;reviewedBy:string|null;}
@@ -33,7 +34,7 @@ export async function getSellerReadiness(db:D1Database,sellerId:string,now:numbe
  JOIN seller_public_profile_states presentation ON presentation.seller_id=s.id WHERE s.id=?`).bind(sellerId).first<Seller>();
  if(!seller)throw new Error('Seller readiness is unavailable: the linked owner or required current state is missing.');
  const managed=seller.route==='managed_maker',stage=seller.stage??seller.status,staffRoot=`/admin/sellers/${encodeURIComponent(sellerId)}`;
- const [holds,restriction,identity,bankReadiness,documents,products,simulation,registeredMoney,managedMoney,fixedRows]=await Promise.all([
+ const [holds,restriction,identity,bankReadiness,documents,products,simulation,registeredMoney,managedMoney,fixedRows,payoutFix]=await Promise.all([
   protectedCapabilityState(db,sellerId),
   db.prepare("SELECT mode FROM seller_restrictions WHERE seller_id=? AND (mode='disabled' OR mode='suspended' AND suspended_until>?)").bind(sellerId,now).first<{mode:string}>(),
   db.prepare(`SELECT ${verifiedIdentitySql('s.id',now)} AS ready FROM seller_profiles s WHERE s.id=?`).bind(sellerId).first<{ready:number}>(),
@@ -43,7 +44,8 @@ export async function getSellerReadiness(db:D1Database,sellerId:string,now:numbe
   db.prepare(`SELECT COUNT(*) AS count FROM products WHERE products.seller_id=? AND ${publicProductVisibility('products',now)}`).bind(sellerId).first<{count:number}>(),
   db.prepare("SELECT 1 FROM audit_logs WHERE subject_id=? AND action='managed_maker.simulation_activated' LIMIT 1").bind(sellerId).first(),
   getSellerFinanceSummary(db,sellerId,now),getLiveManagedFinanceSummary(db,sellerId,now),
-  db.prepare("SELECT o.id FROM managed_supplier_obligations o WHERE o.seller_id=? AND NOT EXISTS(SELECT 1 FROM managed_supplier_payments p WHERE p.obligation_id=o.id AND p.status IN ('prepared','approved','failed'))").bind(sellerId).all<{id:string}>()
+  db.prepare("SELECT o.id FROM managed_supplier_obligations o WHERE o.seller_id=? AND NOT EXISTS(SELECT 1 FROM managed_supplier_payments p WHERE p.obligation_id=o.id AND p.status IN ('prepared','approved','failed'))").bind(sellerId).all<{id:string}>(),
+  managed ? null : db.prepare(`SELECT 1 WHERE ${sellerPayoutFixOpenSql('?')}`).bind(sellerId).first(),
  ]);
  const fixedBalances=await Promise.all(fixedRows.results.map(row=>getFixedSupplyBalance(db,row.id)));
  const accountReady=seller.accountStatus==='active'&&Boolean(seller.ownerRole);
@@ -62,13 +64,14 @@ export async function getSellerReadiness(db:D1Database,sellerId:string,now:numbe
    && document.status==='pending'&&(document.validUntil===null||document.validUntil>now));
  add('identity','Current identity and applicable registration evidence',Boolean(identity?.ready),identity?.ready?'The applicable current evidence has recorded verification.'
    :identityPending?'Review the current submitted identity or registration evidence.':'Provide any missing or outdated identity and applicable registration evidence.',
-   identity?.ready||identityPending?'Eligible independent Super Admin':'Seller','/seller/registration',staffRoot+'#seller-evidence',['newOrders','payouts'],
+   identity?.ready||identityPending?'Eligible independent Super Admin':'Seller','/seller/registration',staffRoot+'#seller-evidence',managed?['newOrders','payouts']:['payouts'],
    `identity:${seller.identityRevision}`,null,null,identityPending?'waiting_review':'action_needed');
  for(const document of documents.results.filter(item=>item.kind!=='bank_verification')){
   const ready=document.status==='verified'&&document.reviewedBy!==null&&document.reviewedAt!==null&&(document.validUntil===null||document.validUntil>now);
   add(`document:${document.id}`,document.kind.replaceAll('_',' '),ready,ready?'This exact evidence version has recorded verification.':`Current evidence: ${document.status.replaceAll('_',' ')}${document.validUntil!==null&&document.validUntil<=now?' — validity has ended':''}.`,document.status==='pending'?'Eligible reviewer':'Seller / eligible reviewer','/seller/registration',staffRoot+'#seller-evidence',[],document.id,document.reviewedAt,document.reviewedBy,'waiting_review');
  }
  add('bank','Payout beneficiary',bankStatus==='verified',bankStatus==='verified'?'The current beneficiary version has independent verification against the current identity.':bankStatus==='legacy_review_required'?'A legacy receiving reference needs evidence reconciliation; a nonempty reference is not current verification.':`Payout beneficiary ${bankStatus.replaceAll('_',' ')}. Product submission remains separate.`,bankStatus==='missing'?'Seller':'Eligible independent Super Admin','/seller/finance',staffRoot+'#seller-bank',['payouts'],bank?.id??'bank',bank?.reviewedAt??null,bank?.reviewedBy??null,'waiting_review');
+ if(payoutFix)add('payout-document-fix','Document fix before first payout',false,'A requested document fix is still open. Review the fix and its current status.','Seller or Super Admin','/seller/registration#seller-payout-fixes',staffRoot+'#payout-fixes',['payouts']);
  let termsReady=false,termsUnavailable=false;
  if(managed&&seller.model==='managed_fixed_supplier_price_v1'){
   termsReady=Boolean(await db.prepare(`SELECT 1 FROM managed_maker_application_details WHERE seller_id=? AND agreement_accepted_by=? AND agreement_version=? AND agreement_accepted_at=? AND agreement_accepted_at<=?`).bind(sellerId,seller.ownerId,seller.managedAgreementVersion,seller.managedAcceptedAt,now).first());

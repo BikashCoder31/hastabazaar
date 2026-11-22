@@ -18,6 +18,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import type { SellerReviewAction } from '@/lib/db/repositories/seller-applications';
+import { payoutFixDocumentNames, type ApplicationDocumentProblem } from '@/lib/sellers/payout-fixes';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
@@ -74,6 +75,14 @@ const definitions: Record<SellerReviewAction, ActionDefinition> = {
     variant: 'default',
     icon: CheckCircle2,
   },
+  approve_fix_before_payout: {
+    action: 'approve_fix_before_payout',
+    label: 'Approve · fix before payout',
+    title: 'Approve this shop with fixes due before payout?',
+    description: 'The seller can add products and take orders when ready. Send the saved document notes to the seller and keep payouts on hold until the fixes are verified.',
+    variant: 'default',
+    icon: CheckCircle2,
+  },
   reject: {
     action: 'reject',
     label: 'Reject…',
@@ -100,12 +109,16 @@ export function SellerReviewActions({
   participationRoute,
   applicationStage,
   registrationIntake = false,
+  documentProblems = [],
+  canApproveWithFixes = false,
 }: {
   sellerId: string;
   status: string;
   participationRoute?: 'registered_seller' | 'managed_maker' | null;
   applicationStage?: string | null;
   registrationIntake?: boolean;
+  documentProblems?: readonly ApplicationDocumentProblem[];
+  canApproveWithFixes?: boolean;
 }) {
   const router = useRouter();
   const catalog = usePublishedFormConfig(FORM_ID);
@@ -123,20 +136,23 @@ export function SellerReviewActions({
   const [payoutAccountReference, setPayoutAccountReference] = useState('');
   const [settlementTermsReference, setSettlementTermsReference] = useState('');
 
+  const needsFixBeforeApproval = documentProblems.some(problem=>problem.neededBefore==='approval');
+  const registeredActions = [
+    definitions.reject,
+    { ...definitions.request_changes, label:'Hold, ask to fix first' },
+    ...(!documentProblems.length ? [registrationIntake ? registrationApproval : definitions.approve]
+      : canApproveWithFixes && !needsFixBeforeApproval ? [definitions.approve_fix_before_payout] : []),
+  ];
   const available = applicationStage === 'approved_for_activation'
     ? []
     : status === 'submitted'
       ? [definitions.start_review]
       : status === 'under_review'
         ? participationRoute === 'managed_maker' ? [
-            definitions.request_changes,
+            definitions.reject,
             registrationIntake ? registrationActivationApproval : definitions.approve_for_activation,
-            definitions.reject,
-          ] : [
             definitions.request_changes,
-            registrationIntake ? registrationApproval : definitions.approve,
-            definitions.reject,
-          ]
+          ] : registeredActions
         : [];
 
   if (available.length === 0) {
@@ -168,6 +184,8 @@ export function SellerReviewActions({
       const configured = readConfiguredSubmission(formRef.current, catalog.config, BASE_KEYS);
       const payload = {
         action: selected.action, reason, payoutAccountReference, settlementTermsReference,
+        ...(canApproveWithFixes && ['approve','approve_fix_before_payout'].includes(selected.action)
+          ? { expectedProblemReviews: documentProblems.map(problem=>problem.reviewId) } : {}),
         ...configuredJsonPayload(catalog.config, configured.answers, BASE_KEYS),
       };
       const currentFingerprint = JSON.stringify(payload);
@@ -189,7 +207,7 @@ export function SellerReviewActions({
       if (result?.code === 'stale_version') catalog.handleSubmissionResponse(response, result.code);
       if (!response.ok) throw new Error(result?.error || 'Review action failed.');
       const expectedStatus = { start_review: 'under_review', request_changes: 'needs_changes',
-        approve_for_activation: 'approved_for_activation', approve: 'approved', reject: 'rejected' }[selected.action];
+        approve_for_activation: 'approved_for_activation', approve: 'approved', approve_fix_before_payout:'approved', reject: 'rejected' }[selected.action];
       if (result?.status !== expectedStatus)
         throw new Error('The response could not confirm this review action. Retry the same attempt.');
       clearSessionAttempt(attemptKey);
@@ -227,8 +245,14 @@ export function SellerReviewActions({
           <p className="text-xs text-muted-foreground">
             This note becomes part of the permanent moderation history.
           </p>
-          {registrationIntake ? <p className="text-xs text-muted-foreground">
-            You can approve this application with outstanding registration or payout details. The seller can check their registration checklist and Finance workspace after the decision.
+          {documentProblems.length ? <ul className="space-y-2 rounded-lg border bg-white p-3 text-sm">
+            {documentProblems.map(problem=><li key={problem.reviewId}>
+              <strong>{payoutFixDocumentNames[problem.kind].en} · {problem.neededBefore==='approval'?'Needed before approval':'Needed before first payout'}</strong>
+              <p className="wrap-anywhere">{problem.note}</p>
+            </li>)}
+          </ul> : null}
+          {registrationIntake && participationRoute !== 'managed_maker' ? <p className="text-xs text-muted-foreground">
+            After approval the seller can add products. Outstanding payout checks still need review before money can be sent.
           </p> : participationRoute !== 'managed_maker' ? <><label htmlFor="payout-account-reference" className="block text-sm font-semibold">
             Verified receiving-account reference
           </label>
@@ -237,7 +261,7 @@ export function SellerReviewActions({
             value={payoutAccountReference}
             onChange={(event) => setPayoutAccountReference(event.target.value)}
             maxLength={200}
-            className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+            className="min-h-11 w-full rounded-md border bg-background px-3 text-sm"
             placeholder="Internal verification record reference"
           />
           <label htmlFor="settlement-terms-reference" className="block text-sm font-semibold">
@@ -248,7 +272,7 @@ export function SellerReviewActions({
             value={settlementTermsReference}
             onChange={(event) => setSettlementTermsReference(event.target.value)}
             maxLength={200}
-            className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+            className="min-h-11 w-full rounded-md border bg-background px-3 text-sm"
             placeholder="Signed agreement or approved record reference"
           />
           <p className="text-xs text-muted-foreground">
@@ -276,7 +300,7 @@ export function SellerReviewActions({
       ) : null}
 
       <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-xl bg-[#14213D] p-3 text-white">
-        {[...available].reverse().map((definition) => {
+        {available.map((definition) => {
           const Icon = definition.icon;
           return (
             <Button

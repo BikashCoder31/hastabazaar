@@ -18,15 +18,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (staff.role !== 'super_admin') return reply({ error: 'Super Admin review is required.' }, 403);
     const body = await readBoundedJsonObject(request);
     const decision=body.decision??'verify';
-    if (Object.keys(body).some(key => !['sellerId','reason','decision','commandId','expectedReviewId'].includes(key)) || typeof body.sellerId !== 'string' || typeof body.reason !== 'string'
+    if (Object.keys(body).some(key => !['sellerId','reason','decision','commandId','expectedReviewId','neededBefore'].includes(key)) || typeof body.sellerId !== 'string' || typeof body.reason !== 'string'
       || typeof decision!=='string'||!['verify','request_correction','reject'].includes(decision) || body.commandId!==undefined&&typeof body.commandId!=='string'
-      || body.expectedReviewId!=null&&typeof body.expectedReviewId!=='string') return reply({error:'Invalid review.'},400);
+      || body.expectedReviewId!=null&&typeof body.expectedReviewId!=='string'
+      || body.neededBefore!==undefined&&(decision!=='request_correction'||body.neededBefore!=='first_payout'&&body.neededBefore!=='approval')) return reply({error:'Invalid review.'},400);
     const sourceId=(await context.params).id,commandId=typeof body.commandId==='string'?body.commandId:crypto.randomUUID();
     if(!sourceId||sourceId.length>191||!commandId.trim()||commandId.length>191)return reply({error:'Select an exact document and command reference.'},400);
     reference={actorId:staff.id,action:'review',sourceId,requestId:commandId};
     const db=requireDatabase(env as unknown as {DB?:D1Database});
     await reviewSellerDocument(db, { sellerId:body.sellerId, documentId:sourceId, actorId:staff.id,actorAuthSubject:staff.authSubject,
-      reason:body.reason,decision:decision as 'verify'|'request_correction'|'reject',commandId,expectedReviewId:body.expectedReviewId as string|null|undefined,now:Date.now() });
+      reason:body.reason,neededBefore:body.neededBefore as 'first_payout'|'approval'|undefined,decision:decision as 'verify'|'request_correction'|'reject',commandId,expectedReviewId:body.expectedReviewId as string|null|undefined,now:Date.now() });
     const outcome=await readDocumentAdminOutcome(db,{actorId:staff.id,actorAuthSubject:staff.authSubject,commandId,action:'review',sourceId,now:Date.now()});
     await confirmDocumentAdminActor(request,staff);
     return outcome?reply(outcome):reply({...documentAdminErrorReference(null,reference),recorded:false,code:'outcome_unconfirmed',error:'The original verification outcome could not be confirmed.'},503);

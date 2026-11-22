@@ -13,6 +13,7 @@ import type { FinanceRecentDecision } from '@/lib/admin/finance-work-items';
 import { withAdminReturnTo } from '@/lib/admin/return-context';
 import { payableOrderTotalSql } from '@/lib/db/repositories/platform-service-fee';
 import { customerCodSchemaAvailable } from '@/lib/orders/first-cod-review';
+import { listSellerPayoutFixes } from '@/lib/sellers/payout-fixes';
 import type { AdminStaffAccess } from './admin-sections';
 import { todayReviewTask, todayShortDate, type TodayTask } from './overview-today-model';
 import { readSellerPickupHandoffs, readSellerReviewHandoffs } from './overview-seller-handoff-data';
@@ -136,19 +137,41 @@ export async function readTodaySources({
   const completed = await readRecentReviewDecisions(db, actor.id, native, returnTo, 8, { from, through: now }).catch(() => null);
   const ownerIds = [...new Set(tasks.flatMap(task => task.ownerId ? [task.ownerId] : []))];
   const open = tasks.filter(reviewTaskOpen);
-  const [names, handoffs, pickups, codConfirmations] = await Promise.all([
+  const [names, handoffs, pickups, codConfirmations, payoutFixes] = await Promise.all([
     displayNames(db, ownerIds).catch(() => new Map<string, string>()),
     readSellerReviewHandoffs(db, actor, open),
     readSellerPickupHandoffs(db, actor, returnTo).catch(() => null),
     can(actor, 'order.manage') ? readTodayCodConfirmations(db, returnTo).catch(() => null) : [],
+    actor.role === 'super_admin' ? listSellerPayoutFixes(db, actor.id).catch(() => null) : [],
   ]);
   const completedTasks = new Map(native.filter(task => task.status === 'completed').map(task => [task.id, task]));
   const rows = open.map(task => todayReviewTask(task, returnTo, names.get(task.ownerId ?? '') ?? null, handoffs.copy.get(task.id)));
+  const workRows = new Map(open.map((task, index) => [task.sourceType + ':' + task.sourceId, index]));
+  for (const fix of payoutFixes ?? []) {
+    const waiting = fix.waitingFor === 'seller';
+    const index = workRows.get('seller_document:' + fix.documentId)
+      ?? (fix.protectedCaseId ? workRows.get('protected_change:' + fix.protectedCaseId) : undefined);
+    const existing = index === undefined ? undefined : rows[index];
+    const row: TodayTask = {
+      id: existing?.id ?? 'payout-fix:' + fix.id, section: 'Sellers', type: 'Documents',
+      title: waiting ? 'Waiting for seller fix (before payout)' : 'Recheck document',
+      context: [fix.sellerName, fix.label].join(' · '),
+      startedAt: existing?.startedAt ?? fix.decidedAt, dueAt: waiting ? null : existing?.dueAt ?? null,
+      state: waiting ? 'waiting' : 'action',
+      ownerId: existing?.ownerId ?? null, ownerName: existing?.ownerName ?? null,
+      assignment: waiting ? null : existing?.assignment ?? null,
+      href: withAdminReturnTo(fix.staffHref, returnTo),
+      action: waiting ? 'Open document' : 'Recheck document',
+    };
+    if (index === undefined) rows.push(row);
+    else rows[index] = row;
+  }
   rows.push(...(pickups ?? []), ...(codConfirmations ?? []));
   const partial = [
     ...(handoffs.partial ? ['Some seller action details unavailable'] : []),
     ...(pickups === null ? ['Pickup tasks unavailable'] : []),
     ...(codConfirmations === null ? ['COD confirmation tasks unavailable'] : []),
+    ...(payoutFixes === null ? ['Seller payout fixes unavailable'] : []),
     ...(exceptions === null || unrecorded === null ? ['Parcel follow-up unavailable'] : []),
     ...(exceptions?.partial || unrecorded?.length === 100 ? ['Parcel follow-up shows the latest records'] : []),
     ...(cash === null ? ['Courier cash unavailable'] : []),

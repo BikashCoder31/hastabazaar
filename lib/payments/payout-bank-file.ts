@@ -1,6 +1,7 @@
 import { checkoutCommitClock } from '../checkout/commit-policy-guards';
 import { parseBankDetails, SellerBankError, type BankDetails } from '../sellers/bank-details';
 import { noProtectedHoldSql, verifiedIdentityAtCommitSql } from '../sellers/protected-change-policy';
+import { sellerPayoutFixOpenSql } from '../sellers/payout-fixes';
 import { SecurityRequestError } from '../security/request';
 import type { PayoutBankFileActor } from './payout-bank-file-access';
 import { payoutRunRequestGroupLength, payoutRunRequestLength, payoutRunRequestPrefix } from './payout-bank-file-scope';
@@ -29,6 +30,7 @@ function payoutBankFileSourcesSql(db: D1Database) {
     b.id AS beneficiaryVersionId,
     CASE WHEN s.status='approved' AND d.status='verified' AND ${verifiedIdentityAtCommitSql(db, 's.id')}
       AND ${noProtectedHoldSql('s.id', 'payouts')}
+      AND NOT (${sellerPayoutFixOpenSql('s.id')})
       AND NOT EXISTS(SELECT 1 FROM seller_payout_review_blocks block WHERE block.payout_model='registered' AND block.payout_id=p.id)
       THEN b.details_json END AS details
     FROM payouts p JOIN seller_profiles s ON s.id=p.seller_id

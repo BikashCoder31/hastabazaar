@@ -149,6 +149,10 @@ export async function reviewSellerBankDetails(db: D1Database, input: { sellerId:
   const current = await sellerBankState(db, input.sellerId,input.changeRequestId);
   if (current.revision !== input.revision || !current.change?.proposedJson || current.change.status!=='open') throw new ProtectedAdminBeforeWriteError('Pending bank evidence changed or needs resubmission. Inspect the current evidence before reviewing.');
   const proposal=JSON.parse(current.change.proposedJson) as {details:BankDetails;documentId:string};const details=parseBankDetails(proposal.details);
+  const correction = await db.prepare(`SELECT 1 FROM seller_documents d JOIN audit_logs review ON review.id=d.review_request_id
+    WHERE d.id=? AND d.seller_id=? AND review.action='seller.document.correction_requested'`)
+    .bind(proposal.documentId,input.sellerId).first();
+  if (correction) throw new ProtectedAdminBeforeWriteError('The seller still needs to upload the requested bank document.');
   const versionId=crypto.randomUUID(),destination=`BENEFICIARY:${versionId}`,eventId=crypto.randomUUID();
   await command.commit([
     ...authority.statements,
@@ -160,7 +164,8 @@ export async function reviewSellerBankDetails(db: D1Database, input: { sellerId:
       AND NOT EXISTS(SELECT 1 FROM seller_capability_holds h JOIN seller_protected_change_cases c ON c.id=h.case_id
         WHERE h.seller_id=? AND h.released_at IS NULL AND c.kind='identity' AND c.status<>'verified' AND c.classification<>'identity_evidence_only')
       AND EXISTS(SELECT 1 FROM seller_protected_change_cases WHERE id=? AND version=? AND replacement_document_id=? AND status='open')
-      AND EXISTS(SELECT 1 FROM seller_documents WHERE id=? AND seller_id=? AND kind='bank_verification' AND status='pending')`,
+      AND EXISTS(SELECT 1 FROM seller_documents d WHERE d.id=? AND d.seller_id=? AND d.kind='bank_verification' AND d.status='pending'
+        AND NOT EXISTS(SELECT 1 FROM audit_logs review WHERE review.id=d.review_request_id AND review.action='seller.document.correction_requested'))`,
       [input.sellerId,input.actorId,current.identityRevision,current.bankRevision,current.reference,input.ownershipBasis,input.ownershipBasis,input.sellerId,input.sellerId,current.change.id,current.change.version,proposal.documentId,proposal.documentId,input.sellerId]),
     db.prepare(`INSERT INTO seller_beneficiary_versions(id,seller_id,case_id,document_id,details_json,identity_revision,ownership_basis,verification_reference,review_reason,verified_by,verified_at)
       VALUES(?,?,?,?,?,?,?,?,?,?,?)`).bind(versionId,input.sellerId,current.change.id,proposal.documentId,JSON.stringify(details),current.identityRevision,input.ownershipBasis,reference,reason,input.actorId,input.now),

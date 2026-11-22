@@ -25,6 +25,7 @@ const allowedActions: readonly SellerReviewAction[] = [
   'request_changes',
   'approve_for_activation',
   'approve',
+  'approve_fix_before_payout',
   'reject',
 ];
 
@@ -55,6 +56,7 @@ export async function POST(
       requestId?: unknown;
       formVersion?: unknown;
       customAnswers?: unknown;
+      expectedProblemReviews?: unknown;
     };
     const action = body.action;
     const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
@@ -64,6 +66,15 @@ export async function POST(
       !allowedActions.includes(action as SellerReviewAction)
     ) {
       return json({ error: 'Select a valid review action.' }, 400);
+    }
+    if (action === 'approve_fix_before_payout' && staff.role !== 'super_admin') {
+      return json({ error: 'Super Admin approval is required.' }, 403);
+    }
+    const reviews = body.expectedProblemReviews;
+    if ((action === 'approve_fix_before_payout' || reviews !== undefined) &&
+      (!Array.isArray(reviews) || reviews.length > 5 ||
+        reviews.some(id => typeof id !== 'string' || !/^[a-zA-Z0-9_-]{1,191}$/.test(id)))) {
+      return json({ error: 'Refresh and review the recorded document problems.' }, 400);
     }
     if (action !== 'start_review' && reason.length < 8) {
       return json(
@@ -88,6 +99,7 @@ export async function POST(
     const result = await reviewSellerApplication(database, {
       sellerId: id,
       actorId: staff.id,
+      expectedProblemReviews: reviews as string[] | undefined,
       action: action as SellerReviewAction,
       reason: reason || 'Review started.',
       requestId: body.requestId,

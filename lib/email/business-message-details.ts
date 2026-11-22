@@ -55,7 +55,8 @@ export async function addBusinessEmailDetails(
         .bind(row.relatedId, row.userId).all<{ name: string; quantity: number }>();
       row.itemNames = items.results.map(item => item.name + ' × ' + item.quantity).join(', ') || undefined;
     }
-  } else if (row.relatedType === 'seller_application' && row.template === 'business.seller_application.result') {
+  } else if (row.template === 'business.seller_application.result' &&
+    ['seller_application','seller_registered_application','seller_registered_payout_fixes'].includes(row.relatedType ?? '')) {
     const source = await db.prepare('SELECT application_reference AS reference FROM seller_profiles WHERE id=? AND user_id=?')
       .bind(row.relatedId, row.userId).first<{ reference: string | null }>();
     row.reference = source?.reference;

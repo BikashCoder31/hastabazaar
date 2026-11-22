@@ -28,9 +28,13 @@ export function notificationDestination(workspace:NotificationAudience,audience:
  if(type==='company_payment_account')return workspace==='staff'?'/admin/business-settings#company-account-'+encodeURIComponent(id):null;
  if(type==='seller_public_profile'||type==='seller_support_contact')return workspace==='staff'?'/admin/sellers/'+encodeURIComponent(id)+'#public-profile':workspace==='seller'?'/seller/profile':null;
  if(type==='seller_profile_correction')return workspace==='staff'?'/admin/seller-profile-corrections/'+encodeURIComponent(id):workspace==='seller'?'/seller/profile':null;
+ if(type==='seller_payout_fix')return workspace==='seller'?'/seller/registration#seller-payout-fixes':null;
  if(type==='seller_document_change')return workspace==='staff'?'/admin/seller-document-change-requests/'+encodeURIComponent(id):workspace==='seller'?'/seller/registration#request-'+encodeURIComponent(id):null;
  if(type==='seller_protected_change')return workspace==='staff'?'/admin/seller-protected-changes/'+encodeURIComponent(id):workspace==='seller'?'/seller/requests/changes/'+encodeURIComponent(id):null;
  if(type==='seller_document')return workspace==='staff'?'/admin/seller-documents/'+encodeURIComponent(id)+'/review':workspace==='seller'?'/seller/registration#document-'+encodeURIComponent(id):null;
+ if(type==='seller_bank_document')return workspace==='seller'?'/seller/finance#seller-bank-evidence':null;
+ if(type==='seller_registered_payout_fixes')return workspace==='seller'?'/seller/registration#seller-payout-fixes':null;
+ if(type==='seller_registered_application')return workspace==='seller'?'/seller/products/new':null;
  if(workspace==='customer'&&['rider_profile','rider_report','rider_assignment'].includes(type??''))return isRiderPortalEnabled() ? '/rider' : null;
  if(workspace==='customer'&&type==='gift_card')return '/account/wallet?giftId='+encodeURIComponent(id)+'#gift-record-'+encodeURIComponent(id);
  if(workspace==='customer')return ['order','return_request','complaint'].includes(type??'')?(context?.orderNumber&&/^[a-zA-Z0-9_-]{1,160}$/.test(context.orderNumber)?'/orders/'+encodeURIComponent(context.orderNumber)+(type==='order'?'':'#aftercare-title'):'/account/orders'):['seller_application','seller_restriction'].includes(type??'')?'/sell/application':['account_status','account_status_active','account_status_disabled'].includes(type??'')?'/help':null;

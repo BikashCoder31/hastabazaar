@@ -10,8 +10,15 @@ import {readManagedLiveEligibility,managedLiveEligibilityGuards} from '../manage
 export async function sellerOrderReadinessGuards(db:D1Database,sellerId:string,now:number){
  const readiness=await getSellerReadiness(db,sellerId,now);
  if(!readiness.newOrders)throw new OfferError('Current order readiness needs action: '+readiness.blockers.filter(row=>row.capability==='newOrders').map(row=>row.reason).join(' '));
- const statements=offerGuard(db,`EXISTS(SELECT 1 FROM seller_profiles s JOIN users u ON u.id=s.user_id WHERE s.id=? AND u.status='active' AND EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role IN ('seller','customer')) AND ${verifiedIdentitySql('s.id',now)} AND ${noProtectedHoldSql('s.id','new_orders')})`,[sellerId]);
- if(readiness.route!=='managed_maker'){
+ const managed=readiness.route==='managed_maker';
+ const statements=offerGuard(db,`EXISTS(SELECT 1 FROM seller_profiles s JOIN users u ON u.id=s.user_id
+   LEFT JOIN seller_participation_profiles route ON route.seller_id=s.id
+   WHERE s.id=? AND u.status='active'
+   AND EXISTS(SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role IN ('seller','customer'))
+   AND COALESCE(route.participation_route,'registered_seller')=?
+   ${managed?`AND ${verifiedIdentitySql('s.id',now)}`:''}
+   AND ${noProtectedHoldSql('s.id','new_orders')})`,[sellerId,readiness.route]);
+ if(!managed){
   const setting=await getCommissionSetting(db,now),terms=await getSellerCommissionTerms(db,sellerId,now),acceptance=await getCommissionCheckoutAcceptance(db,sellerId,setting,now);
   if(!acceptance)throw new OfferError('Current owner terms acceptance is required before resuming orders.');
   return [...statements,...commissionCheckoutGuards(db,{[sellerId]:terms},setting,{[sellerId]:acceptance},now)];

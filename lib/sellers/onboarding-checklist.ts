@@ -185,7 +185,7 @@ function checklist(scope: Scope | null, product: ProductMilestone | null | undef
 
   const orderTitle = 'Start taking orders';
   const pendingOrderCheck = (id: string) => readiness?.checks.find(check => check.id === id && check.status !== 'ready');
-  const registrationEvidence = pendingOrderCheck('identity');
+  const registrationEvidence = readiness?.route === 'managed_maker' ? pendingOrderCheck('identity') : undefined;
   const terms = pendingOrderCheck('terms');
   const liveStaffCheck = (href = '#seller-readiness') => staffAction('admin', href, 'Open live order checks', ['#seller-readiness', 'View live order checks']);
   if (!scope || !submitted || !approved) add('orders', orderTitle, 'Pending', 'Taking orders requires an approved application and a product that customers can order.');

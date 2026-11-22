@@ -4,20 +4,23 @@ import { RegistrationGuide } from '@/components/seller/registration-guide';
 import { SellerRegistrationApplicationOverview } from '@/components/seller/registration-application-overview';
 import { SellerRegistrationIntakeForm } from '@/components/seller/seller-registration-intake-form';
 import { SellerDocumentHistory } from '@/components/seller/document-history';
+import { SellerPayoutFixes } from '@/components/seller/seller-payout-fixes';
 import { requireSellerCenterPage } from '@/lib/auth/seller-center';
 import { requireDatabase } from '@/lib/db/d1';
 import { readRegistrationPageEvidence } from '@/lib/sellers/registration-page';
 import { protectedRegistrationFields } from '@/lib/sellers/registration-protection';
 import { hasVerifiedRegistrationEmail } from '@/lib/sellers/registration-email';
+import { readSellerPayoutFixes } from '@/lib/sellers/payout-fixes';
 
 export const dynamic = 'force-dynamic';
 
 export default async function SellerRegistrationPage() {
   const viewer = await requireSellerCenterPage('/seller/registration');
   const db = requireDatabase(env as unknown as { DB?: D1Database });
-  const [page, accountEmailVerified] = await Promise.all([
+  const [page, accountEmailVerified, fixes] = await Promise.all([
     readRegistrationPageEvidence(db, viewer),
     hasVerifiedRegistrationEmail(db, viewer, viewer.email.toLowerCase()),
+    viewer.approvedSeller && viewer.sellerId ? readSellerPayoutFixes(db, viewer.sellerId) : [],
   ]);
   const { record, terms, documents, lockedKinds, initial } = page;
   const applicant = !viewer.approvedSeller && Boolean(viewer.sellerId);
@@ -29,6 +32,7 @@ export default async function SellerRegistrationPage() {
         <p className="mt-3 text-[#465573]">Complete registration and send documents for review. Payouts require completed registration and verified receiving details.</p>
       </header>
     )}
+    <SellerPayoutFixes fixes={fixes} place="documents" />
     {viewer.approvedSeller ? <Link className="section-link" href="/seller#managed-program">Program &amp; agreements</Link> : null}
     {!viewer.sellerId ? <RegistrationGuide /> : null}
     <section className="space-y-4" aria-labelledby="seller-registration-details">

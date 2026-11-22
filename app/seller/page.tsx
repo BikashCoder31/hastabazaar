@@ -6,6 +6,7 @@ import { InventoryEditor } from '@/components/seller/inventory-editor';
 import { SellerAgreementAcceptance } from '@/components/seller/seller-agreement-acceptance';
 import { SellerManagedProgramWorkspace } from '@/components/seller/managed-program-workspace';
 import { SellerGettingStarted } from '@/components/seller/seller-getting-started';
+import { SellerPayoutFixes } from '@/components/seller/seller-payout-fixes';
 import { SellerProgramDetails } from '@/components/seller/seller-program-details';
 import { SellerReadinessSummary } from '@/components/seller/readiness-summary';
 import { SellerRegistrationApplicationOverview } from '@/components/seller/registration-application-overview';
@@ -25,6 +26,7 @@ import { getSellerEarnings } from '@/lib/seller/earnings';
 import { sellerMoney } from '@/lib/seller/presentation';
 import { assertSellerWorkspaceViewer, readSellerWorkspaceTasks, type SellerWorkspaceTask } from '@/lib/seller/workspace-tasks';
 import { getSellerOnboardingChecklist } from '@/lib/sellers/onboarding-checklist';
+import { readSellerPayoutFixes } from '@/lib/sellers/payout-fixes';
 import { getSellerReadiness } from '@/lib/sellers/readiness';
 import { isSellerOrderTurn, readSellerOrderQueue, type SellerQueueOrder } from './orders/order-queue';
 
@@ -75,10 +77,11 @@ export default async function SellerDashboardPage() {
   const db = requireDatabase(env as unknown as { DB?: D1Database });
   if (!seller.approvedSeller || !seller.sellerId) return <SellerRegistrationApplicationOverview db={db} viewer={seller} />;
   const now = sellerDashboardObservedAt();
-  const [readiness, commission, program] = await Promise.all([
+  const [readiness, commission, program, payoutFixes] = await Promise.all([
     getSellerReadiness(db, seller.sellerId, now).catch(() => null),
     getRegisteredSellerTerms(db, now).catch(error => { if (error instanceof CommissionRateUnavailableError) return null; throw error; }),
     getManagedProgramWorkspace(db, seller.sellerId),
+    readSellerPayoutFixes(db, seller.sellerId),
   ]);
   const [commissionAccepted, publicCount] = await Promise.all([
     commission ? sellerAcceptedCommissionVersion(db, seller.sellerId, commission, now) : false,
@@ -116,7 +119,7 @@ export default async function SellerDashboardPage() {
     });
     await assertSellerWorkspaceViewer(db, seller.userId, seller.sellerId, seller.authSubject);
     return <div className="space-y-6">
-      <SellerGettingStarted model={onboarding} bankStatus={readiness?.bankStatus ?? null}
+      <SellerGettingStarted model={onboarding} bankStatus={readiness?.bankStatus ?? null} payoutFixes={payoutFixes}
         date={localDay.format(now)} tradingName={seller.tradingName} agreement={termsForm ?? <>
           {termsAccepted ? <p className="flex items-start gap-2 text-sm text-[#465573]">
             <Check className="mt-0.5 size-4 shrink-0 text-[#236548]" aria-hidden="true" />
@@ -192,7 +195,8 @@ export default async function SellerDashboardPage() {
 
   const bankStatus = readiness?.bankStatus;
   return <div className="space-y-5 text-[#14213D]">
-    {bankStatus && bankStatus !== 'verified' ? <section aria-labelledby="seller-finish-bank"
+    <SellerPayoutFixes fixes={payoutFixes} place="today" />
+    {!payoutFixes.length && bankStatus && bankStatus !== 'verified' ? <section aria-labelledby="seller-finish-bank"
       className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-card px-4 py-3">
       <div className="min-w-0">
         <p className="text-xs font-semibold text-muted-foreground">Finish setting up</p>

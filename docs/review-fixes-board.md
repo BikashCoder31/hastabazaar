@@ -194,8 +194,8 @@ The refreshed 22 November references were present. Work started from `8736c1d` o
 | Task | Status | Commit | Checks |
 | --- | --- | --- | --- |
 | S1 · The Seller Studio frame | Done | `ad5442a` | Typecheck, lint and 37 focused tests passed. Chrome checked 17 route states at 390, 768, 1024 and 1440 px. |
-| S2 · Getting started | Done | This task commit | Typecheck, lint and 9 focused tests passed. Chrome checked the local seller and disposable waiting and live states at all four widths. |
-| S3 · Approve now, fix before the first payout | Pending | | |
+| S2 · Getting started | Done | `7774dd4` | Typecheck, lint and 9 focused tests passed. Chrome checked the local seller and disposable waiting and live states at all four widths. |
+| S3 · Approve now, fix before the first payout | Done | This task commit | Typecheck and lint passed. 91 affected tests passed, followed by a final run of the new regression tests. Chrome checked the approval, open fix, re-upload and new order states at all four widths. |
 | S4 · Final check | Pending | | |
 
 S1 moved navigation into the full-height sidebar and compact toolbar. Existing sidebar destinations are accessible from the new menu, the notification bell, or links on the relevant page. Both account menus switched to Customer account and back in Chrome. At 390 px the phone menu controls measured at least 44 px, and content cleared the bottom tabs.
@@ -205,3 +205,8 @@ The approved local test shop showed two completed steps and the existing agreeme
 ### For the owner
 
 - The toolbar shows the existing refresh control. Seller Studio has no search field, so the area to the left of the desktop actions is empty.
+
+- S3 needs no migration. It records the deadline and approving decision in the existing document and audit history. The existing payout and bank checks still apply. The MariaDB query branch was tested with a disposable compatibility fixture.
+- The existing email job queues one reminder when unreserved earnings first become available with a seller fix outstanding. The scheduled check uses recorded ledger availability and the existing delivery hold.
+
+In the disposable workflow, Super Admin marked the bank document as a problem, kept its note and approved the shop. The seller received one captured email and one in-app notice with that note. Today, Documents & agreement and Earnings showed the fix. One revised and published product received a COD order while payout remained on hold. Uploading a new file moved the Admin Today work item to Recheck document. The existing bank Matches review cleared the fix and payout hold.

@@ -2,13 +2,16 @@ import Link from 'next/link';
 import { Check, Clock3, FileText, Landmark, Package } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { WhoseTurn } from '@/components/ui/whose-turn';
+import { SellerPayoutFixFirst } from './seller-payout-fixes';
 import type { OnboardingStep, SellerOnboardingChecklistModel } from '@/lib/sellers/onboarding-checklist';
+import type { SellerPayoutFix } from '@/lib/sellers/payout-fixes';
 import type { SellerReadiness } from '@/lib/sellers/readiness';
 import { sellerSupportHref } from '@/lib/sellers/workspace-navigation';
 
 type BankStatus = SellerReadiness['bankStatus'] | null;
 type SetupStep = Omit<OnboardingStep, 'id'> & { id: OnboardingStep['id'] | 'bank' | 'verify-bank' };
 type State = 'Done' | 'Your turn' | 'With Hastabazaar' | 'Later' | 'On hold' | 'Couldn’t check';
+type SetupStage = { title: string; rowTitle?: string; steps: SetupStep[]; state?: State; summary?: string };
 
 const surface = 'min-w-0 rounded-[1.125rem] border border-[#E2D6C2] bg-white shadow-sm';
 const bankDetailsHref = '/seller/finance#bank-details';
@@ -41,9 +44,17 @@ function setupState(step: SetupStep): State {
   return 'Later';
 }
 
-function bankSteps(status: BankStatus): SetupStep[] {
+function bankSteps(status: BankStatus, fix?: SellerPayoutFix): SetupStep[] {
   const add: SetupStep = { id: 'bank', title: 'Add your bank account', status: 'Done', detail: 'Bank details are on file.' };
   const verify: SetupStep = { id: 'verify-bank', title: 'Hastabazaar verifies it', status: 'Pending', detail: 'Verification starts after you add your bank account.' };
+  if (fix) return [add, {
+    ...verify,
+    title: fix.waitingFor === 'seller' ? 'Fix your bank document' : 'Hastabazaar checks the new bank document',
+    detail: fix.note,
+    action: fix.waitingFor === 'seller'
+      ? { actor: 'seller', href: fix.sellerHref, label: 'Upload new file' }
+      : { actor: 'admin', href: fix.sellerHref, label: 'View bank details' },
+  }];
   if (status === 'missing') return [{
     ...add, status: 'Pending', detail: 'A verified account is needed before your first payout. You can add it now.',
     action: { actor: 'seller', href: bankDetailsHref, label: 'Add bank details' },
@@ -122,19 +133,27 @@ function FirstSetupTask({ first, waiting }: { first?: SetupStep; waiting: boolea
   </section>;
 }
 
-export function SellerGettingStarted({ model, bankStatus, tradingName, date, agreement, firstTask, payoutStageLabel }: {
+export function SellerGettingStarted({ model, bankStatus, tradingName, date, agreement, payoutFixes = [] }: {
   model: SellerOnboardingChecklistModel;
   bankStatus: BankStatus;
   tradingName: string;
   date: string;
   agreement: ReactNode;
-  firstTask?: ReactNode;
-  payoutStageLabel?: string;
+  payoutFixes?: readonly SellerPayoutFix[];
 }) {
-  const stages = [
+  const openFix = payoutFixes.find(fix => fix.waitingFor === 'seller') ?? payoutFixes[0];
+  const bankFix = payoutFixes.find(fix => fix.kind === 'bank_verification');
+  const payoutStage: SetupStage = {
+    title: openFix ? 'Before first payout' : 'Getting paid',
+    steps: bankSteps(bankStatus, bankFix),
+    state: openFix && (openFix.waitingFor === 'seller' ? 'Your turn' : 'With Hastabazaar'),
+    summary: openFix && (openFix.waitingFor === 'staff' ? 'Checking your new file'
+      : `${payoutFixes.length} ${payoutFixes.length === 1 ? 'fix' : 'fixes'} needed`),
+  };
+  const stages: SetupStage[] = [
     { title: 'Registration', steps: model.steps.filter(step => step.id === 'registration' || step.id === 'application') },
     { title: 'First product', rowTitle: 'Your first product', steps: model.steps.filter(step => ['send', 'approve', 'publish'].includes(step.id)) },
-    { title: payoutStageLabel ?? 'Getting paid', steps: bankSteps(bankStatus) },
+    payoutStage,
     { title: 'Taking orders', steps: model.steps.filter(step => step.id === 'orders') },
   ];
   const steps = stages.flatMap(stage => stage.steps);
@@ -157,7 +176,8 @@ export function SellerGettingStarted({ model, bankStatus, tradingName, date, agr
       <ol className="mt-5 grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4 sm:gap-x-0">
         {stages.map((stage, index) => {
           const states = stage.steps.map(setupState);
-          const state = states.find(value => value !== 'Done') ?? (states.length ? 'Done' : 'Later');
+          const state = stage.state ?? states.find(value => value !== 'Done') ?? (states.length ? 'Done' : 'Later');
+          const summary = stage.summary ?? (state === 'Later' && stage.title === 'Taking orders' ? 'After publishing' : state);
           return <li key={stage.title} className="min-w-0">
             <div className="flex items-center sm:pr-1">
               <span className={`relative grid size-[1.875rem] shrink-0 place-items-center rounded-full text-xs font-bold ${state === 'Done' ? 'bg-[#236548] text-white' : dot[state]} ${state === 'Your turn' ? 'ring-4 ring-[#E3E9F4]' : ''}`} aria-hidden="true">
@@ -166,13 +186,13 @@ export function SellerGettingStarted({ model, bankStatus, tradingName, date, agr
               {index < stages.length - 1 ? <span className={`hidden h-0.5 flex-1 sm:block ${state === 'Done' ? 'bg-[#236548]' : 'bg-[#E2D6C2]'}`} aria-hidden="true" /> : null}
             </div>
             <p className="mt-2 break-words text-sm font-bold sm:pr-3">{stage.title}</p>
-            <p className="mt-1 text-xs text-[#465573]">{state === 'Later' && stage.title === 'Taking orders' ? 'After publishing' : state}</p>
+            <p className="mt-1 text-xs text-[#465573]">{summary}</p>
           </li>;
         })}
       </ol>
     </section>
 
-    {firstTask ?? <FirstSetupTask first={first} waiting={waiting} />}
+    {openFix ? <SellerPayoutFixFirst fix={openFix} /> : <FirstSetupTask first={first} waiting={waiting} />}
 
     <div className="grid min-w-0 items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
       <section id="seller-onboarding" className={`${surface} scroll-mt-28`} aria-labelledby="seller-onboarding-title">

@@ -1,5 +1,6 @@
 import {checkoutCommitClock} from '../checkout/commit-policy-guards';
 import {protectedGuard,verifiedIdentityAtCommitSql,verifiedIdentitySql} from '../sellers/protected-change-policy';
+import {sellerPayoutFixOpenSql} from '../sellers/payout-fixes';
 import type {PayoutModel} from './payout-transfer-types';
 
 const modernIntakeSql = 'EXISTS(SELECT 1 FROM seller_registration_intakes intake WHERE intake.seller_id=s.id)';
@@ -38,6 +39,8 @@ function currentBeneficiarySql(model:PayoutModel,identity:string,clock:string,de
 export async function payoutRegistrationBlocker(db:D1Database,sellerId:string,model:PayoutModel,now:number,destination?:string) {
  const evidence=registrationEvidenceSql(model,String(now));
  const row=await db.prepare(`SELECT CASE
+  ${model==='registered'?`WHEN ${sellerPayoutFixOpenSql('s.id')} THEN 'Payout on hold until the seller has fixed the requested documents.'`:''}
+  WHEN NOT (${modernIntakeSql}) THEN NULL
   WHEN NOT (${completeIntakeSql}) THEN 'Complete the remaining seller registration details before payouts.'
   ${model==='registered'?`WHEN NOT (${settlementTermsSql}) THEN 'Record the accepted settlement terms before payouts.'`:''}
   WHEN NOT (${evidence.identity}) THEN 'Review the current identity and PAN evidence before payouts.'
@@ -45,7 +48,7 @@ export async function payoutRegistrationBlocker(db:D1Database,sellerId:string,mo
   WHEN NOT (${evidence.vat}) THEN 'Review the current VAT evidence before payouts.'
   WHEN NOT COALESCE((${currentBeneficiarySql(model,verifiedIdentitySql('s.id',now),String(now),destination===undefined?'1=1':'s.payout_account_reference=?')}),0)
     THEN 'Review the verified beneficiary and current identity before payouts.'
- END AS blocker FROM seller_profiles s WHERE s.id=? AND ${modernIntakeSql}`)
+ END AS blocker FROM seller_profiles s WHERE s.id=?`)
   .bind(...(destination===undefined?[]:[destination]),sellerId).first<{blocker:string|null}>();
  return row?.blocker??null;
 }
@@ -56,6 +59,7 @@ export function payoutRegistrationGuards(db:D1Database,sellerId:string,model:Pay
  return [
   db.prepare('UPDATE seller_profiles SET updated_at=updated_at WHERE id=?').bind(sellerId),
   ...protectedGuard(db,`EXISTS(SELECT 1 FROM seller_profiles s WHERE s.id=? AND ${completeIntakeSql}
+   ${model==='registered'?`AND NOT (${sellerPayoutFixOpenSql('s.id')})`:''}
    AND (NOT ${modernIntakeSql} OR (${model==='registered'?settlementTermsSql+' AND ':''}${evidence.identity} AND ${evidence.business} AND ${evidence.vat}
      AND ${currentBeneficiarySql(model,verifiedIdentityAtCommitSql(db,'s.id'),clock,destination===undefined?'1=1':'s.payout_account_reference=?')})))`,
    [sellerId,...(destination===undefined?[]:[destination])]),

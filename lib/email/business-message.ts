@@ -37,7 +37,9 @@ const nepaliSellerCopy = {
 } as const;
 
 export function businessEmailLayout(data: BusinessEmailData, link: URL): EmailLayout & { subject: string } {
-  const sellerApplication = data.relatedType === 'seller_application' && data.audience !== 'staff';
+  const registeredSellerApproval = data.audience === 'seller' &&
+    ['seller_registered_application','seller_registered_payout_fixes'].includes(data.relatedType ?? '');
+  const sellerApplication = registeredSellerApproval || data.relatedType === 'seller_application' && data.audience !== 'staff';
   const customer = data.audience === 'customer' && !sellerApplication;
   const seller = data.audience === 'seller' || sellerApplication;
   const why = sellerApplication
@@ -143,6 +145,12 @@ export function businessEmailLayout(data: BusinessEmailData, link: URL): EmailLa
         rows: [...(data.itemNames ? [['Items', data.itemNames] as const] : []), ['Your earnings', 'Shown in Seller Studio']] });
   }
   if (sellerApplication && data.template === 'business.seller_application.result') {
+    if (registeredSellerApproval) {
+      const [paragraph, ...fixes] = data.body.split('\n');
+      return layout('Your turn', data.subject, 'Your shop is approved', paragraph,
+        fixes.length ? 'See what to fix' : 'Add your first product',
+        { rows: fixes.map(fix => ['Fix before payout',fix]), nepali: 'approved' });
+    }
     if (['Seller application approved', 'Seller application approved for activation'].includes(data.subject)) {
       return layout('Your turn', 'Your seller application is approved', 'Welcome to Hastabazaar',
         data.body, 'Open Seller Center', { nepali: 'approved' });
@@ -152,6 +160,9 @@ export function businessEmailLayout(data: BusinessEmailData, link: URL): EmailLa
         'Hastabazaar requested changes. Review the request and add the requested document or reply.', 'Open your application',
         { nepali: 'changes', rows: [['Where', 'Seller Studio · Your application']] });
     }
+  }
+  if (seller && data.template === 'business.seller.document.review' && data.subject.startsWith('Please fix your ')) {
+    return layout('Your turn', data.subject, data.subject, data.body, 'Open the document');
   }
   if (customer && data.template === 'business.finance.refund' && data.currentStatus === 'packet_paid') {
     return layout('Done', 'Refund sent', 'Your refund is on its way',
@@ -180,6 +191,9 @@ export function businessEmailLayout(data: BusinessEmailData, link: URL): EmailLa
   }
   if (customer && data.template === 'business.cancellation.updated') {
     return layout('Done', 'Cancellation update', data.subject, data.body, 'View your order', { navy: true });
+  }
+  if (seller && data.template === 'business.seller.payout_fix_ready') {
+    return layout('Your turn', data.subject, 'Fix a document to receive your earnings', data.body, 'Open document fixes', { navy: true });
   }
   const label = data.template === 'delivery.authorization' || data.relatedType?.startsWith('account_status_') ? 'Get help' : 'Open record';
   return layout('Hastabazaar', data.subject, data.subject, data.body, label, { navy: true });

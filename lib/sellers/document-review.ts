@@ -1,4 +1,5 @@
 import {registrationEvidenceKinds} from './document-policy';
+import { payoutFixDocumentNames, readApplicationDocumentProblems, readSellerPayoutFixes, sellerPayoutFixOpenSql, type PayoutFixDeadline } from './payout-fixes';
 import { staffMutationGuard } from '@/lib/db/repositories/staff-mutation-guard';
 import type { SellerApplicationDocument, SellerDocumentKind } from './application';
 import { commandReceipt } from '../workflows/contracts';
@@ -215,19 +216,44 @@ export async function verifySellerDocument(db: D1Database, input: { sellerId: st
 }
 
 export async function reviewSellerDocument(db: D1Database, input: { sellerId: string; documentId: string; reason: string;
-  decision: 'verify'|'request_correction'|'reject'; expectedReviewId?: string | null } & DocumentCommand) {
+  decision: 'verify'|'request_correction'|'reject'; expectedReviewId?: string | null; neededBefore?: PayoutFixDeadline } & DocumentCommand) {
   const reason = input.reason.trim();
   if (reason.length < 8 || reason.length > 1000 || !['verify','request_correction','reject'].includes(input.decision)) throw new DocumentDecisionBeforeWriteError('Enter a valid decision and a seller-visible reason of 8–1000 characters.', 400);
+  if (input.neededBefore !== undefined &&
+    (input.decision !== 'request_correction' || !['first_payout','approval'].includes(input.neededBefore))) {
+    throw new DocumentDecisionBeforeWriteError('Choose when the seller must fix this document.',400);
+  }
   const authority = await documentReviewerAuthority(db,input);
-  const payload={sellerId:input.sellerId,decision:input.decision,reason,expectedReviewId:input.expectedReviewId??null};
+  const payload={sellerId:input.sellerId,decision:input.decision,reason,expectedReviewId:input.expectedReviewId??null,
+    ...(input.neededBefore ? {neededBefore:input.neededBefore} : {})};
   const command = await documentCommand(db,input,'review',input.documentId,payload);
   const proof=documentAdminProof(input,command.requestId,'review',input.documentId,input.decision,payload);
   if(command.receipt.replayed) return command.receipt.result as string;
-  const current=await db.prepare('SELECT review_request_id AS reviewId,status FROM seller_documents WHERE id=? AND seller_id=?').bind(input.documentId,input.sellerId).first<{reviewId:string|null;status:string}>();
+  const current=await db.prepare(`SELECT d.review_request_id AS reviewId,d.status,d.kind,s.status AS sellerStatus,
+    COALESCE(p.participation_route,'registered_seller') AS route
+    FROM seller_documents d JOIN seller_profiles s ON s.id=d.seller_id
+    LEFT JOIN seller_participation_profiles p ON p.seller_id=s.id WHERE d.id=? AND d.seller_id=?`)
+    .bind(input.documentId,input.sellerId)
+    .first<{reviewId:string|null;status:string;kind:SellerDocumentKind;sellerStatus:string;route:string}>();
   if(!current) throw new DocumentDecisionBeforeWriteError('Document not found.',404);
   const expectedReviewId=input.expectedReviewId===undefined?current.reviewId:input.expectedReviewId;
   if(current.status!=='pending'||(current.reviewId??'')!==(expectedReviewId??''))
     throw new DocumentDecisionBeforeWriteError('This evidence changed. Review its current source before a new decision.');
+  const existingPayoutFix = current.sellerStatus==='approved' && input.decision==='request_correction'
+    ? (await readSellerPayoutFixes(db,input.sellerId)).find(fix=>fix.documentId===input.documentId)
+    : undefined;
+  const registeredApplication = current.route === 'registered_seller' && current.sellerStatus === 'under_review';
+  const retainedDeadline = registeredApplication && input.decision==='reject'
+    ? (await readApplicationDocumentProblems(db,input.sellerId)).find(problem=>problem.kind===current.kind)?.neededBefore
+    : undefined;
+  const neededBefore = input.neededBefore ?? retainedDeadline;
+  const applicationProblem = neededBefore !== undefined && registeredApplication;
+  if (input.neededBefore !== undefined && !applicationProblem)
+    throw new DocumentDecisionBeforeWriteError('This application is no longer being reviewed as a registered seller.');
+  const bankProblem = current.kind === 'bank_verification' && input.decision === 'request_correction'
+    && (applicationProblem || Boolean(existingPayoutFix));
+  if (current.kind === 'bank_verification' && !bankProblem)
+    throw new DocumentDecisionBeforeWriteError('Verify bank evidence in the separate beneficiary review.');
   const linked=await db.prepare('SELECT id FROM seller_document_change_requests WHERE replacement_document_id=? AND seller_id=?').bind(input.documentId,input.sellerId).first<{id:string}>();
   if(linked&&!await db.prepare('SELECT 1 FROM seller_protected_change_cases WHERE source_request_id=?').bind(linked.id).first())
     throw new DocumentDecisionBeforeWriteError('This historical request needs protected-change reconciliation before replacement verification.');
@@ -250,18 +276,30 @@ export async function reviewSellerDocument(db: D1Database, input: { sellerId: st
     ...authority.statements,
     db.prepare(`INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN EXISTS(
       SELECT 1 FROM seller_documents d JOIN seller_profiles s ON s.id=d.seller_id JOIN users u ON u.id=s.user_id
-      WHERE d.id=? AND d.seller_id=? AND d.kind IN ('representative_identity','pan_certificate','business_registration','vat_certificate') AND d.protected_change_id IS NULL
+      WHERE d.id=? AND d.seller_id=?
+      AND ${bankProblem ? "d.kind='bank_verification'" : "d.kind IN ('representative_identity','pan_certificate','business_registration','vat_certificate') AND d.protected_change_id IS NULL"}
       AND d.status='pending' AND COALESCE(d.review_request_id,'')=COALESCE(?,'') AND s.user_id<>? AND u.status='active' AND s.status NOT IN ('rejected','suspended')
+      ${applicationProblem ? `AND s.status='under_review' AND NOT EXISTS(SELECT 1 FROM seller_participation_profiles p
+        WHERE p.seller_id=s.id AND p.participation_route<>'registered_seller')` : ''}
+      ${existingPayoutFix ? `AND ${sellerPayoutFixOpenSql('s.id','?')}` : ''}
       AND NOT EXISTS(SELECT 1 FROM seller_documents newer WHERE newer.seller_id=d.seller_id AND newer.kind=d.kind
         AND (newer.uploaded_at>d.uploaded_at OR (newer.uploaded_at=d.uploaded_at AND newer.id>d.id)))
-      ) THEN 1 ELSE 0 END`).bind(guard,input.documentId,input.sellerId,expectedReviewId,input.actorId),
+      ) THEN 1 ELSE 0 END`).bind(guard,input.documentId,input.sellerId,expectedReviewId,input.actorId,...(existingPayoutFix?[existingPayoutFix.id]:[])),
     db.prepare(`UPDATE seller_documents SET status=?,reviewed_at=?,reviewed_by=?,review_request_id=? WHERE id=? AND seller_id=? AND status='pending'`)
       .bind(status,input.now,input.actorId,eventId,input.documentId,input.sellerId),
     db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,next_json,created_at,request_id)
       VALUES (?,?,?,'seller_document',?,?,?,?,?)`)
-      .bind(eventId,input.actorId,`seller.document.${action}`,input.documentId,reason,JSON.stringify({sellerId:input.sellerId,status,...(proof?{commandProof:proof}:{})}),input.now,command.requestId),
+      .bind(eventId,input.actorId,`seller.document.${action}`,input.documentId,reason,JSON.stringify({
+        sellerId:input.sellerId,status,...(neededBefore?{neededBefore}:{}),...(proof?{commandProof:proof}:{}),
+      }),input.now,command.requestId),
     ...consequences,
-    ...await operationalBusinessNotificationStatements(db,{kind:linked?'seller.document.change':'seller.document.review',sourceId:linked?.id??input.documentId,eventId,actorId:input.actorId,now:input.now}),
+    ...(applicationProblem ? [] : await operationalBusinessNotificationStatements(db,{
+      kind:linked&&!existingPayoutFix?'seller.document.change':'seller.document.review',
+      sourceId:linked&&!existingPayoutFix?linked.id:input.documentId,eventId,actorId:input.actorId,now:input.now,
+      ...(input.decision==='request_correction' && (!linked || existingPayoutFix) ? {
+        correctionDocument: {...payoutFixDocumentNames[current.kind], bank: bankProblem, note: reason},
+      } : {}),
+    })),
     db.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(guard),
   ], input.documentId);
 }

@@ -12,6 +12,7 @@ import { orderActualCashSql } from '../../payments/refund-obligations';
 import { VARIANT_PRICING_RULE_VERSION } from '../../products/variant-pricing';
 import { protectedPayoutGuards,protectedGuard } from '../../sellers/protected-change-policy';
 import {payoutRegistrationBlocker,payoutRegistrationGuards} from '../../payments/payout-registration-readiness';
+import {sellerPayoutFixOpenSql} from '../../sellers/payout-fixes';
 import {protectedPayoutReplacementStatements} from '../../sellers/protected-payout-disposition';
 
 const payoutPolicy = phaseOneMarketplacePolicy.value.payouts;
@@ -401,6 +402,7 @@ export async function listPayoutCandidates(
      INNER JOIN seller_profiles ON seller_profiles.id = seller_ledger_entries.seller_id
      LEFT JOIN payout_entries ON payout_entries.ledger_entry_id = seller_ledger_entries.id AND payout_entries.released_at IS NULL
      WHERE seller_profiles.status = 'approved'
+       AND NOT (${sellerPayoutFixOpenSql('seller_profiles.id')})
        AND seller_profiles.payout_account_reference IS NOT NULL
        AND trim(seller_profiles.payout_account_reference) != ''
        AND instr(trim(seller_profiles.payout_account_reference),'PENDING VERIFICATION:') != 1

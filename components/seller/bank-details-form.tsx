@@ -13,13 +13,13 @@ import type {BankDetails} from '@/lib/sellers/bank-details';
 type BankFormState={status:string;revision:string;userId:string;caseId:string|null;permissionId:string|null;identityRevision:number;bankRevision:number;activeCase:boolean};
 
 type BankProps={accountId:string;caseId?:string;defaults?:BankDetails;allowedFields?:readonly string[];
-  overview?: boolean; maskedAccount?: {bankName:string;lastFour:string;beneficiary:string}|null;
+  overview?: boolean; correctionRequired?: boolean; maskedAccount?: {bankName:string;lastFour:string;beneficiary:string}|null;
 };
 export function SellerBankDetailsForm(props:BankProps) {
   const scope=useOwnedFormScope(JSON.stringify([props.accountId,props.caseId??null]));
   return <OwnedSellerBankDetailsForm key={scope.key} {...props} isCurrent={scope.isCurrent}/>;
 }
-function OwnedSellerBankDetailsForm({accountId,caseId,defaults,allowedFields,overview=false,maskedAccount,isCurrent}:BankProps&{isCurrent:()=>boolean}) {
+function OwnedSellerBankDetailsForm({accountId,caseId,defaults,allowedFields,overview=false,correctionRequired=false,maskedAccount,isCurrent}:BankProps&{isCurrent:()=>boolean}) {
   const router=useRouter();const [state, setState] = useState<BankFormState | null>(null);
   const pending=useRef<FormData|null>(null);const [hasPending,setHasPending]=useState(false);
   const [message, setMessage] = useState('Loading bank details status…');
@@ -67,21 +67,23 @@ function OwnedSellerBankDetailsForm({accountId,caseId,defaults,allowedFields,ove
       {state?.status==='verified'?<span className="inline-flex items-center gap-1 rounded-full bg-[#DFECE4] px-2 py-1 text-xs font-semibold text-[#236548]"><Check className="size-3.5" /> Verified</span>:null}
     </div>:null}
     {!overview?<p className="text-sm text-muted-foreground">Add these details when you are ready. Staff must review the beneficiary and bank evidence before processing payouts. Never enter a banking password, PIN or OTP.</p>:null}
-    {overview&&state?.activeCase?<div className="flex items-start gap-2 rounded-xl bg-[#E3E9F4] p-3 text-sm text-[#264880]">
+    {overview&&state?.activeCase&&!correctionRequired?<div className="flex items-start gap-2 rounded-xl bg-[#E3E9F4] p-3 text-sm text-[#264880]">
       <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
       <div className="min-w-0 space-y-1"><p className="font-bold">Your bank account change is being checked.</p><WhoseTurn status="with-hastabazaar" /><p>The current receiving account stays on file while Hastabazaar reviews the change.</p></div>
     </div>:null}
-    <output className="block text-sm text-[#46536F]">{message || (state?.status === 'verified' ? overview ? '' : state.activeCase?'A bank change is open. The recorded receiving account stays current until its replacement is verified.':'A receiving reference is recorded. Actual evidence, current identity and all holds are rechecked before payout.' : state?.status==='legacy_review_required'?'A legacy receiving reference is retained but needs evidence reconciliation before it can be treated as verified.':state?.status==='needs_recheck'?'The receiving evidence or linked identity needs a fresh review. The existing account stays protected.':state?.status === 'pending' ? 'Your bank details are awaiting review. You can replace them below if corrections are needed.' : 'Bank details have not been added. Payouts are unavailable until review is complete.')}</output>
+    <output className="block text-sm text-[#46536F]">{message || (correctionRequired && state?.status==='pending'
+      ? 'Upload a new file for the bank document fix shown above.'
+      : state?.status === 'verified' ? overview ? '' : state.activeCase?'A bank change is open. The recorded receiving account stays current until its replacement is verified.':'A receiving reference is recorded. Actual evidence, current identity and all holds are rechecked before payout.' : state?.status==='legacy_review_required'?'A legacy receiving reference is retained but needs evidence reconciliation before it can be treated as verified.':state?.status==='needs_recheck'?'The receiving evidence or linked identity needs a fresh review. The existing account stays protected.':state?.status === 'pending' ? 'Your bank details are awaiting review. You can replace them below if corrections are needed.' : 'Bank details have not been added. Payouts are unavailable until review is complete.')}</output>
     {state?.caseId?<a className="section-link inline-flex min-h-11 items-center" href={`/seller/requests/changes/${encodeURIComponent(state.caseId)}`}>Open the bank review and its hold status →</a>:null}
     {hasPending?<p className="text-sm">Retry confirms the same submitted details and file before you make further edits.</p>:null}
     {overview&&protectedChange?<details className="space-y-3"><summary className="inline-flex min-h-11 cursor-pointer items-center rounded-lg border border-[#D7C4A9] px-3 text-sm font-semibold">Change bank account</summary>{protectedChange}</details>:protectedChange}
     {state && (['missing','pending'].includes(state.status)||!!caseId&&!!state.permissionId) ? <form key={state.userId} data-form-id="seller.bank-details" onSubmit={submit} className="space-y-4">
       <fieldset disabled={busy||hasPending} className="grid gap-4 sm:grid-cols-2">
       {([['payoutBeneficiary', 'Account beneficiary name'], ['bankName', 'Bank name'], ['bankBranch', 'Bank branch'], ['bankAccountNumber', 'Bank account number']] as const).map(([name, label]) =>
-        <label key={name} className="space-y-2 text-sm">{label} *<Input name={name} required minLength={name === 'bankAccountNumber' ? 4 : 3} maxLength={name === 'bankAccountNumber' ? 40 : 160} autoComplete="off" spellCheck={false}
+        <label key={name} className="space-y-2 text-sm">{label} *<Input name={name} className="min-h-11" required minLength={name === 'bankAccountNumber' ? 4 : 3} maxLength={name === 'bankAccountNumber' ? 40 : 160} autoComplete="off" spellCheck={false}
           defaultValue={defaults?.[name]} readOnly={!!allowedFields&&!allowedFields.includes(name)}/></label>)}
-      <label htmlFor="payout-bank-evidence" className="space-y-2 text-sm sm:col-span-2">Bank evidence showing the beneficiary and account *<Input id="payout-bank-evidence" name="bankVerification" type="file" required accept="application/pdf,image/jpeg,image/png" /><span>PDF, JPG or PNG, up to 5 MB. Stored privately.</span></label>
-      </fieldset><Button disabled={busy} type="submit">{busy ? 'Submitting…' : hasPending?'Retry the same submission':'Submit bank details for review'}</Button>
+      <label htmlFor="payout-bank-evidence" className="space-y-2 text-sm sm:col-span-2">Bank evidence showing the beneficiary and account *<Input id="payout-bank-evidence" name="bankVerification" type="file" className="min-h-11 file:align-middle" required accept="application/pdf,image/jpeg,image/png" /><span>PDF, JPG or PNG, up to 5 MB. Stored privately.</span></label>
+      </fieldset><Button size="workspace" disabled={busy} type="submit">{busy ? 'Submitting…' : hasPending?'Retry the same submission':'Submit bank details for review'}</Button>
     </form> : null}
   </section>;
 }

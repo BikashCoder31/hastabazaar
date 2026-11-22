@@ -1,5 +1,6 @@
 import { sellerQueueWhere, type AdminQueueFilters } from '../../admin/queue-filters';
 import { verifiedDocumentChangeGuards } from '../../sellers/document-review';
+import { applicationDocumentProblemsGuard, openApplicationPayoutFix, readApplicationDocumentProblems } from '../../sellers/payout-fixes';
 import { getRegisteredSellerTerms, prepareSellerCommissionAcceptance } from './marketplace-settings';
 import { currentCommissionConsentPredicate } from './commission-continuity-proof';
 import { CommissionRateUnavailableError } from './business-settings';
@@ -971,6 +972,7 @@ export type SellerReviewAction =
   | 'request_changes'
   | 'approve_for_activation'
   | 'approve'
+  | 'approve_fix_before_payout'
   | 'reject';
 
 const reviewTransitions: Partial<Record<
@@ -992,6 +994,11 @@ const reviewTransitions: Partial<Record<
     to: 'approved',
     auditAction: 'seller.application.approved',
   },
+  approve_fix_before_payout: {
+    from: 'under_review',
+    to: 'approved',
+    auditAction: 'seller.application.approved',
+  },
   reject: {
     from: 'under_review',
     to: 'rejected',
@@ -1000,6 +1007,13 @@ const reviewTransitions: Partial<Record<
 };
 
 export class SellerReviewConflictError extends Error {}
+
+function isApplicationReviewConflict(error: unknown) {
+  for (let cause = error, depth = 0; cause instanceof Error && depth < 4; cause = cause.cause, depth++) {
+    if (/operation_transaction_guards|(?:CHECK|CONSTRAINT).*valid/i.test(cause.message)) return true;
+  }
+  return false;
+}
 
 export async function reviewSellerApplication(
   database: D1Database,
@@ -1012,9 +1026,12 @@ export async function reviewSellerApplication(
     now: number;
     payoutAccountReference?: string;
     settlementTermsReference?: string;
+    expectedProblemReviews?: readonly string[];
     form?: { versionId: string; answers: FormAnswerSnapshot };
   },
 ): Promise<{ from: string; to: string }> {
+  const approveWithFixes = options.action === 'approve_fix_before_payout';
+  const approvingRegistered = options.action === 'approve' || approveWithFixes;
   const transition = reviewTransitions[options.action];
   if (!transition && options.action !== 'approve_for_activation')
     throw new SellerReviewConflictError('Choose a supported review action.');
@@ -1024,12 +1041,16 @@ export async function reviewSellerApplication(
     'seller.application.review', SellerReviewConflictError);
   const route = await database.prepare('SELECT participation_route AS route FROM seller_participation_profiles WHERE seller_id=?').bind(options.sellerId).first<{ route: string }>();
   if (route?.route === 'managed_maker' && authority.role !== 'super_admin') throw new SellerReviewConflictError('Current Super Admin authority is required for Managed Maker review.');
+  if (approveWithFixes && (authority.role !== 'super_admin' || route?.route === 'managed_maker')) {
+    throw new SellerReviewConflictError('Only Super Admin can approve a registered seller with payout fixes.');
+  }
   const requestId = options.requestId ?? crypto.randomUUID();
   const payoutAccountReference = options.payoutAccountReference?.trim() ?? '';
   const settlementTermsReference = options.settlementTermsReference?.trim() ?? '';
   const catalogDigest = options.form ? await digestFormRequest({ sellerId: options.sellerId,
     actorId: options.actorId, action: options.action, reason: options.reason,
     payoutAccountReference, settlementTermsReference, versionId: options.form.versionId,
+    ...(options.expectedProblemReviews ? { expectedProblemReviews: [...options.expectedProblemReviews].sort() } : {}),
     answers: options.form.answers }) : null;
   if (options.form) {
     try {
@@ -1084,7 +1105,7 @@ export async function reviewSellerApplication(
   const bankDeferred = await hasDeferredBankDetails(database, options.sellerId);
   let registrationIntake = false;
   const intakeApprovalGuards: D1PreparedStatement[] = [];
-  if (options.action === 'approve' || options.action === 'approve_for_activation') {
+  if (approvingRegistered || options.action === 'approve_for_activation') {
     const snapshot = await database.prepare('SELECT version FROM seller_registration_intakes WHERE seller_id=? AND user_id=?')
       .bind(options.sellerId, current.userId).first<{ version: number }>();
     registrationIntake = snapshot !== null;
@@ -1184,7 +1205,7 @@ export async function reviewSellerApplication(
     let results;
     try { results = await database.batch(statements); }
     catch (error) {
-      if (error instanceof Error && error.message.includes('operation_transaction_guards'))
+      if (isApplicationReviewConflict(error))
         throw new SellerReviewConflictError('The application changed while it was being reviewed. Refresh and try again.');
       throw error;
     }
@@ -1194,16 +1215,33 @@ export async function reviewSellerApplication(
     return { from: 'under_review', to: 'approved_for_activation' };
   }
   if (!transition) throw new SellerReviewConflictError('Choose a supported review action.');
-  if (current.participationRoute === 'managed_maker' && options.action === 'approve') {
+  if (current.participationRoute === 'managed_maker' && approvingRegistered) {
     throw new SellerReviewConflictError('Managed Makers require approval for activation; Registered Seller approval cannot be used.');
   }
-  const prospectiveApprovalGuards: D1PreparedStatement[] = [...intakeApprovalGuards];
-  if (options.action === 'approve' && registrationIntake) {
+  const problems = approvingRegistered ? await readApplicationDocumentProblems(database, options.sellerId) : [];
+  if (problems.some(problem => problem.neededBefore === 'approval')) {
+    throw new SellerReviewConflictError('Resolve the documents needed before approval, or hold or reject the application.');
+  }
+  if (approvingRegistered && Boolean(problems.length) !== approveWithFixes) {
+    throw new SellerReviewConflictError(problems.length
+      ? 'Choose Approve · fix before payout to retain the open document fixes.'
+      : 'There are no saved payout fixes. Refresh and use Approve seller.');
+  }
+  if (approvingRegistered && options.expectedProblemReviews &&
+    JSON.stringify([...options.expectedProblemReviews].sort()) !== JSON.stringify(problems.map(problem => problem.reviewId).sort())) {
+    throw new SellerReviewConflictError('The document problems changed. Refresh and review the latest notes.');
+  }
+  const prospectiveApprovalGuards: D1PreparedStatement[] = [
+    ...intakeApprovalGuards,
+    ...(approvingRegistered ? applicationDocumentProblemsGuard(database, options.sellerId, problems) : []),
+    ...(approveWithFixes ? (await staffMutationGuard(database, options.actorId, 'seller.application.review', SellerReviewConflictError, 'super_admin')).statements : []),
+  ];
+  if (approvingRegistered && registrationIntake) {
     if (payoutAccountReference) throw new SellerReviewConflictError('Use the independent bank evidence review to record a payout destination.');
     if (settlementTermsReference && (settlementTermsReference.length < 4 || settlementTermsReference.length > 200))
       throw new SellerReviewConflictError('Enter a valid written settlement reference.');
   }
-  if (options.action === 'approve' && !registrationIntake) {
+  if (approvingRegistered && !registrationIntake) {
     if (isPendingPayoutReference(payoutAccountReference)) throw new SellerReviewConflictError('Record an independently verified payout reference, not pending applicant bank details.');
     const prospective = await database.prepare(`SELECT 1 FROM audit_logs WHERE subject_type='seller' AND subject_id=?
       AND action='seller.application.submitted' AND json_extract(next_json,'$.onboardingVersion') IS NOT NULL LIMIT 1`).bind(options.sellerId).first();
@@ -1236,13 +1274,14 @@ export async function reviewSellerApplication(
         'The seller must accept the current Seller Marketplace Agreement before activation.',
       );
     }
-    if ((!bankDeferred || payoutAccountReference) && !current.bankEvidence) {
+    const needsRecordedBankReference = Boolean(payoutAccountReference) || (!bankDeferred && !approveWithFixes);
+    if (needsRecordedBankReference && !current.bankEvidence) {
       throw new SellerReviewConflictError(
         'Verified receiving-account evidence is required before activation.',
       );
     }
     if (
-      (!bankDeferred || payoutAccountReference) && payoutAccountReference.length < 4 ||
+      needsRecordedBankReference && payoutAccountReference.length < 4 ||
       payoutAccountReference.length > 200 ||
       settlementTermsReference.length < 4 ||
       settlementTermsReference.length > 200
@@ -1257,6 +1296,7 @@ export async function reviewSellerApplication(
   const nextJson = JSON.stringify({
     status: transition.to,
     reviewNote: options.reason,
+    ...(approveWithFixes ? { approvedBeforePayout: problems.map(problem => problem.reviewId) } : {}),
     ...(catalogDigest ? { catalogDigest } : {}),
   });
   const statements: D1PreparedStatement[] = [
@@ -1289,7 +1329,7 @@ export async function reviewSellerApplication(
       `UPDATE seller_participation_profiles SET application_stage = ?, version = version + 1, updated_at = ?
        WHERE seller_id = ?`,
     ).bind(
-      options.action === 'request_changes' ? 'changes_requested' : options.action === 'approve' ? 'active' : transition.to,
+      options.action === 'request_changes' ? 'changes_requested' : approvingRegistered ? 'active' : transition.to,
       options.now,
       options.sellerId,
     ),
@@ -1346,18 +1386,24 @@ export async function reviewSellerApplication(
   const reviewGuardId = crypto.randomUUID();
   statements.splice(1, 0,
     database.prepare(`INSERT INTO operation_transaction_guards(id,valid)
-      SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM seller_profiles WHERE id=?
+      SELECT ?,CASE WHEN changes()=1 AND EXISTS(SELECT 1 FROM seller_profiles WHERE id=?
         AND review_request_id=? AND status=?) THEN 1 ELSE 0 END`)
       .bind(reviewGuardId, options.sellerId, requestId, transition.to),
     database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(reviewGuardId));
 
-  if (options.action === 'approve') {
+  // Check the exact recorded problems before legacy activation may update any document status.
+  statements.push(...prospectiveApprovalGuards);
+  if (approvingRegistered) {
     statements.push(
+      ...problems.map(problem => openApplicationPayoutFix(database, {
+        sellerId: options.sellerId, actorId: options.actorId, requestId, now: options.now, problem,
+      })),
       ...(!registrationIntake ? [database
         .prepare(
           `UPDATE seller_documents
            SET status = 'verified', reviewed_at = ?, reviewed_by = ?
            WHERE seller_id = ? AND status = 'pending'
+             ${approveWithFixes ? `AND kind NOT IN (${problems.map(() => '?').join(',')})` : ''}
              AND EXISTS (
                SELECT 1 FROM seller_profiles
                WHERE id = ? AND review_request_id = ?
@@ -1367,6 +1413,7 @@ export async function reviewSellerApplication(
           options.now,
           options.actorId,
           options.sellerId,
+          ...problems.map(problem => problem.kind),
           options.sellerId,
           requestId,
         )] : []),
@@ -1380,7 +1427,7 @@ export async function reviewSellerApplication(
     );
   }
 
-  if (options.action === 'approve' && registrationIntake && !settlementTermsReference) {
+  if (approvingRegistered && registrationIntake && !settlementTermsReference) {
     const terms = await getRegisteredSellerTerms(database, options.now).catch(error => {
       if (error instanceof CommissionRateUnavailableError) return null;
       throw error;
@@ -1392,17 +1439,19 @@ export async function reviewSellerApplication(
         .bind(`registered-seller-agreement:${terms.context}`, options.sellerId, ...proof.values));
     }
   }
-  if(options.action!=='start_review')statements.push(...await businessNotificationStatements(database,{eventId:requestId,sourceType:'seller_application',sourceId:options.sellerId,status:transition.to,reviewRequestId:requestId,actorId:options.actorId,now:options.now,kind:'result',registrationIntake}));
+  if(options.action!=='start_review')statements.push(...await businessNotificationStatements(database,{eventId:requestId,sourceType:'seller_application',sourceId:options.sellerId,status:transition.to,reviewRequestId:requestId,actorId:options.actorId,now:options.now,kind:'result',registrationIntake,
+    ...(approvingRegistered ? { registeredApproval: true, payoutFixes: problems.map(({ kind, note }) => ({ kind, note })) } : {}),
+  }));
   if (options.form) statements.push(buildFormAnswerInsert(database, {
     formId: 'staff.seller-review-action', requestId, versionId: options.form.versionId,
     subjectType: 'seller', subjectId: options.sellerId, actorId: options.actorId,
     answers: options.form.answers, now: options.now,
   }));
-  statements.push(...prospectiveApprovalGuards, ...authority.statements);
+  statements.push(...authority.statements);
   let results;
   try { results = await database.batch(statements); }
   catch (error) {
-    if (error instanceof Error && error.message.includes('operation_transaction_guards'))
+    if (isApplicationReviewConflict(error))
       throw new SellerReviewConflictError('The application changed while it was being reviewed. Refresh and try again.');
     throw error;
   }

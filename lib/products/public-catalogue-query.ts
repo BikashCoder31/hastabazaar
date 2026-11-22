@@ -62,10 +62,10 @@ export async function publicCatalogueQuery(db:D1Database,now=Date.now()){
  JOIN seller_protected_revisions ready_revision ON ready_revision.seller_id=ready_seller.id JOIN seller_public_profile_states ready_profile ON ready_profile.seller_id=ready_seller.id
  LEFT JOIN seller_participation_profiles ready_route ON ready_route.seller_id=ready_seller.id
  WHERE ready_owner.status='active' AND EXISTS(SELECT 1 FROM user_roles WHERE user_id=ready_owner.id AND role IN ('customer','seller'))
- AND ${verifiedIdentitySql('ready_seller.id',now)} AND ${noProtectedHoldSql('ready_seller.id','new_orders')}
+ AND ${noProtectedHoldSql('ready_seller.id','new_orders')}
  AND NOT EXISTS(SELECT 1 FROM seller_restrictions r WHERE r.seller_id=ready_seller.id AND (r.mode='disabled' OR r.mode='suspended' AND r.suspended_until>${now}))
  AND ((COALESCE(ready_route.participation_route,'registered_seller')='registered_seller' AND ready_seller.status='approved' AND ${setting?.versionId?`${literal(db,setting.versionId)}=(SELECT id FROM business_setting_versions WHERE setting_key='independent_seller_commission_bps' AND status='published' AND effective_from<=${now} AND (effective_until IS NULL OR effective_until>${now}) ORDER BY effective_from DESC,version DESC,id DESC LIMIT 1)`:'0'} AND (${registered.join(' OR ')||'0'}) AND ${supplements})
- OR (${managed.length?`ready_seller.id IN (${managed.join(',')})`:'0'})))`;
+ OR (${managed.length?`(ready_seller.id IN (${managed.join(',')}) AND ${verifiedIdentitySql('ready_seller.id',now)})`:'0'})))`;
  const {offerPrice,source,stockCondition,mapped,stock}=publicCatalogueInventory(db);
  const pricingEnabled=variantPricingEnabled(db);
  const dialect=(db as D1Database&{dialect?:string}).dialect==='mariadb'?'mariadb':'sqlite';
