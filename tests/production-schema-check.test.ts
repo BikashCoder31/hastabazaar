@@ -25,9 +25,11 @@ void test('production schema check is current and has only one metadata query', 
     const expected: [migration: string, kind: string, table: string, name: string][] =
       JSON.parse(Buffer.from(inventory, 'hex').toString('utf8'));
     assert.deepEqual([...new Set(expected.map(([migration]) => migration).filter(Boolean))],
-      ['0164', '0165', '0166', '0167', '0168', '0169', '0170', '0171']);
+      ['0164', '0165', '0166', '0167', '0168', '0169', '0170', '0171', '0172']);
     assert.ok(expected.some(([migration, kind, table, name]) =>
       migration === '0164' && kind === 'check-exact' && table === 'first_cod_reviews' && name === 'chk_first_cod_hold_total'));
+    assert.ok(expected.some(([migration, kind, table, name]) =>
+      migration === '0172' && kind === 'check-exact' && table === 'ncm_bookings' && name === 'ncm_booking_state'));
   } finally {
     await rm(folder, { recursive: true, force: true });
   }

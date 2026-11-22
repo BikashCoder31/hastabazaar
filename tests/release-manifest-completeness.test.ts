@@ -52,6 +52,7 @@ const ownerAppliedMigrations = [
   'mariadb-occasion-discovery.sql',
   'mariadb-occasion-images.sql',
   'mariadb-delivery-partners.sql',
+  'mariadb-ncm-api.sql',
 ];
 
 // Omitting a maintained companion must fail even if the checked-in manifest
@@ -149,6 +150,14 @@ void test('historical release generation covers its maintained non-reset SQL inv
           occasion_image_assignments: ['occasion_id', 'media_id', 'updated_by', 'updated_at'] },
         { delivery_partners: ['id', 'name', 'status', 'booking_mode', 'collects_cod', 'tracking_pattern', 'default_slot', 'revision', 'created_at', 'updated_at'],
           shipping_parcels: ['delivery_partner_id'] },
+        {
+          ncm_partner_settings: ['partner_id', 'connection_fingerprint', 'assigned_branches_json', 'branches_json', 'branches_checked_at', 'refresh_started_at', 'connected_at', 'delivery_type', 'package_name', 'revision', 'updated_at', 'last_check_at', 'check_started_at'],
+          ncm_pickup_branches: ['pickup_address_id', 'partner_id', 'address_updated_at', 'branch', 'updated_at'],
+          ncm_bookings: ['job_id', 'partner_id', 'actor_id', 'vendor_reference', 'ncm_order_id', 'state', 'request_id', 'started_at', 'updated_at', 'response_json', 'label_json', 'cod_reported_paisa', 'delivery_charge_paisa', 'return_charge_paisa', 'last_status'],
+          ncm_api_daily_usage: ['usage_day', 'bucket', 'used'],
+          ncm_webhook_events: ['id', 'kind', 'event', 'payload_json', 'received_at', 'processed_at', 'attempts', 'next_attempt_at', 'claimed_at'],
+          ncm_courier_notes: ['ncm_order_id', 'comment_id', 'job_id', 'kind', 'comment', 'created_at'],
+        },
       ];
       for (const [index, entry] of entries.entries()) {
         assert.equal(entry.usage, 'owner-applied');
@@ -159,7 +168,7 @@ void test('historical release generation covers its maintained non-reset SQL inv
           const bytes = await readFile(join(root, path));
           assert.equal(sha256, createHash('sha256').update(bytes).digest('hex'), path);
         }
-        assert.equal(Object.keys(entry.requiredChecks).length, [2, 1, 0, 2, 1, 1, 4, 6][index]);
+        assert.equal(Object.keys(entry.requiredChecks).length, [2, 1, 0, 2, 1, 1, 4, 6, 15][index]);
         assert.deepEqual(Object.keys(entry.requiredExactTriggerDefinitions), Object.keys(entry.requiredTriggerShapes));
         if (index === 0) {
           assert.deepEqual(entry.requiredChecks, {
@@ -169,6 +178,13 @@ void test('historical release generation covers its maintained non-reset SQL inv
           const sql = await readFile(join(root, entry.path), 'utf8');
           const body = sql.slice(sql.indexOf('FOR EACH ROW ') + 'FOR EACH ROW '.length, sql.indexOf('END$$') + 3);
           assert.equal(entry.requiredExactTriggerDefinitions.first_cod_review_immutable, body);
+        }
+        if (entry.path === 'deployment/babal/mariadb-ncm-api.sql') {
+          assert.equal(entry.requiredChecks['ncm_bookings.ncm_booking_state'], "state IN ('booking','needs_review','rejected','booked')");
+          assert.equal(entry.requiredChecks['ncm_api_daily_usage.ncm_usage_bucket'], "bucket IN ('create','view')");
+          assert.equal(entry.requiredChecks['ncm_api_daily_usage.ncm_usage_nonnegative'], 'used>=0');
+          assert.equal(entry.requiredChecks['ncm_webhook_events.ncm_webhook_kind'], "kind IN ('delivery','comments')");
+          assert.equal(entry.requiredChecks['ncm_courier_notes.ncm_note_kind'], "kind IN ('Info','Action')");
         }
         assert.deepEqual(entry.requiredTables, required[index]);
         assert.deepEqual(entry.requiredTriggerShapes, index === 0 ? {

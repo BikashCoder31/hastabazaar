@@ -12,6 +12,7 @@ const ownerCompanions = [
   '0169_occasion_discovery',
   '0170_occasion_images',
   '0171_delivery_partners',
+  '0172_ncm_api',
 ];
 
 // SQL assets stay caller-owned so each test can select or mutate its fixture.

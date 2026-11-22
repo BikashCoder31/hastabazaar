@@ -24,7 +24,7 @@ export async function POST(request: Request) {
       return respond({ error: 'Check the delivery partner details and try again.' }, 400);
     }
     const result = await saveDeliveryPartner(requireDatabase(env as unknown as { DB?: D1Database }), staff.id,
-      { id, name, status: option.value, bookingMode, collectsCod, trackingPattern, makeDefault, expectedRevision, requestId, now: Date.now() });
+      { id, name, status: option.value, bookingMode, collectsCod, trackingPattern, makeDefault, expectedRevision, requestId, now: Date.now() }, env);
     return respond(result);
   } catch (error) {
     if (error instanceof DeliveryPartnerError || error instanceof StaffAuthorizationError)

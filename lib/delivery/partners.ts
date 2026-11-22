@@ -1,6 +1,7 @@
 import { staffMutationGuard } from '../db/repositories/staff-mutation-guard';
 import { commandReceipt } from '../workflows/contracts';
 import { validatePartnerTrackingPattern } from './partner-tracking';
+import { ncmPartnerName, ncmTransactionGuard, testedNcmConnection } from './ncm-settings';
 
 import { deliveryPartnerStatuses, type DeliveryPartnerStatus } from './partner-status';
 
@@ -56,7 +57,7 @@ export async function listDeliveryPartners(db: D1Database, options: { activeOnly
     WHERE parcel.delivery_partner_id=p.id AND EXISTS(SELECT 1 FROM parcel_operation_events e
       WHERE e.shipping_job_id=parcel.shipping_job_id AND e.action='assign' AND e.created_at>=?))`;
   const { results } = await db.prepare(`SELECT ${selection},${count} AS parcelsThisMonth FROM delivery_partners p
-    ${options.activeOnly ? "WHERE p.status='in_use' AND p.booking_mode='manual'" : ''}
+    ${options.activeOnly ? "WHERE p.status='in_use' AND (p.booking_mode='manual' OR LOWER(TRIM(p.name))='nepal can move')" : ''}
     ORDER BY CASE WHEN p.default_slot=1 THEN 0 WHEN p.status='in_use' THEN 1 WHEN p.status='setting_up' THEN 2 ELSE 3 END, p.name,p.id`)
     .bind(...(options.monthStart === undefined ? [] : [options.monthStart])).all<DeliveryPartnerRow>();
   return results.map(mapPartner);
@@ -83,7 +84,7 @@ export type SaveDeliveryPartner = {
 };
 
 const validId = /^[a-zA-Z0-9_-]{1,100}$/;
-export async function saveDeliveryPartner(db: D1Database, actorId: string, input: SaveDeliveryPartner) {
+export async function saveDeliveryPartner(db: D1Database, actorId: string, input: SaveDeliveryPartner, runtime?: unknown) {
   const authority = await staffMutationGuard(db, actorId, 'order.manage', DeliveryPartnerError, 'super_admin');
   if (!await deliveryPartnerSchemaAvailable(db))
     throw new DeliveryPartnerError('Delivery partners are available after the database update.', 409);
@@ -93,10 +94,11 @@ export async function saveDeliveryPartner(db: D1Database, actorId: string, input
       /\p{Cc}/u.test(name) || !deliveryPartnerStatuses.some(option => option.value === status) ||
       (expectedRevision !== null && (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1)))
     throw new DeliveryPartnerError('Check the delivery partner details and try again.', 400);
-  if (bookingMode !== 'manual')
+  if (bookingMode !== 'manual' && (bookingMode !== 'api' || !ncmPartnerName(name) ||
+    status !== 'in_use' || expectedRevision === null))
     throw new DeliveryPartnerError('Bookings are by hand until an API integration is switched on separately.', 400);
-  if (makeDefault && status !== 'in_use')
-    throw new DeliveryPartnerError('Switch the partner to In use before making it the default.', 400);
+  if (makeDefault && (status !== 'in_use' || bookingMode !== 'manual'))
+    throw new DeliveryPartnerError('The default partner must be In use and booked by hand.', 400);
   let trackingPattern: string | null;
   try {
     trackingPattern = validatePartnerTrackingPattern(input.trackingPattern);
@@ -106,10 +108,14 @@ export async function saveDeliveryPartner(db: D1Database, actorId: string, input
   const payload = { name, status, bookingMode, collectsCod, trackingPattern, makeDefault };
   const receipt = () => commandReceipt(db, { actorId, requestId, now, expectedRevision: expectedRevision?.toString() ?? null }, {
     action: 'delivery_partner.saved', subjectType: 'delivery_partner', subjectId: id,
-    auditReason: expectedRevision === null ? 'Added a manual delivery partner.' : 'Updated manual delivery partner settings.',
+    auditReason: expectedRevision === null ? 'Added a delivery partner booked by hand.' : bookingMode === 'api'
+      ? 'Saved Nepal Can Move for API booking.' : 'Saved the delivery partner for booking by hand.',
   }, payload);
   const command = await receipt();
   if (command.replayed) return command.result;
+  const connection = bookingMode === 'api' ? await testedNcmConnection(db, id, runtime) : null;
+  if (bookingMode === 'api' && !connection)
+    throw new DeliveryPartnerError('Test the Nepal Can Move connection before choosing API.', 409);
   const guardId = crypto.randomUUID();
   const exact = expectedRevision === null ? 'NOT EXISTS(SELECT 1 FROM delivery_partners WHERE id=?)'
     : 'EXISTS(SELECT 1 FROM delivery_partners WHERE id=? AND revision=?)';
@@ -126,6 +132,10 @@ export async function saveDeliveryPartner(db: D1Database, actorId: string, input
       ...(expectedRevision === null ? [] : [db.prepare('UPDATE delivery_partners SET revision=revision WHERE id=?').bind(id)]),
       db.prepare(`INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN ${exact} THEN 1 ELSE 0 END`)
         .bind(guardId, id, ...(expectedRevision === null ? [] : [expectedRevision])),
+      ...(connection ? ncmTransactionGuard(db, `EXISTS(
+        SELECT 1 FROM ncm_partner_settings s JOIN delivery_partners p ON p.id=s.partner_id
+        WHERE s.partner_id=? AND s.connection_fingerprint=? AND s.connected_at IS NOT NULL
+          AND LOWER(TRIM(p.name))='nepal can move')`, id, connection.settings.fingerprint) : []),
       ...(makeDefault ? [db.prepare(`UPDATE delivery_partners SET default_slot=NULL,revision=revision+1,updated_at=?
         WHERE default_slot=1 AND id<>?`).bind(now, id)] : []),
       write, command.insert(result),

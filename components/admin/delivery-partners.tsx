@@ -3,12 +3,14 @@
 import { Clock3, Plus, Settings2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useId, useRef, useState, useTransition, type SyntheticEvent } from 'react';
+import type { NcmSettingsView } from '@/lib/delivery/ncm-settings';
 import type { DeliveryPartner } from '@/lib/delivery/partners';
 import { deliveryPartnerStatuses, type DeliveryPartnerStatus } from '@/lib/delivery/partner-status';
 import { ACTOR_INTENT_HEADER } from '@/lib/http/actor-intent';
+import { NcmSettings } from './ncm-settings';
 
 const panel = 'min-w-0 rounded-xl border border-[#E2D6C2] bg-white';
-const control = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#D7C4A9] px-3 text-sm font-semibold hover:bg-[#F7F3EC] focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
+const control = 'inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg border border-[#D7C4A9] px-3 text-sm font-semibold hover:bg-[#F7F3EC] focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
 const field = 'min-h-11 w-full min-w-0 rounded-lg border border-[#D7C4A9] bg-white px-3 text-base font-normal';
 const tones: Record<DeliveryPartnerStatus, string> = {
   in_use: 'bg-[#DFECE4] text-[#21553E]', setting_up: 'bg-[#F7E9C5] text-[#69430A]', not_in_use: 'bg-[#F3ECDF] text-[#46536F]',
@@ -16,7 +18,8 @@ const tones: Record<DeliveryPartnerStatus, string> = {
 
 type SaveInput = {
   id: string; name: string; status: DeliveryPartnerStatus; collectsCod: boolean;
-  trackingPattern: string; makeDefault: boolean; expectedRevision: number | null;
+  bookingMode: DeliveryPartner['bookingMode']; trackingPattern: string;
+  makeDefault: boolean; expectedRevision: number | null;
 };
 
 function personalName(name: string) {
@@ -24,15 +27,21 @@ function personalName(name: string) {
   return known === 'upaya' ? 'upaya' : known === 'nepal can move' ? 'ncm' : null;
 }
 
-function PartnerCard({ partner, busy, onEdit, onMakeDefault }: {
-  partner: DeliveryPartner; busy: boolean; onEdit: () => void; onMakeDefault: () => void;
+function PartnerCard({ partner, hasNcmSettings, connected, busy, onEdit, onMakeDefault }: {
+  partner: DeliveryPartner; hasNcmSettings: boolean; connected: boolean;
+  busy: boolean; onEdit: () => void; onMakeDefault: () => void;
 }) {
   const profile = personalName(partner.name);
   const starter = profile === 'upaya' ? 'UP' : profile === 'ncm' ? 'NCM' : partner.name.split(/\s+/).map(word => word[0]).slice(0, 2).join('').toUpperCase();
   const status = deliveryPartnerStatuses.find(option => option.value === partner.status)?.label;
-  const label = partner.status === 'in_use' ? 'By hand' : 'By hand for now';
+  const byApi = partner.bookingMode === 'api';
+  const label = byApi ? 'API' : partner.status === 'in_use' || profile === 'upaya' ? 'By hand' : 'By hand for now';
+  const apiDetails = connected ? 'Book with Nepal Can Move from Dispatch. Book by hand remains available.'
+    : 'Choose Book by hand in Dispatch while the NCM connection is unavailable.';
   const rows = [
-    ['Booking', <><strong>{label}</strong><p className="text-sm text-[#46536F]">Book on {partner.name}’s website or by phone, then record the number in Dispatch.</p></>],
+    ['Booking', <><strong>{label}</strong><p className="text-sm text-[#46536F]">{byApi
+      ? apiDetails
+      : <>Book on {partner.name}’s website or by phone, then record the number in Dispatch.</>}</p></>],
     ['Cash on delivery', partner.collectsCod ? 'Collects cash from the customer' : 'Does not collect cash from the customer'],
     ['Cash settlement', partner.collectsCod ? 'Record each statement in Money › Courier cash.' : 'No courier cash to match.'],
     ['Parcels this month', new Intl.NumberFormat('en-NP').format(partner.parcelsThisMonth)],
@@ -66,7 +75,7 @@ function PartnerCard({ partner, busy, onEdit, onMakeDefault }: {
           </p>
           <p className="text-xs text-[#46536F]">Put <strong>{'{number}'}</strong> where the tracking number goes. Leave it empty to show the number only.</p>
         </div>
-        <div className="space-y-1.5">
+        {!hasNcmSettings && <div className="space-y-1.5">
           <h3 className="text-sm font-semibold">API</h3>
           <p className={'flex items-start gap-2 rounded-lg p-3 text-sm ' + (profile === 'ncm' ? 'bg-[#F7E9C5] text-[#69430A]' : 'bg-[#E3E9F4] text-[#29436A]')}>
             {profile === 'ncm' ? <Settings2 aria-hidden="true" className="mt-0.5 size-4 shrink-0" /> : <Clock3 aria-hidden="true" className="mt-0.5 size-4 shrink-0" />}
@@ -74,24 +83,29 @@ function PartnerCard({ partner, busy, onEdit, onMakeDefault }: {
               : profile === 'ncm' ? <><strong>Integration in progress.</strong> Continue using Delivery rates and manual bookings.</>
               : <strong>API not connected.</strong>}</span>
           </p>
-        </div>
+        </div>}
       </div>
     </div>
   </section>;
 }
 
-function PartnerEditor({ id, partner, busy, onSave, onCancel }: {
-  id: string; partner?: DeliveryPartner; busy: boolean; onSave: (value: SaveInput) => void; onCancel: () => void;
+function PartnerEditor({ id, partner, canSelectApi = false, busy, onSave, onCancel }: {
+  id: string; partner?: DeliveryPartner; canSelectApi?: boolean; busy: boolean;
+  onSave: (value: SaveInput) => void; onCancel: () => void;
 }) {
   const fieldId = useId();
   const [status, setStatus] = useState<DeliveryPartnerStatus>(partner?.status ?? 'not_in_use');
+  const [bookingMode, setBookingMode] = useState<DeliveryPartner['bookingMode']>(partner?.bookingMode ?? 'manual');
+  const canMakeDefault = status === 'in_use' && bookingMode === 'manual';
+  const canSave = bookingMode === 'manual' || canSelectApi;
   function submit(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canSave) return;
     const data = new FormData(event.currentTarget);
     const name = data.get('name'), trackingPattern = data.get('trackingPattern');
     if (typeof name !== 'string' || typeof trackingPattern !== 'string') return;
-    onSave({ id, name, status, trackingPattern, collectsCod: data.has('collectsCod'),
-      makeDefault: status === 'in_use' && data.has('makeDefault'), expectedRevision: partner?.revision ?? null });
+    onSave({ id, name, status, trackingPattern, bookingMode, collectsCod: data.has('collectsCod'),
+      makeDefault: canMakeDefault && data.has('makeDefault'), expectedRevision: partner?.revision ?? null });
   }
   return <form data-form-id="staff.delivery-partner" onSubmit={submit} className={panel + ' space-y-4 p-4 sm:p-5'}>
     <h2 className="text-lg font-bold">{partner ? 'Edit ' + partner.name : 'Add a delivery partner'}</h2>
@@ -110,9 +124,13 @@ function PartnerEditor({ id, partner, busy, onSave, onCancel }: {
       </div>
       <div className="grid gap-1 text-sm font-semibold">
         <label htmlFor={fieldId + '-mode'}>Booking mode</label>
-        <select id={fieldId + '-mode'} defaultValue="manual" className={field}>
-          <option value="manual">By hand</option><option value="api" disabled>API · not connected</option>
+        <select id={fieldId + '-mode'} value={bookingMode} onChange={event => {
+          setBookingMode(event.currentTarget.value === 'api' && canSelectApi ? 'api' : 'manual');
+        }} className={field} aria-describedby={!canSave ? fieldId + '-mode-note' : undefined}>
+          <option value="manual">By hand</option>
+          <option value="api" disabled={!canSelectApi}>{canSelectApi ? 'API' : 'API · unavailable'}</option>
         </select>
+        {!canSave && <p id={fieldId + '-mode-note'} className="text-sm font-normal text-[#46536F]">Choose By hand or reconnect Nepal Can Move before saving.</p>}
       </div>
       <label className="grid gap-1 text-sm font-semibold">Customer tracking link
         <input name="trackingPattern" maxLength={500} defaultValue={partner?.trackingPattern ?? ''} placeholder={'https://…/{number}'} className={field} />
@@ -121,23 +139,26 @@ function PartnerEditor({ id, partner, busy, onSave, onCancel }: {
         <input type="checkbox" name="collectsCod" defaultChecked={partner?.collectsCod ?? false} /> Collects cash on delivery
       </label>
       <label className="flex min-h-11 items-center gap-2 text-sm">
-        <input type="checkbox" name="makeDefault" defaultChecked={partner?.isDefault ?? false} disabled={status !== 'in_use'} /> Default for new bookings
+        <input type="checkbox" name="makeDefault" defaultChecked={partner?.isDefault ?? false} disabled={!canMakeDefault} /> Default for new bookings
       </label>
     </div>
     <div className="flex flex-wrap gap-2">
-      <button type="submit" className={control + ' bg-[#14213D] text-white hover:bg-[#233758]'} disabled={busy}>Save delivery partner</button>
+      <button type="submit" className={control + ' bg-[#14213D] text-white hover:bg-[#233758]'} disabled={busy || !canSave}>Save delivery partner</button>
       <button type="button" className={control} disabled={busy} onClick={onCancel}>Cancel</button>
     </div>
   </form>;
 }
 
-export function DeliveryPartners({ partners, actorId }: { partners: DeliveryPartner[]; actorId: string }) {
+export function DeliveryPartners({ partners, actorId, ncm }: {
+  partners: DeliveryPartner[]; actorId: string; ncm?: NcmSettingsView | null;
+}) {
   const router = useRouter();
   const [editor, setEditor] = useState<{ id: string; existing: boolean } | null>(null);
   const [busy, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<{ text: string; error?: boolean } | null>(null);
   const attempt = useRef<{ hash: string; requestId: string } | null>(null);
   const editing = partners.find(partner => partner.id === editor?.id);
+  const connectedNcmId = ncm?.configured && ncm.connectedAt !== null ? ncm.partnerId : null;
 
   function save(input: SaveInput) {
     const hash = JSON.stringify(input);
@@ -148,7 +169,7 @@ export function DeliveryPartners({ partners, actorId }: { partners: DeliveryPart
       try {
         const response = await fetch('/api/admin/delivery-partners', { method: 'POST',
           headers: { 'Content-Type': 'application/json', [ACTOR_INTENT_HEADER]: actorId },
-          body: JSON.stringify({ ...input, bookingMode: 'manual', requestId }) });
+          body: JSON.stringify({ ...input, requestId }) });
         const body = await response.json() as { ok?: boolean; error?: string };
         if (!response.ok || !body.ok) {
           setFeedback({ error: true, text: body.error ?? 'Check the details before trying again.' });
@@ -168,10 +189,13 @@ export function DeliveryPartners({ partners, actorId }: { partners: DeliveryPart
     {feedback && (feedback.error ? <p role="alert" className="rounded-lg bg-[#F7DFDF] p-3 text-sm text-[#811B24]">{feedback.text}</p>
       : <output className="block rounded-lg bg-[#DFECE4] p-3 text-sm text-[#21553E]">{feedback.text}</output>)}
     {partners.map(partner => <div key={partner.id} className="space-y-3">
-      <PartnerCard partner={partner} busy={busy} onEdit={() => setEditor({ id: partner.id, existing: true })}
+      <PartnerCard partner={partner} hasNcmSettings={ncm?.partnerId === partner.id} connected={connectedNcmId === partner.id}
+        busy={busy} onEdit={() => setEditor({ id: partner.id, existing: true })}
         onMakeDefault={() => save({ id: partner.id, name: partner.name, status: partner.status, collectsCod: partner.collectsCod,
-          trackingPattern: partner.trackingPattern ?? '', makeDefault: true, expectedRevision: partner.revision })} />
-      {editing?.id === partner.id && <PartnerEditor key={partner.id + ':' + partner.revision} id={partner.id} partner={partner} busy={busy} onSave={save} onCancel={() => setEditor(null)} />}
+          bookingMode: 'manual', trackingPattern: partner.trackingPattern ?? '', makeDefault: true, expectedRevision: partner.revision })} />
+      {editing?.id === partner.id && <PartnerEditor key={partner.id + ':' + partner.revision} id={partner.id} partner={partner}
+        canSelectApi={connectedNcmId === partner.id} busy={busy} onSave={save} onCancel={() => setEditor(null)} />}
+      {ncm?.partnerId === partner.id && <NcmSettings view={ncm} actorId={actorId} partnerBusy={busy} />}
     </div>)}
     {!partners.length && <p className={panel + ' p-4 text-sm text-[#46536F]'}>No delivery partners added yet. Add the courier you book with today.</p>}
     {editor && !editor.existing

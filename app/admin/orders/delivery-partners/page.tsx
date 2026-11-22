@@ -7,6 +7,7 @@ import { requireStaffPage } from '@/lib/auth/staff';
 import { nepalDayIso } from '@/lib/dates/nepal-calendar';
 import { requireDatabase } from '@/lib/db/d1';
 import { listDeliveryPartners } from '@/lib/delivery/partners';
+import { ncmPartnerName, ncmSettingsView } from '@/lib/delivery/ncm-settings';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Delivery partners', robots: { index: false, follow: false } };
@@ -19,6 +20,8 @@ export default async function DeliveryPartnersPage() {
   const db = requireDatabase(env as unknown as { DB?: D1Database });
   const monthStart = Date.parse(nepalDayIso(observedAt()).slice(0, 7) + '-01T00:00:00+05:45');
   const partners = await listDeliveryPartners(db, { monthStart });
+  const ncmPartner = partners?.find(partner => ncmPartnerName(partner.name));
+  const ncm = ncmPartner ? await ncmSettingsView(db, ncmPartner.id, env, observedAt()) : null;
 
   return <div className="min-w-0 space-y-4 text-[#14213D]">
     <AdminPageHelpProvider help={{
@@ -35,6 +38,6 @@ export default async function DeliveryPartnersPage() {
     </p>
     {partners === null
       ? <p className="rounded-xl border border-[#E2D6C2] bg-white p-4 text-sm">Delivery partners will appear after the database update. You can keep booking couriers in Dispatch.</p>
-      : <DeliveryPartners key={staff.id} actorId={staff.id} partners={partners} />}
+      : <DeliveryPartners key={staff.id} actorId={staff.id} partners={partners} ncm={ncm} />}
   </div>;
 }

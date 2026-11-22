@@ -891,6 +891,15 @@ export const env = {
   get CHECKOUT_CONTACT_POLICY() {
     return process.env.CHECKOUT_CONTACT_POLICY;
   },
+  get NCM_API_BASE_URL() {
+    return process.env.NCM_API_BASE_URL;
+  },
+  get NCM_API_TOKEN() {
+    return process.env.NCM_API_TOKEN;
+  },
+  get NCM_WEBHOOK_KEY() {
+    return process.env.NCM_WEBHOOK_KEY;
+  },
   get ORDER_EMAIL_JOB_SECRET() {
     return process.env.ORDER_EMAIL_JOB_SECRET;
   },
