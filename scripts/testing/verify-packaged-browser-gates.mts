@@ -9,7 +9,7 @@ import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
-import type { Connection, Pool } from 'mysql2/promise';
+import type { Connection, Pool, RowDataPacket } from 'mysql2/promise';
 import type { ConfiguredField } from '../../lib/forms/types';
 import { assertRequiredNativeResults } from '../recovery/native-test-results.mjs';
 import { bindSelectedBrowserViews } from '../recovery/selected-native-views.mjs';
@@ -30,6 +30,7 @@ const sourceAppends = {
   seller_agreement_acceptance_history: 4,
 };
 const snapshotTables = [...registrationTables, ...Object.keys(sourceAppends)];
+const walletTable = 'wallet_accounts';
 const publicShopFixtureAppends: Readonly<Record<string, number>> = {
   users: 1, user_roles: 2, user_credentials: 1, account_email_verifications: 1,
   seller_profiles: 1, seller_protected_revisions: 1,
@@ -422,6 +423,7 @@ async function main() {
       }
       const { captureNativeInventory } = await import('../recovery/native-inventory.mjs');
       const before = await captureNativeInventory(source, selectedViews);
+      const originalWallets = (await registrationSnapshot(source, [walletTable])).get(walletTable)!;
       const originalFormLoads = await snapshotFormLoadObservations(source);
       const setupTables = [...snapshotTables, 'users', 'user_roles', 'user_credentials'];
       const registrationBefore = await registrationSnapshot(source, setupTables);
@@ -520,6 +522,17 @@ async function main() {
       // pending Super Admin. Keep the preparation pool open for those writes.
       const recordedWorkAccounts = await prepareRecordedWorkActors(db, store, actor.id);
       secrets.push(...[...recordedWorkAccounts.staff, ...recordedWorkAccounts.applicants].map(account => account.password));
+      // The storefront can initialize a wallet when it loads the bag. Establish
+      // that default fixture state here so browsers must preserve every wallet.
+      const { ensureWallet } = await import('../../lib/db/repositories/wallet');
+      const walletOwners = [...registrationAccounts, ...recordedWorkAccounts.applicants, publicOwner.account].map(account => account.id);
+      for (const userId of walletOwners) await ensureWallet(db, userId, now);
+      const [fixtureWalletOwners] = await source.query<(RowDataPacket & { userId: string })[]>(
+        `SELECT user_id AS userId FROM wallet_accounts WHERE balance_paisa=0 AND user_id IN (${walletOwners.map(() => '?').join(',')})`, walletOwners);
+      assert.deepEqual(fixtureWalletOwners.map(wallet => wallet.userId).sort(), [...walletOwners].sort());
+      const fixtureWallets = (await registrationSnapshot(source, [walletTable])).get(walletTable)!;
+      assertOriginalRows(originalWallets, fixtureWallets);
+      assert.equal(fixtureWallets.length, originalWallets.length + walletOwners.length);
       const closingPools = [...pools];
       const closedPools = await Promise.allSettled(closingPools.map((pool) => pool.end()));
       pools.splice(0, pools.length, ...closingPools.filter((_, index) => closedPools[index].status === 'rejected'));
@@ -598,7 +611,11 @@ async function main() {
         assert.equal(registrationAfter.get(table)!.length - registrationWithPublicShop.get(table)!.length, added, `Unexpected source appends: ${table}`);
       }
       assert.equal(after.schemaSha256, before.schemaSha256);
-      const appendTables = new Set(['users', 'user_roles', 'user_credentials', 'staff_permission_profiles', 'user_sessions', 'marketplace_settings', 'form_config_versions', 'audit_logs', 'traffic_sessions', 'traffic_events', 'form_health_observations', ...snapshotTables]);
+      phase = 'preserve original and fixture wallet rows after browser shutdown';
+      const finalWallets = (await registrationSnapshot(source, [walletTable])).get(walletTable)!;
+      assert.deepEqual(finalWallets.sort(), fixtureWallets.sort(), 'All original and initialized wallet rows must remain exact');
+      phase = 'preserve the remaining financial tables after browser shutdown';
+      const appendTables = new Set(['users', 'user_roles', 'user_credentials', 'staff_permission_profiles', 'user_sessions', 'marketplace_settings', 'form_config_versions', 'audit_logs', 'traffic_sessions', 'traffic_events', 'form_health_observations', walletTable, ...snapshotTables]);
       const protectedTables = before.tables.filter((table: { name: string }) => !appendTables.has(table.name));
       const changedTables = protectedTables.flatMap(table => {
         const current = after.tables.find(candidate => candidate.name === table.name);
