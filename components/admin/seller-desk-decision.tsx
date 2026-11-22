@@ -124,7 +124,7 @@ export async function SellerDeskDecision({item,actorId}:{item:SellerDeskItem;act
       if(!product)return <p>This product is unavailable for independent review.</p>;
       const photo=product.media.find(file=>file.mimeType.startsWith('image/'));
         return <section className={card}><h2 className="font-heading text-2xl">{product.nameEn}</h2>
-          {photo&&<Image src={'/api/product-media/'+encodeURIComponent(photo.id)} alt={product.nameEn} unoptimized width={160} height={160} className="size-24 object-contain"/>}
+          {photo&&<Image data-media-mode="contain" src={'/api/product-media/'+encodeURIComponent(photo.id)} alt={product.nameEn} unoptimized width={160} height={160} className="size-24 object-contain"/>}
           <p className="text-sm">{[product.categoryName,formatPaisaExact(product.pricePaisa),product.countryOfOrigin].filter(Boolean).join(' · ')}</p><p className="whitespace-pre-line break-words text-sm">{product.descriptionEn}</p>
           <ProductReviewActions desk productId={product.id} status={product.status} canPublish/>
           <Link className={fullLink} href={item.href}>Open full moderation review</Link></section>;

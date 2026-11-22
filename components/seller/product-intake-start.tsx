@@ -86,7 +86,7 @@ export function ProductIntakeStart({ actorId, recentProducts, unfinishedDrafts }
           {recentProducts.map((product, index) => {
             const cover = product.coverSrc ?? (product.coverMediaId ? '/api/product-media/' + encodeURIComponent(product.coverMediaId) : null);
             return <li key={product.id} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 py-2 sm:gap-3">
-              {cover ? <Image src={cover} alt="" width={44} height={44} unoptimized className="size-11 rounded-md border border-[#EEE5D5] object-contain" /> :
+              {cover ? <Image data-media-mode="contain" src={cover} alt="" width={44} height={44} unoptimized className="size-11 rounded-md border border-[#EEE5D5] object-contain" /> :
                 <span className="grid size-11 place-items-center rounded-md bg-[#F7F3EC]"><Package className="size-4" aria-hidden="true" /></span>}
               <div className="min-w-0 text-sm">
                 <p className="wrap-anywhere font-semibold">{product.name}</p>

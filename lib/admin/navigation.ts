@@ -651,6 +651,7 @@ const taskOrder: readonly string[] = [
   '/admin/orders',
   '/admin/orders/dispatch',
   '/admin/shipping',
+  '/admin/orders/delivery-partners',
   '/admin/cases',
   '/admin/customers',
   '/admin/payments',
