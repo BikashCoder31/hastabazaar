@@ -28,6 +28,8 @@ import { buildFormAnswerInsert } from '../db/repositories/form-answers';
 import { digestFormRequest } from '../forms/submission';
 import type { FormAnswerSnapshot } from '../forms/types';
 import { safeCourierUrl, parseLocation } from '../delivery/validation';
+import { deliveryPartnerSchemaAvailable, readDeliveryPartner } from '../delivery/partners';
+import { partnerTrackingUrl } from '../delivery/partner-tracking';
 import { buildEarningsAccrualStatements } from '../db/repositories/payouts';
 import { accrueManagedEntitlements } from '../db/repositories/managed-settlements';
 import { issueManagedInvoiceGroups } from '../db/repositories/managed-documents';
@@ -525,6 +527,7 @@ export interface ParcelOperation {
   method?: string;
   riderEmail?: string;
   courierName?: string;
+  deliveryPartnerId?: string;
   trackingUrl?: string;
   trackingCode?: string;
   pickupStart?: number;
@@ -881,6 +884,28 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
       throw new ParcelConflictError(
         'Enter a reference of 2–80 characters and the courier name when applicable.',
       );
+    const partner = o.deliveryPartnerId ? await readDeliveryPartner(db, o.deliveryPartnerId) : null;
+    if (o.deliveryPartnerId) {
+      if (o.method !== 'courier' || !partner || partner.status !== 'in_use' || partner.bookingMode !== 'manual' || partner.name !== courier)
+        throw new ParcelConflictError('This delivery partner is no longer available. Refresh Dispatch and choose a courier.');
+      if (p.codDuePaisa > 0 && !partner.collectsCod)
+        throw new ParcelConflictError('This courier does not collect cash. Choose a courier that accepts cash on delivery.');
+      if (partner.trackingPattern) {
+        const link = partnerTrackingUrl(partner.trackingPattern, tracking);
+        if (!link) throw new ParcelConflictError('The courier tracking link is not valid. Check the pattern in Delivery partners.');
+        url = link;
+      }
+      statements.push(
+        db.prepare('UPDATE delivery_partners SET revision=revision WHERE id=?').bind(partner.id),
+        ...assertion(db, "EXISTS(SELECT 1 FROM delivery_partners WHERE id=? AND revision=? AND status='in_use' AND booking_mode='manual')",
+          [partner.id, partner.revision]),
+      );
+    }
+    const partnerColumn = partner ? 'delivery_partner_id=?,'
+      : await deliveryPartnerSchemaAvailable(db)
+        ? "delivery_partner_id=CASE WHEN ?='courier' AND courier_name=? THEN delivery_partner_id ELSE NULL END,"
+        : '';
+    const partnerValues = partner ? [partner.id] : partnerColumn ? [o.method, courier] : [];
     if (riderId) statements.push(...assertion(db, approvedRiderSql, [riderId]));
     if (assignmentSnapshot)
       statements.push(
@@ -899,9 +924,10 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
     statements.push(
       db
         .prepare(
-          'UPDATE shipping_parcels SET method=?,rider_user_id=?,courier_name=?,tracking_url=?,latitude=NULL,longitude=NULL,accuracy=NULL,position_at=NULL,open_box_required=?,open_box_snapshot_json=?,rider_finance_snapshot_json=? WHERE shipping_job_id=?',
+          `UPDATE shipping_parcels SET ${partnerColumn}method=?,rider_user_id=?,courier_name=?,tracking_url=?,latitude=NULL,longitude=NULL,accuracy=NULL,position_at=NULL,open_box_required=?,open_box_snapshot_json=?,rider_finance_snapshot_json=? WHERE shipping_job_id=?`,
         )
         .bind(
+          ...partnerValues,
           o.method,
           riderId,
           o.method === 'courier' ? courier : null,

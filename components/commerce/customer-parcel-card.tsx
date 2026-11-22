@@ -46,9 +46,9 @@ export function CustomerParcelCard({ id, title, parcel, state, detail, children 
         <div className="grid min-w-0 items-center gap-3 rounded-[14px] border border-[#E3D6C3] bg-white p-3 sm:grid-cols-[minmax(0,1fr)_auto]">
           <div className="flex min-w-0 items-center gap-3">
             <span className="grid size-10 shrink-0 place-items-center rounded-[10px] bg-[#E0E7F3] text-[#2A4E89]"><Truck className="size-4" aria-hidden="true" /></span>
-            <p className="min-w-0 wrap-anywhere text-sm font-semibold">{parcel.courierName || 'Courier'}{parcel.trackingReference ? ` · Tracking ${parcel.trackingReference}` : ''}</p>
+            <p className="min-w-0 wrap-anywhere text-sm font-semibold">{parcel.courierName || 'Courier'}{parcel.trackingReference ? ` · ${parcel.trackingReference}` : ''}</p>
           </div>
-          {parcel.trackingUrl ? <a href={parcel.trackingUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[9px] border border-[#D4C1A6] px-3 text-center text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#14213D]">Track on {parcel.courierName || 'courier site'} <ArrowUpRight className="size-4" aria-hidden="true" /></a> : null}
+          {parcel.trackingUrl ? <a href={parcel.trackingUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[9px] border border-[#D4C1A6] px-3 text-center text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#14213D]">Track parcel <ArrowUpRight className="size-4" aria-hidden="true" /></a> : null}
         </div>
       ) : null}
       {children}

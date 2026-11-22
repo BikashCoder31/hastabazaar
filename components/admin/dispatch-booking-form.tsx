@@ -1,9 +1,9 @@
 'use client';
 
 import { Bell } from 'lucide-react';
-import { useState, type SyntheticEvent } from 'react';
+import { useId, useState, type SyntheticEvent } from 'react';
 import type { DispatchParcel } from '@/app/admin/orders/dispatch/read-dispatch';
-import { courierBookingSummary, dispatchWeightTotal } from '@/app/admin/orders/dispatch/packing-summary';
+import { dispatchWeightTotal } from '@/app/admin/orders/dispatch/packing-summary';
 import {
   parsePickupTime,
   pickupWindowLabel,
@@ -25,6 +25,7 @@ import {
   readConfiguredSubmission,
 } from '@/lib/forms/client-submission';
 import { ACTOR_INTENT_HEADER } from '@/lib/http/actor-intent';
+import { DispatchCourierDetails } from './dispatch-courier-details';
 import {
   dispatchChip,
   dispatchMoney,
@@ -52,6 +53,13 @@ const fieldClass =
   'min-h-11 w-full min-w-0 rounded-xl border border-[#D4C2A6] bg-white px-3 py-2 text-base font-normal';
 const defaultCourier = 'Nepal Can Move';
 
+export type DispatchPartner = {
+  id: string;
+  name: string;
+  collectsCod: boolean;
+  hasTrackingPattern: boolean;
+};
+
 function parcelCount(count: number) {
   return `${count} ${count === 1 ? 'parcel' : 'parcels'}`;
 }
@@ -60,6 +68,7 @@ export function DispatchBookingForm({
   parcels,
   pickup,
   options,
+  partners,
   actorId,
   refreshing,
   onBusy,
@@ -69,13 +78,15 @@ export function DispatchBookingForm({
   parcels: DispatchParcel[];
   pickup: DispatchParcel | undefined;
   options: (PickupWindow & { label: string })[];
+  partners: readonly DispatchPartner[] | null;
   actorId: string;
   refreshing: boolean;
   onBusy: (busy: boolean) => void;
   onSaved: (keys: readonly string[]) => void;
   onNotice: (message: string, error: boolean) => void;
 }) {
-  const [courier, setCourier] = useState(defaultCourier);
+  const courierFieldId = useId();
+  const [courier, setCourier] = useState('');
   const [otherCourier, setOtherCourier] = useState('');
   const [reference, setReference] = useState('');
   const [slot, setSlot] = useState<number | null>(
@@ -88,7 +99,6 @@ export function DispatchBookingForm({
   const [customEnd, setCustomEnd] = useState('');
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [copyStatus, setCopyStatus] = useState('');
   const catalog = usePublishedFormConfig(formId, { actorId });
   const disabled = busy || refreshing;
   const chosen = options.find((option) => option.start === slot);
@@ -101,10 +111,15 @@ export function DispatchBookingForm({
     (slot === null && manualWindow
       ? { start: manualStart, end: manualEnd }
       : undefined);
-  const courierName = courier === 'other' ? otherCourier.trim() : courier;
+  const activeChoice = partners?.find(partner => `partner:${partner.id}` === courier);
+  const selectedPartner = activeChoice ?? (courier !== 'other' ? partners?.[0] : undefined);
+  const selection = selectedPartner ? `partner:${selectedPartner.id}` : partners === null && courier !== 'other' ? 'legacy' : 'other';
+  const courierName = selectedPartner?.name ?? (selection === 'legacy' ? defaultCourier : otherCourier.trim());
+  const cashCompatible = selectedPartner?.collectsCod !== false || parcels.every(parcel => parcel.codDuePaisa === 0);
+  const bookingPlaceholder = courierName ? `${courierName} booking number` : 'Courier booking number';
   const trackingCode = reference.trim();
   const ready = Boolean(
-    pickup || (window && courierName.length >= 2 && trackingCode.length >= 2),
+    pickup || (window && courierName.length >= 2 && trackingCode.length >= 2 && cashCompatible),
   );
   const sellers = [...new Set(parcels.map((parcel) => parcel.sellerName))].join(
     ', ',
@@ -113,15 +128,6 @@ export function DispatchBookingForm({
     ? parcels.reduce((total, parcel) => total + (parcel.codDuePaisa ?? 0), 0)
     : null;
   const weightSummary = dispatchWeightTotal(parcels);
-
-  async function copySummary() {
-    try {
-      await navigator.clipboard.writeText(courierBookingSummary(parcels));
-      setCopyStatus('Booking summary copied.');
-    } catch {
-      setCopyStatus('Could not copy the booking summary. Try again.');
-    }
-  }
 
   async function submit(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -162,6 +168,7 @@ export function DispatchBookingForm({
                 trackingUrl,
                 pickupStart: window?.start,
                 pickupEnd: window?.end,
+                ...(selectedPartner ? { deliveryPartnerId: selectedPartner.id } : {}),
               }),
         };
         const attempt = sessionAttemptKey(
@@ -232,7 +239,7 @@ export function DispatchBookingForm({
     );
   }
 
-  return (
+  const bookingForm = (
     <section
       className={`${dispatchPanel} space-y-4 p-5`}
       aria-labelledby="book-courier-title"
@@ -258,7 +265,7 @@ export function DispatchBookingForm({
               </strong>{' '}
               from {sellers}
               {cash === null ? (
-                ' · COD amounts become available when the parcels are prepared.'
+                ' · See the parcel details below for cash to collect.'
               ) : (
                 <>
                   {' '}
@@ -269,24 +276,25 @@ export function DispatchBookingForm({
                 </>
               )}
             </p>
-            {weightSummary ? <div className="space-y-2">
-              <p className="text-[#46536F]">{weightSummary}</p>
-              <button type="button" className={dispatchChip} disabled={disabled} onClick={() => void copySummary()}>Copy booking summary</button>
-              {copyStatus ? <output className="block text-[#46536F]">{copyStatus}</output> : null}
-            </div> : null}
-            <label className="block space-y-1.5 font-semibold">
-              <span>Courier</span>
+            {weightSummary ? <p className="text-[#46536F]">{weightSummary}</p> : null}
+            <div className="space-y-1.5 font-semibold">
+              <label htmlFor={courierFieldId}>Courier</label>
               <select
+                id={courierFieldId}
                 className={fieldClass}
-                value={courier}
+                value={selection}
                 disabled={disabled}
                 onChange={(event) => setCourier(event.target.value)}
               >
-                <option>{defaultCourier}</option>
+                {partners === null ? <option value="legacy">{defaultCourier}</option> : null}
+                {partners?.map(partner => <option key={partner.id} value={`partner:${partner.id}`}>{partner.name}</option>)}
                 <option value="other">Other courier company</option>
               </select>
-            </label>
-            {courier === 'other' ? (
+              <p className="text-[13px] font-normal text-[#675B4E]">{courierName
+                ? `Book with ${courierName}, then enter its booking number here.`
+                : 'Enter the name of the courier you booked.'}</p>
+            </div>
+            {selection === 'other' ? (
               <label className="block space-y-1.5 font-semibold">
                 <span>Courier name</span>
                 <input
@@ -361,7 +369,7 @@ export function DispatchBookingForm({
                 maxLength={80}
                 value={reference}
                 disabled={disabled}
-                placeholder="e.g. NCM-58210"
+                placeholder={bookingPlaceholder}
                 onChange={(event) => setReference(event.target.value)}
               />
               <span className="block text-[13px] font-normal text-[#675B4E]">
@@ -370,7 +378,7 @@ export function DispatchBookingForm({
                 parcel.
               </span>
             </label>
-            <details>
+            {!selectedPartner?.hasTrackingPattern ? <details>
               <summary className="flex min-h-11 cursor-pointer items-center text-[#46536F] underline decoration-[#D4C2A6] underline-offset-4">
                 Add a tracking link
               </summary>
@@ -385,7 +393,7 @@ export function DispatchBookingForm({
                   placeholder="https://"
                 />
               </label>
-            </details>
+            </details> : null}
           </>
         )}
         {catalog.config ? (
@@ -420,7 +428,9 @@ export function DispatchBookingForm({
         </button>
         {!pickup && !ready ? (
           <p className="text-[13px] text-[#46536F]">
-            {trackingCode.length < 2
+            {!cashCompatible
+              ? 'This courier does not collect cash. Choose another courier.'
+              : trackingCode.length < 2
               ? 'Add the courier’s booking number first.'
               : !window
                 ? 'Choose the pickup window.'
@@ -442,5 +452,11 @@ export function DispatchBookingForm({
         ) : null}
       </form>
     </section>
+  );
+  return (
+    <>
+      {bookingForm}
+      {!pickup ? <DispatchCourierDetails parcels={parcels} courierName={courierName} actorId={actorId} disabled={disabled} /> : null}
+    </>
   );
 }

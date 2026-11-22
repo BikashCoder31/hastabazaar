@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import {
@@ -8,7 +9,7 @@ import {
   type DispatchParcel,
 } from '@/app/admin/orders/dispatch/read-dispatch';
 import type { PickupWindow } from '@/app/admin/orders/dispatch/pickup-window';
-import { DispatchBookingForm } from './dispatch-booking-form';
+import { DispatchBookingForm, type DispatchPartner } from './dispatch-booking-form';
 import {
   DispatchParcelList,
   dispatchChip,
@@ -19,11 +20,15 @@ export function DispatchWorkspace({
   parcels,
   actorId,
   options,
+  partners,
+  canManagePartners,
   initialLane = 'ready',
 }: {
   parcels: DispatchParcel[];
   actorId: string;
   options: (PickupWindow & { label: string })[];
+  partners: readonly DispatchPartner[] | null;
+  canManagePartners: boolean;
   initialLane?: DispatchLane;
 }) {
   const router = useRouter();
@@ -121,6 +126,7 @@ export function DispatchWorkspace({
               pickup={pickup}
               actorId={actorId}
               options={options}
+              partners={partners}
               refreshing={refreshing}
               onBusy={setBusy}
               onSaved={saved}
@@ -137,12 +143,14 @@ export function DispatchWorkspace({
             </section>
           )}
           <section className={`${dispatchPanel} space-y-2 p-5 text-sm`}>
-            <h2 className="font-semibold">No courier API yet</h2>
+            <h2 className="font-semibold">Booked by hand for now</h2>
             <p className="text-[#46536F]">
-              Booking is done on the courier’s own website or by phone. Here you
-              record it, so the seller, customer and courier cash all stay in
-              step.
+              Book on the courier’s website or by phone, then record the booking here.
+              {partners === null ? ' Delivery partner settings are available after the database update.' : null}
             </p>
+            {canManagePartners && partners !== null ? (
+              <Link href="/admin/orders/delivery-partners" className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4">Manage delivery partners</Link>
+            ) : null}
           </section>
         </aside>
       </div>

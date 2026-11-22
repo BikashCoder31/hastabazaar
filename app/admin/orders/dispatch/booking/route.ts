@@ -45,6 +45,7 @@ export async function POST(request: Request) {
       requestId,
       pickupStart,
       pickupEnd,
+      deliveryPartnerId,
     } = body;
     if (
       !id(orderId) ||
@@ -59,6 +60,7 @@ export async function POST(request: Request) {
       (jobId === null) !== (version === null) ||
       (action !== 'assign' && action !== 'dispatch') ||
       (action === 'dispatch' && jobId === null) ||
+      (deliveryPartnerId !== undefined && (action !== 'assign' || !id(deliveryPartnerId))) ||
       typeof requestId !== 'string' ||
       !/^[a-zA-Z0-9_-]{8,100}$/.test(requestId)
     ) {
@@ -72,6 +74,7 @@ export async function POST(request: Request) {
           trackingUrl: string;
           pickupStart: number;
           pickupEnd: number;
+          deliveryPartnerId?: string;
         }
       | undefined;
     if (action === 'assign') {
@@ -116,6 +119,7 @@ export async function POST(request: Request) {
         trackingUrl,
         pickupStart,
         pickupEnd,
+        ...(typeof deliveryPartnerId === 'string' ? { deliveryPartnerId } : {}),
       };
     }
 

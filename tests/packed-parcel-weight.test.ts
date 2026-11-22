@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import type { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 import { readDispatchParcels } from '../app/admin/orders/dispatch/read-dispatch';
-import { courierBookingSummary, dispatchWeightTotal } from '../app/admin/orders/dispatch/packing-summary';
+import { dispatchWeightTotal } from '../app/admin/orders/dispatch/packing-summary';
+import { courierBookingDetailsText } from '../app/admin/orders/dispatch/courier-details';
 import { parsePackedWeightKg } from '../lib/shipping/packed-weight';
 import { packedWeightSchemaAvailable, readPackedParcelPrefill } from '../lib/shipping/packed-weight-storage';
 import { getProductWorkspace, saveProductWorkspace, submitProductIntake } from '../lib/products/intake-workspace';
@@ -137,9 +138,12 @@ void test('seller readiness validates actual weight, stays exact across retries 
     const other = { ...parcel, orderNumber: 'HB-FICTIONAL', key: 'other', packedWeightGrams: 850 };
     assert.equal(dispatchWeightTotal([parcel, other, parcel]), 'Total weight 3.25 kg');
     assert.equal(dispatchWeightTotal([parcel, { ...other, packedWeightGrams: null }]), 'Recorded weight 2.4 kg · 1 missing');
-    const summary = courierBookingSummary([parcel, other, parcel]);
+    const detail = { key: parcel.key, orderNumber: parcel.orderNumber, seller: parcel.sellerName, pickupAddress: parcel.pickupAddress, pickupGroup: parcel.pickupGroup,
+      sellerPhone: '', receiver: '', phone: '', address: parcel.destination, district: '', prepaid: true, codDuePaisa: 0,
+      packedWeightGrams: parcel.packedWeightGrams ?? null, items: [parcel.itemName] };
+    const summary = courierBookingDetailsText([detail, { ...detail, key: other.key, orderNumber: other.orderNumber, packedWeightGrams: 850 }, detail]);
     assert.match(summary, /Total weight 3\.25 kg/);
-    assert.match(summary, /HB-FICTIONAL.+0\.85 kg/);
+    assert.match(summary, /HB-FICTIONAL[\s\S]+0\.85 kg/);
     assert.equal(summary.split(parcel.orderNumber).length, 2);
     f.sqlite.prepare('UPDATE seller_parcel_weights SET item_count=item_count+1 WHERE order_id=?').run(f.orderId);
     const [changedPortion] = await readDispatchParcels(f.db, { orderId: f.orderId, sellerId });
