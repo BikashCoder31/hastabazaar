@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { requireDatabase } from '@/lib/db/d1';
-import { auditManualOrderEmailProcessing } from '@/lib/operations/manual-email-audit';
+import { auditManualOrderEmailProcessing, EmailDeliveryAuthorizationError } from '@/lib/operations/manual-email-audit';
 import { requireStaffApi, StaffAuthorizationError } from '@/lib/auth/staff';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import { manualOrderEmailBatchSize } from '@/lib/email/order-update-policy';
@@ -13,7 +13,7 @@ export async function POST(request: Request) {
       { status: 403, headers },
     );
   try {
-    const actor = await requireStaffApi('order.manage');
+    const actor = await requireStaffApi('email.delivery.manage');
     const db = requireDatabase(env as unknown as { DB?: D1Database });
     return Response.json(await auditManualOrderEmailProcessing(db, actor.id, () => sendPendingOrderUpdates({ limit: manualOrderEmailBatchSize })), {
       headers,
@@ -22,12 +22,12 @@ export async function POST(request: Request) {
     return Response.json(
       {
         error:
-          e instanceof StaffAuthorizationError
+          e instanceof StaffAuthorizationError || e instanceof EmailDeliveryAuthorizationError
             ? e.message
             : 'Retry is unavailable.',
       },
       {
-        status: e instanceof StaffAuthorizationError ? e.status : 503,
+        status: e instanceof StaffAuthorizationError || e instanceof EmailDeliveryAuthorizationError ? e.status : 503,
         headers,
       },
     );

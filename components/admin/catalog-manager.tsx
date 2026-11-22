@@ -14,12 +14,13 @@ import {
   sessionAttemptKey,
 } from '@/lib/forms/client-attempt';
 import type { ManagedTaxonomyRow } from '@/lib/db/repositories/catalog-admin';
+import { nepaliTaxonomyName } from '@/lib/catalog/taxonomy-names';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import {
   configuredJsonPayload,
   readConfiguredSubmission,
-} from '@/lib/forms/submission';
+} from '@/lib/forms/client-submission';
 
 const catalogBaseKeys = [
   'kind',
@@ -32,14 +33,19 @@ const catalogBaseKeys = [
   'idempotencyKey',
   'imageId',
   'expectedImageId',
+  'parentId','expectedParentId',
 ];
 
 export function CatalogManager({
   categories,
   occasions,
+  occasionImagesAvailable,
+  canManageParents=false,
 }: {
   categories: readonly ManagedTaxonomyRow[];
   occasions: readonly ManagedTaxonomyRow[];
+  occasionImagesAvailable: boolean;
+  canManageParents?:boolean;
 }) {
   return (
     <Tabs defaultValue="categories" className="mt-7 gap-5">
@@ -49,25 +55,26 @@ export function CatalogManager({
       >
         <TabsTrigger
           value="categories"
-          className="min-w-0 whitespace-normal px-4"
+          className="min-w-0 whitespace-normal px-4 max-md:min-h-11"
         >
           Categories ({categories.length})
         </TabsTrigger>
         <TabsTrigger
           value="occasions"
-          className="min-w-0 whitespace-normal px-4"
+          className="min-w-0 whitespace-normal px-4 max-md:min-h-11"
         >
           Gift occasions ({occasions.length})
         </TabsTrigger>
       </TabsList>
       <TabsContent value="categories">
-        <TaxonomySection kind="category" title="Categories" rows={categories} />
+        <TaxonomySection kind="category" title="Categories" rows={categories} imagesAvailable canManageParents={canManageParents} />
       </TabsContent>
       <TabsContent value="occasions">
         <TaxonomySection
           kind="occasion"
           title="Gift occasions"
           rows={occasions}
+          imagesAvailable={occasionImagesAvailable}
         />
       </TabsContent>
     </Tabs>
@@ -77,10 +84,14 @@ function TaxonomySection({
   kind,
   title,
   rows,
+  imagesAvailable,
+  canManageParents=false,
 }: {
   kind: 'category' | 'occasion';
   title: string;
   rows: readonly ManagedTaxonomyRow[];
+  imagesAvailable: boolean;
+  canManageParents?:boolean;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false),
@@ -165,6 +176,7 @@ function TaxonomySection({
           isActive: 1,
           sortOrder: (rows.at(-1)?.sortOrder ?? 0) + 10,
           usageCount: 0,
+          parentId:null,
         }
       : null);
   return (
@@ -172,12 +184,13 @@ function TaxonomySection({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h2 className="font-heading text-2xl">{title}</h2>
         <Link
-          className="text-sm underline"
+          className="inline-flex items-center text-sm underline max-md:min-h-11"
           href={`/admin/staff-form-history?kind=catalog-${kind}`}
         >
           View form history
         </Link>
         <Button
+          className="max-md:min-h-11"
           disabled={pending || imageBusy || refreshing}
           onClick={() => {
             setImageDraft(undefined);
@@ -193,6 +206,9 @@ function TaxonomySection({
         Control discovery labels, ordering, and visibility. Inactive entries are
         retained with their existing product associations.
       </p>
+      {!imagesAvailable ? (
+        <p className="mt-2 text-sm text-muted-foreground">Occasion images will be available after the database update.</p>
+      ) : null}
       {message ? (
         <output aria-live="polite" className="block mt-3 text-sm">
           {refreshing
@@ -239,10 +255,11 @@ function TaxonomySection({
               id: editing?.id,
               slug: data.get('slug'),
               nameEn: data.get('nameEn'),
-              nameNe: editing?.nameNe || data.get('nameEn'),
+              nameNe: data.get('nameNe'),
               sortOrder: Number(data.get('sortOrder')),
               isActive: data.get('isActive') === 'on',
-              ...(kind === 'category' && imageDraft !== undefined
+              ...(kind==='category'&&canManageParents?{parentId:data.get('parentId')||null,expectedParentId:editing?.parentId??null}:{}),
+              ...(imagesAvailable && imageDraft !== undefined
                 ? {
                     imageId: imageDraft,
                     expectedImageId: editing?.imageId ?? null,
@@ -268,14 +285,27 @@ function TaxonomySection({
               htmlFor={fieldId + '-nameEn'}
               className="grid gap-2 text-sm font-medium"
             >
-              Display name
-              <span aria-hidden="true">*</span>
+              <span>English name <span aria-hidden="true">*</span></span>
               <Input
                 id={fieldId + '-nameEn'}
                 name="nameEn"
+                className="max-md:min-h-11"
                 defaultValue={active.nameEn}
                 required
                 minLength={2}
+                maxLength={100}
+              />
+            </label>
+            <label
+              htmlFor={fieldId + '-nameNe'}
+              className="grid gap-2 text-sm font-medium"
+            >
+              Nepali name (नेपाली नाम)
+              <Input
+                id={fieldId + '-nameNe'}
+                name="nameNe"
+                className="max-md:min-h-11"
+                defaultValue={active.nameNe ?? ''}
                 maxLength={100}
               />
             </label>
@@ -287,7 +317,9 @@ function TaxonomySection({
               <Input
                 id={fieldId + '-slug'}
                 name="slug"
+                className="max-md:min-h-11"
                 defaultValue={active.slug}
+                readOnly={Boolean(active.id)}
                 required
                 maxLength={80}
                 pattern="[a-z0-9]+(-[a-z0-9]+)*"
@@ -303,6 +335,7 @@ function TaxonomySection({
               <Input
                 id={fieldId + '-sortOrder'}
                 name="sortOrder"
+                className="max-md:min-h-11"
                 type="number"
                 min={0}
                 max={100000}
@@ -311,6 +344,9 @@ function TaxonomySection({
                 required
               />
             </label>
+            {kind==='category'&&canManageParents?<label className="flex min-h-11 items-center gap-3 text-sm">
+              <span className="grid gap-2">Parent category<select name="parentId" defaultValue={active.parentId??''} className="min-h-11 rounded border p-2"><option value="">Top-level category</option>{rows.filter(row=>row.id!==active.id).map(row=><option key={row.id} value={row.id}>{row.nameEn}</option>)}</select></span>
+            </label>:null}
             <label className="flex min-h-11 items-center gap-3 text-sm">
               <input
                 name="isActive"
@@ -320,8 +356,9 @@ function TaxonomySection({
               />
               Active in discovery
             </label>
-            {kind === 'category' ? (
+            {imagesAvailable ? (
               <CategoryImageEditor
+                kind={kind}
                 value={
                   imageDraft === undefined
                     ? (editing?.imageId ?? null)
@@ -350,12 +387,14 @@ function TaxonomySection({
             ) : null}
             <div className="flex flex-wrap gap-2 sm:col-span-2">
               <Button
+                className="max-md:min-h-11"
                 type="submit"
                 disabled={pending || imageBusy || refreshing}
               >
                 {pending ? 'Saving…' : 'Save entry'}
               </Button>
               <Button
+                className="max-md:min-h-11"
                 variant="outline"
                 type="button"
                 disabled={pending || imageBusy || refreshing}
@@ -381,6 +420,7 @@ function TaxonomySection({
                 another attempt.
               </p>
               <Button
+                className="max-md:min-h-11"
                 type="button"
                 variant="outline"
                 disabled={pending || imageBusy || refreshing}
@@ -405,33 +445,39 @@ function TaxonomySection({
       ) : null}
       <div className="mt-5 divide-y">
         {rows.length ? (
-          rows.map((row) => (
-            <button
-              key={row.id}
-              type="button"
-              disabled={pending || imageBusy || refreshing}
-              onClick={() => {
-                setImageDraft(undefined);
-                setEditing(row);
-                setNewMode(false);
-                setMessage('');
-              }}
-              aria-label={'Edit ' + row.nameEn}
-              className="flex w-full flex-wrap items-center justify-between gap-4 rounded-lg px-2 py-4 text-left hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50"
-            >
-              <span>
-                <strong className="block text-sm">{row.nameEn}</strong>
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  /{row.slug} · order {row.sortOrder}
+          rows.map((row) => {
+            const nepali = nepaliTaxonomyName(row);
+            return (
+              <button
+                key={row.id}
+                type="button"
+                disabled={pending || imageBusy || refreshing}
+                onClick={() => {
+                  setImageDraft(undefined);
+                  setEditing(row);
+                  setNewMode(false);
+                  setMessage('');
+                }}
+                aria-label={'Edit ' + row.nameEn}
+                className="flex w-full flex-wrap items-center justify-between gap-4 rounded-lg px-2 py-4 text-left hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50"
+              >
+                <span className="min-w-0 [overflow-wrap:anywhere]">
+                  <strong className="block text-sm">{row.nameEn}</strong>
+                  <span lang={nepali ? 'ne' : undefined} className="mt-1 block text-xs text-muted-foreground">
+                    {nepali ?? 'Nepali name not added'}
+                  </span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    /{row.slug} · order {row.sortOrder}
+                  </span>
                 </span>
-              </span>
-              <span className="text-right text-sm text-muted-foreground">
-                {row.usageCount} products ·{' '}
-                {row.isActive ? 'Active' : 'Inactive'}
-                <span className="ml-3 font-semibold text-primary">Edit</span>
-              </span>
-            </button>
-          ))
+                <span className="text-right text-sm text-muted-foreground">
+                  {row.usageCount} products ·{' '}
+                  {row.isActive ? 'Active' : 'Inactive'}
+                  <span className="ml-3 font-semibold text-primary">Edit</span>
+                </span>
+              </button>
+            );
+          })
         ) : (
           <p className="py-5 text-sm text-muted-foreground">
             No entries yet. Add the first {kind} above.

@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin navigation map</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/39ae600ed082352c03509106609818ff">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&amp;family=Instrument+Sans:wght@400..700&amp;family=JetBrains+Mono:wght@500&amp;display=swap">
+<style>
+body{margin:0;background:#F7F3EC}
+a{color:#14213D}a:hover{color:#A8232E}
+
+
+
+
+
+
+
+/*RESP-START*/
+.mbar,.mtab{display:none}
+.mbar{position:sticky;top:0;z-index:1000;height:56px;align-items:center;gap:10px;padding:0 12px 0 16px;border-bottom:1px solid #E4DACA;background:#FFFCF7}
+.mbar.dark{background:#14213D;color:#fff;border-bottom:0}
+.mbar .mlogo{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
+.mbar .mlogo img{width:30px;height:30px;border-radius:7px;background:#FFFCF7}
+.mbar .mlogo b{font-size:15px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mbar .mlogo span{display:block;font-size:11.5px;font-weight:600;color:#A8232E}
+.mbar.dark .mlogo span{color:#E2B65C}
+.mbar .mbtn{all:unset;cursor:pointer;width:44px;height:44px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;position:relative}
+.mbar .mbtn:focus-visible{outline:2px solid #A8232E;outline-offset:2px}
+.mmenu{position:relative}
+.mmenu summary{list-style:none}.mmenu summary::-webkit-details-marker{display:none}
+.mmenu[open] summary{background:rgba(20,33,61,.08)}
+.mbar.dark .mmenu[open] summary{background:rgba(255,255,255,.12)}
+.mmenu .mpanel{position:fixed;z-index:1001;left:0;right:0;top:56px;bottom:0;overflow:auto;padding:12px 12px 100px;background:#FFFCF7;border-top:1px solid #E4DACA;animation:mdrop 200ms cubic-bezier(.23,1,.32,1)}
+.mbar.dark .mmenu .mpanel{background:#14213D;border-top-color:rgba(255,255,255,.1)}
+.mmenu .mpanel a{min-height:48px}
+@keyframes mdrop{from{opacity:0;transform:translateY(-6px)}}
+.mtab{position:fixed;left:0;right:0;bottom:0;z-index:999;height:72px;padding:0 4px 8px;background:#FFFCF7;border-top:1px solid #E4DACA;grid-template-columns:repeat(5,minmax(0,1fr));align-items:center;font-size:11.5px;font-weight:600}
+.mtab a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:52px;color:#46536F;position:relative}
+.mtab a.on{color:#A8232E}
+.mtab a.add{justify-self:center;width:52px;height:52px;min-height:0;border-radius:16px;background:#A8232E;color:#fff;margin-top:-16px;box-shadow:0 10px 20px -10px rgba(168,35,46,.7)}
+.mtab .count{position:absolute;top:2px;right:calc(50% - 22px)}
+
+.mtab.admin{background:#14213D;border-top-color:rgba(255,255,255,.08)}
+.mtab.admin a,.mtab.admin summary{color:#C9D0DD}
+.mtab.admin a.on,.mtab.admin .mmore.on summary{color:#E2B65C}
+.mtab .mmore summary{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:52px;cursor:pointer;list-style:none}
+.mtab .mmore .mpanel{top:56px;bottom:72px}
+.mpanel.dark{background:#14213D!important}
+@media (max-width:1023px){
+  .hb.shell{flex-direction:column;flex-wrap:nowrap}
+  .hb.shell>aside.side{display:none!important}
+  .mbar{display:flex}
+  .hb.shell>.main{flex:1 1 auto;width:100%}
+  .cmdk{display:none!important}
+  .hb.shell>.main [style*="grid-template-columns: minmax(0, 1."],.hb.shell>.main [style*="minmax(0, 1fr) minmax(0, 1."],.hb.shell>.main [style*="minmax(0, 1fr) 360px"]{grid-template-columns:minmax(0,1fr)!important}
+  .hb.shell>.main [style*="grid-template-columns"][style*="repeat(5"]{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  .hb.shell>.main [style*="flex-wrap: wrap"],.hb.shell>.main [style*="display: grid"]{align-content:flex-start}
+  .hb.shell>.main .sheet{grid-template-columns:minmax(0,1fr)!important}
+  .hb.shell>.main .sheet>aside[style*="sticky"]{position:static!important}
+  .hb.shell>.main [style*="position: sticky; bottom: 0"]{bottom:var(--mtab-pad,0px)!important}
+  .hb.shell>.main>div:first-of-type:not(.mbar){height:auto!important;min-height:60px;flex-wrap:wrap;row-gap:8px;padding-top:10px!important;padding-bottom:10px!important}
+}
+@media (max-width:1023px){
+  .hb.shell{padding-bottom:var(--mtab-pad,0px)}
+  .mtab.on-phone{display:grid}
+  .hide-m,.hide-phone{display:none!important}
+  .hb.shell>.main>div:first-of-type:not(.mbar){padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main main,.hb.shell>.main>div>main,.hb.shell>.main section,.hb.shell>.main aside{max-width:100%!important}
+  .hb.shell>.main main{padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main>div[style*="32px"]:not(:first-of-type):not(.mbar){padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main>div[style*="32px"]>main,.hb.shell>.main>div[style*="32px"]>aside{padding-left:0!important;padding-right:0!important}
+  .hb.shell>.main .sheet{align-content:start;flex:none}
+  .row{flex-wrap:wrap;row-gap:8px}
+  .row>span[style*="flex: 1"]{flex:1 1 55%!important}
+  .hb.shell>.main [style*="padding: 0 32px"],.hb.shell>.main [style*="padding: 0 32px;"]{padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main [style*="grid-template-columns"]:not(dl):not(.keep2):not(.steps):not(.stepper):not([style*="1fr auto"]):not([style*="repeat(5"]){grid-template-columns:minmax(0,1fr)!important}
+  .hb.shell>.main [style*="grid-template-columns"][style*="repeat(5"]{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  .hb.shell>.main [style*="grid-template-columns"]:not([style*="gap"]){row-gap:16px}
+  .hb.shell>.main ol.steps[style],.hb.shell>.main .steps{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .hb.shell>.main .keep2{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .hb.shell>.main dl dd{min-width:0;overflow-wrap:anywhere}
+  .hb.shell>.main [style*="flex: 999 1"],.hb.shell>.main [style*="flex: 1 1 4"],.hb.shell>.main [style*="flex: 1 1 3"],.hb.shell>.main [style*="flex: 1 1 6"],.hb.shell>.main [style*="flex: 0 0 3"]{flex:1 1 100%!important;max-width:100%!important;border-left:0!important;border-right:0!important;padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main [style*="border-left: 1px solid #E4DACA"]:not(td):not(th){border-left:0!important}
+  .hb.shell>.main ol.num>li,.hb.shell>.main .num>div{padding-left:0!important;padding-right:0!important}
+  .tbl-box{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  [role=tablist],.subtabs,nav.subtabs{flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none}
+  [role=tablist]::-webkit-scrollbar,.subtabs::-webkit-scrollbar{display:none}
+  [role=tablist]>*,.subtabs>*{flex-shrink:0}
+  h1.serif{font-size:26px!important}
+  h2.serif{font-size:24px!important}
+  .btn{min-height:44px}
+  .hb.shell>.main .btn{flex-wrap:nowrap;max-width:100%;height:auto;padding-top:8px;padding-bottom:8px;text-align:center;white-space:normal}
+  .btn-xs{min-height:36px}
+  .pop{position:fixed!important;left:16px!important;right:16px!important;width:auto!important;top:70px!important}
+  .toast{left:16px;right:16px;transform:none;max-width:none;bottom:calc(var(--mtab-pad,0px) + 16px)}
+  @keyframes toastin{from{opacity:0;transform:translateY(10px)}}
+
+  .task{display:grid!important;grid-template-columns:40px minmax(0,1fr) auto;gap:6px 14px;align-items:center;padding:14px 16px!important}
+  .task>:nth-child(2){grid-column:2/4}
+  .task.t4>:nth-child(1){grid-row:1/3;align-self:start}
+  .task.t4>:nth-child(3){grid-column:2;justify-self:start}
+  .task.t4>:nth-child(4){grid-column:3;grid-row:2}
+  .task:not(.t4)>:nth-child(2){grid-column:2}
+  .hb.shell>.main [style*="gap: 0"]{row-gap:18px!important}
+
+  .hb.shell>.main [style*="flex-wrap: wrap"],.hb.shell>.main [style*="display: grid"]{align-content:flex-start}
+  .hb.shell>.main [style*="justify-content: space-between"]{flex-wrap:wrap;row-gap:8px}
+  .hb.shell>.main>div:first-of-type:not(.mbar)>div{flex-wrap:wrap}
+  [role=alert]{flex-wrap:wrap}
+  [role=alert]>span[style*="flex: 1"]{flex:1 1 220px!important}
+  .stages{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .stg::after{display:none!important}
+  .parked{grid-template-columns:1fr!important;gap:2px!important}
+  .feat-h{flex-wrap:wrap}
+  .feat-h>span:nth-child(2){flex:1 1 calc(100% - 64px)!important}
+  .seg{flex-wrap:nowrap!important;overflow-x:auto;max-width:100%}
+  .seg button{white-space:nowrap;flex-shrink:0}
+  .qrow{grid-template-columns:22px 40px minmax(0,1fr)!important;gap:8px 12px!important;padding:14px 16px!important}
+  .qrow>a.btn{grid-column:3;justify-self:start}
+  .qrow b{white-space:normal!important}
+  ol.stepper{grid-template-columns:1fr!important}
+  ol.stepper li{flex-direction:row!important;flex-wrap:wrap;align-items:baseline;gap:4px 10px!important;padding:0 0 16px 30px!important}
+  ol.stepper li::before{top:16px!important;bottom:0;left:6px!important;right:auto!important;width:3px!important;height:auto!important}
+  ol.stepper li:last-child::before{display:none}
+  ol.stepper .dot{top:1px!important}
+  .hb.shell>.main [style*="position: absolute"][style*="bottom: 24px"]{position:sticky!important;left:auto!important;right:auto!important;bottom:12px!important;flex-wrap:wrap;margin:16px 0 0}
+  .hb.shell>.main [style*="position: absolute"][style*="bottom: 24px"]>span{flex:1 1 100%!important}
+  .hb.shell>.main div:has(>div>h2.serif){flex-wrap:wrap}
+  .hb.shell>.main div:has(>h2.serif){flex:1 1 200px!important;min-width:0}
+  .hb.shell>.main [style*="grid-template-columns"]:has(>.kpi){grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .kpi{padding:12px 14px!important}.kpi b{font-size:22px!important}
+  .tbl.cards thead{display:none}
+  .tbl.cards,.tbl.cards tbody{display:block}
+  .tbl.cards tr{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px 12px;align-items:center;padding:14px 16px;border-top:1px solid #E4DACA}
+  .tbl.cards tr:first-child{border-top:0}
+  .tbl.cards td{display:block;padding:0!important;border:0!important;max-width:none!important;text-align:left}
+  .tbl.cards td.full{grid-column:1/-1}
+  .tbl.cards td.r{text-align:right}
+  .tbl.cards td.hide{display:none}
+  .tbl.cards td.pr{grid-column:3;grid-row:1}
+}
+
+@media (max-width:767px){
+  .hb>div[style*="height: 64px"]{height:auto!important;flex-wrap:wrap;row-gap:8px;padding:10px 16px!important}
+  .hb>div[style*="height: 64px"] [role=tablist]{display:none!important}
+  .hb>div[style*="height: 64px"]>span[style*="width: 1px"]{display:none}
+  .hb aside[aria-label="Sections"]{max-width:none!important;flex:1 1 100%!important;border-right:0!important}
+  .hb main[aria-label="Preview"]{padding:16px!important}
+  .hb main[aria-label="Preview"] [style*="grid-template-columns: 1fr 1fr"]{grid-template-columns:1fr!important}
+  .hb [style*="flex-wrap: wrap"]{align-content:flex-start}
+}
+
+@media (min-width:768px) and (max-width:1023px){
+  .hb.shell{padding-bottom:0!important}
+  .mtab.on-phone{display:none!important}
+  .hide-phone{display:revert!important}
+  .hb.shell>.main [style*="grid-template-columns"][style*="repeat(4"],.hb.shell>.main [style*="grid-template-columns"][style*="repeat(3"]:not([style*="repeat(3, minmax(0, 1fr)) "]){grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .hb.shell>.main [style*="grid-template-columns: 1fr 1fr"]{grid-template-columns:1fr 1fr!important}
+  .hb.shell>.main ol.steps[style],.hb.shell>.main .steps{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+  .stages{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+  .toast{bottom:16px}
+  h1.serif{font-size:30px!important}
+  .tbl.cards thead{display:table-header-group}
+  .tbl.cards{display:table}.tbl.cards tbody{display:table-row-group}
+  .tbl.cards tr{display:table-row}
+  .tbl.cards td{display:table-cell;padding:12px 14px!important;border-top:1px solid #E4DACA!important}
+  .tbl.cards td.hide{display:table-cell}
+  .tbl.cards td.pr{grid-column:auto;grid-row:auto}
+}
+@media (prefers-reduced-motion:reduce){.mmenu .mpanel{animation:none}}
+/*RESP-END*/
+</style>
+</helmet>
+<div class="hb" style="width: 1440px; min-height: 1080px; box-sizing: border-box; padding: 64px 72px; background: #F7F3EC; display: flex; flex-direction: column; gap: 40px; font-family: 'Instrument Sans', sans-serif; color: #14213D">
+  <div style="display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 64px; align-items: end">
+    <div style="display: flex; flex-direction: column; gap: 16px">
+      <h1 class="serif" style="font-size: 60px; line-height: 1.0">45 admin pages, <em style="color: #A8232E">nine places</em> to look.</h1>
+      <p style="font-size: 18px; color: #46536F; max-width: 36em">Today's workspace spreads work across eight menus and dozens of standalone pages. The redesign groups everything into nine hubs. Each hub opens on its most-used view, with the rest one tab away — and ⌘K jumps to any order, seller or setting by name.</p>
+    </div>
+    <div style="display: flex; gap: 16px; justify-content: flex-end">
+      <div style="padding: 22px 26px; border-radius: 16px; background: #FFFCF7; border: 1px solid #E4DACA; display: flex; flex-direction: column; gap: 4px; min-width: 200px">
+        <span style="font-size: 14px; color: #46536F">Today</span>
+        <b class="serif num" style="font-size: 44px; font-weight: 500; line-height: 1">43</b>
+        <span style="font-size: 14px; color: #46536F">menu entries, 8 groups</span>
+      </div>
+      <div style="display: flex; align-items: center; color: #A8232E"><span class="ic s28 i-arrow"></span></div>
+      <div style="padding: 22px 26px; border-radius: 16px; background: #14213D; color: #fff; display: flex; flex-direction: column; gap: 4px; min-width: 200px">
+        <span style="font-size: 14px; color: #C7CEDB">Redesign</span>
+        <b class="serif num" style="font-size: 44px; font-weight: 500; line-height: 1; color: #E2B65C">9</b>
+        <span style="font-size: 14px; color: #C7CEDB">hubs, tabs inside, ⌘K everywhere</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 12px; align-items: start">
+    <sc-for list="{{hubs}}" as="h" hint-placeholder-count="9">
+      <div style="display: flex; flex-direction: column; border-radius: 14px; background: #fff; border: 1px solid #E4DACA; overflow: hidden">
+        <div style="padding: 16px 14px; background: {{h.bg}}; color: {{h.fg}}; display: flex; flex-direction: column; gap: 10px">
+          <span class="ic s22 {{h.icon}}"></span>
+          <b style="font-size: 16.5px">{{h.name}}</b>
+          <span style="font-size: 12.5px; opacity: .85; line-height: 1.35">{{h.job}}</span>
+        </div>
+        <ul style="list-style: none; margin: 0; padding: 10px 12px 14px; display: flex; flex-direction: column; gap: 0">
+          <sc-for list="{{h.tabs}}" as="t" hint-placeholder-count="4">
+            <li style="font-size: 13px; padding: 7px 2px; border-bottom: 1px solid #F0E8DA; color: #2C3B5C; line-height: 1.3">{{t}}</li>
+          </sc-for>
+        </ul>
+      </div>
+    </sc-for>
+  </div>
+
+  <section aria-label="Where every current menu link goes" style="display: flex; flex-direction: column; gap: 16px; padding-top: 32px; border-top: 1px solid #D3C5AD">
+    <div style="display: flex; justify-content: space-between; align-items: end; gap: 24px">
+      <h2 class="serif" style="font-size: 30px; line-height: 1.1">Where each of today's links goes</h2>
+      <span style="font-size: 14.5px; color: #46536F">All {{moveCount}} links in today's menu, in their current order. None are removed.</span>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 24px">
+      <sc-for list="{{moves}}" as="m" hint-placeholder-count="44">
+        <div style="display: flex; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid #E4DACA; font-size: 13.5px">
+          <span style="color: #2C3B5C">{{m.old}}</span>
+          <span style="white-space: nowrap; font-weight: 650; color: {{m.c}}">{{m.hub}}<span style="font-weight: 500; color: #675B4E"> › {{m.tab}}</span></span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; padding-top: 24px; border-top: 1px solid #D3C5AD">
+    <div style="display: flex; gap: 14px"><span class="ic s24 i-command" style="color: #A8232E"></span><span style="font-size: 14.5px; color: #2C3B5C"><b style="display: block; color: #14213D; font-size: 15.5px">One search for everything</b>Type an order number, seller, phone or setting name. Results show permissions inline.</span></div>
+    <div style="display: flex; gap: 14px"><span class="ic s24 i-check" style="color: #A8232E"></span><span style="font-size: 14.5px; color: #2C3B5C"><b style="display: block; color: #14213D; font-size: 15.5px">Work comes to you</b>Today merges review tasks, reminders and problems into one queue, sorted by deadline and owner.</span></div>
+    <div style="display: flex; gap: 14px"><span class="ic s24 i-lock" style="color: #A8232E"></span><span style="font-size: 14.5px; color: #2C3B5C"><b style="display: block; color: #14213D; font-size: 15.5px">Hidden, not disabled</b>Staff only see hubs and tabs their role can use, so nobody hits an “access denied” page.</span></div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1640}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const ink = { bg: '#14213D', fg: '#FFFCF7' }, paper = { bg: '#EDE4D3', fg: '#14213D' };
+    const hubs = [
+      { ...ink, name: 'Today', icon: 'i-home', job: 'Your queue across the whole business', tabs: ['Overview', 'Review tasks', 'Reminders', 'Problems', 'Notifications'] },
+      { ...paper, name: 'Orders', icon: 'i-receipt', job: 'From placed to delivered', tabs: ['All orders', 'Dispatch', 'Parcel problems', 'Delivery rates', 'Order emails', 'Seller answers'] },
+      { ...paper, name: 'Care', icon: 'i-message', job: 'Customers after checkout', tabs: ['Returns & complaints', 'Customers', 'Contact & feedback', 'Customer reviews', 'Privacy requests'] },
+      { ...paper, name: 'Sellers', icon: 'i-store', job: 'Onboarding and shop changes', tabs: ['Applications', 'All sellers', 'Documents', 'Updated documents', 'Bank & owner changes', 'Shop detail fixes', 'ID requests'] },
+      { ...paper, name: 'Catalog', icon: 'i-package', job: 'What shoppers can see', tabs: ['Product review', 'Help requests', 'Publishing', 'Categories & occasions', 'Homepage'] },
+      { ...paper, name: 'Money', icon: 'i-wallet', job: 'Cash in, payouts out', tabs: ['Courier cash', 'Payouts', 'Payout run', 'Refunds & recoveries', 'Books', 'Commission', 'Fees & waivers', 'Money notices'] },
+      { ...paper, name: 'Growth', icon: 'i-percent', job: 'Offers that bring people back', tabs: ['Promo codes', 'Referrals & wallet', 'Loyalty points', 'Gift cards', 'Programs'] },
+      { ...paper, name: 'Reports', icon: 'i-chart', job: 'Numbers and the record', tabs: ['Business report', 'Work log', 'Staff history', 'Form answers'] },
+      { ...paper, name: 'Settings', icon: 'i-sliders', job: 'Rules, team and system', tabs: ['Team & access', 'Business settings', 'Legal & procedures', 'Forms', 'Email delivery', 'System health & backups', 'Security', 'Not in use yet'] }
+    ];
+    const M = [
+      ['Overview', 'Today', 'Overview'], ['Notifications', 'Today', 'Notifications'], ['Exception follow-up', 'Today', 'Problems'], ['Recorded work', 'Reports', 'Work log'], ['Reports', 'Reports', 'Business report'],
+      ['Sellers', 'Sellers', 'All sellers'],
+      ['Product moderation', 'Catalog', 'Product review'], ['Product publishing', 'Catalog', 'Publishing'], ['Customer reviews', 'Care', 'Customer reviews'], ['Categories & occasions', 'Catalog', 'Categories'], ['Homepage products', 'Catalog', 'Homepage'],
+      ['Orders', 'Orders', 'All orders'], ['Shipping & claims', 'Orders', 'Parcel problems'], ['Returns & complaints', 'Care', 'Returns'], ['Contact & feedback', 'Care', 'Contact'], ['Rider operations', 'Settings', 'Not in use yet'], ['Delivery rates', 'Orders', 'Delivery rates'], ['Privacy requests', 'Care', 'Privacy'],
+      ['Accounting', 'Money', 'Books'], ['Incoming payments', 'Money', 'Courier cash'], ['Payouts', 'Money', 'Payouts'], ['Fees & programs overview', 'Money', 'Fees & waivers'], ['Program Management', 'Growth', 'Programs'], ['Referrals & wallet', 'Growth', 'Referrals'], ['Commission', 'Money', 'Commission'], ['Marketplace fee waivers', 'Money', 'Fees & waivers'], ['Promo codes', 'Growth', 'Promo codes'], ['Daily loyalty points', 'Growth', 'Loyalty'], ['Gift cards', 'Growth', 'Gift cards'],
+      ['Business Settings', 'Settings', 'Business'], ['Team & business policies', 'Settings', 'Team & access'], ['Legal procedures', 'Settings', 'Legal'], ['Active staff procedure', 'Settings', 'Legal'], ['Account security', 'Settings', 'Security'], ['Order emails', 'Orders', 'Order emails'], ['System health & records', 'Settings', 'System health'], ['Form Management', 'Settings', 'Forms'], ['Email delivery', 'Settings', 'Email delivery'], ['Governance', 'Settings', 'System health'], ['Backup & Transfer', 'Settings', 'System health'],
+      ['Action audit', 'Reports', 'Staff history'], ['Recorded form answers', 'Reports', 'Form answers'], ['Private identity request history', 'Sellers', 'ID requests']
+    ];
+    const C = { Today: '#A8232E', Orders: '#14213D', Care: '#14213D', Sellers: '#14213D', Catalog: '#14213D', Money: '#14213D', Growth: '#14213D', Reports: '#14213D', Settings: '#14213D' };
+    const moves = M.map(([o, hub, tab]) => ({ old: o, hub, tab, c: C[hub] }));
+    return { hubs, moves, moveCount: moves.length };
+  }
+}
+</script>
+</body>
+</html>

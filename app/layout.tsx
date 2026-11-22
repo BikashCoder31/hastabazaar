@@ -1,17 +1,18 @@
 import type { Metadata } from 'next';
 import { TrafficBeacon } from '@/components/analytics/traffic-beacon';
+import { SupportAssistant } from '@/components/support/support-assistant';
 import './globals.css';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://hastabazaar.com'),
   title: {
-    default: 'HastaBazaar — Handmade with a human story',
-    template: '%s · HastaBazaar',
+    default: 'Hastabazaar — Products, Gifts & Crafts in Nepal',
+    template: '%s · Hastabazaar',
   },
   description:
-    'A considered marketplace for handmade craft, jewellery, textiles, and homeware.',
+    'Shop new products, gifts, jewellery, textiles and homeware from makers and independent sellers in Nepal. Read each listing for its materials, origin and seller details.',
   icons: {
-    icon: '/brand/hastabazaar-icon-32.png',
+    icon: { url: '/brand/hastabazaar-mark-192.png', type: 'image/png', sizes: '192x192' },
     apple: '/brand/hastabazaar-apple-touch-icon.png',
   },
 };
@@ -31,6 +32,7 @@ export default function RootLayout({
           Skip to main content
         </a>
         {children}
+        <SupportAssistant />
         <TrafficBeacon />
       </body>
     </html>

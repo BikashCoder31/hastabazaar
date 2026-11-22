@@ -1,7 +1,20 @@
+import { allocateOrderCash, ParcelConflictError } from '../checkout/parcel-cash-allocation';
+import {preparePaymentException} from '../payments/payment-exceptions';
 import { assertFirstCodFulfillmentAllowed } from '../orders/first-cod-review';
+import { payableOrderTotalSql } from '../db/repositories/platform-service-fee';
+import { readOriginalBuyerLinePricing } from '../db/repositories/order-item-pricing-snapshots';
+import { allocateCancellationItems, calculateCancellation } from '../cancellation/accounting';
+import {
+  readSavedSellerShipmentCharges,
+  SELLER_SHIPMENT_DELIVERY_POLICY,
+  usesSellerShipmentDelivery,
+} from '../returns/seller-shipment-delivery';
+import { cancellationCauseSchemaAvailable, readReturnCancellationCause } from '../cancellation/attribution';
+import type { CancellationCause } from '../cancellation/causes';
 import {
   cancellationPreview,
   cancelSelectedParcels,
+  CancellationConflictError,
   currentReceiptSnapshot,
 } from '../cancellation/repository';
 import {
@@ -15,10 +28,19 @@ import { buildFormAnswerInsert } from '../db/repositories/form-answers';
 import { digestFormRequest } from '../forms/submission';
 import type { FormAnswerSnapshot } from '../forms/types';
 import { safeCourierUrl, parseLocation } from '../delivery/validation';
+import { deliveryPartnerSchemaAvailable, readDeliveryPartner } from '../delivery/partners';
+import { ncmPartnerName, ncmSchemaAvailable } from '../delivery/ncm-settings';
+import { partnerTrackingUrl } from '../delivery/partner-tracking';
 import { buildEarningsAccrualStatements } from '../db/repositories/payouts';
 import { accrueManagedEntitlements } from '../db/repositories/managed-settlements';
 import { issueManagedInvoiceGroups } from '../db/repositories/managed-documents';
+import { withReceiptGroups } from '../documents/billing';
+import type { OrderDocumentSnapshot } from '../db/repositories/orders';
+import { receiptNumberStatements,withLiveInvoiceReferences } from '../db/repositories/billing-documents';
 import { getEffectiveBusinessSetting } from '../db/repositories/business-settings';
+import { deliveryFailureSchemaAvailable, readDeliveryFailureReason } from '../shipping/delivery-failure';
+import { courierBookedTemplate, courierEmailNoticeStatements, customerCourierBookedTemplate, missedDeliveryTemplate, parcelProblemTemplate } from './courier-email-notices';
+import { orderMessageStatements } from './order-message-statements';
 import {
   addKathmanduBusinessDays,
   buildRiderAssignmentPolicySnapshot,
@@ -27,7 +49,7 @@ import {
   type RiderFinancePolicy,
   type RiderTripOutcome,
 } from '../riders/operations-policy';
-export class ParcelConflictError extends Error {}
+export { allocateOrderCash, ParcelConflictError } from '../checkout/parcel-cash-allocation';
 export interface Parcel {
   id: string;
   orderId: string;
@@ -77,38 +99,6 @@ export async function listParcels(
     .all<Parcel>();
   return rows.results;
 }
-export function allocateOrderCash(
-  total: number,
-  weights: readonly { sellerId: string; amount: number }[],
-) {
-  if (
-    !Number.isSafeInteger(total) ||
-    total < 0 ||
-    !weights.length ||
-    weights.some((w) => !Number.isSafeInteger(w.amount) || w.amount <= 0)
-  )
-    throw new ParcelConflictError('Invalid order allocation.');
-  const sorted = [...weights].sort((a, b) =>
-    a.sellerId.localeCompare(b.sellerId),
-  );
-  const sum = sorted.reduce((n, w) => n + BigInt(w.amount), BigInt(0));
-  const parts = sorted.map((w) => ({
-    sellerId: w.sellerId,
-    amount: Number((BigInt(total) * BigInt(w.amount)) / sum),
-    remainder: (BigInt(total) * BigInt(w.amount)) % sum,
-  }));
-  let remaining = total - parts.reduce((n, w) => n + w.amount, 0);
-  for (const part of [...parts].sort((a, b) =>
-    a.remainder === b.remainder
-      ? a.sellerId.localeCompare(b.sellerId)
-      : a.remainder > b.remainder
-        ? -1
-        : 1,
-  )) {
-    if (remaining-- > 0) part.amount++;
-  }
-  return parts.map(({ sellerId, amount }) => ({ sellerId, amount }));
-}
 function assertion(
   db: D1Database,
   predicate: string,
@@ -149,18 +139,23 @@ function parcelAudit(
   o: { actorId: string; requestId: string; now: number },
   orderId: string,
   action: string,
+  reason = 'Parcel operation recorded',
+  returnCause?: CancellationCause,
 ) {
   return db
     .prepare(
-      "INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,request_id,created_at) VALUES (?,?,?,'order',?,'Parcel operation recorded',?,?)",
+      `INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,request_id,created_at${returnCause ? ',next_json' : ''})
+        VALUES (?,?,?,'order',?,?,?,?${returnCause ? ',?' : ''})`,
     )
     .bind(
       crypto.randomUUID(),
       o.actorId,
       'parcel.' + action,
       orderId,
+      reason,
       o.requestId + ':audit',
       o.now,
+      ...(returnCause ? [JSON.stringify({ cause: returnCause })] : []),
     );
 }
 async function transact(db: D1Database, statements: D1PreparedStatement[]) {
@@ -259,7 +254,7 @@ function compensationStatement(
       now,
     );
 }
-async function remittanceAllocationStatements(
+export async function remittanceAllocationStatements(
   db: D1Database,
   input: {
     recordId: string;
@@ -301,42 +296,112 @@ async function remittanceAllocationStatements(
   }
   return result;
 }
-export async function prepareSellerParcels(
+/** A carrier request and parcel setup can reuse the same outbound job. */
+export function prepareOutboundDeliveryUnitMappings(
   db: D1Database,
-  o: { orderId: string; actorId: string; requestId: string; now: number },
-) {
-  const authority = await staffMutationGuard(
-    db,
-    o.actorId,
-    'order.manage',
-    ParcelConflictError,
-  );
-  await assertFirstCodFulfillmentAllowed(db, o.orderId, ParcelConflictError);
-  const payload = JSON.stringify({ action: 'setup', orderId: o.orderId });
-  if (await repeated(db, o.requestId, o.actorId, payload)) return;
-  const order = await db
+  input: { orderId: string; sellerId: string; deliverySnapshotJson: string | null; now: number },
+): D1PreparedStatement[] {
+  if (!usesSellerShipmentDelivery(input.deliverySnapshotJson)) return [];
+  const { orderId, sellerId, deliverySnapshotJson, now } = input;
+  return [
+    ...assertion(db,
+      'EXISTS(SELECT 1 FROM orders WHERE id=? AND HEX(delivery_rate_snapshot_json)=HEX(?))',
+      [orderId, deliverySnapshotJson],
+    ),
+    db.prepare(`INSERT INTO order_delivery_unit_parcels(order_item_id,unit_ordinal,shipping_job_id,created_at)
+      SELECT u.order_item_id,u.unit_ordinal,j.id,?
+      FROM order_delivery_unit_allocations u
+      JOIN order_delivery_shipment_allocations s ON s.id=u.shipment_id AND s.order_id=u.order_id
+      JOIN order_items i ON i.id=u.order_item_id AND i.order_id=s.order_id AND i.seller_id=s.seller_id
+      JOIN shipping_jobs j ON j.order_id=s.order_id AND j.seller_id=s.seller_id AND j.direction='outbound'
+      WHERE s.order_id=? AND s.seller_id=? AND i.fulfillment_status<>'cancelled'
+        AND NOT EXISTS(SELECT 1 FROM order_delivery_unit_parcels retained
+          WHERE retained.order_item_id=u.order_item_id AND retained.unit_ordinal=u.unit_ordinal
+            AND retained.shipping_job_id=j.id)`)
+      .bind(now, orderId, sellerId),
+    ...assertion(db, `NOT EXISTS(SELECT 1 FROM order_items i
+      WHERE i.order_id=? AND i.seller_id=? AND i.fulfillment_status<>'cancelled'
+        AND i.quantity<>(SELECT COUNT(*) FROM order_delivery_unit_parcels mapped
+          JOIN shipping_jobs j ON j.id=mapped.shipping_job_id
+          WHERE mapped.order_item_id=i.id AND j.order_id=i.order_id AND j.seller_id=i.seller_id AND j.direction='outbound'))`,
+      [orderId, sellerId],
+    ),
+  ];
+}
+
+type ParcelSetupOrder = {
+  total: number;
+  cancellationVersion: number;
+  paymentMode: string;
+  deliverySnapshotJson: string | null;
+  subtotal: number;
+  delivery: number;
+  wallet: number;
+  discount: number;
+  promo: number;
+  serviceFee: number;
+};
+
+async function originalShipmentCashAllocation(db: D1Database, orderId: string, order: ParcelSetupOrder) {
+  try {
+    const { results } = await db.prepare(`SELECT id,seller_id AS sellerId,line_total_paisa AS amount,
+      promo_discount_paisa AS promo FROM order_items WHERE order_id=? AND fulfillment_status<>'cancelled'`)
+      .bind(orderId).all<{ id: string; sellerId: string; amount: number; promo: number }>();
+    const [buyerPricing, sellerCharges] = await Promise.all([
+      readOriginalBuyerLinePricing(db, orderId),
+      readSavedSellerShipmentCharges(db, orderId, order.delivery, results.map(item => item.sellerId)),
+    ]);
+    const items = allocateCancellationItems(results.map(item => ({
+      id: item.id,
+      sellerId: item.sellerId,
+      amount: buyerPricing?.get(item.id)?.customerSubtotalPaisa ?? item.amount,
+      ...(order.promo ? { promo: item.promo } : {}),
+    })), order.wallet, order.discount);
+    const allocation = calculateCancellation(items, new Set<string>(), {
+      pricingPolicy: SELLER_SHIPMENT_DELIVERY_POLICY,
+      sellerCharges,
+    }, order.serviceFee);
+    if (allocation.subtotal !== order.subtotal || allocation.total !== order.total ||
+        allocation.parcels.reduce((sum, parcel) => sum + parcel.amount, 0) !== order.total) {
+      throw new Error('Saved buyer amounts and parcel dues differ from the accepted order.');
+    }
+    return allocation.parcels;
+  } catch (cause) {
+    throw new ParcelConflictError('Reconcile the original buyer amounts and seller shipment charges before preparing parcels.', { cause });
+  }
+}
+
+async function readParcelSetupOrder(db: D1Database, orderId: string, readyForSetup: boolean) {
+  return db
     .prepare(
-      "SELECT COALESCE(current_total_paisa,grand_total_paisa) AS total,cancellation_version AS cancellationVersion FROM orders WHERE id=? AND status IN ('confirmed','packing','ready_for_pickup')",
+      `SELECT ${payableOrderTotalSql()} AS total,cancellation_version AS cancellationVersion,payment_mode AS paymentMode,
+        delivery_rate_snapshot_json AS deliverySnapshotJson,item_subtotal_paisa AS subtotal,delivery_charge_paisa AS delivery,
+        wallet_credit_paisa AS wallet,referral_discount_paisa+promo_discount_paisa AS discount,
+        promo_discount_paisa AS promo,buyer_platform_fee_paisa AS serviceFee
+        FROM orders WHERE id=?${readyForSetup ? " AND status IN ('confirmed','packing','ready_for_pickup')" : ''}`,
     )
-    .bind(o.orderId)
-    .first<{ total: number; cancellationVersion: number }>();
-  if (!order)
-    throw new ParcelConflictError(
-      'Prepare parcels before dispatch. Historical delivered orders remain unchanged.',
-    );
+    .bind(orderId)
+    .first<ParcelSetupOrder>();
+}
+
+async function calculateSellerParcelCash(db: D1Database, orderId: string, order: ParcelSetupOrder) {
   const items = await db
     .prepare(
       "SELECT seller_id AS sellerId,SUM(line_total_paisa) AS amount FROM order_items WHERE order_id=? AND fulfillment_status<>'cancelled' GROUP BY seller_id",
     )
-    .bind(o.orderId)
+    .bind(orderId)
     .all<{ sellerId: string; amount: number }>();
-  let allocated = allocateOrderCash(order.total, items.results);
-  if (order.cancellationVersion) {
+  const useOriginalShipmentCash = order.paymentMode === 'cod' && !order.cancellationVersion &&
+    usesSellerShipmentDelivery(order.deliverySnapshotJson);
+  let allocated = useOriginalShipmentCash
+    ? await originalShipmentCashAllocation(db, orderId, order)
+    : allocateOrderCash(order.paymentMode==='cod'?order.total:0, items.results);
+  if (order.cancellationVersion && order.paymentMode==='cod') {
     const event = await db
       .prepare(
         'SELECT next_json AS next FROM order_cancellation_events WHERE order_id=? AND version=?',
       )
-      .bind(o.orderId, order.cancellationVersion)
+      .bind(orderId, order.cancellationVersion)
       .first<{ next: string }>();
     if (!event)
       throw new ParcelConflictError(
@@ -352,14 +417,48 @@ export async function prepareSellerParcels(
         'Cancellation allocation does not reconcile.',
       );
   }
+  return allocated;
+}
+
+/** Project the same recorded cash allocation that parcel setup will use. */
+export async function readUnbookedSellerParcelCash(db: D1Database, orderId: string) {
+  const order = await readParcelSetupOrder(db, orderId, false);
+  if (!order || order.paymentMode !== 'cod') return [];
+  try {
+    return await calculateSellerParcelCash(db, orderId, order);
+  } catch (error) {
+    if (error instanceof ParcelConflictError || error instanceof SyntaxError) return [];
+    throw error;
+  }
+}
+
+export async function prepareSellerParcels(
+  db: D1Database,
+  o: { orderId: string; actorId: string; requestId: string; now: number },
+) {
+  const authority = await staffMutationGuard(
+    db,
+    o.actorId,
+    'order.manage',
+    ParcelConflictError,
+  );
+  await assertFirstCodFulfillmentAllowed(db, o.orderId, ParcelConflictError);
+  const payload = JSON.stringify({ action: 'setup', orderId: o.orderId });
+  if (await repeated(db, o.requestId, o.actorId, payload)) return;
+  const order = await readParcelSetupOrder(db, o.orderId, true);
+  if (!order)
+    throw new ParcelConflictError(
+      'Prepare parcels before dispatch. Historical delivered orders remain unchanged.',
+    );
+  const allocated = await calculateSellerParcelCash(db, o.orderId, order);
   const statements: D1PreparedStatement[] = [
     db
       .prepare('UPDATE orders SET updated_at=updated_at WHERE id=?')
       .bind(o.orderId),
     ...assertion(
       db,
-      `EXISTS(SELECT 1 FROM orders WHERE id=? AND status IN ('confirmed','packing','ready_for_pickup')) AND NOT EXISTS(SELECT 1 FROM shipping_parcels p JOIN shipping_jobs j ON j.id=p.shipping_job_id WHERE j.order_id=?) AND ${staffSql}`,
-      [o.orderId, o.orderId, o.actorId],
+      `EXISTS(SELECT 1 FROM orders WHERE id=? AND status IN ('confirmed','packing','ready_for_pickup') AND payment_mode=? AND cancellation_version=? AND ${payableOrderTotalSql()}=?) AND NOT EXISTS(SELECT 1 FROM shipping_parcels p JOIN shipping_jobs j ON j.id=p.shipping_job_id WHERE j.order_id=?) AND ${staffSql}`,
+      [o.orderId, order.paymentMode, order.cancellationVersion, order.total, o.orderId, o.actorId],
     ),
   ];
   for (const part of allocated) {
@@ -391,6 +490,12 @@ export async function prepareSellerParcels(
           "INSERT INTO shipping_parcels(shipping_job_id,cod_due_paisa,created_at) SELECT id,?,? FROM shipping_jobs WHERE order_id=? AND seller_id=? AND direction='outbound'",
         )
         .bind(part.amount, o.now, o.orderId, part.sellerId),
+      ...prepareOutboundDeliveryUnitMappings(db, {
+        orderId: o.orderId,
+        sellerId: part.sellerId,
+        deliverySnapshotJson: order.deliverySnapshotJson,
+        now: o.now,
+      }),
     );
   }
   statements.push(
@@ -423,9 +528,14 @@ export interface ParcelOperation {
   method?: string;
   riderEmail?: string;
   courierName?: string;
+  deliveryPartnerId?: string;
   trackingUrl?: string;
   trackingCode?: string;
+  pickupStart?: number;
+  pickupEnd?: number;
   riderReportId?: string;
+  failureReason?: string;
+  cause?: string;
   form?: {
     requestId: string;
     versionId: string;
@@ -433,7 +543,13 @@ export interface ParcelOperation {
     formId?: 'staff.parcel-control' | 'staff.rider-control-1';
   };
 }
-export async function operateParcel(db: D1Database, o: ParcelOperation) {
+export async function operateParcel(
+  db: D1Database,
+  o: ParcelOperation,
+  ncm?: { requestId: string; orderId: string } | { partnerId: string; ncmOrderId: string; fingerprint: string },
+) {
+  const ncmBooking = ncm && 'requestId' in ncm ? ncm : undefined;
+  const ncmProgress = ncm && 'partnerId' in ncm ? ncm : undefined;
   const authority = await staffMutationGuard(
     db,
     o.actorId,
@@ -455,6 +571,14 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
     throw new ParcelConflictError(
       'Form request does not match parcel operation.',
     );
+  if (o.pickupStart !== undefined || o.pickupEnd !== undefined) {
+    if (
+      o.action !== 'assign' || o.method !== 'courier' ||
+      o.pickupStart === undefined || o.pickupEnd === undefined ||
+      !Number.isSafeInteger(o.pickupStart) || !Number.isSafeInteger(o.pickupEnd) ||
+      o.pickupStart < 0 || o.pickupEnd <= o.pickupStart || o.pickupEnd > 8_640_000_000_000_000
+    ) throw new ParcelConflictError('Enter a valid courier pickup window.');
+  }
   if (
     o.form?.formId === 'staff.rider-control-1' &&
     (!o.riderReportId || !['deliver', 'fail'].includes(o.action))
@@ -462,7 +586,16 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
     throw new ParcelConflictError(
       'Rider confirmation requires the matching report action.',
     );
-  const { form, ...operation } = o;
+  const trackFailure = o.action === 'fail' && !o.riderReportId && await deliveryFailureSchemaAvailable(db);
+  const trackCause = (o.action === 'cancel' || o.action === 'receive_return') && await cancellationCauseSchemaAvailable(db);
+  const { form, failureReason, cause, ...savedOperation } = o;
+  const recordedFailure = trackFailure ? readDeliveryFailureReason(failureReason) : undefined;
+  if (trackFailure && failureReason !== undefined && !recordedFailure)
+    throw new ParcelConflictError('Choose a delivery failure reason.');
+  const operation = { ...savedOperation,
+    ...(recordedFailure ? { failureReason: recordedFailure } : {}),
+    ...(trackCause && o.action === 'cancel' && cause !== undefined ? { cause } : {}),
+  };
   const catalogFormId = form?.formId ?? 'staff.parcel-control';
   const formDigest = form
     ? await digestFormRequest({
@@ -499,6 +632,9 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
     await issueManagedInvoiceGroups(db,{orderId:p.orderId,requestId:o.requestId+':managed-invoice',now:o.now});
     return;
   }
+  const courierFailure = trackFailure && p.method === 'courier' && !p.riderUserId;
+  if (courierFailure && !recordedFailure) throw new ParcelConflictError('Choose a delivery failure reason.');
+  if (!courierFailure && recordedFailure) throw new ParcelConflictError('Choose a parcel assigned to a courier.');
   if (o.action !== 'cancel' && o.action !== 'record_cost')
     await assertFirstCodFulfillmentAllowed(db, p.orderId, ParcelConflictError);
   const statements: D1PreparedStatement[] = [
@@ -523,6 +659,19 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
       [o.jobId, o.requestId, o.version + 1],
     ),
   ];
+  if (ncmProgress) {
+    statements.push(
+      db.prepare('UPDATE delivery_partners SET revision=revision WHERE id=?').bind(ncmProgress.partnerId),
+      ...assertion(db, `EXISTS(SELECT 1 FROM ncm_bookings n JOIN shipping_jobs j ON j.id=n.job_id
+        JOIN shipping_parcels p ON p.shipping_job_id=j.id JOIN delivery_partners c ON c.id=n.partner_id
+        JOIN ncm_partner_settings s ON s.partner_id=c.id
+        WHERE n.job_id=? AND n.ncm_order_id=? AND n.state='booked' AND n.actor_id=? AND c.id=?
+          AND c.status='in_use' AND c.booking_mode='api' AND s.connection_fingerprint=? AND s.connected_at IS NOT NULL
+          AND p.delivery_partner_id=c.id AND p.method='courier' AND p.rider_user_id IS NULL
+          AND j.direction='outbound' AND HEX(j.tracking_code)=HEX(n.ncm_order_id))`,
+        [o.jobId,ncmProgress.ncmOrderId,o.actorId,ncmProgress.partnerId,ncmProgress.fingerprint]),
+    );
+  }
   if (o.action === 'record_cost') {
     const amount = o.amountPaisa,
       reference = (o.reference ?? '').trim();
@@ -597,15 +746,21 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
     if (!row) throw new ParcelConflictError('Order not found.');
     const access = { orderNumber: row.number, actorId: o.actorId },
       sellerIds = [p.sellerId];
-    const preview = await cancellationPreview(db, access, sellerIds);
-    await cancelSelectedParcels(db, access, {
-      sellerIds,
-      fingerprint: preview.fingerprint,
-      requestId: o.requestId,
-      note: o.note,
-      now: o.now,
-      parcelContext: { jobId: o.jobId, payload, riderPrivacyRequired: true, ...(form ? { form } : {}) },
-    });
+    try {
+      const preview = await cancellationPreview(db, access, sellerIds);
+      await cancelSelectedParcels(db, access, {
+        sellerIds,
+        fingerprint: preview.fingerprint,
+        requestId: o.requestId,
+        note: o.note,
+        now: o.now,
+        cause,
+        parcelContext: { jobId: o.jobId, payload, riderPrivacyRequired: true, causeSchemaAvailable: trackCause, ...(form ? { form } : {}) },
+      });
+    } catch (error) {
+      if (error instanceof CancellationConflictError) throw new ParcelConflictError(error.message);
+      throw error;
+    }
     return;
   }
   if (o.riderReportId) {
@@ -742,13 +897,56 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
       throw new ParcelConflictError('Use a public HTTPS tracking link.');
     }
     if (
-      tracking.length < 2 ||
+      tracking.length < (ncmBooking ? 1 : 2) ||
       tracking.length > 80 ||
       (o.method === 'courier' && (courier.length < 2 || courier.length > 120))
     )
       throw new ParcelConflictError(
         'Enter a reference of 2–80 characters and the courier name when applicable.',
       );
+    const partner = o.deliveryPartnerId ? await readDeliveryPartner(db, o.deliveryPartnerId) : null;
+    if (o.deliveryPartnerId) {
+      if (o.method !== 'courier' || !partner || partner.status !== 'in_use' ||
+        (partner.bookingMode !== 'manual' && !ncmPartnerName(partner.name)) || partner.name !== courier)
+        throw new ParcelConflictError('This delivery partner is no longer available. Refresh Dispatch and choose a courier.');
+      if (p.codDuePaisa > 0 && !partner.collectsCod)
+        throw new ParcelConflictError('This courier does not collect cash. Choose a courier that accepts cash on delivery.');
+      if (partner.trackingPattern) {
+        const link = partnerTrackingUrl(partner.trackingPattern, tracking);
+        if (!link) throw new ParcelConflictError('The courier tracking link is not valid. Check the pattern in Delivery partners.');
+        url = link;
+      }
+      statements.push(
+        db.prepare('UPDATE delivery_partners SET revision=revision WHERE id=?').bind(partner.id),
+        ...assertion(db, "EXISTS(SELECT 1 FROM delivery_partners WHERE id=? AND revision=? AND status='in_use' AND booking_mode=?)",
+          [partner.id, partner.revision, partner.bookingMode]),
+      );
+    }
+    const hasNcmStorage = await ncmSchemaAvailable(db);
+    if (ncmBooking) {
+      if (!hasNcmStorage || !partner || !ncmPartnerName(partner.name) || p.method !== null ||
+        tracking !== ncmBooking.orderId || !['pickup_requested','label_pending','label_ready','pickup_scheduled'].includes(p.status))
+        throw new ParcelConflictError('The parcel changed after the NCM request. Review the saved booking.');
+      statements.push(
+        ...assertion(db, `EXISTS(SELECT 1 FROM ncm_bookings WHERE job_id=? AND partner_id=? AND request_id=?
+          AND ncm_order_id=? AND state IN ('booking','needs_review'))
+          AND NOT EXISTS(SELECT 1 FROM order_items i WHERE i.order_id=? AND i.seller_id=?
+            AND i.fulfillment_status NOT IN ('ready_for_pickup','cancelled'))
+          AND NOT EXISTS(SELECT 1 FROM order_items i JOIN order_fulfillment_holds h ON h.order_item_id=i.id
+            WHERE i.order_id=? AND i.seller_id=? AND h.ended_at IS NULL AND h.prevents_handoff=1)`,
+          [o.jobId, partner.id, ncmBooking.requestId, tracking, p.orderId, p.sellerId, p.orderId, p.sellerId]),
+        db.prepare("UPDATE ncm_bookings SET state='booked',updated_at=? WHERE job_id=? AND request_id=?")
+          .bind(o.now, o.jobId, ncmBooking.requestId),
+      );
+    } else if (hasNcmStorage) {
+      statements.push(...assertion(db,
+        "NOT EXISTS(SELECT 1 FROM ncm_bookings WHERE job_id=? AND state IN ('booking','needs_review','booked'))", [o.jobId]));
+    }
+    const partnerColumn = partner ? 'delivery_partner_id=?,'
+      : await deliveryPartnerSchemaAvailable(db)
+        ? "delivery_partner_id=CASE WHEN ?='courier' AND courier_name=? THEN delivery_partner_id ELSE NULL END,"
+        : '';
+    const partnerValues = partner ? [partner.id] : partnerColumn ? [o.method, courier] : [];
     if (riderId) statements.push(...assertion(db, approvedRiderSql, [riderId]));
     if (assignmentSnapshot)
       statements.push(
@@ -767,9 +965,10 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
     statements.push(
       db
         .prepare(
-          'UPDATE shipping_parcels SET method=?,rider_user_id=?,courier_name=?,tracking_url=?,latitude=NULL,longitude=NULL,accuracy=NULL,position_at=NULL,open_box_required=?,open_box_snapshot_json=?,rider_finance_snapshot_json=? WHERE shipping_job_id=?',
+          `UPDATE shipping_parcels SET ${partnerColumn}method=?,rider_user_id=?,courier_name=?,tracking_url=?,latitude=NULL,longitude=NULL,accuracy=NULL,position_at=NULL,open_box_required=?,open_box_snapshot_json=?,rider_finance_snapshot_json=? WHERE shipping_job_id=?`,
         )
         .bind(
+          ...partnerValues,
           o.method,
           riderId,
           o.method === 'courier' ? courier : null,
@@ -801,9 +1000,11 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
     statements.push(
       db
         .prepare(
-          'UPDATE shipping_jobs SET tracking_code=?,updated_at=? WHERE id=?',
+          `UPDATE shipping_jobs SET tracking_code=?,updated_at=?,
+            pickup_window_start=COALESCE(?,pickup_window_start),
+            pickup_window_end=COALESCE(?,pickup_window_end) WHERE id=?`,
         )
-        .bind(tracking, o.now, o.jobId),
+        .bind(tracking, o.now, o.pickupStart ?? null, o.pickupEnd ?? null, o.jobId),
     );
     if (riderId)
       statements.push(
@@ -829,12 +1030,13 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
     if (o.action === 'collect' || o.action === 'propose_remittance') {
       const amount = o.amountPaisa,
         reference = (o.reference ?? '').trim();
+      const referenceLength = o.action === 'collect' ? Array.from(reference).length : reference.length;
       if (
         !Number.isSafeInteger(amount) ||
         !amount ||
         amount < 1 ||
-        reference.length < 4 ||
-        reference.length > 120
+        referenceLength < 4 ||
+        referenceLength > 120
       )
         throw new ParcelConflictError(
           'Enter a positive paisa amount and an evidence reference of 4–120 characters.',
@@ -857,12 +1059,11 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
       }
       if (o.action === 'propose_remittance' && p.method === 'own_rider')
         throw new ParcelConflictError(
-          'The assigned rider must submit this cash handover from the rider dashboard.',
+          'The rider portal remains on hold. Reconcile retained collector cash through Incoming payments.',
         );
       const kind = o.action === 'collect' ? 'collection' : 'remittance';
       const cashId = crypto.randomUUID();
-      const directRemittance =
-        kind === 'remittance' && authority.role === 'super_admin';
+      const directRemittance = false; // A claim/reference is never independent company receipt.
       statements.push(
         db
           .prepare(
@@ -891,6 +1092,7 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
             .bind(amount, o.jobId),
         );
       }
+      if(kind==='remittance')statements.push(...await preparePaymentException(db,{sourceKey:'cod:'+o.jobId,orderId:p.orderId,receiptId:null,kind:'cod_remittance',reason:'A carrier remittance is claimed. Match actual company receipt, exact parcel allocations and authorized costs.',ownerId:authority.role==='super_admin'?o.actorId:null,now:o.now}));
       if (kind === 'collection' && p.method === 'own_rider' && p.riderUserId) {
         const obligation = await cashObligationSnapshot(
           db,
@@ -938,33 +1140,15 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
           [o.cashRecordId, o.jobId, o.actorId, o.actorId, authority.role],
         ),
       );
-      if (o.action === 'approve_remittance') {
-        statements.push(
-          db
-            .prepare(
-              'UPDATE shipping_parcels SET remitted_paisa=remitted_paisa+? WHERE shipping_job_id=?',
-            )
-            .bind(record.amount, o.jobId),
-        );
-        if (record.riderId)
-          statements.push(
-            ...(await remittanceAllocationStatements(db, {
-              recordId: o.cashRecordId ?? '',
-              jobId: o.jobId,
-              riderId: record.riderId,
-              amount: record.amount,
-              actorId: o.actorId,
-              now: o.now,
-            })),
-          );
-      }
+      if (o.action === 'approve_remittance') throw new ParcelConflictError('Match an actual company receipt and approved deductions in Incoming payments before confirming this remittance.');
+
       statements.push(
         db
           .prepare(
             'UPDATE parcel_cash_records SET status=?,approved_by=?,approved_at=? WHERE id=?',
           )
           .bind(
-            o.action === 'approve_remittance' ? 'posted' : 'rejected',
+            'rejected',
             o.actorId,
             o.now,
             o.cashRecordId,
@@ -994,7 +1178,7 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
       deliver: { from: ['dispatched'], to: 'delivered' },
       fail: { from: ['dispatched'], to: 'delivery_failed' },
       retry: { from: ['delivery_failed', 'returning'], to: 'dispatched' },
-      return_to_origin: { from: ['delivery_failed'], to: 'returning' },
+      return_to_origin: { from: ncmProgress ? ['dispatched','delivery_failed'] : ['delivery_failed'], to: 'returning' },
       receive_return: { from: ['returning'], to: 'returned' },
     };
     const t = transitions[o.action];
@@ -1040,11 +1224,14 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
           .bind(p.orderId, p.sellerId),
       );
     }
-    statements.push(
-      db
-        .prepare('UPDATE shipping_jobs SET status=?,updated_at=? WHERE id=?')
-        .bind(t.to, o.now, o.jobId),
-    );
+    statements.push(recordedFailure
+      ? db.prepare("UPDATE shipping_jobs SET status=?,updated_at=?,delivery_failure_reason=? WHERE id=? AND direction='outbound'")
+          .bind(t.to, o.now, recordedFailure, o.jobId)
+      : db.prepare('UPDATE shipping_jobs SET status=?,updated_at=? WHERE id=?')
+          .bind(t.to, o.now, o.jobId));
+    if (recordedFailure) statements.push(...assertion(db,
+      "EXISTS(SELECT 1 FROM shipping_jobs j JOIN shipping_parcels p ON p.shipping_job_id=j.id WHERE j.id=? AND j.direction='outbound' AND p.method='courier' AND p.rider_user_id IS NULL AND j.delivery_failure_reason=?)",
+      [o.jobId, recordedFailure]));
     if (o.action === 'deliver')
       statements.push(
         db
@@ -1124,6 +1311,8 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
       p.orderId,
       JSON.parse(statement.snapshot) as Record<string, unknown>,
     );
+    const paymentReceiptSnapshot=await withLiveInvoiceReferences(db,p.orderId,withReceiptGroups({...snapshot,
+      documentTitle:'Cash on delivery payment receipt',paymentStatus:'paid',issuedAt:o.now} as OrderDocumentSnapshot));
     statements.push(
       db
         .prepare(
@@ -1132,17 +1321,14 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
         .bind(
           crypto.randomUUID(),
           'RCPT-PARCEL-' + p.orderId,
-          JSON.stringify({
-            ...snapshot,
-            documentTitle: 'Cash on delivery payment receipt',
-            paymentStatus: 'paid',
-            issuedAt: o.now,
-          }),
+          JSON.stringify(paymentReceiptSnapshot),
           o.requestId + ':payment-receipt',
           o.now,
           p.orderId,
         ),
     );
+    statements.push(...await receiptNumberStatements(db,{snapshot:paymentReceiptSnapshot,
+      requestId:o.requestId+':payment-receipt',now:o.now}));
   }
   statements.push(
     ...buildEarningsAccrualStatements(db, { orderId: p.orderId, now: o.now }),
@@ -1163,7 +1349,21 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
         o.now,
       ),
   );
-  statements.push(parcelAudit(db, o, p.orderId, o.action));
+  const courierNotices = o.action === 'assign' && o.method === 'courier' ? [courierBookedTemplate, customerCourierBookedTemplate]
+    : o.action === 'fail' && p.method === 'courier' && !o.riderReportId ? [missedDeliveryTemplate, parcelProblemTemplate] : [];
+  for (const courierNotice of courierNotices) {
+    statements.push(...await courierEmailNoticeStatements(db, {
+      orderId: p.orderId, eventId: o.requestId, now: o.now, template: courierNotice,
+    }));
+  }
+  if (o.action === 'dispatch' || o.action === 'deliver') {
+    statements.push(...orderMessageStatements(db, {
+      orderId: p.orderId, event: o.action === 'dispatch' ? 'dispatched' : 'delivered', now: o.now,
+    }));
+  }
+  const returnCause = trackCause && o.action === 'receive_return' ? await readReturnCancellationCause(db, o.jobId) : undefined;
+  statements.push(parcelAudit(db, o, p.orderId, o.action,
+    recordedFailure || returnCause ? o.note.trim() : undefined, returnCause));
   if (form)
     statements.push(
       buildFormAnswerInsert(db, {

@@ -7,7 +7,7 @@ import type {
   IncentiveActor,
   ReportMoneyPaisa,
 } from '../../incentives/reporting';
-import { getReferralCampaign } from './wallet';
+import { getReferralCampaignForManagement as getReferralCampaign } from './wallet';
 
 export const referralStatuses = [
   { value: 'all', label: 'All statuses' },

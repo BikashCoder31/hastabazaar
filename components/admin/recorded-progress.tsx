@@ -46,7 +46,7 @@ export async function RecordedProgressSection({
             ? e.message
             : 'Recorded work is unavailable. Refresh and try again.'}
         </p>
-        <Link className="mt-3 inline-block underline" href="/admin/progress">
+        <Link className="section-link underline mt-3" href="/admin/progress">
           Reset recorded-work filters
         </Link>
       </section>
@@ -154,8 +154,8 @@ export async function RecordedProgressSection({
               </Field>
             </RecordedDateRangeFields>
             <div className="flex flex-wrap items-center gap-3">
-              <Button type="submit">Filter recorded work</Button>
-              <Link className="p-2 text-sm underline" href="/admin/progress">
+              <Button variant="workspace-primary" size="workspace" type="submit">Filter recorded work</Button>
+              <Link className="section-link underline" href="/admin/progress">
                 Reset filters
               </Link>
             </div>
@@ -218,12 +218,12 @@ export async function RecordedProgressSection({
                   <td className="p-3">{group.outcome}</td>
                   <td className="p-3 tabular-nums">{group.count}</td>
                   <td className="p-3">
-                    <Link
-                      className="underline"
+                    <a
+                      className="section-link underline"
                       href={evidenceRoute + '?' + params}
                     >
                       View matching records
-                    </Link>
+                    </a>
                   </td>
                 </tr>
               );
@@ -237,7 +237,7 @@ export async function RecordedProgressSection({
         ) : null}
       </div>
       <details open={staff.role === 'admin'}>
-        <summary>Latest 100 recognized action records in this range</summary>
+        <summary className="min-h-11 content-center cursor-pointer">Latest 100 recognized action records in this range</summary>
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
@@ -272,7 +272,7 @@ export async function RecordedProgressSection({
                     </td>
                     <td className="p-3">
                       {href ? (
-                        <Link className="underline" href={href}>
+                        <Link className="section-link underline" href={href} prefetch={false}>
                           {event.subjectType}: {event.subjectId}
                         </Link>
                       ) : (

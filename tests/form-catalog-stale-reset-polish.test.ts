@@ -26,22 +26,22 @@ const targets = [
   {
     mode: 'customer',
     form: 'commerce.order-cancellation',
-    subject: 'ORDER-ONE',
+    subject: JSON.stringify(['fixture-customer','ORDER-ONE']),
     reset: 'Start a new cancellation attempt',
     submit: 'Review cancellation amounts',
   },
   {
     mode: 'approve',
     form: 'staff.cancellation-review',
-    subject: 'review-one:approve',
-    reset: 'Start a new approval attempt',
+    subject: JSON.stringify(['fixture-staff','review-one']),
+    reset: 'Review current form for a new attempt',
     submit: 'Review current cancellation amounts',
   },
   {
     mode: 'reject',
     form: 'staff.cancellation-review',
-    subject: 'review-one:reject',
-    reset: 'Start a new rejection attempt',
+    subject: JSON.stringify(['fixture-staff','review-one']),
+    reset: 'Review current form for a new attempt',
     submit: 'Reject with reason',
   },
   {
@@ -151,7 +151,7 @@ async function fieldValues(form: FixtureLocator) {
   );
 }
 
-void test('twelve warned reset branches refresh only the stale real catalog, preserving fields and cancellation', async () => {
+void test('twelve guarded reset branches refresh only the stale real catalog, preserving fields and original cancellation decisions', async () => {
   const playwrightPath =
     process.env.PLAYWRIGHT_MODULE ??
     'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
@@ -180,11 +180,13 @@ void test('twelve warned reset branches refresh only the stale real catalog, pre
   import {getOrCreateSessionAttempt,sessionAttemptKey} from './lib/forms/client-attempt';
   const query=new URLSearchParams(location.search);const mode=query.get('mode');
   window.__attemptKey=sessionAttemptKey(query.get('form'),query.get('subject'));
-  window.__originalAttempt=getOrCreateSessionAttempt(window.__attemptKey);
+  // New staff decisions start only with an empty original-action slot. A legacy
+  // saved UUID would correctly block the fieldset pending outcome reconciliation.
+  window.__originalAttempt=mode==='approve'||mode==='reject'?'':getOrCreateSessionAttempt(window.__attemptKey);
   const data={users:[],rules:[],products:[],promotions:[],backups:[],incidents:[{id:'incident-one',referenceNumber:'INC-1',title:'Fictional incident',severity:'medium',status:'open'}]};
   const parcel={id:'parcel-one',sellerName:'Fictional Seller',status:'prepared',method:'courier',version:1,codDuePaisa:10000,collectedPaisa:0,remittedPaisa:0,courierCostPaisa:0};
-  const element=mode==='customer'?<CustomerOrderCancellation orderNumber="ORDER-ONE"/>
-   :mode==='approve'||mode==='reject'?<CancellationReviewControl reviewId="review-one"/>
+  const element=mode==='customer'?<CustomerOrderCancellation actorId="fixture-customer" viewerScope="fixture-customer" orderNumber="ORDER-ONE"/>
+   :mode==='approve'||mode==='reject'?<CancellationReviewControl actorId="fixture-staff" reviewId="review-one" canDecide={true}/>
    :mode==='inventory'?<InventoryEditor productId="product-one" quantity={1} productName="Fictional Product"/>
    :mode==='invoice'?<InvoiceAdjustmentForm invoices={[{id:'invoice-one',invoiceNumber:'INV-1',issuerReference:'SIM-ISSUER',adjustmentCount:0}]} reasonCodes={['defect']}/>
    :mode==='activation'?<ManagedMakerActivationForm sellerId="seller-one" acceptedTerms={{detailId:'accepted-maker-detail',retentionBps:900,agreementVersion:'SIM-ACCEPTED'}}/>
@@ -241,6 +243,7 @@ void test('twelve warned reset branches refresh only the stale real catalog, pre
       let reads = 0,
         hold = false,
         release: (() => Promise<void>) | undefined;
+      let heldRead: (() => void) | undefined;
       const bodies: Record<string, unknown>[] = [];
       try {
         await page.route('**/*', async (route) => {
@@ -278,6 +281,7 @@ void test('twelve warned reset branches refresh only the stale real catalog, pre
                   await send();
                   resolve();
                 };
+                heldRead?.();
               });
               return;
             }
@@ -322,6 +326,14 @@ void test('twelve warned reset branches refresh only the stale real catalog, pre
                   deliveryPricingPolicy: null,
                 }),
               });
+            if ((target.mode === 'approve' || target.mode === 'reject') && body.formVersion === 1)
+              return route.fulfill({
+                status: 409,
+                contentType: 'application/json',
+                body: JSON.stringify({ recorded: false, phase: 'before_write', actorId: 'fixture-staff',
+                  sourceId: 'review-one', action: body.action, requestId: body.clientAttemptId,
+                  error: 'Fictional decision rejected before any write. Review the current form.' }),
+              });
             return route.fulfill({
               status: 400,
               contentType: 'application/json',
@@ -357,6 +369,61 @@ void test('twelve warned reset branches refresh only the stale real catalog, pre
           target.form,
         );
         await fillFields(form);
+        if (target.mode === 'approve' || target.mode === 'reject') {
+          const submit = form.getByRole('button', { name: target.submit, exact: true });
+          const decide = async () => {
+            await submit.click();
+            if (target.mode === 'approve')
+              await form.getByRole('button', { name: 'Approve reviewed cancellation', exact: true }).click();
+          };
+          const preserved = await fieldValues(form);
+          await decide();
+          const reset = form.getByRole('button', { name: target.reset, exact: true });
+          await reset.waitFor();
+          const original = await page.evaluate(() => sessionStorage.getItem(window.__attemptKey));
+          assert.ok(original);
+          const originalReference = JSON.parse(original) as { action: string; requestId: string };
+          assert.deepEqual(Object.keys(originalReference).sort(), ['action', 'requestId']);
+          assert.equal(originalReference.action, target.mode);
+          assert.match(originalReference.requestId, /^[0-9a-f-]{36}$/i);
+          assert.equal(await form.getByRole('button', { name: 'Retry the same saved decision', exact: true }).count(), 0,
+            'a proven before-write rejection does not offer a changed original retry');
+          await page.evaluate((id) => window.__resetCatalogs[id].handleSubmissionResponse(
+            new Response(null, { status: 409 }), 'stale_version'), target.form);
+          await page.waitForFunction((id) => window.__resetCatalogs[id].status === 'stale', target.form);
+          assert.equal(await submit.isDisabled(), true);
+          assert.equal(reads, 1, 'stale indication itself does not discard or refresh the original reference');
+          assert.equal(await page.evaluate(() => sessionStorage.getItem(window.__attemptKey)), original);
+          assert.deepEqual(await fieldValues(form), preserved);
+          hold = true;
+          const refreshRequested = new Promise<void>((resolve) => { heldRead = resolve; });
+          await reset.click();
+          await refreshRequested;
+          await page.waitForFunction((id) => window.__resetCatalogs[id].status === 'loading', target.form);
+          assert.equal(reads, 2);
+          assert.equal(await submit.isDisabled(), true);
+          assert.equal(await page.evaluate(() => sessionStorage.getItem(window.__attemptKey)), '');
+          assert.deepEqual(await fieldValues(form), preserved);
+          assert.ok(release);
+          await release();
+          await page.waitForFunction((id) => window.__resetCatalogs[id].status === 'ready', target.form);
+          assert.equal(await submit.isDisabled(), false);
+          assert.deepEqual(await fieldValues(form), preserved);
+          await decide();
+          await form.getByRole('button', { name: 'Retry the same saved decision', exact: true }).waitFor();
+          assert.equal(bodies.at(-1)?.formVersion, 2);
+          const renewed = await page.evaluate(() => sessionStorage.getItem(window.__attemptKey));
+          assert.ok(renewed);
+          const renewedReference = JSON.parse(renewed) as { action: string; requestId: string };
+          assert.deepEqual(Object.keys(renewedReference).sort(), ['action', 'requestId']);
+          assert.equal(renewedReference.action, target.mode);
+          assert.notEqual(renewedReference.requestId, originalReference.requestId);
+          assert.match(renewedReference.requestId, /^[0-9a-f-]{36}$/i);
+          assert.deepEqual(await page.evaluate(() => Object.values(sessionStorage)), [renewed]);
+          assert.equal(await reset.count(), 0, 'an unconfirmed original decision cannot be reset');
+          assert.equal(await submit.isDisabled(), true);
+          continue;
+        }
         const initial = await page.evaluate(() => window.__originalAttempt),
           preserved = await fieldValues(form);
         const reset = form.getByRole('button', {
@@ -436,20 +503,16 @@ void test('twelve warned reset branches refresh only the stale real catalog, pre
           target.mode + ': refreshed version is available',
         );
         assert.deepEqual(await fieldValues(form), preserved);
-        if (target.mode === 'customer' || target.mode === 'approve') {
+        if (target.mode === 'customer') {
           await submit.click();
           await page.waitForTimeout(40);
           await form
             .getByRole('button', {
-              name:
-                target.mode === 'customer'
-                  ? 'Confirm cancellation and revised amount'
-                  : 'Approve reviewed cancellation',
+              name: 'Confirm cancellation and revised amount',
               exact: true,
             })
             .click();
-        } else if (target.mode === 'reject') await submit.click();
-        else
+        } else
           await form.evaluate((element) =>
             (element as HTMLFormElement).requestSubmit(),
           );

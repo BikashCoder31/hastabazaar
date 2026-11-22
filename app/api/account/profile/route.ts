@@ -1,8 +1,10 @@
+import {CustomerScopeError} from '@/lib/auth/customer-scope';
+import {requireCustomerIntentApi} from '@/lib/auth/customer-intent';
 import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { env } from 'cloudflare:workers';
 
-import { CustomerAuthorizationError, requireCustomerApi } from '@/lib/auth/customer';
+import { CustomerAuthorizationError } from '@/lib/auth/customer';
 import { requireDatabase } from '@/lib/db/d1';
 import { CustomerDataConflictError, customerProfileRequestStatus, updateCustomerProfile } from '@/lib/db/repositories/customers';
 import { FORM_REGISTRY } from '@/lib/forms/registry';
@@ -27,7 +29,7 @@ async function readProfileBody(request: Request): Promise<ProfileBody | null> {
 export async function PATCH(request: Request): Promise<Response> {
   if (!isTrustedMutationRequest(request)) return Response.json({ error: 'Cross-site requests are not allowed.' }, { status: 403 });
   try {
-    const customer = await requireCustomerApi();
+    const customer = await requireCustomerIntentApi(request);
     const body = await readProfileBody(request);
     if (!body || typeof body.idempotencyKey !== 'string' || !body.idempotencyKey || body.idempotencyKey.length > 100 ||
       !['en-NP', 'ne-NP'].includes(body.locale as string) || typeof body.displayName !== 'string' || typeof body.phone !== 'string' ||
@@ -97,7 +99,7 @@ export async function PATCH(request: Request): Promise<Response> {
     return Response.json({ ok: true });
   } catch (error) {
     if (error instanceof BodyTooLargeError) return Response.json({ error: 'Profile submission is too large.' }, { status: 413 });
-    if (error instanceof CustomerAuthorizationError) return Response.json({ error: error.message }, { status: error.status });
+    if ((error instanceof CustomerAuthorizationError || error instanceof CustomerScopeError)) return Response.json({ error: error.message,code:error instanceof CustomerAuthorizationError?'access_denied_before_write':'outcome_unconfirmed' }, { status: error.status });
     if (error instanceof CustomerDataConflictError) return Response.json({ error: error.message }, { status: 409 });
     if (error instanceof FormRuntimeError) return Response.json({ error: error.code === 'stale_version' ? error.message : 'Form configuration is unavailable.', code: error.code }, { status: error.code === 'stale_version' ? 409 : 503 });
     if (error instanceof FormValidationError) return Response.json({ error: error.message }, { status: 400 });

@@ -1,0 +1,23 @@
+import './helpers/care-runtime';
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {nativeCareFixture} from './helpers/native-care-fixture';
+import {staffMutationGuard} from '../lib/db/repositories/staff-mutation-guard';
+
+void test('old care actor intent cannot submit private decision data as another eligible signed-in actor',async()=>{
+ const f=await nativeCareFixture({review:false});try{
+  for(const[id,role]of [['care-current','super_admin'],['care-denied','admin']]as const){f.sqlite.prepare("INSERT INTO users(id,auth_subject,email,display_name,status,created_at,updated_at) VALUES(?,?,?,?,'active',?,?)").run(id,id,id+'@local.hastabazaar.test','Fictional '+id,Date.now(),Date.now());f.sqlite.prepare('INSERT INTO user_roles(user_id,role,assigned_at) VALUES(?,?,?)').run(id,role,Date.now());}
+  f.sqlite.prepare("INSERT INTO staff_permission_profiles(user_id,permissions_json,version,updated_by,updated_at) VALUES('care-denied','[]',1,'owner',?)").run(Date.now());
+  globalThis.careBrowserDb=f.database;globalThis.careBrowserActor='care-current';globalThis.careBrowserAuthority=async(permission='account.self.manage')=>{const proof=await staffMutationGuard(f.database,globalThis.careBrowserActor,permission as never,Error);return{id:globalThis.careBrowserActor,role:proof.role};};
+  const review=await import('../app/api/admin/returns/[id]/review/route');
+  const origin='https://care-scope.test',payload={sourceFormId:'staff.return-case-action',action:'approve',outcome:'replacement',responsibility:'seller',itemRefundPaisa:0,deliveryRefundPaisa:0,note:'PRIVATE ORIGINAL A reasoning must not become a command by the newly signed-in B.',publicMessageEn:'A replacement decision still requires the actual current operator intent.',publicMessageNe:'हालको जिम्मेवार व्यक्तिको निर्णय आवश्यक छ।',idempotencyKey:crypto.randomUUID(),formVersion:f.returnForm.version,customAnswers:[{fieldId:'staff_context',value:'PRIVATE ORIGINAL A FINANCIAL CONTEXT'}]};
+  const request=(path:string,actor:string,body:unknown=payload)=>new Request(origin+path,{method:'POST',headers:{origin,'content-type':'application/json','X-Hastabazaar-Actor':actor},body:JSON.stringify(body)});
+  const denied=await review.POST(request('/api/admin/returns/'+f.caseId+'/review','owner'),{params:Promise.resolve({id:f.caseId})});assert.equal(denied.status,403,await denied.text());assert.equal(f.sqlite.prepare('SELECT status FROM return_requests WHERE id=?').get(f.caseId)!.status,'requested');assert.equal(f.sqlite.prepare("SELECT COUNT(*) n FROM return_request_events WHERE return_request_id=? AND action='admin_approve'").get(f.caseId)!.n,0);
+  const operations=await import('../app/api/admin/returns/[id]/operations/route'),highValue=await import('../app/api/admin/returns/[id]/high-value/route'),handling=await import('../app/api/admin/returns/[id]/handling/route'),complaint=await import('../app/api/admin/complaints/[id]/route'),followup=await import('../app/api/admin/cases/followup/route');
+  for(const[call,path,id]of [[operations.POST,'/operations',f.caseId],[highValue.POST,'/high-value',f.caseId],[handling.POST,'/handling',f.caseId],[complaint.POST,'/complaint',f.complaintId]]as const){const response=await call(request('/api/admin/returns/'+id+path,'owner'),{params:Promise.resolve({id})});assert.equal(response.status,403,path+': '+await response.text());}
+  const late=await followup.POST(request('/api/admin/cases/followup','owner',{sourceType:'return_request'}));assert.equal(late.status,403,await late.text());
+  const saved=await handling.GET(new Request(origin+'/api/admin/returns/'+f.caseId+'/handling?attempt=opaque-original',{headers:{'X-Hastabazaar-Actor':'owner'}}),{params:Promise.resolve({id:f.caseId})});assert.equal(saved.status,403);
+  globalThis.careBrowserActor='care-denied';assert.equal((await review.POST(request('/api/admin/returns/'+f.caseId+'/review','care-denied'),{params:Promise.resolve({id:f.caseId})})).status,403,'matching header never grants a missing native capability');
+  globalThis.careBrowserActor='care-current';const currentPayload={...payload,idempotencyKey:crypto.randomUUID(),note:'The actual currently signed-in eligible operator independently records this current replacement decision.',customAnswers:[{fieldId:'staff_context',value:'FICTIONAL CURRENT OPERATOR REVIEW'}]};const accepted=await review.POST(request('/api/admin/returns/'+f.caseId+'/review','care-current',currentPayload),{params:Promise.resolve({id:f.caseId})});assert.equal(accepted.status,200,await accepted.text());assert.equal(f.sqlite.prepare("SELECT actor_id FROM return_request_events WHERE return_request_id=? AND action='admin_approve'").get(f.caseId)!.actor_id,'care-current');
+ }finally{await f.dispose();}
+});

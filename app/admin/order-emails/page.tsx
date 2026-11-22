@@ -1,3 +1,5 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
+import type { DeliveryMailService } from '@/lib/email/delivery-attempts';
 import Link from 'next/link';
 import { env } from 'cloudflare:workers';
 import { ChevronRight, Mail, AlertCircle } from 'lucide-react';
@@ -36,9 +38,22 @@ import {
   orderEmailExpiryHours,
   orderEmailReasonLabel,
 } from '@/lib/email/order-update-policy';
-import { maximumEmailAttempts } from '@/lib/email/retry-policy';
+import { EmailDeliveryHealth } from '@/components/admin/email-delivery-health';
+import {
+  readEmailDeliveryOverview,
+  readEmailHealthRuntimeConfig,
+} from '@/lib/operations/email-delivery-overview';
 
 export const dynamic = 'force-dynamic';
+const historyColumns = [
+  { key: 'order', title: 'Order', width: 'w-[16%]' },
+  { key: 'update', title: 'Update / queued time', width: 'w-[17%]' },
+  { key: 'status', title: 'Email status', width: 'w-[15%]' },
+  { key: 'attempts', title: 'Attempts', width: 'w-[9%]' },
+  { key: 'outcome', title: 'Outcome / reason', width: 'w-[22%]' },
+  { key: 'next', title: 'Next action (Nepal time)', width: 'w-[21%]' },
+] as const;
+
 const queueObservedAt = () => Date.now();
 const emailTime = (value: number) =>
   new Date(value).toLocaleString('en-NP', {
@@ -51,26 +66,26 @@ function nextAction(job: OrderEmailHistoryRow, now: number) {
     return job.status === 'cancelled'
       ? 'No send needed'
       : 'Will be skipped by the next queue run';
-  if (job.status === 'sent')
+  if (job.displayStatus === 'uncertain')
+    return 'Reconcile provider evidence; no automatic resend';
+  if (job.displayStatus === 'intervention')
+    return 'Correct the authorized recipient or email setup';
+  if (job.displayStatus === 'captured')
+    return 'Captured locally; no provider send';
+  if (job.displayStatus === 'sent_record')
+    return 'Historical sent record; transport receipt is unavailable';
+  if (job.displayStatus === 'sent')
     return job.sentAt ? 'Accepted ' + emailTime(job.sentAt) : 'No send needed';
   if (job.status === 'sending' && job.leaseUntil > now)
     return 'Wait until ' + emailTime(job.leaseUntil);
-  if (job.attempts >= maximumEmailAttempts)
-    return 'Review email settings or provider health';
   const next = Math.max(job.nextAttemptAt, job.leaseUntil);
   return next > now
     ? 'Eligible ' + emailTime(next)
     : 'Ready for the next sender run';
 }
-function statusLabel(job: OrderEmailHistoryRow, now: number) {
+function statusLabel(job: OrderEmailHistoryRow) {
   if (job.displayStatus === 'skipped' && job.status !== 'cancelled')
     return 'Will be skipped';
-  if (
-    ['queued', 'retry', 'sending'].includes(job.displayStatus) &&
-    job.attempts >= maximumEmailAttempts &&
-    job.leaseUntil <= now
-  )
-    return 'Needs review';
   return emailQueueStatusLabels[job.displayStatus] ?? job.displayStatus;
 }
 
@@ -79,13 +94,32 @@ export default async function OrderEmails({
 }: {
   searchParams?: Promise<{ q?: string; status?: string; page?: string }>;
 }) {
-  await requireStaffPage('/admin/order-emails', 'order.manage');
+  const actor = await requireStaffPage(
+    '/admin/order-emails',
+    'email.delivery.manage',
+  );
   const db = requireDatabase(env as unknown as { DB?: D1Database }),
     now = queueObservedAt();
-  const [history, summary, presentation] = await Promise.all([
+  const runtime = readEmailHealthRuntimeConfig(
+    { ...env, NODE_ENV: process.env.NODE_ENV },
+    now,
+  );
+  const [history, summary, presentation, overview] = await Promise.all([
     listOrderEmailHistory(db, (await searchParams) ?? {}, now),
-    emailQueueSummary(db, now),
+    emailQueueSummary(
+      db,
+      now,
+      (env as unknown as { EMAIL?: DeliveryMailService }).EMAIL,
+    ),
     loadQueryPresentationConfig(db, 'staff.order-email-filter'),
+    runtime.environment
+      ? readEmailDeliveryOverview(db, {
+          actorId: actor.id,
+          environment: runtime.environment,
+          expectedSince: runtime.expectedSince,
+          now,
+        })
+      : null,
   ]);
   const search = queryFieldPresentation(
     'staff.order-email-filter',
@@ -99,6 +133,61 @@ export default async function OrderEmails({
     'status',
     { label: 'Email status' },
   );
+  const records = history.jobs.map((job) => ({
+    id: job.id,
+    fields: {
+      order: (
+        <Link
+          className="section-link wrap-anywhere underline"
+          href={`/admin/orders/${encodeURIComponent(job.orderId)}`}
+        >
+          {job.orderNumber}
+        </Link>
+      ),
+      update: (
+        <>
+          <p>{orderProgress(job.orderStatus).label}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {emailTime(job.createdAt)}
+          </p>
+        </>
+      ),
+      status: (
+        <Badge
+          variant="outline"
+          className={
+            'h-auto max-w-full whitespace-normal ' +
+            (job.displayStatus === 'sent'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+              : job.displayStatus === 'skipped'
+                ? 'bg-muted text-muted-foreground'
+                : ['intervention', 'uncertain'].includes(job.displayStatus)
+                  ? 'border-amber-200 bg-amber-50 text-amber-900'
+                  : 'border-primary/20 bg-primary/5 text-primary')
+          }
+        >
+          {statusLabel(job)}
+        </Badge>
+      ),
+      attempts: <span className="tabular-nums">{job.attempts}</span>,
+      outcome: (
+        <>
+          <p>
+            {orderEmailReasonLabel(job.skipReason ?? job.failureCode) ??
+              (job.status === 'sent' ? 'Accepted by mail server' : '—')}
+          </p>
+          {job.skipReason === 'obsolete_order_state' ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Current order: {orderProgress(job.currentStatus).label}
+            </p>
+          ) : null}
+        </>
+      ),
+      next: (
+        <span className="text-muted-foreground">{nextAction(job, now)}</span>
+      ),
+    },
+  }));
   const metrics = [
     {
       label: 'Ready to send',
@@ -109,13 +198,13 @@ export default async function OrderEmails({
     {
       label: 'Waiting to retry',
       value: summary.retryWaiting ?? 0,
-      detail: 'Below the attempt limit',
+      detail: 'Temporary failure; scheduled automatically',
       status: 'retry',
     },
     {
       label: 'Needs review',
       value: summary.exhausted ?? 0,
-      detail: 'Attempt limit reached',
+      detail: 'Recipient or setup correction required',
       status: 'needs_review',
     },
     {
@@ -134,16 +223,16 @@ export default async function OrderEmails({
   return (
     <div className="flex min-w-0 flex-col gap-5">
       <header>
-        <p className="eyebrow">Customer communication</p>
-        <h1 className="mt-2 font-heading text-4xl tracking-tight">
-          Order emails
-        </h1>
+        <AdminPageTitle>
+          <h1 className="font-heading text-4xl tracking-tight">Order emails</h1>
+        </AdminPageTitle>
         <p className="mt-3 max-w-3xl leading-7 text-muted-foreground">
           Check queued customer updates and their outcomes. Unsent updates
           expire after {orderEmailExpiryHours} hours; earlier order statuses are
           skipped.
         </p>
       </header>
+      <EmailDeliveryHealth overview={overview} />
       <section
         aria-label="Email queue summary"
         className="grid grid-cols-2 gap-3 lg:grid-cols-5"
@@ -167,7 +256,7 @@ export default async function OrderEmails({
                 href={queuePageHref('/admin/order-emails', {
                   status: metric.status,
                 })}
-                className="mt-2 inline-flex min-h-9 items-center gap-1 text-sm font-medium text-primary hover:underline"
+                className="section-link underline mt-2"
               >
                 View emails
                 <ChevronRight aria-hidden="true" className="size-4" />
@@ -177,7 +266,7 @@ export default async function OrderEmails({
         ))}
       </section>
       {(summary.exhausted ?? 0) > 0 ||
-      ((summary.pending ?? 0) > 0 && summary.oldestAgeMinutes > 15) ||
+      ((summary.pending ?? 0) > 0 && summary.overdueFirstAttempts) ||
       (summary.expiredLeases ?? 0) > 0 ? (
         <div className="flex items-start gap-3 rounded-xl border bg-muted/30 p-4 text-sm leading-6">
           <AlertCircle
@@ -185,17 +274,27 @@ export default async function OrderEmails({
             className="mt-1 size-4 shrink-0 text-primary"
           />
           <p>
-            Check messages waiting longer than 15 minutes and recurring
-            failures.{' '}
+            Check eligible first attempts overdue by more than five minutes and
+            recipient or setup faults.{' '}
             {summary.expiredLeases
               ? `${summary.expiredLeases} sending ${summary.expiredLeases === 1 ? 'lock has' : 'locks have'} expired. `
               : ''}
             If the queue is not moving, verify the scheduled sender and email
-            settings. Exhausted attempts need staff review.
+            settings. Unknown acceptance needs reconciliation; temporary
+            failures continue automatically.
           </p>
         </div>
       ) : null}
-      <OrderEmailRetry readyCount={summary.due ?? 0} />
+      <details className="rounded-xl border bg-card p-4">
+        <summary className="min-h-11 content-center cursor-pointer font-semibold">
+          Recovery tools
+        </summary>
+        <p className="my-3 text-sm">
+          Optional exceptional processing follows current backoff, claims and
+          authorization. Unknown or accepted outcomes are not blindly replayed.
+        </p>
+        <OrderEmailRetry readyCount={summary.due ?? 0} />
+      </details>
       <section
         className="overflow-hidden rounded-xl border bg-card"
         aria-labelledby="email-history-title"
@@ -266,16 +365,19 @@ export default async function OrderEmails({
             </FieldGroup>
             <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
               {history.filters.q || history.filters.status ? (
-                <Button
-                  variant="outline"
-                  className="flex-1 sm:flex-none"
-                  nativeButton={false}
-                  render={<Link href="/admin/order-emails" />}
+                <Link
+                  href="/admin/order-emails"
+                  className="section-link underline"
                 >
                   Clear filters
-                </Button>
+                </Link>
               ) : null}
-              <Button type="submit" className="flex-1 sm:flex-none">
+              <Button
+                variant="workspace-primary"
+                size="workspace"
+                type="submit"
+                className="flex-1 sm:flex-none"
+              >
                 Apply filters
               </Button>
             </div>
@@ -291,94 +393,68 @@ export default async function OrderEmails({
             of {history.pageCount}
           </p>
         </div>
-        {history.jobs.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[52rem] text-left text-sm">
+        {records.length ? (
+          <>
+            <ul
+              aria-label="Order email records"
+              className="grid gap-3 p-4 text-sm md:grid-cols-2 lg:gap-4 xl:hidden"
+            >
+              {records.map((record) => (
+                <li
+                  key={record.id}
+                  className="min-w-0 rounded-xl border p-4 wrap-anywhere"
+                >
+                  {record.fields.order}
+                  <dl className="grid grid-cols-2 gap-3">
+                    {historyColumns.slice(1).map((column) => (
+                      <div
+                        key={column.key}
+                        className={
+                          column.key === 'outcome' || column.key === 'next'
+                            ? 'col-span-2 min-w-0'
+                            : 'min-w-0'
+                        }
+                      >
+                        <dt className="font-medium text-muted-foreground">
+                          {column.title}
+                        </dt>
+                        <dd>{record.fields[column.key]}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </li>
+              ))}
+            </ul>
+            <table className="hidden w-full table-fixed text-left text-sm xl:table">
               <caption className="sr-only">
                 Order email records and reasons for skipped messages
               </caption>
               <thead className="border-b bg-muted/30 text-muted-foreground">
                 <tr>
-                  {[
-                    'Order',
-                    'Update / queued time',
-                    'Email status',
-                    'Attempts',
-                    'Outcome / reason',
-                    'Next action (Nepal time)',
-                  ].map((heading) => (
+                  {historyColumns.map((column) => (
                     <th
                       scope="col"
-                      className={
-                        heading === 'Attempts' ? 'whitespace-nowrap p-4' : 'p-4'
-                      }
-                      key={heading}
+                      className={'wrap-anywhere p-4 ' + column.width}
+                      key={column.key}
                     >
-                      {heading}
+                      {column.title}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {history.jobs.map((job) => (
-                  <tr key={job.id}>
-                    <td className="p-4 font-semibold">
-                      <Link
-                        className="inline-flex min-h-11 items-center underline underline-offset-4"
-                        href={`/admin/orders/${encodeURIComponent(job.orderId)}`}
-                      >
-                        {job.orderNumber}
-                      </Link>
-                    </td>
-                    <td className="p-4">
-                      <p>{orderProgress(job.orderStatus).label}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {emailTime(job.createdAt)}
-                      </p>
-                    </td>
-                    <td className="p-4">
-                      <Badge
-                        variant="outline"
-                        className={
-                          job.displayStatus === 'sent'
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
-                            : job.displayStatus === 'skipped'
-                              ? 'bg-muted text-muted-foreground'
-                              : job.attempts >= maximumEmailAttempts
-                                ? 'border-amber-200 bg-amber-50 text-amber-900'
-                                : 'border-primary/20 bg-primary/5 text-primary'
-                        }
-                      >
-                        {statusLabel(job, now)}
-                      </Badge>
-                    </td>
-                    <td className="p-4 tabular-nums">
-                      {job.attempts} / {maximumEmailAttempts}
-                    </td>
-                    <td className="min-w-40 p-4">
-                      <p>
-                        {orderEmailReasonLabel(
-                          job.skipReason ?? job.failureCode,
-                        ) ??
-                          (job.status === 'sent'
-                            ? 'Accepted by mail server'
-                            : '—')}
-                      </p>
-                      {job.skipReason === 'obsolete_order_state' ? (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Current order:{' '}
-                          {orderProgress(job.currentStatus).label}
-                        </p>
-                      ) : null}
-                    </td>
-                    <td className="min-w-44 p-4 text-muted-foreground">
-                      {nextAction(job, now)}
-                    </td>
+                {records.map((record) => (
+                  <tr key={record.id}>
+                    {historyColumns.map((column) => (
+                      <td className="wrap-anywhere p-4" key={column.key}>
+                        {record.fields[column.key]}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </>
         ) : (
           <div className="flex flex-col items-center gap-2 p-8 text-center">
             <Mail aria-hidden="true" className="size-7 text-muted-foreground" />
@@ -400,40 +476,30 @@ export default async function OrderEmails({
             className="flex items-center justify-between gap-3 border-t p-4"
           >
             {history.page > 1 ? (
-              <Button
-                variant="outline"
-                nativeButton={false}
-                render={
-                  <Link
-                    href={queuePageHref(
-                      '/admin/order-emails',
-                      history.filters,
-                      history.page - 1,
-                    )}
-                  />
-                }
+              <Link
+                href={queuePageHref(
+                  '/admin/order-emails',
+                  history.filters,
+                  history.page - 1,
+                )}
+                className="section-link underline"
               >
                 Previous
-              </Button>
+              </Link>
             ) : (
               <span />
             )}
             {history.page < history.pageCount ? (
-              <Button
-                variant="outline"
-                nativeButton={false}
-                render={
-                  <Link
-                    href={queuePageHref(
-                      '/admin/order-emails',
-                      history.filters,
-                      history.page + 1,
-                    )}
-                  />
-                }
+              <Link
+                href={queuePageHref(
+                  '/admin/order-emails',
+                  history.filters,
+                  history.page + 1,
+                )}
+                className="section-link underline"
               >
                 Next
-              </Button>
+              </Link>
             ) : null}
           </nav>
         ) : null}
@@ -444,7 +510,7 @@ export default async function OrderEmails({
         excluded from sending; the next queue run records the final reason.
       </p>
       <details className="group rounded-xl border bg-card p-4">
-        <summary className="flex min-h-10 w-fit cursor-pointer list-none items-center gap-2 rounded-md py-2 pr-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
+        <summary className="flex min-h-11 w-fit cursor-pointer list-none items-center gap-2 rounded-md py-2 pr-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
           <ChevronRight
             aria-hidden="true"
             className="size-4 transition-transform group-open:rotate-90 motion-reduce:transition-none"
@@ -460,11 +526,11 @@ export default async function OrderEmails({
             ],
             [
               'Waiting to retry',
-              'A failed attempt waits 5, 10, 20 or 40 minutes before another attempt. Sending stops after five attempts.',
+              'Temporary failures wait 5, 10, 20, 40 and 60 minutes, then hourly while relevant. History is retained.',
             ],
             [
               'Needs review',
-              'The attempt limit is reached. Check email settings and provider health.',
+              'A recipient or setup problem requires an authorized correction. Unknown acceptance requires reconciliation.',
             ],
             [
               'Skipped: order moved ahead',
@@ -486,8 +552,8 @@ export default async function OrderEmails({
         <p className="mt-4 max-w-3xl text-sm leading-6 text-muted-foreground">
           A failed email does not undo an order. Expired sending locks may be
           picked up again. If the server accepted a message but success was not
-          recorded, a retry can send it again; check the latest outcome before a
-          manual attempt.
+          recorded, its uncertain handoff is held for reconciliation rather than
+          automatically resent.
         </p>
       </details>
     </div>

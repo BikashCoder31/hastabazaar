@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
-import {addProductEvidenceSchema} from './helpers/product-evidence-schema';
+import {completeVersionFixture} from './helpers/complete-version-fixture';
+import {readyRegisteredSeller} from './helpers/ready-registered-seller';
+import {createIncentiveDb} from './helpers/incentive-db';
 import { readFile } from 'node:fs/promises';
-import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
+import {DatabaseSync,type SQLInputValue} from 'node:sqlite';
 import test from 'node:test';
+import { companyDetails } from '../lib/content/company-details';
+import { listHomepageMakers } from '../lib/homepage/homepage-storefront-data';
 
 import {
   listActiveHomepagePromotions,
@@ -10,192 +14,33 @@ import {
   listHomepageProductControls,
   listHomepagePromotedProducts,
   listHomepageTopProducts,
+  listPublishedProducts,
   setHomepageProductVisibility,
 } from '../lib/db/repositories/products';
 
-class HomepageStatement {
-  private values: SQLInputValue[] = [];
-
-  constructor(
-    private readonly database: DatabaseSync,
-    private readonly sql: string,
-  ) {}
-
-  bind(...values: unknown[]) {
-    this.values = values as SQLInputValue[];
-    return this;
-  }
-
-  async all<T>() {
-    return {
-      results: this.database.prepare(this.sql).all(...this.values) as T[],
-      success: true,
-      meta: {},
-    };
-  }
-
-  async first<T>() {
-    return (
-      (this.database.prepare(this.sql).get(...this.values) as T | undefined) ??
-      null
-    );
-  }
-
-  async run() {
-    const result = this.database.prepare(this.sql).run(...this.values);
-    return { success: true, meta: { changes: Number(result.changes) } };
-  }
-}
-
-class HomepageDatabase {
-  constructor(private readonly database: DatabaseSync) {}
-
-  prepare(sql: string) {
-    return new HomepageStatement(this.database, sql);
-  }
-
-  async batch(statements: readonly HomepageStatement[]) {
-    return Promise.all(statements.map((statement) => statement.run()));
-  }
-}
-
-function homepageFixture() {
-  const sqlite = new DatabaseSync(':memory:');
-  sqlite.exec(`
-    CREATE TABLE users (
-      id TEXT PRIMARY KEY,
-      status TEXT NOT NULL,
-      display_name TEXT NOT NULL
-    );
-    CREATE TABLE user_roles (user_id TEXT NOT NULL, role TEXT NOT NULL);
-    CREATE TABLE seller_profiles (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      trading_name TEXT NOT NULL,
-      status TEXT NOT NULL
-    );
-    CREATE TABLE seller_participation_profiles (
-      seller_id TEXT PRIMARY KEY,
-      participation_route TEXT,
-      application_stage TEXT,
-      commercial_model TEXT,
-      legal_seller_reference TEXT,
-      invoice_issuer_reference TEXT,
-      payout_beneficiary_reference TEXT,
-      managed_agreement_version TEXT,
-      managed_agreement_accepted_at INTEGER
-    );
-    CREATE TABLE seller_restrictions (
-      seller_id TEXT PRIMARY KEY,
-      mode TEXT NOT NULL,
-      suspended_until INTEGER,
-      obligation_mode TEXT NOT NULL,
-      reason_code TEXT NOT NULL,
-      private_reason TEXT NOT NULL,
-      version INTEGER NOT NULL,
-      applied_by TEXT NOT NULL,
-      applied_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-    CREATE TABLE categories (
-      id TEXT PRIMARY KEY,
-      name_en TEXT NOT NULL,
-      is_active INTEGER NOT NULL
-    );
-    CREATE TABLE products (
-      id TEXT PRIMARY KEY,
-      seller_id TEXT NOT NULL,
-      category_id TEXT NOT NULL,
-      slug TEXT NOT NULL,
-      sku TEXT NOT NULL,
-      name_en TEXT NOT NULL,
-      price_paisa INTEGER NOT NULL,
-      compare_at_price_paisa INTEGER,
-      inventory_quantity INTEGER NOT NULL,
-      status TEXT NOT NULL,
-      published_at INTEGER
-    );
-    CREATE TABLE product_media (
-      id TEXT PRIMARY KEY,
-      product_id TEXT NOT NULL,
-      mime_type TEXT NOT NULL,
-      sort_order INTEGER NOT NULL
-    );
-    CREATE TABLE product_deletions (product_id TEXT PRIMARY KEY);
-    CREATE TABLE homepage_product_controls (
-      product_id TEXT PRIMARY KEY,
-      is_hidden INTEGER NOT NULL,
-      reason TEXT NOT NULL,
-      version INTEGER NOT NULL,
-      updated_by TEXT NOT NULL,
-      last_request_id TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-    CREATE TABLE audit_logs (
-      id TEXT PRIMARY KEY,
-      actor_id TEXT,
-      action TEXT NOT NULL,
-      subject_type TEXT NOT NULL,
-      subject_id TEXT NOT NULL,
-      reason TEXT,
-      previous_json TEXT,
-      next_json TEXT,
-      request_id TEXT,
-      ip_hash TEXT,
-      created_at INTEGER NOT NULL
-    );
-    CREATE TABLE promotions (
-      id TEXT PRIMARY KEY,
-      name_en TEXT NOT NULL,
-      status TEXT NOT NULL,
-      placement TEXT NOT NULL,
-      starts_at INTEGER NOT NULL,
-      ends_at INTEGER NOT NULL,
-      created_at INTEGER NOT NULL
-    );
-    CREATE TABLE promotion_products (
-      promotion_id TEXT NOT NULL,
-      product_id TEXT NOT NULL,
-      sort_order INTEGER NOT NULL
-    );
-    CREATE TABLE orders (
-      id TEXT PRIMARY KEY,
-      status TEXT NOT NULL,
-      delivered_at INTEGER
-    );
-    CREATE TABLE order_items (
-      id TEXT PRIMARY KEY,
-      order_id TEXT NOT NULL,
-      product_id TEXT,
-      quantity INTEGER NOT NULL,
-      fulfillment_status TEXT NOT NULL
-    );
-  `);
+async function homepageFixture() {
+  const now=Date.now(),base=await completeVersionFixture(now-60_000),sqlite=base.sqlite;
+  sqlite.exec("DELETE FROM seller_restrictions WHERE seller_id='registered';UPDATE seller_profiles SET trading_name='Real Maker' WHERE id='registered'");
+  await readyRegisteredSeller(base,true);
   const insert = (sql: string, ...values: SQLInputValue[]) =>
     sqlite.prepare(sql).run(...values);
-  const now = 2_000_000_000_000;
 
-  insert(`INSERT INTO users VALUES ('owner','active','Seller owner')`);
   insert(
-    `INSERT INTO users VALUES ('disabled-owner','disabled','Disabled seller')`,
+    `INSERT INTO users(id,email,status,display_name,created_at,updated_at) VALUES ('disabled-owner','disabled-owner@local.hastabazaar.test','disabled','Disabled seller',1,1)`,
   );
-  insert(`INSERT INTO users VALUES ('super','active','Super Admin')`);
-  insert(`INSERT INTO users VALUES ('admin','active','Admin')`);
-  insert(`INSERT INTO user_roles VALUES ('super','super_admin')`);
-  insert(`INSERT INTO user_roles VALUES ('admin','admin')`);
+  insert(`INSERT INTO users(id,email,status,display_name,created_at,updated_at) VALUES ('super','super@local.hastabazaar.test','active','Super Admin',1,1)`);
+  insert(`INSERT INTO users(id,email,status,display_name,created_at,updated_at) VALUES ('admin','admin@local.hastabazaar.test','active','Admin',1,1)`);
+  insert(`INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('super','super_admin',1)`);
+  insert(`INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('admin','admin',1)`);
   insert(
-    `INSERT INTO seller_profiles VALUES ('seller','owner','Real Maker','approved')`,
+    `INSERT INTO seller_profiles(id,user_id,legal_name,trading_name,registration_authority,registration_number,tax_mode,tax_registration_number,representative_name,support_phone,support_email,province,district,municipality,locality,status,created_at,updated_at) VALUES ('disabled-seller','disabled-owner','Fictional Hidden','Hidden Maker','Fixture','FIX-HIDDEN','PAN','FIX-HIDDEN-PAN','Fictional Owner','9800000000','disabled-owner@local.hastabazaar.test','Bagmati','Kathmandu','Kathmandu','Fictional location','approved',1,1)`,
   );
-  insert(
-    `INSERT INTO seller_profiles VALUES ('disabled-seller','disabled-owner','Hidden Maker','approved')`,
-  );
-  insert(`INSERT INTO categories VALUES ('category','Home decor',1)`);
+  insert(`INSERT INTO categories(id,slug,name_en,is_active,sort_order,created_at,updated_at) VALUES ('category','home-decor','Home decor',1,0,1,1)`);
 
   for (const row of [
     [
       'newest',
-      'seller',
+      'registered',
       'newest-product',
       'Newest product',
       125000,
@@ -205,7 +50,7 @@ function homepageFixture() {
     ],
     [
       'promoted',
-      'seller',
+      'registered',
       'promoted-product',
       'Promoted product',
       98000,
@@ -215,7 +60,7 @@ function homepageFixture() {
     ],
     [
       'popular',
-      'seller',
+      'registered',
       'popular-product',
       'Popular product',
       149900,
@@ -225,7 +70,7 @@ function homepageFixture() {
     ],
     [
       'sold-out',
-      'seller',
+      'registered',
       'sold-out',
       'Sold out product',
       50000,
@@ -245,7 +90,7 @@ function homepageFixture() {
     ],
   ] as const) {
     insert(
-      `INSERT INTO products VALUES (?,?,'category',?,? || '-sku',?,?,?,?,'published',?)`,
+      `INSERT INTO products(id,seller_id,category_id,slug,sku,name_en,price_paisa,compare_at_price_paisa,inventory_quantity,status,published_at,description_en,producer,materials,created_at,updated_at) VALUES (?,?,'category',?,? || '-sku',?,?,?,?,'published',?,'Fictional approved historical product','Fictional maker','Fictional material',1,1)`,
       row[0],
       row[1],
       row[2],
@@ -253,63 +98,66 @@ function homepageFixture() {
       row[3],
       row[4],
       row[5],
-      row[6],
+      row[6]+(row[0]==='newest'?99:row[0]==='popular'?5:0),
       row[7],
     );
     insert(
-      `INSERT INTO product_media VALUES (?,?,'image/jpeg',0)`,
+      `INSERT INTO product_media(id,product_id,mime_type,sort_order,object_key,original_name,size_bytes,alt_en,created_at) VALUES (?,?,'image/jpeg',0,?,'fixture.jpg',100,'Fictional product',1)`,
       `media-${row[0]}`,
       row[0],
+      `private/homepage-${row[0]}.jpg`,
     );
   }
 
   insert(
-    `INSERT INTO promotions VALUES ('offer','Craft week','active','homepage',?,?,?)`,
+    `INSERT INTO promotions(id,name_en,status,placement,starts_at,ends_at,created_at,name_ne,created_by,note,created_request_id,updated_at) VALUES ('offer','Craft week','active','homepage',?,?,?,'काल्पनिक','super','Explicit isolated historical placement','offer',1)`,
     now - 1000,
     now + 1000,
     now - 500,
   );
   insert(
-    `INSERT INTO promotions VALUES ('offer-two','More craft','active','homepage',?,?,?)`,
+    `INSERT INTO promotions(id,name_en,status,placement,starts_at,ends_at,created_at,name_ne,created_by,note,created_request_id,updated_at) VALUES ('offer-two','More craft','active','homepage',?,?,?,'काल्पनिक','super','Explicit isolated historical placement','offer-two',1)`,
     now - 1000,
     now + 1000,
     now - 400,
   );
   insert(
-    `INSERT INTO promotions VALUES ('ended','Old offer','active','homepage',?,?,?)`,
+    `INSERT INTO promotions(id,name_en,status,placement,starts_at,ends_at,created_at,name_ne,created_by,note,created_request_id,updated_at) VALUES ('ended','Old offer','active','homepage',?,?,?,'काल्पनिक','super','Explicit isolated historical placement','ended',1)`,
     now - 3000,
     now - 2000,
     now - 3000,
   );
-  insert(`INSERT INTO promotion_products VALUES ('offer','promoted',0)`);
-  insert(`INSERT INTO promotion_products VALUES ('offer','sold-out',1)`);
-  insert(`INSERT INTO promotion_products VALUES ('offer-two','promoted',0)`);
-  insert(`INSERT INTO promotion_products VALUES ('ended','popular',0)`);
+  insert(`INSERT INTO promotion_products(promotion_id,product_id,sort_order) VALUES ('offer','promoted',0)`);
+  insert(`INSERT INTO promotion_products(promotion_id,product_id,sort_order) VALUES ('offer','sold-out',1)`);
+  insert(`INSERT INTO promotion_products(promotion_id,product_id,sort_order) VALUES ('offer-two','promoted',0)`);
+  insert(`INSERT INTO promotion_products(promotion_id,product_id,sort_order) VALUES ('ended','popular',0)`);
 
-  insert(`INSERT INTO orders VALUES ('delivered','delivered',?)`, now - 500);
-  insert(`INSERT INTO orders VALUES ('returned','returned',?)`, now - 400);
+  insert(`INSERT INTO orders(id,status,created_at,order_number,customer_email,customer_phone,locale,policy_version,shipping_address_json,item_subtotal_paisa,delivery_charge_paisa,grand_total_paisa,payment_mode,payment_status,updated_at) VALUES ('delivered','delivered',?,'FIX-HOME-delivered','customer@local.hastabazaar.test','9800000000','en-NP','fictional-historical','{}',749500,0,749500,'cod','paid',1)`, now - 500);
+  insert(`INSERT INTO orders(id,status,created_at,order_number,customer_email,customer_phone,locale,policy_version,shipping_address_json,item_subtotal_paisa,delivery_charge_paisa,grand_total_paisa,payment_mode,payment_status,updated_at) VALUES ('returned','returned',?,'FIX-HOME-returned','customer@local.hastabazaar.test','9800000000','en-NP','fictional-historical','{}',12375000,0,12375000,'cod','paid',1)`, now - 400);
+  insert("UPDATE orders SET delivered_at=created_at WHERE id IN ('delivered','returned')");
   insert(
-    `INSERT INTO order_items VALUES ('delivered-item','delivered','popular',5,'delivered')`,
+    `INSERT INTO order_items(id,order_id,product_id,quantity,fulfillment_status,seller_id,seller_name_snapshot,product_name_snapshot,sku_snapshot,unit_price_paisa,commission_bps,commission_paisa,line_total_paisa,created_at) VALUES ('delivered-item','delivered','popular',5,'delivered','registered','Real Maker','Fictional historical product','FICTIONAL-popular',149900,900,67455,749500,1)`,
   );
   insert(
-    `INSERT INTO order_items VALUES ('returned-item','returned','newest',99,'delivered')`,
+    `INSERT INTO order_items(id,order_id,product_id,quantity,fulfillment_status,seller_id,seller_name_snapshot,product_name_snapshot,sku_snapshot,unit_price_paisa,commission_bps,commission_paisa,line_total_paisa,created_at) VALUES ('returned-item','returned','newest',99,'delivered','registered','Real Maker','Fictional historical product','FICTIONAL-newest',125000,900,1113750,12375000,1)`,
   );
 
   return {
-    database: (addProductEvidenceSchema(sqlite), new HomepageDatabase(sqlite)) as unknown as D1Database,
+    database: base.db,
     sqlite,
     now,
   };
 }
 
 void test('homepage collections use only real eligible listings and truthful ranking inputs', async () => {
-  const fixture = homepageFixture();
+  const fixture = await homepageFixture();
   try {
-    const [latest, promoted, top, offers] = await Promise.all([
+    const [latest, promoted, top, offers, makers] = await Promise.all([
       listHomepageLatestProducts(fixture.database),
       listHomepagePromotedProducts(fixture.database, fixture.now),
       listHomepageTopProducts(fixture.database, { now: fixture.now }),
       listActiveHomepagePromotions(fixture.database, fixture.now),
+      listHomepageMakers(fixture.database, fixture.now),
     ]);
 
     assert.deepEqual(
@@ -333,8 +181,12 @@ void test('homepage collections use only real eligible listings and truthful ran
         ['Craft week', 1],
       ],
     );
-    assert.equal(latest[0].tradingName, 'Real Maker');
+    assert.equal(latest[0].tradingName, 'Fictional Shop', 'The approved public name is authoritative over a private legacy name.');
     assert.equal(latest[0].label, 'New');
+    assert.equal(latest[0].id, 'newest');
+    assert.equal(latest[0].categorySlug, 'home-decor');
+    assert.equal(makers.find(maker => maker.id === 'registered')?.image?.src, '/api/product-media/media-sold-out');
+    assert.ok(makers.every(maker => maker.id !== 'disabled-seller'));
     assert.equal(promoted[0].label, 'Offer');
     assert.equal(top[0].label, 'Popular');
   } finally {
@@ -342,67 +194,52 @@ void test('homepage collections use only real eligible listings and truthful ran
   }
 });
 
-void test('homepage source has no hard-coded product fallback and retains honest empty states', async () => {
-  const [page, fallback, footer] = await Promise.all([
-    readFile(new URL('../app/page.tsx', import.meta.url), 'utf8'),
-    readFile(
-      new URL('../lib/catalog/featured-products.ts', import.meta.url),
-      'utf8',
-    ),
-    readFile(
-      new URL('../components/layout/site-footer.tsx', import.meta.url),
-      'utf8',
-    ),
-  ]);
-
-  assert.doesNotMatch(page, /featuredProducts/);
-  assert.doesNotMatch(
-    fallback,
-    /Handmade Macrame Crossbody Bag|Handwoven Straw Tote/,
-  );
-  const renderedCopy = page.replace(/\s+/g, ' ');
-  for (const approvedCopy of [
-    'NEW TO HASTABAZAAR',
-    'New arrivals.',
-    'Fresh finds are on the way.',
-    'New products will appear here as soon as they’re ready to shop.',
-    'Explore craft categories',
-    'Shop all new arrivals',
-  ]) {
-    assert.ok(
-      renderedCopy.includes(approvedCopy),
-      `missing approved copy: ${approvedCopy}`,
-    );
+void test('homepage and shop queries stay within native D1 expression limits', async () => {
+  const fixture = await createIncentiveDb();
+  try {
+    assert.deepEqual(await listHomepagePromotedProducts(fixture.db), []);
+    assert.deepEqual(await listActiveHomepagePromotions(fixture.db), []);
+    assert.deepEqual(await listHomepageLatestProducts(fixture.db), []);
+    assert.deepEqual(await listHomepageTopProducts(fixture.db), []);
+    await listHomepageMakers(fixture.db, Date.now());
+    assert.deepEqual(await listPublishedProducts(fixture.db, { sort: 'price-low' }), []);
+  } finally {
+    await fixture.dispose();
   }
-  assert.doesNotMatch(
-    page,
-    /Just added by our sellers|approved seller product/i,
-  );
-  assert.match(page, /ProductSlider/);
-  assert.match(footer, /support@hastabazaar\.com/);
 });
 
-void test('new arrivals uses a wide capped desktop shell without changing the mobile card layout', async () => {
-  const [page, slider, styles] = await Promise.all([
+void test('new arrivals retains a truthful empty state and its existing shop URL', async () => {
+  const [page, arrivals, fallback, footer] = await Promise.all([
     readFile(new URL('../app/page.tsx', import.meta.url), 'utf8'),
-    readFile(
-      new URL('../components/catalog/product-slider.tsx', import.meta.url),
-      'utf8',
-    ),
-    readFile(new URL('../app/globals.css', import.meta.url), 'utf8'),
+    readFile(new URL('../components/homepage/homepage-products.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../lib/catalog/featured-products.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../components/layout/site-footer.tsx', import.meta.url), 'utf8'),
   ]);
+  assert.doesNotMatch(page, /featuredProducts/);
+  assert.doesNotMatch(fallback, /Handmade Macrame Crossbody Bag|Handwoven Straw Tote/);
+  assert.match(page, /<HomepageNewArrivals products=\{latestProducts\}/);
+  for (const copy of ['Fresh finds are on the way.', 'New products will appear here as soon as they’re ready to shop.', 'See all new arrivals']) {
+    assert.ok(arrivals.includes(copy), copy);
+  }
+  assert.match(arrivals, /URLSearchParams\(\{ sort: 'newest' \}\)/);
+  assert.equal(companyDetails.supportEmail, 'support@hastabazaar.com');
+  assert.ok(footer.includes('mailto:' + '$' + '{companyDetails.supportEmail}'));
+});
 
-  assert.match(page, /id="latest-products"[\s\S]*?homepage-product-shell/);
-  assert.match(styles, /\.homepage-product-shell\s*\{[\s\S]*?max-width:\s*105rem/);
-  assert.match(slider, /homepage-product-scroller/);
-  assert.match(slider, /2xl:basis-\[calc\(20%-1\.2rem\)\]/);
-  assert.match(slider, /basis-\[78%\]/);
-  assert.match(styles, /\.homepage-product-scroller\s*\{[\s\S]*?scrollbar-width:\s*none/);
-  assert.match(styles, /\.homepage-product-scroller::-webkit-scrollbar/);
+void test('new arrivals adapts to two, three and four columns', async () => {
+  const [productCards, styles] = await Promise.all([
+    readFile(new URL('../components/homepage/homepage-products.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../components/homepage/homepage.module.css', import.meta.url), 'utf8'),
+  ]);
+  assert.match(productCards, /id="latest-products"/);
+  assert.match(productCards, /aria-pressed=\{selected === key\}/);
+  for (const columns of [2, 3, 4]) {
+    assert.ok(styles.includes('grid-template-columns: repeat(' + columns + ', minmax(0, 1fr))'));
+  }
 });
 
 void test('Super Admin can hide and restore individual homepage products without unpublishing', async () => {
-  const fixture = homepageFixture();
+  const fixture = await homepageFixture();
   try {
     await assert.rejects(
       () =>
@@ -510,7 +347,7 @@ void test('Super Admin can hide and restore individual homepage products without
       ['newest-product'],
     );
     assert.equal(
-      fixture.sqlite.prepare('SELECT COUNT(*) AS total FROM audit_logs').get()
+      fixture.sqlite.prepare("SELECT COUNT(*) AS total FROM audit_logs WHERE action IN ('homepage.product.hidden','homepage.product.shown')").get()
         ?.total,
       4,
       'idempotent retry and rejected writes must not duplicate audit history',

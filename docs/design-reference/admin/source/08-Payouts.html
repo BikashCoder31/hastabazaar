@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operations · Payouts</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/39ae600ed082352c03509106609818ff">
+<link rel="stylesheet" href="/_blob/d1603bdfcb29428264731bbedb89e050">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&amp;family=Instrument+Sans:wght@400..700&amp;family=JetBrains+Mono:wght@500&amp;display=swap">
+<style>
+body{margin:0;background:#F7F3EC}
+a{color:#14213D}a:hover{color:#A8232E}
+.helpbtn{all:unset;cursor:pointer;width:28px;height:28px;border-radius:50%;border:1px solid #D3C5AD;display:inline-flex;align-items:center;justify-content:center;color:#46536F;transition:background-color 160ms ease,color 160ms ease,transform 160ms ease}
+.helpbtn:hover{background:#fff;color:#14213D}.helpbtn:active{transform:scale(.95)}
+.helpbtn:focus-visible,.stg:focus-visible,.pcard:focus-visible,.syncbtn:focus-visible{outline:2px solid #A8232E;outline-offset:2px}
+.pop{position:absolute;z-index:5;background:#fff;border:1px solid #E4DACA;border-radius:14px;box-shadow:0 18px 40px -18px rgba(20,33,61,.35);animation:popin 180ms cubic-bezier(.23,1,.32,1)}
+@keyframes popin{from{opacity:0;transform:translateY(-4px) scale(.98)}}
+.fbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;position:relative}
+.search{display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;border:1px solid #D3C5AD;border-radius:10px;background:#fff;flex:0 1 320px;color:#675B4E}
+.search input{all:unset;flex:1;font-size:14px;color:#14213D}
+.search:focus-within{border-color:#14213D;box-shadow:0 0 0 4px rgba(20,33,61,.08)}
+.token{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 6px 0 10px;border-radius:999px;background:#EDE4D3;font-size:13px;font-weight:600}
+.token button{all:unset;cursor:pointer;width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center}
+.token button:hover{background:#D3C5AD}
+.syncbtn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border-radius:8px;font-size:13px;color:#46536F;transition:background-color 160ms ease}
+.syncbtn:hover{background:#EDE4D3;color:#14213D}
+.syncbtn svg{transition:transform 600ms cubic-bezier(.23,1,.32,1)}
+.syncbtn.busy svg{animation:spin 700ms linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.syncline{height:2px;background:#E4DACA;overflow:hidden;position:relative}
+.syncline::after{content:"";position:absolute;inset:0;width:40%;background:#14213D;animation:slide 900ms linear infinite}
+@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
+.stages{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.stg{all:unset;box-sizing:border-box;cursor:pointer;position:relative;display:flex;flex-direction:column;gap:4px;padding:14px 16px 16px;border-radius:14px;background:#fff;border:1px solid #E4DACA;transition:border-color 160ms ease,transform 160ms ease,box-shadow 160ms ease}
+.stg:hover{border-color:#B9AC96;transform:translateY(-1px)}
+.stg:active{transform:scale(.98)}
+.stg.on{border-color:#14213D;box-shadow:0 0 0 1px #14213D,0 10px 24px -16px rgba(20,33,61,.5)}
+.stg:not(:last-child)::after{content:"";position:absolute;right:-11px;top:50%;width:8px;height:8px;border-top:1.5px solid #B9AC96;border-right:1.5px solid #B9AC96;transform:translateY(-50%) rotate(45deg)}
+.stg .bar{height:4px;border-radius:2px;margin-bottom:8px}
+.pcard{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;gap:6px;padding:14px;border-radius:12px;background:#FFFCF7;border:1px solid #E4DACA;transition:border-color 160ms ease,background-color 160ms ease}
+.pcard:hover{border-color:#B9AC96;background:#fff}
+.pcard.on{background:#fff;border-color:#14213D;box-shadow:0 0 0 1px #14213D}
+.step{padding:10px 12px;border-radius:12px;font-size:13px;display:flex;flex-direction:column;gap:2px}
+.step b{display:flex;gap:6px;align-items:center;font-size:13.5px}
+.step.done{background:#E1EEE5}.step.done b{color:#2C6A4A}
+.step.now{background:#fff;box-shadow:inset 0 0 0 2px #14213D}
+.step.todo{background:#EDE4D3;color:#675B4E}.step.todo b{color:#46536F}
+@media (prefers-reduced-motion:reduce){.pop{animation:none}.syncbtn.busy svg,.syncline::after{animation:none}.stg:hover{transform:none}}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*RESP-START*/
+.mbar,.mtab{display:none}
+.mbar{position:sticky;top:0;z-index:1000;height:56px;align-items:center;gap:10px;padding:0 12px 0 16px;border-bottom:1px solid #E4DACA;background:#FFFCF7}
+.mbar.dark{background:#14213D;color:#fff;border-bottom:0}
+.mbar .mlogo{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
+.mbar .mlogo img{width:30px;height:30px;border-radius:7px;background:#FFFCF7}
+.mbar .mlogo b{font-size:15px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mbar .mlogo span{display:block;font-size:11.5px;font-weight:600;color:#A8232E}
+.mbar.dark .mlogo span{color:#E2B65C}
+.mbar .mbtn{all:unset;cursor:pointer;width:44px;height:44px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;position:relative}
+.mbar .mbtn:focus-visible{outline:2px solid #A8232E;outline-offset:2px}
+.mmenu{position:relative}
+.mmenu summary{list-style:none}.mmenu summary::-webkit-details-marker{display:none}
+.mmenu[open] summary{background:rgba(20,33,61,.08)}
+.mbar.dark .mmenu[open] summary{background:rgba(255,255,255,.12)}
+.mmenu .mpanel{position:fixed;z-index:1001;left:0;right:0;top:56px;bottom:0;overflow:auto;padding:12px 12px 100px;background:#FFFCF7;border-top:1px solid #E4DACA;animation:mdrop 200ms cubic-bezier(.23,1,.32,1)}
+.mbar.dark .mmenu .mpanel{background:#14213D;border-top-color:rgba(255,255,255,.1)}
+.mmenu .mpanel a{min-height:48px}
+@keyframes mdrop{from{opacity:0;transform:translateY(-6px)}}
+.mtab{position:fixed;left:0;right:0;bottom:0;z-index:999;height:72px;padding:0 4px 8px;background:#FFFCF7;border-top:1px solid #E4DACA;grid-template-columns:repeat(5,minmax(0,1fr));align-items:center;font-size:11.5px;font-weight:600}
+.mtab a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:52px;color:#46536F;position:relative}
+.mtab a.on{color:#A8232E}
+.mtab a.add{justify-self:center;width:52px;height:52px;min-height:0;border-radius:16px;background:#A8232E;color:#fff;margin-top:-16px;box-shadow:0 10px 20px -10px rgba(168,35,46,.7)}
+.mtab .count{position:absolute;top:2px;right:calc(50% - 22px)}
+
+.mtab.admin{background:#14213D;border-top-color:rgba(255,255,255,.08)}
+.mtab.admin a,.mtab.admin summary{color:#C9D0DD}
+.mtab.admin a.on,.mtab.admin .mmore.on summary{color:#E2B65C}
+.mtab .mmore summary{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:52px;cursor:pointer;list-style:none}
+.mtab .mmore .mpanel{top:56px;bottom:72px}
+.mpanel.dark{background:#14213D!important}
+@media (max-width:1023px){
+  .hb.shell{flex-direction:column;flex-wrap:nowrap}
+  .hb.shell>aside.side{display:none!important}
+  .mbar{display:flex}
+  .hb.shell>.main{flex:1 1 auto;width:100%}
+  .cmdk{display:none!important}
+  .hb.shell>.main [style*="grid-template-columns: minmax(0, 1."],.hb.shell>.main [style*="minmax(0, 1fr) minmax(0, 1."],.hb.shell>.main [style*="minmax(0, 1fr) 360px"]{grid-template-columns:minmax(0,1fr)!important}
+  .hb.shell>.main [style*="grid-template-columns"][style*="repeat(5"]{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  .hb.shell>.main [style*="flex-wrap: wrap"],.hb.shell>.main [style*="display: grid"]{align-content:flex-start}
+  .hb.shell>.main .sheet{grid-template-columns:minmax(0,1fr)!important}
+  .hb.shell>.main .sheet>aside[style*="sticky"]{position:static!important}
+  .hb.shell>.main [style*="position: sticky; bottom: 0"]{bottom:var(--mtab-pad,0px)!important}
+  .hb.shell>.main>div:first-of-type:not(.mbar){height:auto!important;min-height:60px;flex-wrap:wrap;row-gap:8px;padding-top:10px!important;padding-bottom:10px!important}
+}
+@media (max-width:1023px){
+  .hb.shell{padding-bottom:var(--mtab-pad,0px)}
+  .mtab.on-phone{display:grid}
+  .hide-m,.hide-phone{display:none!important}
+  .hb.shell>.main>div:first-of-type:not(.mbar){padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main main,.hb.shell>.main>div>main,.hb.shell>.main section,.hb.shell>.main aside{max-width:100%!important}
+  .hb.shell>.main main{padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main>div[style*="32px"]:not(:first-of-type):not(.mbar){padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main>div[style*="32px"]>main,.hb.shell>.main>div[style*="32px"]>aside{padding-left:0!important;padding-right:0!important}
+  .hb.shell>.main .sheet{align-content:start;flex:none}
+  .row{flex-wrap:wrap;row-gap:8px}
+  .row>span[style*="flex: 1"]{flex:1 1 55%!important}
+  .hb.shell>.main [style*="padding: 0 32px"],.hb.shell>.main [style*="padding: 0 32px;"]{padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main [style*="grid-template-columns"]:not(dl):not(.keep2):not(.steps):not(.stepper):not([style*="1fr auto"]):not([style*="repeat(5"]){grid-template-columns:minmax(0,1fr)!important}
+  .hb.shell>.main [style*="grid-template-columns"][style*="repeat(5"]{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  .hb.shell>.main [style*="grid-template-columns"]:not([style*="gap"]){row-gap:16px}
+  .hb.shell>.main ol.steps[style],.hb.shell>.main .steps{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .hb.shell>.main .keep2{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .hb.shell>.main dl dd{min-width:0;overflow-wrap:anywhere}
+  .hb.shell>.main [style*="flex: 999 1"],.hb.shell>.main [style*="flex: 1 1 4"],.hb.shell>.main [style*="flex: 1 1 3"],.hb.shell>.main [style*="flex: 1 1 6"],.hb.shell>.main [style*="flex: 0 0 3"]{flex:1 1 100%!important;max-width:100%!important;border-left:0!important;border-right:0!important;padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main [style*="border-left: 1px solid #E4DACA"]:not(td):not(th){border-left:0!important}
+  .hb.shell>.main ol.num>li,.hb.shell>.main .num>div{padding-left:0!important;padding-right:0!important}
+  .tbl-box{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  [role=tablist],.subtabs,nav.subtabs{flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none}
+  [role=tablist]::-webkit-scrollbar,.subtabs::-webkit-scrollbar{display:none}
+  [role=tablist]>*,.subtabs>*{flex-shrink:0}
+  h1.serif{font-size:26px!important}
+  h2.serif{font-size:24px!important}
+  .btn{min-height:44px}
+  .hb.shell>.main .btn{flex-wrap:nowrap;max-width:100%;height:auto;padding-top:8px;padding-bottom:8px;text-align:center;white-space:normal}
+  .btn-xs{min-height:36px}
+  .pop{position:fixed!important;left:16px!important;right:16px!important;width:auto!important;top:70px!important}
+  .toast{left:16px;right:16px;transform:none;max-width:none;bottom:calc(var(--mtab-pad,0px) + 16px)}
+  @keyframes toastin{from{opacity:0;transform:translateY(10px)}}
+
+  .task{display:grid!important;grid-template-columns:40px minmax(0,1fr) auto;gap:6px 14px;align-items:center;padding:14px 16px!important}
+  .task>:nth-child(2){grid-column:2/4}
+  .task.t4>:nth-child(1){grid-row:1/3;align-self:start}
+  .task.t4>:nth-child(3){grid-column:2;justify-self:start}
+  .task.t4>:nth-child(4){grid-column:3;grid-row:2}
+  .task:not(.t4)>:nth-child(2){grid-column:2}
+  .hb.shell>.main [style*="gap: 0"]{row-gap:18px!important}
+
+  .hb.shell>.main [style*="flex-wrap: wrap"],.hb.shell>.main [style*="display: grid"]{align-content:flex-start}
+  .hb.shell>.main [style*="justify-content: space-between"]{flex-wrap:wrap;row-gap:8px}
+  .hb.shell>.main>div:first-of-type:not(.mbar)>div{flex-wrap:wrap}
+  [role=alert]{flex-wrap:wrap}
+  [role=alert]>span[style*="flex: 1"]{flex:1 1 220px!important}
+  .stages{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .stg::after{display:none!important}
+  .parked{grid-template-columns:1fr!important;gap:2px!important}
+  .feat-h{flex-wrap:wrap}
+  .feat-h>span:nth-child(2){flex:1 1 calc(100% - 64px)!important}
+  .seg{flex-wrap:nowrap!important;overflow-x:auto;max-width:100%}
+  .seg button{white-space:nowrap;flex-shrink:0}
+  .qrow{grid-template-columns:22px 40px minmax(0,1fr)!important;gap:8px 12px!important;padding:14px 16px!important}
+  .qrow>a.btn{grid-column:3;justify-self:start}
+  .qrow b{white-space:normal!important}
+  ol.stepper{grid-template-columns:1fr!important}
+  ol.stepper li{flex-direction:row!important;flex-wrap:wrap;align-items:baseline;gap:4px 10px!important;padding:0 0 16px 30px!important}
+  ol.stepper li::before{top:16px!important;bottom:0;left:6px!important;right:auto!important;width:3px!important;height:auto!important}
+  ol.stepper li:last-child::before{display:none}
+  ol.stepper .dot{top:1px!important}
+  .hb.shell>.main [style*="position: absolute"][style*="bottom: 24px"]{position:sticky!important;left:auto!important;right:auto!important;bottom:12px!important;flex-wrap:wrap;margin:16px 0 0}
+  .hb.shell>.main [style*="position: absolute"][style*="bottom: 24px"]>span{flex:1 1 100%!important}
+  .hb.shell>.main div:has(>div>h2.serif){flex-wrap:wrap}
+  .hb.shell>.main div:has(>h2.serif){flex:1 1 200px!important;min-width:0}
+  .hb.shell>.main [style*="grid-template-columns"]:has(>.kpi){grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .kpi{padding:12px 14px!important}.kpi b{font-size:22px!important}
+  .tbl.cards thead{display:none}
+  .tbl.cards,.tbl.cards tbody{display:block}
+  .tbl.cards tr{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px 12px;align-items:center;padding:14px 16px;border-top:1px solid #E4DACA}
+  .tbl.cards tr:first-child{border-top:0}
+  .tbl.cards td{display:block;padding:0!important;border:0!important;max-width:none!important;text-align:left}
+  .tbl.cards td.full{grid-column:1/-1}
+  .tbl.cards td.r{text-align:right}
+  .tbl.cards td.hide{display:none}
+  .tbl.cards td.pr{grid-column:3;grid-row:1}
+}
+
+@media (max-width:767px){
+  .hb>div[style*="height: 64px"]{height:auto!important;flex-wrap:wrap;row-gap:8px;padding:10px 16px!important}
+  .hb>div[style*="height: 64px"] [role=tablist]{display:none!important}
+  .hb>div[style*="height: 64px"]>span[style*="width: 1px"]{display:none}
+  .hb aside[aria-label="Sections"]{max-width:none!important;flex:1 1 100%!important;border-right:0!important}
+  .hb main[aria-label="Preview"]{padding:16px!important}
+  .hb main[aria-label="Preview"] [style*="grid-template-columns: 1fr 1fr"]{grid-template-columns:1fr!important}
+  .hb [style*="flex-wrap: wrap"]{align-content:flex-start}
+}
+
+@media (min-width:768px) and (max-width:1023px){
+  .hb.shell{padding-bottom:0!important}
+  .mtab.on-phone{display:none!important}
+  .hide-phone{display:revert!important}
+  .hb.shell>.main [style*="grid-template-columns"][style*="repeat(4"],.hb.shell>.main [style*="grid-template-columns"][style*="repeat(3"]:not([style*="repeat(3, minmax(0, 1fr)) "]){grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .hb.shell>.main [style*="grid-template-columns: 1fr 1fr"]{grid-template-columns:1fr 1fr!important}
+  .hb.shell>.main ol.steps[style],.hb.shell>.main .steps{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+  .stages{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+  .toast{bottom:16px}
+  h1.serif{font-size:30px!important}
+  .tbl.cards thead{display:table-header-group}
+  .tbl.cards{display:table}.tbl.cards tbody{display:table-row-group}
+  .tbl.cards tr{display:table-row}
+  .tbl.cards td{display:table-cell;padding:12px 14px!important;border-top:1px solid #E4DACA!important}
+  .tbl.cards td.hide{display:table-cell}
+  .tbl.cards td.pr{grid-column:auto;grid-row:auto}
+}
+@media (prefers-reduced-motion:reduce){.mmenu .mpanel{animation:none}}
+/*RESP-END*/
+</style>
+</helmet>
+<div class="hb shell" style="--mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; background: #F7F3EC; min-height: 100vh">
+<!--RESP-START--><nav class="mtab admin on-phone" aria-label="Main sections"><a href="Admin-Overview.dc.html"><span class="ic i-home"></span>Today</a><a href="Admin-Orders.dc.html"><span class="ic i-receipt"></span>Orders</a><a href="Admin-Sellers.dc.html"><span class="ic i-store"></span>Sellers</a><a href="Admin-Payouts.dc.html" class="on" aria-current="page"><span class="ic i-wallet"></span>Money</a><details class="mmenu mmore"><summary aria-label="More sections"><span class="ic i-menu"></span>More</summary><div class="mpanel dark"><nav class="navd" aria-label="Operations">
+      <a href="Admin-Overview.dc.html"><span class="ic s18 i-home"></span>Today<span class="cnt">7</span></a>
+      <a href="Admin-Orders.dc.html"><span class="ic s18 i-receipt"></span>Orders<span class="cnt q">3</span></a>
+      <a href="Admin-Care.dc.html"><span class="ic s18 i-message"></span>Care<span class="cnt q">2</span></a>
+      <a href="Admin-Sellers.dc.html"><span class="ic s18 i-store"></span>Sellers<span class="cnt q">9</span></a>
+      <a href="Admin-Moderation.dc.html"><span class="ic s18 i-package"></span>Catalog</a>
+      <a href="Admin-Payouts.dc.html" class="on"><span class="ic s18 i-wallet"></span>Money<span class="cnt q">2</span></a>
+      <a href="Admin-Offers.dc.html"><span class="ic s18 i-percent"></span>Growth</a>
+      <a href="Admin-Reports.dc.html"><span class="ic s18 i-chart"></span>Reports</a>
+      <a href="#"><span class="ic s18 i-sliders"></span>Settings</a>
+    </nav></div></details></nav><header class="mbar dark"><a href="Admin-Overview.dc.html" class="mlogo" style="color: #fff"><img src="/_blob/65b39bff773bb375aa5d23ab420967a3" alt=""><span style="display: flex; flex-direction: column; color: inherit"><b>Money</b><span>Operations</span></span></a><button class="mbtn" aria-label="Search, Cmd K" style="color: #fff"><span class="ic i-search"></span></button><details class="mmenu"><summary class="mbtn" aria-label="Menu" style="color: #fff"><span class="ic i-menu"></span></summary><div class="mpanel"><nav class="navd" aria-label="Operations">
+      <a href="Admin-Overview.dc.html"><span class="ic s18 i-home"></span>Today<span class="cnt">7</span></a>
+      <a href="Admin-Orders.dc.html"><span class="ic s18 i-receipt"></span>Orders<span class="cnt q">3</span></a>
+      <a href="Admin-Care.dc.html"><span class="ic s18 i-message"></span>Care<span class="cnt q">2</span></a>
+      <a href="Admin-Sellers.dc.html"><span class="ic s18 i-store"></span>Sellers<span class="cnt q">9</span></a>
+      <a href="Admin-Moderation.dc.html"><span class="ic s18 i-package"></span>Catalog</a>
+      <a href="Admin-Payouts.dc.html" class="on"><span class="ic s18 i-wallet"></span>Money<span class="cnt q">2</span></a>
+      <a href="Admin-Offers.dc.html"><span class="ic s18 i-percent"></span>Growth</a>
+      <a href="Admin-Reports.dc.html"><span class="ic s18 i-chart"></span>Reports</a>
+      <a href="#"><span class="ic s18 i-sliders"></span>Settings</a>
+    </nav></div></details></header><!--RESP-END-->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  <aside class="side" style="background: #14213D; color: #C9D0DD; padding: 18px 12px; display: flex; flex-direction: column; gap: 18px; max-width: 236px; flex-basis: 220px">
+    <a href="#" style="display: flex; align-items: center; gap: 10px; padding: 0 6px; color: #fff"><img src="/_blob/65b39bff773bb375aa5d23ab420967a3" alt="" style="width: 34px; height: 34px; background: #FFFCF7; border-radius: 8px; padding: 2px"><span style="display: flex; flex-direction: column; line-height: 1.1"><span class="serif" style="font-size: 19px; font-weight: 600; color: #fff">Hastabazaar</span><span style="font-size: 12px; font-weight: 600; color: #E2B65C">Operations</span></span></a>
+    <nav class="navd" aria-label="Operations">
+      <a href="Admin-Overview.dc.html"><span class="ic s18 i-home"></span>Today<span class="cnt">7</span></a>
+      <a href="Admin-Orders.dc.html"><span class="ic s18 i-receipt"></span>Orders<span class="cnt q">3</span></a>
+      <a href="Admin-Care.dc.html"><span class="ic s18 i-message"></span>Care<span class="cnt q">2</span></a>
+      <a href="Admin-Sellers.dc.html"><span class="ic s18 i-store"></span>Sellers<span class="cnt q">9</span></a>
+      <a href="Admin-Moderation.dc.html"><span class="ic s18 i-package"></span>Catalog</a>
+      <a href="Admin-Payouts.dc.html" class="on"><span class="ic s18 i-wallet"></span>Money<span class="cnt q">2</span></a>
+      <a href="Admin-Offers.dc.html"><span class="ic s18 i-percent"></span>Growth</a>
+      <a href="Admin-Reports.dc.html"><span class="ic s18 i-chart"></span>Reports</a>
+      <a href="#"><span class="ic s18 i-sliders"></span>Settings</a>
+    </nav>
+    <div style="margin-top: auto; display: flex; flex-direction: column; gap: 10px">
+      <a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; font-size: 14px; color: #C9D0DD"><span class="ic s18 i-arrow-ur"></span>Open marketplace</a>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; background: rgba(255,252,247,.07)">
+        <span class="avatar" style="width: 34px; height: 34px; background: #E2B65C; color: #14213D; font-size: 13px">NS</span>
+        <span style="flex: 1; line-height: 1.25"><b style="color: #fff; font-size: 14px; display: block">Nisha S.</b><span style="font-size: 12.5px">Super Admin</span></span>
+        <button class="btn btn-sm btn-icon" aria-label="Sign out" style="color: #C9D0DD; width: 32px; height: 32px"><span class="ic s18 i-logout"></span></button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main" style="display: flex; flex-direction: column; min-width: 0">
+    <div style="height: 68px; display: flex; align-items: center; gap: 12px; padding: 0 32px; position: relative">
+      <h1 class="serif" style="font-size: 28px">Money</h1>
+      <button class="helpbtn" aria-label="How payouts work" aria-expanded="{{helpOpen}}" onClick="{{toggleHelp}}"><span class="ic s16 i-help"></span></button>
+      <sc-if value="{{helpOpen}}" hint-placeholder-val="{{ false }}">
+        <div class="pop" role="dialog" aria-label="How payouts work" style="top: 58px; left: 32px; width: 420px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; font-size: 14px; color: #2C3B5C">
+          <b style="font-size: 15px; color: #14213D">How payouts work</b>
+          <p>Money moves left to right. A sale starts earning when it's delivered and becomes payable once its 7-day hold after delivery ends.</p>
+          <p>As Super Admin you check and approve a payout in one step, then record the bank transfer. Every step is saved in the payout's history.</p>
+          <p>The page shows what we last loaded straight away and refreshes in the background, so you never wait on a blank screen.</p>
+          <a href="#" class="tlink" style="font-size: 13.5px">Full staff procedure</a>
+        </div>
+      </sc-if>
+      <div class="cmdk hide-m" style="margin-left: auto; width: 380px"><span class="ic s18 i-search"></span><span style="flex: 1">Jump to anything…</span><span class="kbd">⌘K</span></div>
+    </div>
+    <nav class="subtabs" aria-label="Money sections">
+      <a href="Admin-CourierCash.dc.html">Courier cash <span class="n">1</span></a><a href="Admin-Payouts.dc.html" class="on">Payouts <span class="n">2</span></a><a href="Admin-PayoutRun.dc.html">Wednesday payout run</a><a href="Admin-Refunds.dc.html">Refunds & recoveries <span class="n">3</span></a><a href="#">Books</a><a href="#">Commission</a><a href="#">Fees & waivers</a><a href="#">Money notices</a>
+    </nav>
+    <sc-if value="{{syncing}}" hint-placeholder-val="{{ false }}"><div class="syncline" role="progressbar" aria-label="Refreshing payouts"></div></sc-if>
+
+    <div style="padding: 20px 32px 40px; display: flex; flex-direction: column; gap: 18px">
+      <div class="fbar">
+        <label class="search"><span class="ic s16 i-search"></span><input placeholder="Seller or payout number" value="{{q}}" onChange="{{setQ}}" aria-label="Search payouts"></label>
+        <button class="btn btn-ghost btn-sm" onClick="{{toggleFilters}}" aria-expanded="{{filtersOpen}}"><span class="ic s18 i-filter"></span>Filters</button>
+        <span class="token">November 2025<button aria-label="Remove month filter"><span class="ic s14 i-x"></span></button></span>
+        <span style="margin-left: auto; display: flex; gap: 6px; align-items: center">
+          <button class="{{syncCls}}" onClick="{{refresh}}" aria-label="Refresh payouts"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>{{syncLabel}}</button>
+          <button class="btn btn-ghost btn-sm"><span class="ic s18 i-download"></span>Export</button>
+        </span>
+        <sc-if value="{{filtersOpen}}" hint-placeholder-val="{{ false }}">
+          <div class="pop" role="dialog" aria-label="Filter payouts" style="top: 46px; left: 330px; width: 340px; padding: 18px; display: flex; flex-direction: column; gap: 14px">
+            <div class="field"><label class="label" for="pf-s">Seller</label><select id="pf-s" class="input"><option>All sellers</option><option>Hand Creation</option><option>Himalayan Craft</option><option>Patan Clay Studio</option><option>Dhaka Weavers Collective</option></select></div>
+            <div class="field"><label class="label" for="pf-m">Month</label><select id="pf-m" class="input"><option>November 2025 · Mangsir 2082</option><option>October 2025 · Kartik 2082</option></select></div>
+            <div class="field"><label class="label" for="pf-a">Amount</label><select id="pf-a" class="input"><option>Any amount</option><option>Over NPR 20,000</option></select></div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end"><button class="btn btn-quiet btn-sm" onClick="{{toggleFilters}}">Clear</button><button class="btn btn-ink btn-sm" onClick="{{toggleFilters}}">Show payouts</button></div>
+          </div>
+        </sc-if>
+      </div>
+
+      <div class="stages" role="tablist" aria-label="Payout stages">
+        <sc-for list="{{stages}}" as="s" hint-placeholder-count="4">
+          <button class="{{s.cls}}" role="tab" aria-selected="{{s.on}}" onClick="{{s.pick}}">
+            <span class="bar" style="background: {{s.color}}"></span>
+            <span style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px"><b style="font-size: 14.5px">{{s.label}}</b><span class="num" style="font-size: 13px; font-weight: 700; color: {{s.color}}">{{s.n}}</span></span>
+            <span class="serif num" style="font-size: 24px; line-height: 1.15; letter-spacing: -0.01em">NPR {{s.sum}}</span>
+            <span style="font-size: 12.5px; color: #675B4E">{{s.hint}}</span>
+          </button>
+        </sc-for>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 24px; align-items: start">
+        <div style="display: flex; flex-direction: column; gap: 8px" aria-label="Payouts in this stage">
+          <span style="font-size: 13px; color: #46536F; padding: 0 2px">{{listTitle}}</span>
+          <sc-for list="{{items}}" as="p" hint-placeholder-count="3">
+            <button class="{{p.cls}}" onClick="{{p.pick}}">
+              <span style="display: flex; justify-content: space-between; gap: 8px"><b class="mono" style="font-size: 13px">{{p.ref}}</b><span class="{{p.badgeCls}}" style="height: 20px; font-size: 11.5px">{{p.badge}}</span></span>
+              <b style="font-size: 15px">{{p.seller}}</b>
+              <span class="num" style="display: flex; justify-content: space-between; font-size: 13.5px; color: #46536F"><span>{{p.short}}</span><b style="color: #14213D">NPR {{p.amount}}</b></span>
+            </button>
+          </sc-for>
+          <sc-if value="{{empty}}" hint-placeholder-val="{{ false }}">
+            <div style="padding: 28px 18px; border: 1px dashed #D3C5AD; border-radius: 12px; text-align: center; display: flex; flex-direction: column; gap: 4px"><b style="font-size: 15px">No payouts match “{{q}}”</b><span style="font-size: 13.5px; color: #46536F">Try a seller name or a number like PO-0143.</span></div>
+          </sc-if>
+        </div>
+
+        <sc-if value="{{hasDetail}}" hint-placeholder-val="{{ true }}">
+        <section class="panel" style="padding: 26px 28px; display: flex; flex-direction: column; gap: 20px" aria-label="{{d.ref}}">
+          <div style="display: flex; gap: 16px; align-items: start; flex-wrap: wrap">
+            <div style="flex: 1; min-width: 260px">
+              <span class="num" style="font-size: 13.5px; color: #46536F">{{d.ref}} · {{d.meta}}</span>
+              <h2 class="serif num" style="font-size: 36px; line-height: 1.08; letter-spacing: -0.02em">NPR {{d.amount}} to {{d.seller}}</h2>
+            </div>
+            <span class="{{d.badgeCls}}">{{d.badge}}</span>
+          </div>
+
+          <sc-if value="{{d.isPayout}}" hint-placeholder-val="{{ true }}">
+            <ol style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px" aria-label="Payout steps">
+              <sc-for list="{{d.steps}}" as="st" hint-placeholder-count="4">
+                <li class="{{st.cls}}"><b style="white-space: nowrap"><span class="{{st.icon}}"></span>{{st.label}}</b><span>{{st.note}}</span></li>
+              </sc-for>
+            </ol>
+          </sc-if>
+
+          <div style="display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; align-items: start">
+            <div style="display: flex; flex-direction: column; gap: 12px">
+              <h3 style="font-size: 15px; font-weight: 650">{{d.sumTitle}}</h3>
+              <dl class="num" style="margin: 0; display: grid; grid-template-columns: 1fr auto; row-gap: 10px; column-gap: 16px; font-size: 14.5px">
+                <sc-for list="{{d.lines}}" as="l" hint-placeholder-count="4">
+                  <dt style="color: {{l.c}}; font-weight: {{l.w}}; padding-top: {{l.pt}}; border-top: {{l.bt}}">{{l.label}}</dt><dd style="margin: 0; color: {{l.c}}; font-weight: {{l.w}}; padding-top: {{l.pt}}; border-top: {{l.bt}}">{{l.value}}</dd>
+                </sc-for>
+              </dl>
+              <a href="#" class="tlink" style="font-size: 13.5px; align-self: flex-start">{{d.ordersLink}}</a>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 12px; padding: 18px; border-radius: 12px; background: #FFFCF7; border: 1px solid #E4DACA">
+              <div style="display: flex; gap: 12px; align-items: center"><span style="width: 40px; height: 40px; border-radius: 10px; background: #EDE4D3; display: inline-flex; align-items: center; justify-content: center"><span class="ic i-bank"></span></span><span style="font-size: 14.5px"><b style="display: block">Paying into account ••{{d.acct}}</b><span style="color: #46536F">Name matches the shop owner</span></span></div>
+              <sc-for list="{{d.checks}}" as="c" hint-placeholder-count="3">
+                <span style="display: flex; gap: 8px; font-size: 13.5px; color: {{c.color}}"><span class="{{c.icon}}"></span>{{c.text}}</span>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding-top: 18px; border-top: 1px solid #E4DACA">
+            <sc-for list="{{d.actions}}" as="a" hint-placeholder-count="2">
+              <button class="{{a.cls}}">{{a.label}}</button>
+            </sc-for>
+            <span style="font-size: 13.5px; color: #46536F; margin-left: auto; display: flex; gap: 6px; align-items: center"><span class="ic s16 i-lock"></span>{{d.foot}}</span>
+          </div>
+        </section>
+        </sc-if>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1120}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { stage: 'approve', sel: 'PO-0143', q: '', helpOpen: false, filtersOpen: false, syncing: false, synced: '20 s ago' }; }
+  renderVals() {
+    const s = this.state;
+    const ST = [
+      ['earning', 'Earning', '#8A5A0B', 'Held for 7 days after delivery'],
+      ['approve', 'Ready to approve', '#A8232E', 'Seller asked to be paid'],
+      ['sent', 'Sent to bank', '#2A4A88', 'Waiting for the bank to confirm'],
+      ['paid', 'Paid', '#2C6A4A', 'Paid out in November']
+    ];
+    const ok = (t) => ({ icon: 'ic s16 i-check', color: '#2C6A4A', text: t });
+    const warn = (t) => ({ icon: 'ic s16 i-alert', color: '#8A5A0B', text: t });
+    const L = (label, value, kind) => ({ label, value, c: kind === 'minus' ? '#46536F' : kind === 'plus' ? '#2C6A4A' : '#14213D', w: kind === 'total' ? 700 : 400, pt: kind === 'total' ? '10px' : '0', bt: kind === 'total' ? '1px solid #E4DACA' : 'none' });
+    const P = [
+      { ref: 'Hand Creation', seller: 'Hand Creation', stage: 'earning', amount: '3,410', short: 'Payable from 22 Nov', badge: '5 orders', badgeCls: 'badge warn', meta: 'still in the 7-day hold', acct: '61', lines: [L('5 delivered orders', 'NPR 3,875'), L('Commission (12%)', '− NPR 465', 'minus'), L('Payable from 22 Nov', 'NPR 3,410', 'total')], checks: [ok('Bank verified 2 Oct'), ok('No bank changes in 30 days')], ordersLink: 'See the 5 orders', actions: [], foot: 'Nothing to do yet. It moves to Ready to prepare when the seller asks.' },
+      { ref: 'Himalayan Craft', seller: 'Himalayan Craft', stage: 'earning', amount: '9,800', short: 'Payable from 23 Nov', badge: '8 orders', badgeCls: 'badge warn', meta: 'still in the 7-day hold', acct: '07', lines: [L('8 delivered orders', 'NPR 11,136'), L('Commission (12%)', '− NPR 1,336', 'minus'), L('Payable from 23 Nov', 'NPR 9,800', 'total')], checks: [warn('Bank change requested 18 Nov, call-back pending'), ok('Shop verified')], ordersLink: 'See the 8 orders', actions: [], foot: 'Nothing to do yet. The bank change must be confirmed before this can be paid.' },
+      { ref: 'Dhaka Weavers Collective', seller: 'Dhaka Weavers Collective', stage: 'earning', amount: '5,640', short: 'Payable from 25 Nov', badge: '3 orders', badgeCls: 'badge warn', meta: 'still in the 7-day hold', acct: '33', lines: [L('3 delivered orders', 'NPR 6,409'), L('Commission (12%)', '− NPR 769', 'minus'), L('Payable from 25 Nov', 'NPR 5,640', 'total')], checks: [ok('Bank verified 9 Sep'), ok('No bank changes in 30 days')], ordersLink: 'See the 3 orders', actions: [], foot: 'Nothing to do yet.' },
+      { ref: 'Patan Clay Studio', seller: 'Patan Clay Studio', stage: 'earning', amount: '1,920', short: 'Payable from 27 Nov', badge: '2 orders', badgeCls: 'badge warn', meta: 'still in the 7-day hold', acct: '48', lines: [L('2 delivered orders', 'NPR 2,182'), L('Commission (12%)', '− NPR 262', 'minus'), L('Payable from 27 Nov', 'NPR 1,920', 'total')], checks: [ok('Bank verified 12 Oct')], ordersLink: 'See the 2 orders', actions: [], foot: 'Nothing to do yet.' },
+      { ref: 'PO-0144', seller: 'Himalayan Craft', stage: 'approve', amount: '26,900', short: 'Asked today, 9:20 am', badge: 'Bank change pending', badgeCls: 'badge warn', meta: 'asked by the seller today', acct: '07', step: 1, lines: [L('21 delivered orders, 7-day hold over', 'NPR 30,568'), L('Commission (12%)', '− NPR 3,668', 'minus'), L('Payout', 'NPR 26,900', 'total')], checks: [warn('Bank change requested 18 Nov, call-back pending'), ok('Shop verified')], ordersLink: 'See the 21 orders', actions: [{ label: 'Hold until bank is confirmed', cls: 'btn btn-ghost' }], foot: 'Approve unlocks once the new bank account is confirmed.' },
+      { ref: 'PO-0143', seller: 'Hand Creation', stage: 'approve', amount: '12,480', short: 'Asked 18 Nov', badge: 'Ready', badgeCls: 'badge bad', meta: 'asked 18 Nov', acct: '61', step: 1, lines: [L('14 delivered orders, 7-day hold over', 'NPR 14,300'), L('Commission (12%)', '− NPR 1,716', 'minus'), L('Refund for returned order HB-24655', '− NPR 485', 'minus'), L('Tihar fee waiver given back', '+ NPR 381', 'plus'), L('Payout', 'NPR 12,480', 'total')], checks: [ok('Bank verified 2 Oct by document check'), ok('No bank changes in the last 30 days'), ok('No open returns on these orders')], ordersLink: 'See the 14 orders', actions: [{ label: 'Approve NPR 12,480', cls: 'btn btn-primary' }, { label: 'Hold…', cls: 'btn btn-ghost' }], foot: 'Your approval is final. It is saved in the payout history.' },
+      { ref: 'PO-0140', seller: 'Patan Clay Studio', stage: 'sent', amount: '8,150', short: 'Sent 19 Nov', badge: 'With the bank', badgeCls: 'badge info', meta: 'sent 19 Nov, 11:40 am', acct: '48', step: 3, lines: [L('9 delivered orders, 7-day hold over', 'NPR 9,261'), L('Commission (12%)', '− NPR 1,111', 'minus'), L('Payout', 'NPR 8,150', 'total')], checks: [ok('Approved by you, 19 Nov'), ok('Bank transfer reference NIC-88213')], ordersLink: 'See the 9 orders', actions: [{ label: 'Bank confirmed it', cls: 'btn btn-primary' }, { label: 'Transfer failed…', cls: 'btn btn-ghost' }], foot: 'Banks usually confirm within 1 working day.' },
+      { ref: 'PO-0142', seller: 'Dhaka Weavers Collective', stage: 'paid', amount: '15,300', short: 'Paid 18 Nov', badge: 'Paid', badgeCls: 'badge ok', meta: 'paid 18 Nov', acct: '33', step: 4, lines: [L('17 delivered orders', 'NPR 17,386'), L('Commission (12%)', '− NPR 2,086', 'minus'), L('Paid', 'NPR 15,300', 'total')], checks: [ok('Approved by you, 17 Nov'), ok('Bank confirmed 18 Nov')], ordersLink: 'See the 17 orders', actions: [{ label: 'Download receipt', cls: 'btn btn-ghost' }], foot: 'Paid. Kept in the history.' },
+      { ref: 'PO-0139', seller: 'Hand Creation', stage: 'paid', amount: '9,870', short: 'Paid 12 Nov', badge: 'Paid', badgeCls: 'badge ok', meta: 'paid 12 Nov', acct: '61', step: 4, lines: [L('11 delivered orders', 'NPR 11,216'), L('Commission (12%)', '− NPR 1,346', 'minus'), L('Paid', 'NPR 9,870', 'total')], checks: [ok('Approved by you, 11 Nov'), ok('Bank confirmed 12 Nov')], ordersLink: 'See the 11 orders', actions: [{ label: 'Download receipt', cls: 'btn btn-ghost' }], foot: 'Paid. Kept in the history.' },
+      { ref: 'PO-0138', seller: 'Himalayan Craft', stage: 'paid', amount: '21,450', short: 'Paid 8 Nov', badge: 'Paid', badgeCls: 'badge ok', meta: 'paid 8 Nov', acct: '07', step: 4, lines: [L('19 delivered orders', 'NPR 24,375'), L('Commission (12%)', '− NPR 2,925', 'minus'), L('Paid', 'NPR 21,450', 'total')], checks: [ok('Approved by you, 7 Nov'), ok('Bank confirmed 8 Nov')], ordersLink: 'See the 19 orders', actions: [{ label: 'Download receipt', cls: 'btn btn-ghost' }], foot: 'Paid. Kept in the history.' }
+    ];
+    const num = (a) => Number(a.replace(/,/g, ''));
+    const fmt = (n) => n.toLocaleString('en-IN');
+    const q = s.q.trim().toLowerCase();
+    const hit = (p) => !q || p.ref.toLowerCase().includes(q) || p.seller.toLowerCase().includes(q);
+    const stages = ST.map(([k, label, color, hint]) => {
+      const ps = P.filter((p) => p.stage === k && hit(p));
+      const first = ps[0];
+      return { label, color, hint, n: ps.length, sum: fmt(ps.reduce((t, p) => t + num(p.amount), 0)), on: s.stage === k, cls: s.stage === k ? 'stg on' : 'stg', pick: () => this.setState({ stage: k, sel: first ? first.ref : null }) };
+    });
+    const inStage = P.filter((p) => p.stage === s.stage && hit(p));
+    const items = inStage.map((p) => ({ ...p, cls: p.ref === s.sel ? 'pcard on' : 'pcard', pick: () => this.setState({ sel: p.ref }) }));
+    const raw = inStage.find((p) => p.ref === s.sel) || inStage[0];
+    const SL = [['Requested', 'by the seller'], ['Approved', 'by you'], ['Sent to bank', 'transfer made'], ['Confirmed', 'money arrived']];
+    let d = null;
+    if (raw) {
+      const isPayout = raw.stage !== 'earning';
+      const steps = SL.map(([label, note], i) => {
+        const done = i < raw.step || raw.step === 4;
+        const now = i === raw.step && raw.step < 4;
+        return { label, note: now ? 'now' : note, cls: done ? 'step done' : now ? 'step now' : 'step todo', icon: done ? 'ic s16 i-check' : now ? 'ic s16 i-clock' : 'ic s16 i-minus' };
+      });
+      d = { ...raw, isPayout, steps, sumTitle: isPayout ? 'How the amount adds up' : 'Earned so far' };
+    }
+    const titles = { earning: 'Sellers with money still in the 7-day hold', approve: 'Asked to be paid, waiting for your approval', sent: 'Transfer made, bank hasn’t confirmed', paid: 'Paid in November' };
+    return {
+      stages, items, d: d || { steps: [], lines: [], checks: [], actions: [] }, hasDetail: !!d, empty: items.length === 0, q: s.q, listTitle: titles[s.stage],
+      setQ: (e) => { const v = e && e.target ? e.target.value : ''; const vq = v.trim().toLowerCase(); const m = P.filter((p) => p.stage === s.stage && (!vq || p.ref.toLowerCase().includes(vq) || p.seller.toLowerCase().includes(vq))); this.setState({ q: v, sel: m[0] ? m[0].ref : null }); },
+      helpOpen: s.helpOpen, toggleHelp: () => this.setState({ helpOpen: !s.helpOpen, filtersOpen: false }),
+      filtersOpen: s.filtersOpen, toggleFilters: () => this.setState({ filtersOpen: !s.filtersOpen, helpOpen: false }),
+      syncing: s.syncing, syncCls: s.syncing ? 'syncbtn busy' : 'syncbtn', syncLabel: s.syncing ? 'Refreshing…' : 'Updated ' + s.synced,
+      refresh: () => { if (s.syncing) return; this.setState({ syncing: true }); setTimeout(() => this.setState({ syncing: false, synced: 'just now' }), 1200); }
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -76,13 +76,15 @@ function hinted(sizes: string, viewport: number): number {
 }
 void test('responsive hints match shell gutters and actual slider/grid track widths at boundary viewports', () => {
   for (const v of [
-    240, 299, 300, 320, 375, 639, 640, 768, 1023, 1024, 1280, 1439, 1440, 1535,
-    1536, 1679, 1680, 1920,
+    240, 299, 300, 320, 375, 390, 639, 640, 767, 768, 1023, 1024,
+    1263, 1264, 1279, 1280, 1359, 1360, 1439, 1440, 1535, 1536, 1679, 1680, 1920,
   ]) {
     const padding =
       v < 300 ? 12 : v >= 1024 ? 48 : Math.min(Math.max(12, v * 0.05), 32);
     const content = Math.min(v, 1440) - 2 * padding;
     const wide = Math.min(v, 1680) - 2 * padding;
+    const storefront = Math.min(v - (v >= 768 ? 96 : 32), 1264);
+    const account = Math.min(v, 1264) - (v >= 1360 ? 0 : v >= 768 ? 96 : 32);
     const widths = {
       productSlider:
         v >= 1024 ? content / 4 - 18 : content * (v >= 640 ? 0.42 : 0.78),
@@ -98,26 +100,17 @@ void test('responsive hints match shell gutters and actual slider/grid track wid
           : v >= 640
             ? (content - 24) / 2
             : content,
-      shopGrid:
-        v >= 1280
-          ? (content - 320 - 40) / 3
-          : v >= 1024
-            ? (content - 320 - 20) / 2
-            : (content - (v >= 640 ? 20 : 16)) / 2,
-      productGallery:
-        v >= 1024 ? (content - (v >= 1280 ? 64 : 40)) * 0.525 : content,
-      galleryThumbnail:
-        ((v >= 1024 ? (content - (v >= 1280 ? 64 : 40)) * 0.525 : content) -
-          (v >= 640 ? 48 : 32)) /
-        5,
-      savedProduct:
-        v >= 1280
-          ? (content - 280 - 40) / 3
-          : v >= 1024
-            ? (content - 280 - 20) / 2
-            : v >= 640
-              ? (content - 20) / 2
-              : content,
+      shopGrid: v >= 1024
+        ? (storefront - 3 * 20) / 4
+        : (storefront - (v >= 768 ? 20 : 16)) / 2,
+      productGallery: v >= 768
+        ? (storefront - (v >= 1280 ? 64 : 32)) * 1.15 / 2.15
+        : storefront,
+      galleryThumbnail: v >= 1280 ? 84 : v >= 768 ? 64 : (storefront - 4 * 8) / 5,
+      savedProduct: v >= 1280
+        ? (account - 240 - 40 - 3 * 16) / 4
+        : (account - (v >= 1024 ? 240 + 40 : 0) - (v >= 640 ? 16 : 12)) / 2,
+      cartThumbnail: v >= 640 ? 88 : 72,
       makerGrid:
         v >= 1280
           ? (content - 72) / 4
@@ -151,12 +144,18 @@ void test('responsive hints match shell gutters and actual slider/grid track wid
 void test('geometry fixtures track the current fluid shell and mounted component rules', async () => {
   const read = (path: string) =>
     readFile(new URL(path, import.meta.url), 'utf8');
-  const [css, slider, details, gallery, page] = await Promise.all([
+  const [css, slider, details, gallery, page, shop, product, productLayout, account, saved, cart] = await Promise.all([
     read('../app/globals.css'),
     read('../components/catalog/product-slider.tsx'),
     read('../components/homepage/craft-details.module.css'),
     read('../components/catalog/product-gallery.tsx'),
     read('../app/page.tsx'),
+    read('../app/shop/page.tsx'),
+    read('../app/products/[slug]/page.tsx'),
+    read('../components/catalog/product-offer-selection.tsx'),
+    read('../app/account/layout.tsx'),
+    read('../components/account/saved-product-grid.tsx'),
+    read('../components/commerce/cart-view.tsx'),
   ]);
   assert.match(
     css,
@@ -173,10 +172,19 @@ void test('geometry fixtures track the current fluid shell and mounted component
   );
   assert.match(
     details,
-    /grid-template-columns: minmax\(0, 1.08fr\) minmax\(0, 0.92fr\)/,
+    /grid-template-columns: minmax\(0, 1.25fr\) repeat\(2, minmax\(0, 1fr\)\)/,
   );
-  assert.match(details, /gap: clamp\(2rem, 4vw, 4rem\)/);
-  assert.match(gallery, /grid-cols-5 gap-2 sm:gap-3/);
+  assert.match(details, /gap: clamp\(1rem, 2vw, 1.25rem\)/);
+  assert.match(details, /\.card:first-child\s*\{[^}]*grid-row: span 2/);
+  assert.match(gallery, /grid-cols-5 gap-2.*md:w-16.*md:grid-cols-1.*xl:w-\[5.25rem\]/);
+  assert.match(shop, /w-\[calc\(100%-2rem\)\].*max-w-\[1264px\].*md:w-\[calc\(100%-6rem\)\]/);
+  assert.match(shop, /grid-cols-2 gap-x-4.*md:gap-x-5 lg:grid-cols-4/);
+  assert.match(product, /w-\[calc\(100%-2rem\)\].*max-w-\[1264px\].*md:w-\[calc\(100%-6rem\)\]/);
+  assert.match(productLayout, /md:grid-cols-\[minmax\(0,1.15fr\)_minmax\(0,1fr\)\] md:gap-8 xl:gap-x-16/);
+  assert.match(account, /max-w-\[1264px\] px-4.*md:px-12.*min-\[1360px\]:px-0/);
+  assert.match(account, /lg:grid-cols-\[15rem_minmax\(0,1fr\)\] lg:gap-10/);
+  assert.match(saved, /grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4/);
+  assert.match(cart, /grid-cols-\[4.5rem_minmax\(0,1fr\)\].*sm:grid-cols-\[5.5rem_minmax\(0,1fr\)\]/);
   assert.match(page, /<CraftDetails\s*\/>/);
 });
 

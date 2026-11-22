@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operations · Phone</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/39ae600ed082352c03509106609818ff">
+<link rel="stylesheet" href="/_blob/d1603bdfcb29428264731bbedb89e050">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&amp;family=Instrument+Sans:wght@400..700&amp;family=JetBrains+Mono:wght@500&amp;display=swap">
+<style>
+body{margin:0;background:#EFE8DC}
+a{color:#14213D}
+.helpbtn:focus-visible,.ib:focus-visible,.tab:focus-visible,.mitem:focus-visible{outline:2px solid #A8232E;outline-offset:2px}
+.phone{width:390px;height:844px;border-radius:44px;background:#F7F3EC;box-shadow:0 0 0 10px #14213D,0 30px 60px -20px rgba(20,33,61,.45);overflow:hidden;position:relative;display:flex;flex-direction:column}
+.status{height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 28px;font-size:14px;font-weight:600}
+.topbar{height:56px;flex:none;display:flex;align-items:center;gap:6px;padding:0 12px 0 16px;border-bottom:1px solid #E4DACA;background:#F7F3EC}
+.ib{all:unset;cursor:pointer;width:40px;height:40px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;color:#14213D;position:relative;transition:background-color 140ms ease,transform 140ms ease}
+.ib:hover{background:#EDE4D3}.ib:active{transform:scale(.95)}
+.dotb{position:absolute;top:8px;right:8px;width:8px;height:8px;border-radius:50%;background:#A8232E;box-shadow:0 0 0 2px #F7F3EC}
+.scroll{flex:1;overflow:hidden;padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.scroll>*{flex-shrink:0}
+.hchips{display:flex;gap:8px;overflow:hidden}
+.tcard{background:#fff;border:1px solid #E4DACA;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.tabbar{height:78px;flex:none;display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid #E4DACA;background:#FFFCF7;padding-bottom:18px}
+.tab{all:unset;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11.5px;font-weight:600;color:#675B4E;position:relative}
+.tab.on{color:#14213D}.tab.on::before{content:"";position:absolute;top:0;width:28px;height:3px;border-radius:0 0 3px 3px;background:#A8232E}
+.tab .n{position:absolute;top:8px;left:calc(50% + 6px);min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:#A8232E;color:#fff;font-size:10.5px;display:flex;align-items:center;justify-content:center;box-sizing:border-box}
+.menu{position:absolute;top:96px;right:12px;width:250px;background:#fff;border:1px solid #E4DACA;border-radius:14px;box-shadow:0 18px 40px -18px rgba(20,33,61,.4);z-index:5;padding:6px;animation:popin 180ms cubic-bezier(.23,1,.32,1);transform-origin:top right}
+@keyframes popin{from{opacity:0;transform:scale(.96)}}
+.mitem{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:10px;width:100%;padding:11px 12px;border-radius:10px;font-size:14.5px}
+.mitem:hover{background:#F7F3EC}
+.scrim{position:absolute;inset:0;background:rgba(20,33,61,.12);z-index:4}
+.actbar{flex:none;display:flex;gap:10px;padding:12px 16px 30px;border-top:1px solid #E4DACA;background:#FFFCF7}
+.mstep{display:flex;gap:4px}.mstep span{flex:1;height:4px;border-radius:2px;background:#E4DACA}.mstep span.d{background:#2C6A4A}.mstep span.n{background:#A8232E}
+.spec{display:flex;flex-direction:column;gap:14px;max-width:330px}
+.spec h3{font-size:15px;font-weight:650}
+.rule{display:grid;grid-template-columns:150px 1fr;gap:12px;align-items:center;font-size:13.5px;color:#46536F}
+@media (prefers-reduced-motion:reduce){.menu{animation:none}}
+</style>
+</helmet>
+<div class="hb" style="min-height: 100vh; padding: 56px 64px; display: flex; gap: 72px; align-items: flex-start; background: #EFE8DC">
+
+  <div class="phone" aria-label="Today on a phone">
+    <div class="status"><span class="num">9:41</span><span style="display: flex; gap: 6px; align-items: center"><span style="width: 18px; height: 10px; border: 1.5px solid #14213D; border-radius: 3px"></span></span></div>
+    <div class="topbar">
+      <img src="/_blob/65b39bff773bb375aa5d23ab420967a3" alt="Hastabazaar" style="width: 30px; height: 30px; border-radius: 8px; background: #FFFCF7">
+      <b class="serif" style="font-size: 21px; margin-left: 6px; flex: 1">Today</b>
+      <button class="ib" aria-label="Search"><span class="ic s18 i-search"></span></button>
+      <button class="ib" aria-label="Notifications, 7 new"><span class="ic s18 i-bell"></span><span class="dotb"></span></button>
+      <button class="ib" aria-label="Account menu" aria-expanded="{{menuOpen}}" onClick="{{toggleMenu}}"><span class="avatar" style="width: 30px; height: 30px; background: #E2B65C; color: #14213D; font-size: 12px">NS</span></button>
+    </div>
+    <sc-if value="{{menuOpen}}" hint-placeholder-val="{{ false }}">
+      <div class="scrim" onClick="{{toggleMenu}}"></div>
+      <div class="menu" role="menu">
+        <div style="padding: 10px 12px 12px; border-bottom: 1px solid #E4DACA; margin-bottom: 4px"><b style="display: block; font-size: 15px">Nisha S.</b><span style="font-size: 13px; color: #46536F">Super Admin</span></div>
+        <button class="mitem" role="menuitem"><span class="ic s18 i-arrow-ur"></span>Open marketplace</button>
+        <button class="mitem" role="menuitem"><span class="ic s18 i-help"></span>Staff procedure</button>
+        <button class="mitem" role="menuitem" style="color: #A8232E"><span class="ic s18 i-logout"></span>Sign out</button>
+      </div>
+    </sc-if>
+    <div class="scroll">
+      <p style="font-size: 14px; color: #46536F"><b style="color: #14213D">7 tasks open</b>, 4 with no owner</p>
+      <div class="hchips"><span class="chip on" style="height: 32px; font-size: 13px">Needs action 7</span><span class="chip" style="height: 32px; font-size: 13px">Mine 1</span><span class="chip" style="height: 32px; font-size: 13px">No owner 4</span></div>
+      <sc-for list="{{tasks}}" as="t" hint-placeholder-count="4">
+        <div class="tcard">
+          <span style="display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: #675B4E; font-weight: 600"><span class="{{t.icon}}"></span>{{t.hub}}<sc-if value="{{t.over}}" hint-placeholder-val="{{ false }}"><span class="badge bad" style="height: 20px; font-size: 11.5px; margin-left: auto">{{t.due}}</span></sc-if></span>
+          <b style="font-size: 15.5px; line-height: 1.3">{{t.title}}</b>
+          <span style="font-size: 13.5px; color: #46536F">{{t.ctx}}</span>
+          <span style="display: flex; gap: 8px; margin-top: 2px"><a href="{{t.href}}" class="btn btn-ink btn-sm" style="flex: 1">{{t.cta}}</a><sc-if value="{{t.noOwner}}" hint-placeholder-val="{{ true }}"><button class="btn btn-ghost btn-sm" style="flex: 1">Assign to me</button></sc-if></span>
+        </div>
+      </sc-for>
+    </div>
+    <nav class="tabbar" aria-label="Sections">
+      <button class="tab on"><span class="ic s18 i-home"></span>Today<span class="n">7</span></button>
+      <button class="tab"><span class="ic s18 i-receipt"></span>Orders<span class="n">3</span></button>
+      <button class="tab"><span class="ic s18 i-store"></span>Sellers</button>
+      <button class="tab"><span class="ic s18 i-wallet"></span>Money<span class="n">2</span></button>
+      <button class="tab"><span class="ic s18 i-menu"></span>More</button>
+    </nav>
+  </div>
+
+  <div class="phone" aria-label="Order HB-24811 on a phone">
+    <div class="status"><span class="num">9:41</span><span style="width: 18px; height: 10px; border: 1.5px solid #14213D; border-radius: 3px"></span></div>
+    <div class="topbar">
+      <button class="ib" aria-label="Back to orders"><span class="ic s18 i-left"></span></button>
+      <b class="mono" style="font-size: 15px; flex: 1">HB-24811</b>
+      <button class="ib" aria-label="Call customer"><span class="ic s18 i-phone"></span></button>
+      <button class="ib" aria-label="More actions"><span class="ic s18 i-more"></span></button>
+    </div>
+    <div class="scroll" style="gap: 14px">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <span class="badge bad dot" style="align-self: flex-start">Packing · 2 h late</span>
+        <span class="num" style="font-size: 14px; color: #46536F">NPR 485 cash on delivery · Priya M., Baneshwor</span>
+      </div>
+      <div style="background: #14213D; color: #fff; border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 12.5px; color: #E2B65C; font-weight: 600">Next step</span>
+        <b style="font-size: 17px; line-height: 1.3">Get Hand Creation to pack this order</b>
+        <span style="font-size: 13.5px; color: #C9D0DD">Courier pickup is at 5 pm. Miss it and delivery slips to tomorrow.</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span style="display: flex; justify-content: space-between; font-size: 13px"><b>Packing</b><span style="color: #46536F">Step 3 of 7</span></span>
+        <div class="mstep"><span class="d"></span><span class="d"></span><span class="n"></span><span></span><span></span><span></span><span></span></div>
+      </div>
+      <div class="tcard" style="gap: 0; padding: 0">
+        <div style="display: flex; justify-content: space-between; padding: 13px 14px; font-size: 14px"><span style="color: #46536F">Item</span><b>Red flower drop earrings</b></div>
+        <div style="display: flex; justify-content: space-between; padding: 13px 14px; font-size: 14px; border-top: 1px solid #E4DACA"><span style="color: #46536F">Seller</span><b>Hand Creation</b></div>
+        <div style="display: flex; justify-content: space-between; padding: 13px 14px; font-size: 14px; border-top: 1px solid #E4DACA"><span style="color: #46536F">Courier</span><b>Nepal Can Move · 5 pm</b></div>
+        <div class="num" style="display: flex; justify-content: space-between; padding: 13px 14px; font-size: 14px; border-top: 1px solid #E4DACA"><span style="color: #46536F">Seller receives</span><b>NPR 427</b></div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <b style="font-size: 14px">Latest</b>
+        <span style="font-size: 13.5px; color: #46536F"><b style="color: #14213D">Anu</b> called Hand Creation; no answer · 3:05 pm</span>
+        <a href="Admin-OrderDetail.dc.html" class="tlink" style="font-size: 13.5px; align-self: flex-start">Full history and records</a>
+      </div>
+    </div>
+    <div class="actbar">
+      <button class="btn btn-ghost" style="flex: 1">Call seller</button>
+      <button class="btn btn-primary" style="flex: 1.3">Mark packed</button>
+    </div>
+  </div>
+
+  <div class="spec">
+    <h2 class="serif" style="font-size: 30px; line-height: 1.1">One set of buttons and links</h2>
+    <p style="font-size: 14.5px; color: #46536F">Every admin page uses the same five controls, so staff can tell what a click will do before they make it.</p>
+    <div class="rule"><button class="btn btn-primary btn-sm">Approve NPR 12,480</button><span>The one decision on the page. Red, at most one.</span></div>
+    <div class="rule"><button class="btn btn-ink btn-sm">Open full order</button><span>Move the work forward or open it.</span></div>
+    <div class="rule"><button class="btn btn-ghost btn-sm">Hold…</button><span>Other actions next to the main one.</span></div>
+    <div class="rule"><a href="#" class="tlink" style="font-size: 14px">See the 14 orders</a><span>Takes you to another page. Never changes data.</span></div>
+    <div class="rule"><button class="btn btn-quiet btn-sm" style="color: #A8232E">Cancel order…</button><span>Can't be undone. Always asks first.</span></div>
+    <h3 style="margin-top: 10px">On phones</h3>
+    <ul style="margin: 0; padding-left: 18px; font-size: 14px; color: #46536F; display: flex; flex-direction: column; gap: 6px">
+      <li>The first task shows straight under the header.</li>
+      <li>Sign out lives in the account menu, so it never wraps onto its own line.</li>
+      <li>The main action sits in a bar at the bottom, within reach of a thumb.</li>
+      <li>Every tap target is at least 40 px.</li>
+    </ul>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { menuOpen: false }; }
+  renderVals() {
+    const t = (icon, hub, title, ctx, due, over, noOwner, cta, href) => ({ icon: 'ic s16 ' + icon, hub, title, ctx, due, over, noOwner, cta, href });
+    return {
+      tasks: [
+        t('i-wallet', 'Money · Payouts', 'Approve payout PO-0143', 'Hand Creation · NPR 12,480 · asked 18 Nov', 'Due today', true, false, 'Review', 'Admin-Payouts.dc.html'),
+        t('i-return', 'Care · Returns', 'Escalated return on HB-24770', 'Colour differs from photo · seller disputes', '2 h late', true, true, 'Open case', 'Admin-Care.dc.html'),
+        t('i-file', 'Sellers · Documents', 'Check PAN document for QA Maker Studio', 'Uploaded 16 Oct · oldest in the queue', '35 days old', true, true, 'Review PAN', 'Admin-Sellers.dc.html'),
+        t('i-package', 'Orders · Packing', 'HB-24811 is 2 hours late to pack', 'Hand Creation · NPR 485', '', false, false, 'Open order', 'Admin-OrderDetail.dc.html')
+      ],
+      menuOpen: this.state.menuOpen, toggleMenu: () => this.setState({ menuOpen: !this.state.menuOpen })
+    };
+  }
+}
+</script>
+</body>
+</html>

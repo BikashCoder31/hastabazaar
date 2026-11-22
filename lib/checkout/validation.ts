@@ -1,11 +1,13 @@
 import {DEFAULT_DELIVERY_RATES,DELIVERY_PRICING_POLICY,deliveryChargeForStores,type DeliveryRates} from './delivery-rates';
 import {parseLocation} from '@/lib/delivery/validation';
 import type { NepalAddress } from '@/lib/shipping/provider';
+import { parseReviewedCheckoutQuote, type ReviewedCheckoutQuote } from './reviewed-quote';
 
 import {normalizeProvince,normalizeDistrict,districtBelongsToProvince,validWard} from './nepal-address';
 export {NEPAL_PROVINCES} from './nepal-address';
 
 export interface CheckoutInput {
+  paymentMethod?: 'cod' | 'manual_bank';
   customerEmail: string;
   customerPhone: string;
   deliveryFor?: 'self' | 'other';
@@ -23,6 +25,7 @@ export interface CheckoutInput {
   promoCode?: string;
   promoRevision?: number;
   promoQuoteIntent?: string;
+  reviewedQuote?: ReviewedCheckoutQuote;
   /** Server-only authenticated subject; the public parser rejects this key. */
   customerAuthSubject?: string;
   formVersion?: unknown;
@@ -88,6 +91,13 @@ export function parseCheckoutInput(body: unknown): CheckoutValidationResult {
     },
   };
   const errors: string[] = [];
+  if (source.paymentMethod !== undefined && source.paymentMethod !== 'cod' && source.paymentMethod !== 'manual_bank') errors.push('That payment method is not available. No order or payment was created.');
+  if (source.paymentMode !== undefined && (source.paymentMode !== 'cod' || source.paymentMethod === 'manual_bank')) errors.push('That payment method is not available. No order or payment was created.');
+  if(source.paymentMethod==='manual_bank')value.paymentMethod='manual_bank'; // Keep legacy COD retry digests unchanged.
+  if (source.reviewedQuote !== undefined) {
+    try { value.reviewedQuote = parseReviewedCheckoutQuote(source.reviewedQuote); }
+    catch { errors.push('Reload checkout and review the current total and policies.'); }
+  }
   if (Object.hasOwn(source, 'customerAuthSubject')) errors.push('Invalid checkout request.');
   if (source.promoCode !== undefined || source.promoRevision !== undefined || source.promoQuoteIntent !== undefined) {
     if (!value.promoCode || typeof source.promoCode !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{2,31}$/.test(source.promoCode.trim()) ||

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerHooks } from 'node:module';
 import test from 'node:test';
-import { env as nativeEnv } from '../lib/runtime/node-bindings';
+import { LocalMediaBucket } from '../lib/runtime/node-bindings';
 import { categoryMediaDb } from './helpers/category-media-db';
 
 const state = globalThis as typeof globalThis & {
@@ -22,10 +22,9 @@ registerHooks({ resolve(specifier, context, next) {
 async function fixture(size = 1024) {
   const database = await categoryMediaDb();
   const root = await mkdtemp(join(tmpdir(), 'hatskala-video-range-'));
-  const previousRoot = process.env.MEDIA_ROOT;
-  process.env.MEDIA_ROOT = root;
+  const bucket = new LocalMediaBucket(root) as unknown as R2Bucket;
   state.videoDb = database.db;
-  state.videoBucket = nativeEnv.MEDIA;
+  state.videoBucket = bucket;
   state.videoSubject = null;
   for (const [id, role] of [['owner', 'seller'], ['other', 'customer'], ['reviewer', 'super_admin']]) {
     database.sqlite.prepare("INSERT INTO users(id,auth_subject,email,display_name,status,created_at,updated_at) VALUES (?,?,?,'Fictional','active',1,1)").run(id, id, id + '@example.test');
@@ -33,11 +32,9 @@ async function fixture(size = 1024) {
   }
   database.sqlite.exec("INSERT INTO seller_profiles(id,user_id,legal_name,trading_name,registration_authority,registration_number,tax_mode,tax_registration_number,representative_name,support_phone,support_email,province,district,municipality,locality,status,created_at,updated_at) VALUES ('s','owner','Fictional','Fictional','Local','REG','PAN','PAN','Fictional','9800000000','fixture@example.test','Madhesh','Dhanusha','Janakpur','Ward 1','approved',1,1);INSERT INTO categories(id,slug,name_en,is_active,sort_order,created_at,updated_at) VALUES ('c','c','Craft',1,1,1,1);INSERT INTO products(id,seller_id,category_id,slug,sku,name_en,description_en,price_paisa,inventory_quantity,producer,country_of_origin,materials,return_eligible,status,created_at,updated_at) VALUES ('p','s','c','p','p','Fictional','Fictional',10000,2,'Maker','NP','Craft',1,'published',1,1);INSERT INTO product_media(id,product_id,object_key,original_name,mime_type,size_bytes,alt_en,sort_order,created_at) VALUES ('v','p','private/product-media/s/p/v','fixture.mp4','video/mp4',1024,'Fictional',0,1)");
   const bytes = Uint8Array.from({ length: size }, (_, index) => index % 251);
-  await nativeEnv.MEDIA.put('private/product-media/s/p/v', bytes, { httpMetadata: { contentType: 'video/mp4' } });
-  return { ...database, root, bytes, async close() {
+  await bucket.put('private/product-media/s/p/v', bytes, { httpMetadata: { contentType: 'video/mp4' } });
+  return { ...database, root, bucket, bytes, async close() {
     database.dispose();
-    if (previousRoot === undefined) delete process.env.MEDIA_ROOT;
-    else process.env.MEDIA_ROOT = previousRoot;
     await rm(root, { recursive: true, force: true });
   } };
 }
@@ -100,7 +97,7 @@ void test('MP4 range boundaries, suffixes, invalid ranges and multipart policy h
 void test('If-Range only honors a matching strong validator and otherwise sends the complete representation', async () => {
   const f = await fixture();
   try {
-    const metadata = await nativeEnv.MEDIA.head('private/product-media/s/p/v');
+    const metadata = await f.bucket.head('private/product-media/s/p/v');
     assert.ok(metadata);
     const matched = await get({ Range: 'bytes=0-3', 'If-Range': metadata.httpEtag });
     assert.equal(matched.status, 206);
@@ -114,7 +111,7 @@ void test('If-Range only honors a matching strong validator and otherwise sends 
     const legacy = JSON.parse(await readFile(path, 'utf8'));
     delete legacy.etag;
     await writeFile(path, JSON.stringify(legacy));
-    const old = await nativeEnv.MEDIA.head('private/product-media/s/p/v');
+    const old = await f.bucket.head('private/product-media/s/p/v');
     assert.match(old!.httpEtag, /^W\//);
     const oldResponse = await get({ Range: 'bytes=0-3', 'If-Range': old!.httpEtag });
     assert.equal(oldResponse.status, 200);
@@ -125,7 +122,7 @@ void test('If-Range only honors a matching strong validator and otherwise sends 
 void test('video authorization precedes every native head or body access for unpublished and ineligible media', async () => {
   const f = await fixture();
   try {
-    state.videoBucket = new Proxy(nativeEnv.MEDIA, { get(target, property, receiver) {
+    state.videoBucket = new Proxy(f.bucket, { get(target, property, receiver) {
       if (property === 'get' || property === 'head') return () => { throw new Error('Unauthorized media access'); };
       return Reflect.get(target, property, receiver);
     } });
@@ -133,7 +130,7 @@ void test('video authorization precedes every native head or body access for unp
     assert.equal((await get({ Range: 'bytes=0-3' })).status, 404);
     state.videoSubject = 'other';
     assert.equal((await get({ Range: 'bytes=0-3' })).status, 404);
-    state.videoBucket = nativeEnv.MEDIA;
+    state.videoBucket = f.bucket;
     for (const subject of ['owner', 'reviewer']) {
       state.videoSubject = subject;
       const response = await get({ Range: 'bytes=0-3' });
@@ -169,7 +166,7 @@ void test('empty and missing native video objects do not create invalid streams 
     const range = await get({ Range: 'bytes=0-' });
     assert.equal(range.status, 416);
     assert.equal(range.headers.get('content-range'), 'bytes */0');
-    await nativeEnv.MEDIA.delete('private/product-media/s/p/v');
+    await f.bucket.delete('private/product-media/s/p/v');
     assert.equal((await get({ Range: 'bytes=0-3' })).status, 404);
     assert.equal((await get()).status, 404);
   } finally { await f.close(); }
@@ -183,11 +180,11 @@ void test('native R2 structured ranges preserve full size while streaming offset
       [{ length: 4 }, new Uint8Array([0, 1, 2, 3])],
       [{ suffix: 4 }, f.bytes.slice(1020)],
     ] as const) {
-      const object = await nativeEnv.MEDIA.get('private/product-media/s/p/v', { range });
+      const object = await f.bucket.get('private/product-media/s/p/v', { range });
       assert.equal(object!.size, 1024);
       assert.deepEqual(new Uint8Array(await new Response(object!.body).arrayBuffer()), expected);
     }
-    await assert.rejects(nativeEnv.MEDIA.get('private/product-media/s/p/v', { range: { offset: -1, length: 4 } }), /Invalid media byte range/);
-    await assert.rejects(nativeEnv.MEDIA.get('private/product-media/s/p/v', { range: { offset: 1024 } }), /Invalid media byte range/);
+    await assert.rejects(f.bucket.get('private/product-media/s/p/v', { range: { offset: -1, length: 4 } }), /Invalid media byte range/);
+    await assert.rejects(f.bucket.get('private/product-media/s/p/v', { range: { offset: 1024 } }), /Invalid media byte range/);
   } finally { await f.close(); }
 });

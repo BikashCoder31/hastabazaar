@@ -1,3 +1,4 @@
+import {readOrderCustomerIntent} from '@/lib/orders/customer-intent';
 import { env } from 'cloudflare:workers';
 import {
   RECEIPT_COOKIE,
@@ -10,7 +11,7 @@ import {
   ComplaintConflictError,
 } from '@/lib/db/repositories/complaints';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
-import { getCustomerUser } from '@/lib/auth/customer';
+
 
 export const dynamic = 'force-dynamic';
 const json = (data: unknown, status = 200) =>
@@ -23,7 +24,9 @@ export async function POST(
   if (!isTrustedMutationRequest(request))
     return json({ error: 'Request origin was not accepted.' }, 403);
   const token = readCookie(request, RECEIPT_COOKIE);
-  const customer = await getCustomerUser();
+  const intent=await readOrderCustomerIntent(request);
+  if(!intent.ok)return json({error:intent.error},intent.status);
+  const customer=intent.customer;
   if (!token && !customer)
     return json({ error: 'Order access could not be verified.' }, 404);
   try {

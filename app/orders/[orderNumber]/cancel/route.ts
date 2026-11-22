@@ -1,3 +1,4 @@
+import {readOrderCustomerIntent} from '@/lib/orders/customer-intent';
 import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 import {
@@ -7,13 +8,14 @@ import {
 } from '@/lib/cart/session';
 import { requireDatabase } from '@/lib/db/d1';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
-import { getCustomerUser } from '@/lib/auth/customer';
+import {CustomerAuthorizationError} from '@/lib/auth/customer';
 import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { isValidatedFormVersionStale, validateSellerFormSubmission } from '@/lib/forms/submission';
 import { FormRuntimeError } from '@/lib/forms/runtime';
 import { FormValidationError } from '@/lib/forms/validation';
 import {
   cancellationChoices,
+  cancellationOutcome,
   cancellationPreview,
   cancelSelectedParcels,
   CancellationConflictError,
@@ -25,8 +27,9 @@ async function access(
   request: Request,
   context: { params: Promise<{ orderNumber: string }> },
 ) {
-  const token = readCookie(request, RECEIPT_COOKIE),
-    customer = await getCustomerUser();
+  const token=readCookie(request,RECEIPT_COOKIE),intent=await readOrderCustomerIntent(request);
+  if(!intent.ok)throw new CustomerAuthorizationError(intent.error,intent.status);
+  const customer=intent.customer;
   if (!token && !customer)
     throw new CancellationConflictError('Order access could not be verified.');
   return {
@@ -40,13 +43,16 @@ export async function GET(
   context: { params: Promise<{ orderNumber: string }> },
 ) {
   try {
+    const attempt=new URL(request.url).searchParams.get('attempt');
+    if(attempt)return json({outcome:await cancellationOutcome(requireDatabase(env as unknown as {DB?:D1Database}),await access(request,context),attempt)});
     return json({
       choices: await cancellationChoices(
         requireDatabase(env as unknown as { DB?: D1Database }),
         await access(request, context),
       ),
     });
-  } catch {
+  } catch(error) {
+    if(error instanceof CustomerAuthorizationError)return json({error:error.message},error.status);
     return json({ error: 'Order access could not be verified.' }, 404);
   }
 }
@@ -120,6 +126,7 @@ export async function POST(
       }),
     );
   } catch (error) {
+    if(error instanceof CustomerAuthorizationError)return json({error:error.message},error.status);
     if (error instanceof BodyTooLargeError)
       return json({ error: 'Request too large.' }, 413);
     if (error instanceof SyntaxError) return json({ error: 'Invalid cancellation request.' }, 400);

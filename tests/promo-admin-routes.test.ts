@@ -30,7 +30,7 @@ registerHooks({
       };
     if (specifier === '@/lib/auth/staff')
       return {
-        url: `data:text/javascript,export class StaffAuthorizationError extends Error{constructor(message,status){super(message);this.status=status}};export async function requireStaffApi(){if(!globalThis.promoRouteActor)throw new StaffAuthorizationError('Authentication required.',401);const actor=globalThis.promoRouteActor;if(globalThis.promoRouteAfterAuthentication)await globalThis.promoRouteAfterAuthentication();return actor;}`,
+        url: `data:text/javascript,export class StaffAuthorizationError extends Error{constructor(message,status){super(message);this.status=status}};export async function requireStaffApi(permission){if(permission!=='commercial_policy.manage')throw new Error('Wrong commercial permission');if(!globalThis.promoRouteActor)throw new StaffAuthorizationError('Authentication required.',401);const actor=globalThis.promoRouteActor;if(globalThis.promoRouteAfterAuthentication)await globalThis.promoRouteAfterAuthentication();return actor;}`,
         shortCircuit: true,
       };
     return nextResolve(specifier, context);

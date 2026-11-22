@@ -1,206 +1,160 @@
-import { withFirstCodPresentation } from '@/lib/orders/first-cod-review';
 import { env } from 'cloudflare:workers';
+import Image from 'next/image';
 import Link from 'next/link';
-import {
-  ArrowRight,
-  Heart,
-  LifeBuoy,
-  MapPin,
-  Package,
-  UserRound,
-  Wallet,
-  Gift,
-} from 'lucide-react';
+import { ArrowRight, Bell, Check, ChevronRight, Clock3, Gift, Heart, Landmark, MapPin, Package, Undo2, UserRound, UsersRound, Wallet } from 'lucide-react';
 import { AccountEmpty } from '@/components/account/account-ui';
-import { CustomerOrderList } from '@/components/account/order-list';
-import { requireCustomerPage, type CustomerUser } from '@/lib/auth/customer';
+import { accountAction, accountSurface } from '@/components/account/account-sections';
+import { SavedProductGrid } from '@/components/account/saved-product-grid';
+import { CustomerActingChip } from '@/components/storefront/customer-acting-chip';
+import { CustomerYourTurnCard } from '@/components/storefront/customer-your-turn-card';
+import { requireCustomerPage } from '@/lib/auth/customer';
 import { requireDatabase } from '@/lib/db/d1';
-import { getRewards } from '@/lib/db/repositories/loyalty';
-import {
-  listCustomerAddresses,
-  listCustomerOrders,
-  listWishlist,
-} from '@/lib/db/repositories/customers';
+import { formatPaisaExact } from '@/lib/marketplace/money-display';
+import { customerDate, customerDateTime } from '@/lib/orders/customer-parcel-state';
+import { readAccountOverview } from './account-overview-data';
 
-function readRewardsSummary(database: D1Database, customer: CustomerUser) {
-  return getRewards(
-    database,
-    customer.userId,
-    Date.now(),
-    undefined,
-    1,
-    customer.authSubject,
-  );
-}
+const orderPath = (number: string) => '/orders/' + encodeURIComponent(number);
+const primary = 'inline-flex min-h-11 justify-center items-center rounded-lg bg-[#14213d] px-4 py-2 text-sm font-semibold text-white hover:bg-[#263957] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a8232e]';
+const urgent = primary.replace('bg-[#14213d]', 'bg-[#a8232e]');
+const sectionLink = 'inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-[#a8232e] underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2';
+const yourTurnLimit = 6;
 
 export default async function AccountPage() {
   const customer = await requireCustomerPage('/account');
-  const database = requireDatabase(env as unknown as { DB?: D1Database });
-  const [orders, addresses, wishlist, rewards] = await Promise.all([
-    listCustomerOrders(database, customer.userId, 3),
-    listCustomerAddresses(database, customer.userId),
-    listWishlist(database, customer.userId),
-    readRewardsSummary(database, customer),
-  ]);
-  const displayedOrders = await withFirstCodPresentation(database, orders);
-  const defaultAddress = addresses.find((address) => address.isDefault);
+  const overview = await readAccountOverview(requireDatabase(env as unknown as { DB?: D1Database }), customer);
+  const { summary, addresses, wishlist, rewards, questions, banks, cases, onTheWay } = overview;
+  const canCheckIn = rewards.state.status === 'active' && !rewards.claimedToday;
+  const actions = [
+    ...questions.map(question => ({
+      key: question.id,
+      title: `Does the new date from ${question.sellerName} work for you?`,
+      description: `${question.orderNumber} · The seller needs until ${customerDate(question.proposedReadyAt)}.`,
+      icon: <Clock3 className="size-5" />,
+      href: '/account/order-responses/' + encodeURIComponent(question.id), label: 'Answer', className: urgent,
+    })),
+    ...banks.map(bank => ({
+      key: bank.id,
+      title: bank.claimState === 'needs_information' ? `Update your payment for ${bank.orderNumber}` : `Transfer ${formatPaisaExact(bank.remainingPaisa)} for ${bank.orderNumber}`,
+      description: bank.claimState === 'needs_information' ? 'Hastabazaar asked for more information.' : `Pay by ${customerDateTime(bank.deadlineAt)}.`,
+      icon: <Landmark className="size-5" />,
+      href: '/account/payments/' + encodeURIComponent(bank.id), label: bank.claimState === 'needs_information' ? 'View request' : 'How to pay', className: primary,
+    })),
+    ...cases.map(request => ({
+      key: request.reference,
+      title: `Reply to help request ${request.reference}`,
+      description: `${request.orderNumber} · Hastabazaar needs more information from you.`,
+      icon: <Undo2 className="size-5" />,
+      href: orderPath(request.orderNumber) + '#order-help', label: 'Reply', className: primary,
+    })),
+    ...(canCheckIn ? [{
+      key: 'daily-check-in',
+      title: 'Collect today’s reward points',
+      description: 'One check-in adds points you can turn into shopping credit.',
+      icon: <Gift className="size-5" />,
+      href: '/account/rewards#daily-check-in', label: 'Check in', className: accountAction,
+    }] : []),
+  ];
+  const shortcuts = [
+    { label: 'My orders', detail: `${summary?.active ?? 0} active · ${summary?.delivered ?? 0} delivered`, href: '/account/orders', Icon: Package },
+    { label: 'Returns & help', detail: cases.length ? 'Replies needed' : 'See requests and get help', href: '/account/refunds', Icon: Undo2 },
+    { label: 'Wallet', detail: `${formatPaisaExact(rewards.walletBalancePaisa)} shopping credit`, href: '/account/wallet', Icon: Wallet },
+    { label: 'Rewards', detail: `${rewards.balancePoints} points`, href: '/account/rewards', Icon: Gift },
+    { label: 'Refer a friend', detail: 'Share your code', href: '/account/referrals', Icon: UsersRound },
+    { label: 'Addresses', detail: addresses.length ? addresses.slice(0, 2).map(address => address.label).join(' · ') : 'Save a delivery address', href: '/account/addresses', Icon: MapPin },
+    { label: 'Profile & sign-in', detail: 'Contact details and security', href: '/account/profile', Icon: UserRound },
+    { label: 'Notifications', detail: summary?.unread ? `${summary.unread} unread` : 'You’re caught up', href: '/account/notifications', Icon: Bell },
+  ];
+
   return (
-    <div className="space-y-7">
-      <section className="rounded-3xl bg-[#17345f] p-6 text-white sm:p-8">
-        <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#f4c46b]">
-          Your little corner of HastaBazaar
-        </p>
-        <h1 className="mt-4 break-words font-heading text-4xl tracking-tight sm:text-5xl">
-          Hello, {customer.displayName.split(' ')[0]}.
-        </h1>
-        <p className="mt-4 max-w-xl text-base leading-7 text-white/75">
-          Your thoughtful finds, favourite makers, and next little discovery—all
-          in one place.
-        </p>
-        <Link
-          href="/shop"
-          className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-full bg-[#f4c46b] px-5 py-3 text-sm font-semibold text-[#332608] hover:bg-[#ffda97]"
-        >
-          Find something special
-          <ArrowRight className="size-4" />
-        </Link>
-      </section>
-      <div className="grid gap-3 sm:grid-cols-3">
-        {[
-          {
-            label: 'Refer & earn',
-            detail: 'Get your code, invite friends and track rewards',
-            href: '/account/referrals',
-            icon: Gift,
-          },
-          {
-            label: 'My Rewards',
-            detail:
-              rewards.balancePoints +
-              ' points available · Claim daily points and exchange for shopping credit',
-            href: '/account/rewards',
-            icon: Gift,
-          },
-          {
-            label: 'My wallet',
-            detail: 'View shopping credit and activity',
-            href: '/account/wallet',
-            icon: Wallet,
-          },
-          {
-            label: 'My orders',
-            detail: 'Track & manage purchases',
-            href: '/account/orders',
-            icon: Package,
-          },
-          {
-            label: 'My wishlist',
-            detail:
-              wishlist.length +
-              ' saved ' +
-              (wishlist.length === 1 ? 'find' : 'finds'),
-            href: '/account/wishlist',
-            icon: Heart,
-          },
-          {
-            label: 'Delivery addresses',
-            detail:
-              addresses.length +
-              ' saved ' +
-              (addresses.length === 1 ? 'address' : 'addresses'),
-            href: '/account/addresses',
-            icon: MapPin,
-          },
-          {
-            label: 'Sign-in form history',
-            detail:
-              'Review saved answers from your account and sign-in actions',
-            href: '/form-submissions',
-            icon: UserRound,
-          },
-        ].map(({ label, detail, href, icon: Icon }) => (
-          <Link
-            key={href}
-            href={href}
-            className="group rounded-2xl border bg-card p-5 transition-colors hover:border-primary/50"
-          >
-            <div className="flex items-center justify-between">
-              <Icon className="size-6 text-primary" />
-              <ArrowRight className="size-4 text-muted-foreground" />
+    <div className="min-w-0 space-y-10 text-[#14213d]">
+      <header>
+        <h1 className="break-words font-heading text-[2rem] leading-tight tracking-tight md:text-[2.5rem] xl:text-[2.75rem]">Namaste, {customer.displayName.trim().split(/\s+/)[0] || 'shopper'}</h1>
+        <p className="mt-2 text-base leading-6 text-[#465573]">Everything about your orders, money and settings, starting with what needs you.</p>
+      </header>
+      <section aria-labelledby="account-your-turn">
+        <h2 id="account-your-turn" className="mb-3 flex flex-wrap items-center gap-2.5 text-lg font-semibold">
+          {actions.length ? <CustomerActingChip actor="you" yourTurn /> : (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#DEEBE2] px-2.5 py-1 text-xs text-[#236548]">
+              <Check className="size-3.5" aria-hidden="true" />All done<span className="sr-only"> · </span>
+            </span>
+          )}
+          {actions.length ? `${actions.length} ${actions.length === 1 ? 'thing needs' : 'things need'} you` : 'Nothing needs you'}
+        </h2>
+        {actions.length ? <div className="space-y-2.5">{actions.slice(0, yourTurnLimit).map(action => (
+          <CustomerYourTurnCard key={action.key} title={action.title} description={action.description} icon={action.icon}
+            action={<Link href={action.href} className={action.className}>{action.label}</Link>} />
+        ))}{actions.length > yourTurnLimit ? <Link href="/account/orders" className={sectionLink}>See orders that need you</Link> : null}</div> : (
+          <div className={accountSurface + ' flex items-center gap-4 px-[18px] py-4'}>
+            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-[#DEEBE2] text-[#236548]">
+              <Check className="size-5" aria-hidden="true" />
+            </span>
+            <div className="min-w-0 text-sm">
+              <p className="font-semibold">You’re caught up</p>
+              <p className="mt-0.5 leading-relaxed text-[#465573]">When an order needs an answer, a payment or a review, it shows here first.</p>
             </div>
-            <h2 className="mt-4 font-semibold">{label}</h2>
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              {detail}
-            </p>
-          </Link>
-        ))}
-      </div>
-      <section>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-heading text-2xl">Your recent orders</h2>
-          <Link href="/account/orders" className="section-link">
-            All orders
-            <ArrowRight className="size-4" />
-          </Link>
-        </div>
-        {orders.length ? (
-          <CustomerOrderList orders={displayedOrders} />
-        ) : (
-          <AccountEmpty
-            icon={Package}
-            title="Your first find is waiting."
-            description="Orders you place while signed in will appear here, with delivery updates and support close at hand."
-            href="/shop"
-            action="Explore the collection"
-          />
+          </div>
         )}
       </section>
-      <div className="grid gap-5 xl:grid-cols-2">
-        <section className="rounded-2xl border bg-card p-6">
-          <div className="flex items-center gap-2">
-            <MapPin className="size-5 text-primary" />
-            <h2 className="font-heading text-2xl">Your go-to address</h2>
-          </div>
-          {defaultAddress ? (
-            <div className="mt-4 text-base leading-7">
-              <p className="font-semibold">{defaultAddress.recipientName}</p>
-              <p className="text-muted-foreground">
-                {defaultAddress.locality}, {defaultAddress.municipality}
-                <br />
-                {defaultAddress.district}, {defaultAddress.province}
-              </p>
+
+      <section aria-labelledby="account-on-way">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h2 id="account-on-way" className="text-xl font-semibold">On the way</h2>
+          <Link href="/account/orders" className={sectionLink}>All orders</Link>
+        </div>
+        {onTheWay.length ? <ul className={accountSurface + ' divide-y divide-[#e3d8c7] p-3 sm:px-5'}>{onTheWay.map(({ orderNumber, parcel, state }) => {
+          const photo = parcel.items.find(item => item.mediaId)?.mediaId;
+          return (
+            <li key={orderNumber + ':' + parcel.sellerId}>
+              <Link href={orderPath(orderNumber)} className="flex min-h-11 min-w-0 items-center gap-3 rounded-lg px-1 py-3 focus-visible:outline-2 focus-visible:outline-[#a8232e]">
+                {photo ? <Image src={'/api/product-media/' + encodeURIComponent(photo)} alt="" width={50} height={50} data-media-mode="cover" className="size-12 shrink-0 rounded-lg object-cover" unoptimized /> : <span className="grid size-12 shrink-0 place-items-center rounded-lg bg-[#f0e7d8]"><Package className="size-5" aria-hidden="true" /></span>}
+                <span className="min-w-0 flex-1 break-words">
+                  <span className="block text-sm font-semibold">{state.label} · {parcel.sellerName}</span>
+                  <span className="block text-sm text-[#465573]">{orderNumber}{parcel.courierName ? ' · ' + parcel.courierName : ''}</span>
+                  <span className="mt-1 block sm:hidden"><CustomerActingChip actor={state.actor} /></span>
+                </span>
+                <span className="hidden shrink-0 sm:block"><CustomerActingChip actor={state.actor} /></span>
+                <ChevronRight className="size-4 shrink-0" aria-hidden="true" />
+              </Link>
+            </li>
+          );
+        })}</ul> : (
+          <div className={accountSurface + ' flex flex-wrap items-center justify-between gap-3.5 p-[22px]'}>
+            <div className="flex min-w-0 flex-auto items-center gap-3.5 text-sm sm:flex-1">
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#E3E9F4] text-[#284881]">
+                <Package className="size-5" aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <p className="font-semibold">No parcels on the way</p>
+                <p className="mt-0.5 leading-relaxed text-[#465573]">Parcels you order appear here with their delivery date.</p>
+              </div>
             </div>
-          ) : (
-            <p className="mt-4 text-base leading-7 text-muted-foreground">
-              Save a default delivery address to make your next checkout easier.
-            </p>
-          )}
-          <Link href="/account/addresses" className="section-link mt-3">
-            Manage addresses
-            <ArrowRight className="size-4" />
-          </Link>
-        </section>
-        <section className="rounded-2xl border bg-card p-6">
-          <div className="flex items-center gap-2">
-            <LifeBuoy className="size-5 text-primary" />
-            <h2 className="font-heading text-2xl">A little help?</h2>
+            <Link href="/shop" className={accountAction}>Browse the shop</Link>
           </div>
-          <p className="mt-4 text-base leading-7 text-muted-foreground">
-            Open an order for returns, refunds, or a complaint. For a guest
-            purchase, use your secure receipt link.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-x-5">
-            <Link href="/help" className="section-link">
-              Visit help centre
-              <ArrowRight className="size-4" />
+        )}
+      </section>
+
+      <section aria-labelledby="account-shortcuts">
+        <h2 id="account-shortcuts" className="mb-3 text-xl font-semibold">Your Hastabazaar</h2>
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          {shortcuts.map(({ label, detail, href, Icon }) => (
+            <Link key={href} href={href} className={accountSurface + ' min-h-[116px] min-w-0 break-words p-3.5 hover:border-[#a8232e] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a8232e] sm:min-h-[132px] sm:p-[18px]'}>
+              <Icon className="mb-2 size-5 text-[#a8232e]" aria-hidden="true" />
+              <span className="block text-sm font-semibold">{label}</span>
+              <span className="mt-1 block text-sm text-[#465573]">{detail}</span>
             </Link>
-            <Link href="/account/profile" className="section-link">
-              <UserRound className="size-4" />
-              Edit profile
-            </Link>
-          </div>
-        </section>
-      </div>
+          ))}
+        </div>
+      </section>
+
+      <section aria-labelledby="account-saved">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h2 id="account-saved" className="text-xl font-semibold">Saved items · {wishlist.length}</h2>
+          <Link href={wishlist.length ? '/account/wishlist' : '/shop'} className={sectionLink}>{wishlist.length ? 'See all saved items' : 'Find more'}</Link>
+        </div>
+        {wishlist.length ? <SavedProductGrid items={wishlist.slice(0, 4)} /> :
+          <AccountEmpty icon={Heart} title="Keep a good find close." description="Tap the heart on a product to save it here for another day." href="/shop" action="Explore the shop" />}
+      </section>
+      <Link href="/form-submissions" className={sectionLink}>Sign-in form history<ArrowRight className="size-4" aria-hidden="true" /></Link>
     </div>
   );
 }

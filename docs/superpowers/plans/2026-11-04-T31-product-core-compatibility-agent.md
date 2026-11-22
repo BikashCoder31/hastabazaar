@@ -1,0 +1,30 @@
+# T31 Product native-core compatibility checkpoint
+
+Scope: original core Product submission SKU facts; exact57 Product review, review/reply moderation, catalog and legacy classification receipt replay. No publisher rows, role grants, economic policies or canonical data were created to admit native tasks.
+
+Meaningful REDs retained: genuine native Product review committed once but replay failed; native submission SKU read as null; actual delivered review moderation replay failed; native catalog/classification counted its metadata audit as another business receipt. See `product-core-receipt-red.tap`, `product-core-review-replay-red.tap`, `product-core-moderation-replay-red.tap` and `product-core-classification-replay-red.tap` under `.test-artifacts/t31`.
+
+The readers now use the shared immutable normal/native answer source with explicit aliases and the real database dialect. Product review leaves homepage visibility's published-form proof unchanged. SKU current owner, latest revision and explicit-null clearing predicates remain; every runtime caller passes its actual database, including only the two authorized mechanical order calls. Catalog validates its one native metadata fact separately from its sole business receipt and rejects orphan answer-only facts, wrong actor/source/version/digest and additional business actions.
+
+Current memory evidence: **8/8 PASS**, 29.57 seconds (`product-core-compatibility-final.tap`), covering real core submission/replay/revision/clear, actual checkout and immutable original statement, no-publication review/catalog/classification, genuine delivered Registered Seller review/reply moderation/replay, and the retained published Product billing control. Native D1 source proof is prepared in `tests/product-core-receipt-d1.test.ts`, pending the shared slot. No native pass is claimed yet for these latest compatibility changes.
+
+## Retained billing fixture repaired through native facts
+
+The old fixture skipped current registration identity proof, manually marked dispatch/delivery and assumed delivery meant paid. The repaired fictional fixture declares its individual applicant type, independently verifies the exact native registration documents, retains its explicit historical 9%/zero-service-fee terms, and uses a captured current clock. Native seller preparation, carrier assignment, dispatch, delivery and actual customer collection produce the original **115000 paisa** operational receipt with both original SKU identities and issuer/variant facts.
+
+Carrier collection is explicitly distinct from company receipt. Before company custody, the recorded collection is 115000, no company receipt exists and earned commission remains zero. A separate independently counted fictional cash handover is recorded and reconciled to the exact carrier claim with idempotent retry. Only then does the original 9000 commission accrue. COD accounting truthfully reports 115000, replacing the obsolete zero assertion because an actual collection now exists. No bank receipt/deposit is inferred. Receipt issuance remains `pending_clearance`, with no commercial-number reservation or tax-clearance claim. No production billing behavior was altered.
+
+## Managed Maker public reply boundary
+
+A genuine active Maker retains `under_review` profile/customer participation and cannot use the existing Registered Seller public-reply mutation. This matches the company-store Maker constraints and prospective PAN transition, and Seller Center/Products requirements to preserve existing review/reply eligibility. Delivery owns the resulting truthful navigation affordance using actual `approvedSeller`; no independent-seller role or reply permission was granted to a Maker to make the fixture pass. Registered reply proof uses an actual delivered/collected Registered Seller order instead.
+
+
+### Native D1 expression diagnosis and equivalent repair — 2026-11-04
+
+The actual nonpersistent D1 checkout initially failed maximum expression depth100. Exact-statement EXPLAIN isolated batch index26 (6331bytes,7bindings): the original cart/product/price/quantity/stock guard with full public eligibility. The deeper core SKU guard compiled. Grouping the full eligibility, balancing only cart terms, and isolating full eligibility in a separate guard each still failed. Balancing the nine original public-eligibility conjunction terms compiled in the original atomic guard.
+
+`lib/products/eligibility.ts` now constructs those same nine ordered clauses explicitly and balances only `publicProductEligibility`. There is no SQL parsing in production. `productEligibility` and `currentPublicContentSql` retain their other callers' byte-identical visibility/publication output. The original orders.ts atomic guard was not split or weakened. `.test-artifacts/t31/product-eligibility-structure-preservation.json` records identical old/new ordered term SHA256s and unchanged other output hashes.
+
+Actual native GREEN: `.test-artifacts/t31/product-core-receipt-d1-structured-eligibility.tap`,1/1,exit0,29.16seconds. The inspected memory fixture was cloned only to `d1Persist:false`; all real triggers were restored. Five independent source changes were injected after preparation but before the actual batch: publication state, price, stock, owner active status, and seller restriction. Each native guard rejected with the specific checkout conflict, retained the original cart, and left zero partial orders/items/payments/documents. Restoring each external source then allowed the genuine original checkout, retaining115000 total, original platform/seller SKU/variant, pending-clearance document and no invented payment receipt. Original native review/catalog/classification receipts replayed exactly; FKcheck0. Worker disposal and Nodeexit0 confirmed.
+
+Current focused memory source regression: `.test-artifacts/t31/product-core-eligibility-memory.tap`,7/7,exit0,18.55seconds. Earlier failed diagnostic artifacts are retained (`product-core-receipt-d1-depth-diagnostic.tap`, `-grouping-diagnostic.tap`, `-candidates.tap`, `-nine-term-diagnostic.tap`); they are not reported as passes.

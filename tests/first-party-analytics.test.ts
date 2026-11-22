@@ -9,9 +9,11 @@ import test from 'node:test';
 
 import { recordRequestTrafficEvent } from '../lib/analytics/request';
 import { parsePublicTrafficEvent } from '../lib/analytics/first-party';
+import { businessReportRange } from '../app/admin/analytics/business-report-range';
 import type { FirstPartyAnalyticsPolicy } from '../lib/configuration/types';
 import {
   getCustomerAndTrafficAnalytics,
+  getStorefrontFunnel,
   recordTrafficEvent,
 } from '../lib/db/repositories/analytics';
 
@@ -106,6 +108,48 @@ void test('analytics aggregates omit pre-existing backslash private paths withou
     assert.equal(report.traffic.estimatedBrowserSessions, 1);
     assert.deepEqual(report.topPaths.map(row => ({ ...row })), [{ path: '/shop', views: 1, estimatedSessions: 1 }]);
   } finally { sqlite.close(); }
+});
+
+void test('business report funnels stay within the selected period and retained public events', async () => {
+  const { sqlite, database } = await fixture();
+  try {
+    const now = 200 * day;
+    const from = 193 * day;
+    sqlite.prepare('INSERT INTO traffic_sessions VALUES (?,?,?,?,?)').run('funnel-session', 'a'.repeat(64), from, now, now + day);
+    const insert = sqlite.prepare('INSERT INTO traffic_events VALUES (?,?,?,?,?,?,?)');
+    const events = [
+      ['expired', 'product_view', '/products/expired', 100 * day],
+      ['before-period', 'product_view', '/products/before-period', from - 1],
+      ['start', 'product_view', '/products/inside-period', from],
+      ['inside-cart', 'add_to_cart', '/products/inside-period', from + day],
+      ['inside-checkout', 'checkout_started', '/checkout', now - 2],
+      ['end', 'order_completed', '/checkout', now],
+      ['future', 'order_completed', '/checkout', now + 1],
+      ['private', 'product_view', '/orders/legacy-receipt', now - 4],
+      ['unsafe-path', 'product_view', '/%6frders/legacy-receipt', now - 5],
+    ] as const;
+    for (const [id, type, path, at] of events) insert.run(id, 'funnel-session', type, path, null, id, at);
+
+    assert.deepEqual(await getStorefrontFunnel(database, now, from), {
+      productViews: 1, addToCarts: 1, checkoutStarts: 1, completedOrders: 1,
+      collectionEnabled: true, retainedSince: 110 * day,
+    });
+    assert.equal((await getStorefrontFunnel(database, now, 100 * day)).productViews, 2);
+    assert.equal((await getCustomerAndTrafficAnalytics(database, now)).traffic.productViews, 2);
+  } finally {
+    sqlite.close();
+  }
+});
+
+void test('business report periods change at Nepal midnight and include the current day', () => {
+  const now = Date.parse('2026-11-20T18:30:00Z');
+  const week = businessReportRange('7', now);
+  assert.equal(week.from, '2026-11-15');
+  assert.equal(week.to, '2026-11-21');
+  assert.equal(week.start, Date.parse('2026-11-14T18:15:00Z'));
+  assert.equal(businessReportRange('month', now).from, '2026-11-01');
+  assert.equal(businessReportRange('90', now).days, 90);
+  assert.equal(businessReportRange('invalid', now).period, '30');
 });
 void test('multiply encoded analytics paths fail closed before persistence', async () => {
   const { sqlite, database } = await fixture();
@@ -424,7 +468,7 @@ void test('retention cleanup removes expired events without retaining an empty e
 
 void test('admin presentation labels browser metrics as estimates instead of people', async () => {
   const source = await readFile(
-    new URL('../app/admin/analytics/page.tsx', import.meta.url),
+    new URL('../app/admin/analytics/analytics-details.tsx', import.meta.url),
     'utf8',
   );
   assert.match(source, /Estimated browser sessions/);

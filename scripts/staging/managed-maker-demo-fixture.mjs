@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import assert from 'node:assert/strict';
 
 import { buildManagedCommercialSnapshot } from '../../lib/managed-commerce/snapshots.ts';
 import { issueManagedInvoiceGroups } from '../../lib/db/repositories/managed-documents.ts';
@@ -9,99 +9,41 @@ import {
   prepareManagedPayout,
   transitionManagedPayout,
 } from '../../lib/db/repositories/managed-settlements.ts';
+import { reviewProduct } from '../../lib/db/repositories/products.ts';
+import { activateManagedMakerForSimulation } from '../../lib/managed-commerce/activation.ts';
+import {
+  approvePayoutTransfer,
+  preparePayoutTransfer,
+  recordPayoutTransferOutcome,
+  startPayoutTransfer,
+} from '../../lib/payments/payout-transfers.ts';
+import { verifySellerDocument } from '../../lib/sellers/document-review.ts';
 import { resolveRuntimeEnvironment, SIMULATED_RECORD_LABEL } from '../../lib/staging/environment.ts';
-import { SQLiteD1Database } from './sqlite-d1.mjs';
+import { seedCheckoutBuyer } from '../../tests/helpers/checkout-contact.ts';
+import { readyMaker } from '../../tests/helpers/company-store-lifecycle-fixture.ts';
+import { verifiedPayoutSources } from '../../tests/helpers/verified-payout-sources.ts';
 
 const ids = Object.freeze({
-  makerUser: 'demo-maker-user',
-  reviewer: 'demo-super-admin-reviewer',
   financePreparer: 'demo-finance-preparer',
   financeApprover: 'demo-finance-approver',
-  seller: 'demo-managed-maker',
+  buyer: 'demo-buyer',
   order: 'demo-order',
   orderItem: 'demo-order-item',
   snapshot: 'demo-managed-snapshot',
   entitlement: 'demo-managed-entitlement',
 });
 
-function initializeBaseSchema(sqlite) {
-  sqlite.exec(`
-    PRAGMA foreign_keys=ON;
-    CREATE TABLE users (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active');
-    CREATE TABLE user_roles (user_id TEXT NOT NULL REFERENCES users(id), role TEXT NOT NULL);
-    CREATE TABLE staff_permission_profiles (user_id TEXT PRIMARY KEY REFERENCES users(id), permissions_json TEXT NOT NULL);
-    CREATE TABLE staff_permission_guards (id TEXT PRIMARY KEY, valid INTEGER NOT NULL CHECK(valid = 1));
-    CREATE TABLE seller_profiles (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id));
-    CREATE TABLE seller_participation_profiles (id TEXT PRIMARY KEY);
-    CREATE TABLE orders (
-      id TEXT PRIMARY KEY, order_number TEXT NOT NULL UNIQUE, customer_email TEXT NOT NULL,
-      customer_id TEXT, receipt_token_hash TEXT, status TEXT NOT NULL, payment_status TEXT NOT NULL,
-      currency TEXT NOT NULL, delivered_at INTEGER
-    );
-    CREATE TABLE order_items (
-      id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id),
-      product_name_snapshot TEXT NOT NULL, sku_snapshot TEXT NOT NULL, quantity INTEGER NOT NULL,
-      unit_price_paisa INTEGER NOT NULL, line_total_paisa INTEGER NOT NULL,
-      fulfillment_status TEXT NOT NULL
-    );
-    CREATE TABLE return_requests (
-      id TEXT PRIMARY KEY, order_item_id TEXT NOT NULL REFERENCES order_items(id)
-    );
-    CREATE TABLE refunds (
-      id TEXT PRIMARY KEY, return_request_id TEXT REFERENCES return_requests(id),
-      status TEXT NOT NULL, commission_base_refunded_paisa INTEGER NOT NULL DEFAULT 0,
-      operation_request_id TEXT
-    );
-    CREATE TABLE shipping_jobs (
-      id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id)
-    );
-    CREATE TABLE shipping_parcels (
-      shipping_job_id TEXT PRIMARY KEY REFERENCES shipping_jobs(id),
-      cod_due_paisa INTEGER NOT NULL CHECK(cod_due_paisa>=0),
-      collected_paisa INTEGER NOT NULL DEFAULT 0 CHECK(collected_paisa>=0 AND collected_paisa<=cod_due_paisa)
-    );
-    CREATE TABLE operation_transaction_guards (
-      id TEXT PRIMARY KEY, valid INTEGER NOT NULL CHECK(valid=1)
-    );
-    CREATE TABLE audit_logs (
-      id TEXT PRIMARY KEY, actor_id TEXT, action TEXT, subject_type TEXT, subject_id TEXT,
-      reason TEXT, previous_json TEXT, next_json TEXT, request_id TEXT UNIQUE, ip_hash TEXT,
-      created_at INTEGER NOT NULL
-    );
-  `);
-}
-
-async function applyManagedCommerceMigration(sqlite) {
-  const source = await readFile(new URL('../../drizzle/0046_managed_commerce.sql', import.meta.url), 'utf8');
-  for (const statement of source.split('--> statement-breakpoint')) {
-    if (statement.trim()) sqlite.exec(statement);
-  }
-  const readiness = await readFile(new URL('../../drizzle/0071_company_store_maker_readiness.sql', import.meta.url), 'utf8');
-  const allocations = readiness.indexOf('CREATE TABLE managed_payout_allocations');
-  if (allocations < 0) throw new Error('Managed allocation migration is unavailable.');
-  sqlite.exec(readiness.slice(allocations));
-  sqlite.exec(`ALTER TABLE managed_commercial_snapshots ADD COLUMN accepted_managed_detail_id TEXT;
-    ALTER TABLE managed_commercial_snapshots ADD COLUMN maker_name_snapshot TEXT;
-    ALTER TABLE seller_participation_profiles ADD COLUMN seller_id TEXT;
-    ALTER TABLE seller_participation_profiles ADD COLUMN payout_beneficiary_reference TEXT;
-    ALTER TABLE order_items ADD COLUMN seller_id TEXT;
-    ALTER TABLE return_requests ADD COLUMN status TEXT NOT NULL DEFAULT 'resolved';
-    ALTER TABLE refunds ADD COLUMN order_id TEXT;
-    ALTER TABLE refunds ADD COLUMN amount_paisa INTEGER NOT NULL DEFAULT 0;
-    CREATE TABLE complaints(id TEXT PRIMARY KEY,order_id TEXT,order_item_id TEXT,seller_id TEXT,status TEXT);`);
-}
-
-function recordJourneyEvents(sqlite, now) {
+function recordJourneyEvents(sqlite, now, makerUser, reviewer) {
   const events = [
-    ['application_submitted', ids.makerUser],
-    ['application_reviewed', ids.reviewer],
-    ['product_approved', ids.reviewer],
-    ['order_formed', ids.makerUser],
-    ['rider_assigned', ids.reviewer],
-    ['whole_parcel_inspected', ids.makerUser],
-    ['parcel_otp_verified', ids.makerUser],
+    ['application_submitted', makerUser],
+    ['application_reviewed', reviewer],
+    ['product_approved', reviewer],
+    ['order_formed', makerUser],
+    ['rider_assigned', reviewer],
+    ['whole_parcel_inspected', makerUser],
+    ['parcel_otp_verified', makerUser],
     ['customer_payment_recorded', ids.financePreparer],
-    ['parcel_delivered', ids.makerUser],
+    ['parcel_delivered', makerUser],
     ['rider_remittance_submitted', ids.financePreparer],
     ['rider_remittance_reconciled', ids.financeApprover],
   ];
@@ -117,40 +59,53 @@ function recordJourneyEvents(sqlite, now) {
 }
 
 export async function runManagedMakerDemo() {
-  const database = new SQLiteD1Database();
-  const { sqlite } = database;
-  const now = Date.UTC(2026, 8, 21, 6, 0, 0);
   const environment = resolveRuntimeEnvironment({ runtimeEnvironment: 'test', nodeEnvironment: process.env.NODE_ENV });
+  const now = Date.UTC(2026, 8, 21, 6, 0, 0);
+  const fixture = await readyMaker(now - 86_400_000);
+  const { db: database, sqlite, sellerId, actorId: makerUser, activation } = fixture;
+  const { actorId: reviewer } = activation;
   try {
-    initializeBaseSchema(sqlite);
-    await applyManagedCommerceMigration(sqlite);
+    assert.ok(sqlite.prepare('PRAGMA database_list').all().every(row => row.file === ''));
+    for (const doc of sqlite.prepare(`SELECT id FROM seller_documents
+      WHERE seller_id=? AND kind='representative_identity' AND status<>'verified'`).all(sellerId)) {
+      assert.ok(typeof doc.id === 'string');
+      await verifySellerDocument(database, {
+        sellerId, documentId: doc.id, actorId: reviewer,
+        reason: 'Review the original fictional maker identity before simulated activation.',
+        commandId: `demo:identity:review:${doc.id}`, expectedReviewId: null, now: fixture.now + 2,
+      });
+    }
+    await activateManagedMakerForSimulation(database, { ...activation, environment });
+    await reviewProduct(database, {
+      productId: 'cup', actorId: reviewer, action: 'publish',
+      reason: 'Publish the fictional cup inside this private memory fixture.',
+      requestId: 'demo:product:publish', now: fixture.now + 4,
+    });
+    const sources = await verifiedPayoutSources(fixture, sellerId);
+    await seedCheckoutBuyer(database, ids.buyer, 'customer@local.hastabazaar.test', '9811111111', now);
     sqlite.exec(`
-      INSERT INTO users(id,display_name) VALUES
-        ('${ids.makerUser}','SIMULATED Maker'),
-        ('${ids.reviewer}','SIMULATED Super Admin'),
-        ('${ids.financePreparer}','SIMULATED Finance Preparer'),
-        ('${ids.financeApprover}','SIMULATED Finance Approver');
-      INSERT INTO user_roles(user_id,role) VALUES
-        ('${ids.reviewer}','super_admin'),
-        ('${ids.financePreparer}','admin'),
-        ('${ids.financeApprover}','super_admin');
-      INSERT INTO seller_profiles VALUES ('${ids.seller}','${ids.makerUser}');
-      INSERT INTO seller_participation_profiles(id) VALUES ('${ids.seller}');
-      INSERT INTO orders VALUES (
-        '${ids.order}','SIM-M2-1000','customer@local.hastabazaar.test','${ids.makerUser}',
-        'simulated-receipt-token','delivered','paid','NPR',${now}
-      );
-      INSERT INTO order_items(id,order_id,product_name_snapshot,sku_snapshot,quantity,unit_price_paisa,line_total_paisa,fulfillment_status) VALUES (
-        '${ids.orderItem}','${ids.order}','SIMULATED Mithila Clay Cup','SIM-CLAY-001',1,
-        100000,100000,'delivered'
-      );
+      INSERT INTO users(id,email,display_name,status,created_at,updated_at) VALUES
+        ('${ids.financePreparer}','demo-preparer@local.hastabazaar.test','SIMULATED Finance Preparer','active',${now},${now}),
+        ('${ids.financeApprover}','demo-reviewer@local.hastabazaar.test','SIMULATED Remittance Reviewer','active',${now},${now});
     `);
-    sqlite.prepare('UPDATE seller_participation_profiles SET seller_id=?,payout_beneficiary_reference=? WHERE id=?')
-      .run(ids.seller, 'SIMULATED-RECEIVING-ACCOUNT', ids.seller);
-    sqlite.prepare('UPDATE order_items SET seller_id=? WHERE id=?').run(ids.seller, ids.orderItem);
+
+    // Seed the original historical sale in this private simulation; no public checkout or payment provider is called.
+    sqlite.prepare(`INSERT INTO orders(
+      id,order_number,customer_id,customer_email,customer_phone,status,locale,policy_version,
+      shipping_address_json,item_subtotal_paisa,delivery_charge_paisa,grand_total_paisa,
+      payment_mode,payment_status,created_at,updated_at,receipt_token_hash
+    ) VALUES (?,'SIM-M2-1000',?,'customer@local.hastabazaar.test','9811111111','placed','en-NP',
+      'simulated-original-terms','{}',100000,0,100000,'cod','unpaid',?,?,'simulated-receipt-token')`)
+      .run(ids.order, ids.buyer, now, now);
+    sqlite.prepare(`INSERT INTO order_items(
+      id,order_id,product_id,seller_id,seller_name_snapshot,product_name_snapshot,sku_snapshot,
+      unit_price_paisa,quantity,commission_bps,commission_paisa,line_total_paisa,
+      commission_rule_version,created_at
+    ) VALUES (?,?,'cup',?,'SIMULATED Maker','SIMULATED Mithila Clay Cup','SIM-CLAY-001',
+      100000,1,0,0,100000,'managed-sale-linked',?)`).run(ids.orderItem, ids.order, sellerId, now);
 
     const snapshot = buildManagedCommercialSnapshot({
-      sellerId: ids.seller,
+      sellerId: sellerId,
       commercialModel: 'managed_sale_linked_percentage_v1',
       legalSellerReference: 'SIMULATED HASTABAZAAR OPERATING ENTITY',
       invoiceIssuerReference: 'SIMULATED HASTABAZAAR ISSUER',
@@ -173,7 +128,7 @@ export async function runManagedMakerDemo() {
       platform_retention_bps,platform_retained_paisa,maker_entitlement_paisa,
       agreed_supplier_amount_paisa,simulation_label,created_at
     ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
-      ids.snapshot, ids.orderItem, ids.seller, snapshot.participationRoute, snapshot.commercialModel,
+      ids.snapshot, ids.orderItem, sellerId, snapshot.participationRoute, snapshot.commercialModel,
       snapshot.legalSellerReference, snapshot.invoiceIssuerReference, snapshot.payoutBeneficiaryReference,
       snapshot.agreementVersion, snapshot.agreementLanguage, snapshot.termsSettingVersionId,
       snapshot.deliveryHoldDays, snapshot.holdSettingVersionId, snapshot.productValuePaisa,
@@ -185,19 +140,22 @@ export async function runManagedMakerDemo() {
     sqlite.prepare(`INSERT INTO managed_entitlements(
       id,snapshot_id,seller_id,status,calculated_paisa,created_at,updated_at
     ) VALUES (?,?,?,'calculated',?,?,?)`).run(
-      ids.entitlement, ids.snapshot, ids.seller, snapshot.makerEntitlementPaisa, now, now,
+      ids.entitlement, ids.snapshot, sellerId, snapshot.makerEntitlementPaisa, now, now,
     );
 
-    const journeyEvents = recordJourneyEvents(sqlite, now);
+    sqlite.prepare("UPDATE orders SET status='delivered',payment_status='paid',delivered_at=? WHERE id=?")
+      .run(now, ids.order);
+    sqlite.prepare("UPDATE order_items SET fulfillment_status='delivered' WHERE id=?").run(ids.orderItem);
+    const journeyEvents = recordJourneyEvents(sqlite, now, makerUser, reviewer);
     const earned = await accrueManagedEntitlements(database, {
       orderId: ids.order,
-      actorId: ids.reviewer,
+      actorId: reviewer,
       requestId: 'demo:entitlement:earn',
       now: now + 20,
     });
     const duplicateEarned = await accrueManagedEntitlements(database, {
       orderId: ids.order,
-      actorId: ids.reviewer,
+      actorId: reviewer,
       requestId: 'demo:entitlement:earn',
       now: now + 21,
     });
@@ -206,7 +164,7 @@ export async function runManagedMakerDemo() {
       requestId: 'demo:invoice',
       now: now + 30,
     });
-    const financeBeforePayout = await getManagedFinanceSummary(database, ids.seller, now + 40);
+    const financeBeforePayout = await getManagedFinanceSummary(database, sellerId, now + 40);
     const scheduledFor = nextPayoutProcessingAt({
       eligibleAt: now + 40,
       processingWeekday: 'wednesday',
@@ -214,44 +172,82 @@ export async function runManagedMakerDemo() {
       cutoffLocalTime: '17:00',
     });
     const payoutId = await prepareManagedPayout(database, {
-      environment,
-      sellerId: ids.seller,
-      actorId: ids.financePreparer,
-      destinationReference: 'SIMULATED-RECEIVING-ACCOUNT',
+      environment, sellerId, actorId: reviewer,
+      destinationReference: sources.beneficiaryReference,
+      expectedAmountPaisa: snapshot.makerEntitlementPaisa,
       requestId: 'demo:payout:prepare',
       now: now + 40,
       scheduledFor,
     });
-    await transitionManagedPayout(database, {
-      environment,
-      payoutId,
-      actorId: ids.financeApprover,
-      action: 'approve',
-      requestId: 'demo:payout:approve',
-      now: now + 50,
-    });
-    await transitionManagedPayout(database, {
-      environment,
-      payoutId,
-      actorId: ids.financeApprover,
+    await assert.rejects(transitionManagedPayout(database, {
+      environment, payoutId, actorId: reviewer,
       action: 'mark_paid',
-      requestId: 'demo:payout:paid',
-      providerReference: 'SIMULATED-PAYOUT-REFERENCE',
-      now: Math.max(scheduledFor, now + 60),
+      requestId: 'demo:payout:legacy-rejected',
+      providerReference: 'SIMULATED-REFERENCE-ONLY',
+      now: scheduledFor,
+    }), /original verified execution packet/);
+
+    const packet = await preparePayoutTransfer(database, sources.ctx('demo:packet:prepare'), {
+      model: 'managed', payoutId, accountVersionId: sources.accountVersionId, environment,
+      reason: 'Bind the exact original simulated entitlement, reviewed beneficiary and independent company funds.',
     });
-    await transitionManagedPayout(database, {
-      environment,
-      payoutId,
-      actorId: ids.financeApprover,
-      action: 'mark_paid',
-      requestId: 'demo:payout:paid',
-      providerReference: 'SIMULATED-PAYOUT-REFERENCE',
-      now: Math.max(scheduledFor, now + 61),
+    const approved = await approvePayoutTransfer(database, sources.ctx('demo:packet:approve', String(packet.revision)), {
+      packetId: packet.id, environment,
+      reason: 'Approve the exact reviewed original fictional transfer and funding statement.',
     });
-    const financeAfterPayout = await getManagedFinanceSummary(database, ids.seller, Math.max(scheduledFor, now + 70));
-    const payout = sqlite.prepare('SELECT payout_number,amount_paisa,status,simulation_label FROM managed_payouts WHERE id=?').get(payoutId);
-    const invoice = sqlite.prepare('SELECT invoice_number,status,simulation_label FROM managed_invoice_groups WHERE order_id=?').get(ids.order);
+    const started = await startPayoutTransfer(database, sources.ctx('demo:packet:start', String(approved.revision)), {
+      packetId: packet.id, environment,
+      reason: 'Record the original fictional manual bank instruction as processing.',
+    });
+    const instruction = sqlite.prepare('SELECT started_at FROM payout_transfer_packets WHERE id=?').get(packet.id);
+    assert.ok(instruction?.started_at);
+    const paidContext = sources.ctx('demo:packet:paid', String(started.revision));
+    const paidInput = {
+      packetId: packet.id, environment, outcome: 'paid',
+      amountPaisa: snapshot.makerEntitlementPaisa,
+      bankAt: Number(instruction.started_at),
+      transactionIdentity: 'FICTIONAL-ORIGINAL-DEMO-DEBIT',
+      evidenceReference: 'FICTIONAL-INDEPENDENT-DEMO-BANK-PROOF',
+      completedTransferConfirmed: true, exactBeneficiaryConfirmed: true,
+      reason: 'Independently confirm the full fictional debit and the exact original beneficiary.',
+    };
+    const paid = await recordPayoutTransferOutcome(database, paidContext, paidInput);
+    assert.deepEqual(await recordPayoutTransferOutcome(database, paidContext, paidInput), paid);
+
+    const allocation = sqlite.prepare(`SELECT entitlement_id,amount_paisa,disposition
+      FROM managed_payout_allocations WHERE payout_id=?`).all(payoutId);
+    assert.equal(allocation.length, 1);
+    assert.equal(allocation[0].entitlement_id, ids.entitlement);
+    assert.equal(allocation[0].amount_paisa, snapshot.makerEntitlementPaisa);
+    assert.equal(allocation[0].disposition, 'paid');
+    const debit = sqlite.prepare(`SELECT packet_id,account_version_id,transaction_identity,amount_paisa
+      FROM company_outgoing_bank_identities`).all();
+    assert.equal(debit.length, 1);
+    assert.equal(debit[0].packet_id, packet.id);
+    assert.equal(debit[0].account_version_id, sources.accountVersionId);
+    assert.equal(debit[0].transaction_identity, paidInput.transactionIdentity);
+    assert.equal(debit[0].amount_paisa, snapshot.makerEntitlementPaisa);
+    const packetProof = sqlite.prepare(`SELECT prepared_by,approved_by,started_by,recorded_by,state,
+      funding_statement_id,beneficiary_version_id,evidence_reference
+      FROM payout_transfer_packets WHERE id=? AND managed_payout_id=?`).get(packet.id, payoutId);
+    assert.equal(packetProof.state, 'paid');
+    for (const actor of [packetProof.prepared_by, packetProof.approved_by, packetProof.started_by, packetProof.recorded_by])
+      assert.equal(actor, reviewer);
+    assert.equal(packetProof.funding_statement_id, sources.fundingId);
+    assert.ok(typeof packetProof.beneficiary_version_id === 'string');
+    assert.equal(`BENEFICIARY:${packetProof.beneficiary_version_id}`, sources.beneficiaryReference);
+    assert.equal(packetProof.evidence_reference, paidInput.evidenceReference);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM user_roles WHERE role='super_admin'").get().n, 1);
+    assert.equal(sqlite.prepare('SELECT COUNT(*) AS n FROM managed_live_activation_decisions').get().n, 0);
+    const original = sqlite.prepare('SELECT record_kind FROM managed_commercial_snapshots WHERE id=?').get(ids.snapshot);
+    assert.equal(original.record_kind, 'simulation');
+
+    const financeAfterPayout = await getManagedFinanceSummary(database, sellerId, paidContext.now);
+    const payout = sqlite.prepare('SELECT payout_number,amount_paisa,status,simulation_label,record_kind FROM managed_payouts WHERE id=?').get(payoutId);
+    const invoice = sqlite.prepare('SELECT invoice_number,status,simulation_label,record_kind FROM managed_invoice_groups WHERE order_id=?').get(ids.order);
     if (!payout || !invoice) throw new Error('The simulated payout and invoice evidence must exist.');
+    assert.equal(payout.record_kind, 'simulation');
+    assert.equal(invoice.record_kind, 'simulation');
     return Object.freeze({
       simulationLabel: SIMULATED_RECORD_LABEL,
       commercialModel: snapshot.commercialModel,
@@ -279,6 +275,6 @@ export async function runManagedMakerDemo() {
       journeyEvents,
     });
   } finally {
-    database.close();
+    fixture.dispose();
   }
 }

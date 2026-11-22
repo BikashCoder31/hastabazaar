@@ -17,6 +17,7 @@ interface CatalogueFiltersProps {
   sort: string;
   config: PublishedFormConfig;
   minimumPriceNpr?: string;
+  shopperFilters?: { maximumPriceNpr?: string; readyToDispatch: boolean };
   idPrefix?: string;
   unavailable?: boolean;
   presentation?: 'panel' | 'sheet';
@@ -62,6 +63,7 @@ export function CatalogueFilters(props: CatalogueFiltersProps) {
         props.selectedOccasions,
         props.sort,
         props.minimumPriceNpr,
+        props.shopperFilters,
       ])}
       action="/shop"
       method="get"
@@ -135,8 +137,9 @@ export function CatalogueFilters(props: CatalogueFiltersProps) {
           name="sort"
           defaultValue={props.sort}
           aria-describedby={sort.helpText ? `${idPrefix}-sort-help` : undefined}
-          className="mt-2 h-10 w-full rounded-lg border bg-background px-3 text-sm"
+          className="mt-2 min-h-11 w-full rounded-lg border bg-background px-3 text-sm"
         >
+          {props.shopperFilters ? <option value="relevance">Best match</option> : null}
           <option value="newest">Newest</option>
           <option value="price-low">Price: low to high</option>
           <option value="price-high">Price: high to low</option>
@@ -149,6 +152,15 @@ export function CatalogueFilters(props: CatalogueFiltersProps) {
           >
             {sort.helpText}
           </p>
+        ) : null}
+
+        {props.shopperFilters ? (
+          <div className="mt-5 space-y-3">
+            <label htmlFor={`${idPrefix}-maximum-price`} className="block text-sm font-semibold">Maximum price in NPR</label>
+            <input id={`${idPrefix}-maximum-price`} name="maxPrice" type="number" inputMode="decimal" min="0" step="0.01" max="1000000000"
+              defaultValue={props.shopperFilters.maximumPriceNpr ?? ''} className="min-h-11 w-full rounded-lg border bg-background px-3 text-sm" />
+            <FilterOption idPrefix={idPrefix} name="ready" value="1" label="Ready to dispatch" checked={props.shopperFilters.readyToDispatch} />
+          </div>
         ) : null}
 
         {priceField ? (
@@ -177,7 +189,7 @@ export function CatalogueFilters(props: CatalogueFiltersProps) {
                   ? `${idPrefix}-minimum-price-help`
                   : undefined
               }
-              className="mt-2 h-10 w-full rounded-lg border bg-background px-3 text-sm"
+              className="mt-2 min-h-11 w-full rounded-lg border bg-background px-3 text-sm"
             />
             {priceField.helpText ? (
               <p
@@ -281,7 +293,7 @@ function FilterOption({
   return (
     <label
       htmlFor={id}
-      className="flex cursor-pointer items-start gap-3 rounded-xl px-2 py-1.5 transition-colors hover:bg-muted"
+      className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl px-2 py-1.5 transition-colors hover:bg-muted"
     >
       <input
         id={id}

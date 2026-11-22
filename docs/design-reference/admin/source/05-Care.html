@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operations · Care</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/39ae600ed082352c03509106609818ff">
+<link rel="stylesheet" href="/_blob/d1603bdfcb29428264731bbedb89e050">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&amp;family=Instrument+Sans:wght@400..700&amp;family=JetBrains+Mono:wght@500&amp;display=swap">
+<style>
+body{margin:0;background:#F7F3EC}
+a{color:#14213D}a:hover{color:#A8232E}
+.helpbtn{all:unset;cursor:pointer;width:28px;height:28px;border-radius:50%;border:1px solid #D3C5AD;display:inline-flex;align-items:center;justify-content:center;color:#46536F;transition:background-color 160ms ease,color 160ms ease,transform 160ms ease}
+.helpbtn:hover{background:#fff;color:#14213D}.helpbtn:active{transform:scale(.95)}
+.helpbtn:focus-visible,.stg:focus-visible,.pcard:focus-visible,.syncbtn:focus-visible{outline:2px solid #A8232E;outline-offset:2px}
+.pop{position:absolute;z-index:5;background:#fff;border:1px solid #E4DACA;border-radius:14px;box-shadow:0 18px 40px -18px rgba(20,33,61,.35);animation:popin 180ms cubic-bezier(.23,1,.32,1)}
+@keyframes popin{from{opacity:0;transform:translateY(-4px) scale(.98)}}
+.fbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;position:relative}
+.search{display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;border:1px solid #D3C5AD;border-radius:10px;background:#fff;flex:0 1 320px;color:#675B4E}
+.search input{all:unset;flex:1;font-size:14px;color:#14213D}
+.search:focus-within{border-color:#14213D;box-shadow:0 0 0 4px rgba(20,33,61,.08)}
+.token{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 6px 0 10px;border-radius:999px;background:#EDE4D3;font-size:13px;font-weight:600}
+.token button{all:unset;cursor:pointer;width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center}
+.token button:hover{background:#D3C5AD}
+.syncbtn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border-radius:8px;font-size:13px;color:#46536F;transition:background-color 160ms ease}
+.syncbtn:hover{background:#EDE4D3;color:#14213D}
+.syncbtn svg{transition:transform 600ms cubic-bezier(.23,1,.32,1)}
+.syncbtn.busy svg{animation:spin 700ms linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.syncline{height:2px;background:#E4DACA;overflow:hidden;position:relative}
+.syncline::after{content:"";position:absolute;inset:0;width:40%;background:#14213D;animation:slide 900ms linear infinite}
+@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
+.stages{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
+.stg{all:unset;box-sizing:border-box;cursor:pointer;position:relative;display:flex;flex-direction:column;gap:4px;padding:14px 16px 16px;border-radius:14px;background:#fff;border:1px solid #E4DACA;transition:border-color 160ms ease,transform 160ms ease,box-shadow 160ms ease}
+.stg:hover{border-color:#B9AC96;transform:translateY(-1px)}
+.stg:active{transform:scale(.98)}
+.stg.on{border-color:#14213D;box-shadow:0 0 0 1px #14213D,0 10px 24px -16px rgba(20,33,61,.5)}
+.stg:not(:last-child)::after{content:"";position:absolute;right:-11px;top:50%;width:8px;height:8px;border-top:1.5px solid #B9AC96;border-right:1.5px solid #B9AC96;transform:translateY(-50%) rotate(45deg)}
+.stg .bar{height:4px;border-radius:2px;margin-bottom:8px}
+.pcard{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;gap:6px;padding:14px;border-radius:12px;background:#FFFCF7;border:1px solid #E4DACA;transition:border-color 160ms ease,background-color 160ms ease}
+.pcard:hover{border-color:#B9AC96;background:#fff}
+.pcard.on{background:#fff;border-color:#14213D;box-shadow:0 0 0 1px #14213D}
+.step{padding:10px 12px;border-radius:12px;font-size:13px;display:flex;flex-direction:column;gap:2px}
+.step b{display:flex;gap:6px;align-items:center;font-size:13.5px}
+.step.done{background:#E1EEE5}.step.done b{color:#2C6A4A}
+.step.now{background:#fff;box-shadow:inset 0 0 0 2px #14213D}
+.step.todo{background:#EDE4D3;color:#675B4E}.step.todo b{color:#46536F}
+@media (prefers-reduced-motion:reduce){.pop{animation:none}.syncbtn.busy svg,.syncline::after{animation:none}.stg:hover{transform:none}}
+
+.ccard{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;gap:6px;padding:14px;border-radius:12px;background:#FFFCF7;border:1px solid #E4DACA;transition:border-color 160ms ease,background-color 160ms ease}
+.ccard:hover{border-color:#B9AC96;background:#fff}
+.ccard.on{background:#fff;border-color:#14213D;box-shadow:0 0 0 1px #14213D}
+.ccard:focus-visible,.yn button:focus-visible{outline:2px solid #A8232E;outline-offset:2px}
+.ev{position:relative;border-radius:14px;overflow:hidden;background:#fff;border:1px solid #E4DACA;aspect-ratio:4/3}
+.ev img{width:100%;height:100%;object-fit:contain;transition:transform 300ms cubic-bezier(.23,1,.32,1)}
+.ev:hover img{transform:scale(1.03)}
+.ev .tag{position:absolute;left:10px;top:10px;height:24px;padding:0 9px;border-radius:999px;background:rgba(20,33,61,.86);color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center}
+.quote{padding:14px 16px;border-radius:12px;background:#fff;border:1px solid #E4DACA;font-size:14px;display:flex;flex-direction:column;gap:6px}
+.chk{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;padding:11px 0;border-top:1px solid #E4DACA;font-size:14px}
+.yn{display:inline-flex;border:1px solid #D3C5AD;border-radius:9px;overflow:hidden}
+.yn button{all:unset;cursor:pointer;padding:6px 12px;font-size:13px;font-weight:600;color:#46536F;transition:background-color 140ms ease,color 140ms ease}
+.yn button+button{border-left:1px solid #D3C5AD}
+.yn button.y{background:#E1EEE5;color:#2C6A4A}.yn button.n{background:#F8E1DE;color:#A8232E}
+.verdict{padding:14px 16px;border-radius:12px;font-size:14px;display:flex;gap:10px;align-items:start}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*RESP-START*/
+.mbar,.mtab{display:none}
+.mbar{position:sticky;top:0;z-index:1000;height:56px;align-items:center;gap:10px;padding:0 12px 0 16px;border-bottom:1px solid #E4DACA;background:#FFFCF7}
+.mbar.dark{background:#14213D;color:#fff;border-bottom:0}
+.mbar .mlogo{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
+.mbar .mlogo img{width:30px;height:30px;border-radius:7px;background:#FFFCF7}
+.mbar .mlogo b{font-size:15px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mbar .mlogo span{display:block;font-size:11.5px;font-weight:600;color:#A8232E}
+.mbar.dark .mlogo span{color:#E2B65C}
+.mbar .mbtn{all:unset;cursor:pointer;width:44px;height:44px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;position:relative}
+.mbar .mbtn:focus-visible{outline:2px solid #A8232E;outline-offset:2px}
+.mmenu{position:relative}
+.mmenu summary{list-style:none}.mmenu summary::-webkit-details-marker{display:none}
+.mmenu[open] summary{background:rgba(20,33,61,.08)}
+.mbar.dark .mmenu[open] summary{background:rgba(255,255,255,.12)}
+.mmenu .mpanel{position:fixed;z-index:1001;left:0;right:0;top:56px;bottom:0;overflow:auto;padding:12px 12px 100px;background:#FFFCF7;border-top:1px solid #E4DACA;animation:mdrop 200ms cubic-bezier(.23,1,.32,1)}
+.mbar.dark .mmenu .mpanel{background:#14213D;border-top-color:rgba(255,255,255,.1)}
+.mmenu .mpanel a{min-height:48px}
+@keyframes mdrop{from{opacity:0;transform:translateY(-6px)}}
+.mtab{position:fixed;left:0;right:0;bottom:0;z-index:999;height:72px;padding:0 4px 8px;background:#FFFCF7;border-top:1px solid #E4DACA;grid-template-columns:repeat(5,minmax(0,1fr));align-items:center;font-size:11.5px;font-weight:600}
+.mtab a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:52px;color:#46536F;position:relative}
+.mtab a.on{color:#A8232E}
+.mtab a.add{justify-self:center;width:52px;height:52px;min-height:0;border-radius:16px;background:#A8232E;color:#fff;margin-top:-16px;box-shadow:0 10px 20px -10px rgba(168,35,46,.7)}
+.mtab .count{position:absolute;top:2px;right:calc(50% - 22px)}
+
+.mtab.admin{background:#14213D;border-top-color:rgba(255,255,255,.08)}
+.mtab.admin a,.mtab.admin summary{color:#C9D0DD}
+.mtab.admin a.on,.mtab.admin .mmore.on summary{color:#E2B65C}
+.mtab .mmore summary{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:52px;cursor:pointer;list-style:none}
+.mtab .mmore .mpanel{top:56px;bottom:72px}
+.mpanel.dark{background:#14213D!important}
+@media (max-width:1023px){
+  .hb.shell{flex-direction:column;flex-wrap:nowrap}
+  .hb.shell>aside.side{display:none!important}
+  .mbar{display:flex}
+  .hb.shell>.main{flex:1 1 auto;width:100%}
+  .cmdk{display:none!important}
+  .hb.shell>.main [style*="grid-template-columns: minmax(0, 1."],.hb.shell>.main [style*="minmax(0, 1fr) minmax(0, 1."],.hb.shell>.main [style*="minmax(0, 1fr) 360px"]{grid-template-columns:minmax(0,1fr)!important}
+  .hb.shell>.main [style*="grid-template-columns"][style*="repeat(5"]{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  .hb.shell>.main [style*="flex-wrap: wrap"],.hb.shell>.main [style*="display: grid"]{align-content:flex-start}
+  .hb.shell>.main .sheet{grid-template-columns:minmax(0,1fr)!important}
+  .hb.shell>.main .sheet>aside[style*="sticky"]{position:static!important}
+  .hb.shell>.main [style*="position: sticky; bottom: 0"]{bottom:var(--mtab-pad,0px)!important}
+  .hb.shell>.main>div:first-of-type:not(.mbar){height:auto!important;min-height:60px;flex-wrap:wrap;row-gap:8px;padding-top:10px!important;padding-bottom:10px!important}
+}
+@media (max-width:1023px){
+  .hb.shell{padding-bottom:var(--mtab-pad,0px)}
+  .mtab.on-phone{display:grid}
+  .hide-m,.hide-phone{display:none!important}
+  .hb.shell>.main>div:first-of-type:not(.mbar){padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main main,.hb.shell>.main>div>main,.hb.shell>.main section,.hb.shell>.main aside{max-width:100%!important}
+  .hb.shell>.main main{padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main>div[style*="32px"]:not(:first-of-type):not(.mbar){padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main>div[style*="32px"]>main,.hb.shell>.main>div[style*="32px"]>aside{padding-left:0!important;padding-right:0!important}
+  .hb.shell>.main .sheet{align-content:start;flex:none}
+  .row{flex-wrap:wrap;row-gap:8px}
+  .row>span[style*="flex: 1"]{flex:1 1 55%!important}
+  .hb.shell>.main [style*="padding: 0 32px"],.hb.shell>.main [style*="padding: 0 32px;"]{padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main [style*="grid-template-columns"]:not(dl):not(.keep2):not(.steps):not(.stepper):not([style*="1fr auto"]):not([style*="repeat(5"]){grid-template-columns:minmax(0,1fr)!important}
+  .hb.shell>.main [style*="grid-template-columns"][style*="repeat(5"]{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  .hb.shell>.main [style*="grid-template-columns"]:not([style*="gap"]){row-gap:16px}
+  .hb.shell>.main ol.steps[style],.hb.shell>.main .steps{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .hb.shell>.main .keep2{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .hb.shell>.main dl dd{min-width:0;overflow-wrap:anywhere}
+  .hb.shell>.main [style*="flex: 999 1"],.hb.shell>.main [style*="flex: 1 1 4"],.hb.shell>.main [style*="flex: 1 1 3"],.hb.shell>.main [style*="flex: 1 1 6"],.hb.shell>.main [style*="flex: 0 0 3"]{flex:1 1 100%!important;max-width:100%!important;border-left:0!important;border-right:0!important;padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main [style*="border-left: 1px solid #E4DACA"]:not(td):not(th){border-left:0!important}
+  .hb.shell>.main ol.num>li,.hb.shell>.main .num>div{padding-left:0!important;padding-right:0!important}
+  .tbl-box{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  [role=tablist],.subtabs,nav.subtabs{flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none}
+  [role=tablist]::-webkit-scrollbar,.subtabs::-webkit-scrollbar{display:none}
+  [role=tablist]>*,.subtabs>*{flex-shrink:0}
+  h1.serif{font-size:26px!important}
+  h2.serif{font-size:24px!important}
+  .btn{min-height:44px}
+  .hb.shell>.main .btn{flex-wrap:nowrap;max-width:100%;height:auto;padding-top:8px;padding-bottom:8px;text-align:center;white-space:normal}
+  .btn-xs{min-height:36px}
+  .pop{position:fixed!important;left:16px!important;right:16px!important;width:auto!important;top:70px!important}
+  .toast{left:16px;right:16px;transform:none;max-width:none;bottom:calc(var(--mtab-pad,0px) + 16px)}
+  @keyframes toastin{from{opacity:0;transform:translateY(10px)}}
+
+  .task{display:grid!important;grid-template-columns:40px minmax(0,1fr) auto;gap:6px 14px;align-items:center;padding:14px 16px!important}
+  .task>:nth-child(2){grid-column:2/4}
+  .task.t4>:nth-child(1){grid-row:1/3;align-self:start}
+  .task.t4>:nth-child(3){grid-column:2;justify-self:start}
+  .task.t4>:nth-child(4){grid-column:3;grid-row:2}
+  .task:not(.t4)>:nth-child(2){grid-column:2}
+  .hb.shell>.main [style*="gap: 0"]{row-gap:18px!important}
+
+  .hb.shell>.main [style*="flex-wrap: wrap"],.hb.shell>.main [style*="display: grid"]{align-content:flex-start}
+  .hb.shell>.main [style*="justify-content: space-between"]{flex-wrap:wrap;row-gap:8px}
+  .hb.shell>.main>div:first-of-type:not(.mbar)>div{flex-wrap:wrap}
+  [role=alert]{flex-wrap:wrap}
+  [role=alert]>span[style*="flex: 1"]{flex:1 1 220px!important}
+  .stages{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .stg::after{display:none!important}
+  .parked{grid-template-columns:1fr!important;gap:2px!important}
+  .feat-h{flex-wrap:wrap}
+  .feat-h>span:nth-child(2){flex:1 1 calc(100% - 64px)!important}
+  .seg{flex-wrap:nowrap!important;overflow-x:auto;max-width:100%}
+  .seg button{white-space:nowrap;flex-shrink:0}
+  .qrow{grid-template-columns:22px 40px minmax(0,1fr)!important;gap:8px 12px!important;padding:14px 16px!important}
+  .qrow>a.btn{grid-column:3;justify-self:start}
+  .qrow b{white-space:normal!important}
+  ol.stepper{grid-template-columns:1fr!important}
+  ol.stepper li{flex-direction:row!important;flex-wrap:wrap;align-items:baseline;gap:4px 10px!important;padding:0 0 16px 30px!important}
+  ol.stepper li::before{top:16px!important;bottom:0;left:6px!important;right:auto!important;width:3px!important;height:auto!important}
+  ol.stepper li:last-child::before{display:none}
+  ol.stepper .dot{top:1px!important}
+  .hb.shell>.main [style*="position: absolute"][style*="bottom: 24px"]{position:sticky!important;left:auto!important;right:auto!important;bottom:12px!important;flex-wrap:wrap;margin:16px 0 0}
+  .hb.shell>.main [style*="position: absolute"][style*="bottom: 24px"]>span{flex:1 1 100%!important}
+  .hb.shell>.main div:has(>div>h2.serif){flex-wrap:wrap}
+  .hb.shell>.main div:has(>h2.serif){flex:1 1 200px!important;min-width:0}
+  .hb.shell>.main [style*="grid-template-columns"]:has(>.kpi){grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .kpi{padding:12px 14px!important}.kpi b{font-size:22px!important}
+  .tbl.cards thead{display:none}
+  .tbl.cards,.tbl.cards tbody{display:block}
+  .tbl.cards tr{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px 12px;align-items:center;padding:14px 16px;border-top:1px solid #E4DACA}
+  .tbl.cards tr:first-child{border-top:0}
+  .tbl.cards td{display:block;padding:0!important;border:0!important;max-width:none!important;text-align:left}
+  .tbl.cards td.full{grid-column:1/-1}
+  .tbl.cards td.r{text-align:right}
+  .tbl.cards td.hide{display:none}
+  .tbl.cards td.pr{grid-column:3;grid-row:1}
+}
+
+@media (max-width:767px){
+  .hb>div[style*="height: 64px"]{height:auto!important;flex-wrap:wrap;row-gap:8px;padding:10px 16px!important}
+  .hb>div[style*="height: 64px"] [role=tablist]{display:none!important}
+  .hb>div[style*="height: 64px"]>span[style*="width: 1px"]{display:none}
+  .hb aside[aria-label="Sections"]{max-width:none!important;flex:1 1 100%!important;border-right:0!important}
+  .hb main[aria-label="Preview"]{padding:16px!important}
+  .hb main[aria-label="Preview"] [style*="grid-template-columns: 1fr 1fr"]{grid-template-columns:1fr!important}
+  .hb [style*="flex-wrap: wrap"]{align-content:flex-start}
+}
+
+@media (min-width:768px) and (max-width:1023px){
+  .hb.shell{padding-bottom:0!important}
+  .mtab.on-phone{display:none!important}
+  .hide-phone{display:revert!important}
+  .hb.shell>.main [style*="grid-template-columns"][style*="repeat(4"],.hb.shell>.main [style*="grid-template-columns"][style*="repeat(3"]:not([style*="repeat(3, minmax(0, 1fr)) "]){grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .hb.shell>.main [style*="grid-template-columns: 1fr 1fr"]{grid-template-columns:1fr 1fr!important}
+  .hb.shell>.main ol.steps[style],.hb.shell>.main .steps{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+  .stages{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+  .toast{bottom:16px}
+  h1.serif{font-size:30px!important}
+  .tbl.cards thead{display:table-header-group}
+  .tbl.cards{display:table}.tbl.cards tbody{display:table-row-group}
+  .tbl.cards tr{display:table-row}
+  .tbl.cards td{display:table-cell;padding:12px 14px!important;border-top:1px solid #E4DACA!important}
+  .tbl.cards td.hide{display:table-cell}
+  .tbl.cards td.pr{grid-column:auto;grid-row:auto}
+}
+@media (prefers-reduced-motion:reduce){.mmenu .mpanel{animation:none}}
+/*RESP-END*/
+</style>
+</helmet>
+<div class="hb shell" style="--mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; background: #F7F3EC; min-height: 100vh">
+<!--RESP-START--><nav class="mtab admin on-phone" aria-label="Main sections"><a href="Admin-Overview.dc.html"><span class="ic i-home"></span>Today</a><a href="Admin-Orders.dc.html"><span class="ic i-receipt"></span>Orders</a><a href="Admin-Sellers.dc.html"><span class="ic i-store"></span>Sellers</a><a href="Admin-Payouts.dc.html"><span class="ic i-wallet"></span>Money</a><details class="mmenu mmore on"><summary aria-label="More sections"><span class="ic i-menu"></span>More</summary><div class="mpanel dark"><nav class="navd" aria-label="Operations">
+      <a href="Admin-Overview.dc.html"><span class="ic s18 i-home"></span>Today<span class="cnt">7</span></a>
+      <a href="Admin-Orders.dc.html"><span class="ic s18 i-receipt"></span>Orders<span class="cnt q">3</span></a>
+      <a href="Admin-Care.dc.html" class="on"><span class="ic s18 i-message"></span>Care<span class="cnt q">2</span></a>
+      <a href="Admin-Sellers.dc.html"><span class="ic s18 i-store"></span>Sellers<span class="cnt q">9</span></a>
+      <a href="Admin-Moderation.dc.html"><span class="ic s18 i-package"></span>Catalog</a>
+      <a href="Admin-Payouts.dc.html"><span class="ic s18 i-wallet"></span>Money<span class="cnt q">2</span></a>
+      <a href="Admin-Offers.dc.html"><span class="ic s18 i-percent"></span>Growth</a>
+      <a href="Admin-Reports.dc.html"><span class="ic s18 i-chart"></span>Reports</a>
+      <a href="#"><span class="ic s18 i-sliders"></span>Settings</a>
+    </nav></div></details></nav><header class="mbar dark"><a href="Admin-Overview.dc.html" class="mlogo" style="color: #fff"><img src="/_blob/65b39bff773bb375aa5d23ab420967a3" alt=""><span style="display: flex; flex-direction: column; color: inherit"><b>Care</b><span>Operations</span></span></a><button class="mbtn" aria-label="Search, Cmd K" style="color: #fff"><span class="ic i-search"></span></button><details class="mmenu"><summary class="mbtn" aria-label="Menu" style="color: #fff"><span class="ic i-menu"></span></summary><div class="mpanel"><nav class="navd" aria-label="Operations">
+      <a href="Admin-Overview.dc.html"><span class="ic s18 i-home"></span>Today<span class="cnt">7</span></a>
+      <a href="Admin-Orders.dc.html"><span class="ic s18 i-receipt"></span>Orders<span class="cnt q">3</span></a>
+      <a href="Admin-Care.dc.html" class="on"><span class="ic s18 i-message"></span>Care<span class="cnt q">2</span></a>
+      <a href="Admin-Sellers.dc.html"><span class="ic s18 i-store"></span>Sellers<span class="cnt q">9</span></a>
+      <a href="Admin-Moderation.dc.html"><span class="ic s18 i-package"></span>Catalog</a>
+      <a href="Admin-Payouts.dc.html"><span class="ic s18 i-wallet"></span>Money<span class="cnt q">2</span></a>
+      <a href="Admin-Offers.dc.html"><span class="ic s18 i-percent"></span>Growth</a>
+      <a href="Admin-Reports.dc.html"><span class="ic s18 i-chart"></span>Reports</a>
+      <a href="#"><span class="ic s18 i-sliders"></span>Settings</a>
+    </nav></div></details></header><!--RESP-END-->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  <aside class="side" style="background: #14213D; color: #C9D0DD; padding: 18px 12px; display: flex; flex-direction: column; gap: 18px; max-width: 236px; flex-basis: 220px">
+    <a href="#" style="display: flex; align-items: center; gap: 10px; padding: 0 6px; color: #fff"><img src="/_blob/65b39bff773bb375aa5d23ab420967a3" alt="" style="width: 34px; height: 34px; background: #FFFCF7; border-radius: 8px; padding: 2px"><span style="display: flex; flex-direction: column; line-height: 1.1"><span class="serif" style="font-size: 19px; font-weight: 600; color: #fff">Hastabazaar</span><span style="font-size: 12px; font-weight: 600; color: #E2B65C">Operations</span></span></a>
+    <nav class="navd" aria-label="Operations">
+      <a href="Admin-Overview.dc.html"><span class="ic s18 i-home"></span>Today<span class="cnt">7</span></a>
+      <a href="Admin-Orders.dc.html"><span class="ic s18 i-receipt"></span>Orders<span class="cnt q">3</span></a>
+      <a href="Admin-Care.dc.html" class="on"><span class="ic s18 i-message"></span>Care<span class="cnt q">2</span></a>
+      <a href="Admin-Sellers.dc.html"><span class="ic s18 i-store"></span>Sellers<span class="cnt q">9</span></a>
+      <a href="Admin-Moderation.dc.html"><span class="ic s18 i-package"></span>Catalog</a>
+      <a href="Admin-Payouts.dc.html"><span class="ic s18 i-wallet"></span>Money<span class="cnt q">2</span></a>
+      <a href="Admin-Offers.dc.html"><span class="ic s18 i-percent"></span>Growth</a>
+      <a href="Admin-Reports.dc.html"><span class="ic s18 i-chart"></span>Reports</a>
+      <a href="#"><span class="ic s18 i-sliders"></span>Settings</a>
+    </nav>
+    <div style="margin-top: auto; display: flex; flex-direction: column; gap: 10px">
+      <a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; font-size: 14px; color: #C9D0DD"><span class="ic s18 i-arrow-ur"></span>Open marketplace</a>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; background: rgba(255,252,247,.07)">
+        <span class="avatar" style="width: 34px; height: 34px; background: #E2B65C; color: #14213D; font-size: 13px">NS</span>
+        <span style="flex: 1; line-height: 1.25"><b style="color: #fff; font-size: 14px; display: block">Nisha S.</b><span style="font-size: 12.5px">Super Admin</span></span>
+        <button class="btn btn-sm btn-icon" aria-label="Sign out" style="color: #C9D0DD; width: 32px; height: 32px"><span class="ic s18 i-logout"></span></button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main" style="display: flex; flex-direction: column; min-width: 0">
+    <div style="height: 68px; display: flex; align-items: center; gap: 12px; padding: 0 32px; position: relative">
+      <h1 class="serif" style="font-size: 28px">Care</h1>
+      <button class="helpbtn" aria-label="How returns work" aria-expanded="{{helpOpen}}" onClick="{{toggleHelp}}"><span class="ic s16 i-help"></span></button>
+      <sc-if value="{{helpOpen}}" hint-placeholder-val="{{ false }}">
+        <div class="pop" role="dialog" aria-label="How returns work" style="top: 58px; left: 32px; width: 430px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; font-size: 14px; color: #2C3B5C">
+          <b style="font-size: 15px; color: #14213D">How returns work</b>
+          <p>Customers can ask to return within 7 days of delivery. The seller can add their side, but can't block a return on their own.</p>
+          <p>For handmade items, small differences in colour or finish are normal. Answer the four questions to decide whether this is normal variation or different from the listing.</p>
+          <p>If the item is faulty or different from the listing, the customer pays nothing to send it back. We check it within 3 working days of receiving it.</p>
+          <a href="#" class="tlink" style="font-size: 13.5px">Return policy, sections 7 and 12</a>
+        </div>
+      </sc-if>
+      <div class="cmdk hide-m" style="margin-left: auto; width: 380px"><span class="ic s18 i-search"></span><span style="flex: 1">Jump to anything…</span><span class="kbd">⌘K</span></div>
+    </div>
+    <nav class="subtabs" aria-label="Care sections">
+      <a href="Admin-Care.dc.html" class="on">Returns & complaints <span class="n">2</span></a><a href="Admin-Customers.dc.html">Customers</a><a href="#">Contact & feedback</a><a href="#">Customer reviews</a><a href="#">Privacy requests</a>
+    </nav>
+
+    <div style="display: grid; grid-template-columns: 300px minmax(0, 1fr); flex: 1">
+      <aside style="border-right: 1px solid #E4DACA; padding: 16px 12px; display: flex; flex-direction: column; gap: 8px" aria-label="Open cases">
+        <div style="display: flex; gap: 6px; padding: 0 2px 6px"><span class="chip on" style="height: 30px; font-size: 13px">All open 3</span><span class="chip" style="height: 30px; font-size: 13px">Waiting on customer 1</span></div>
+        <sc-for list="{{cases}}" as="k" hint-placeholder-count="3">
+          <button class="{{k.cls}}" onClick="{{k.pick}}">
+            <span style="display: flex; justify-content: space-between; gap: 8px"><b class="mono" style="font-size: 13px">{{k.order}}</b><span class="{{k.badgeCls}}" style="height: 20px; font-size: 11.5px">{{k.badge}}</span></span>
+            <b style="font-size: 15px">{{k.title}}</b>
+            <span style="font-size: 13px; color: #46536F">{{k.sub}}</span>
+          </button>
+        </sc-for>
+      </aside>
+
+      <main style="padding: 24px 32px 40px; display: flex; flex-direction: column; gap: 20px; min-width: 0">
+        <div style="display: flex; gap: 16px; align-items: start; flex-wrap: wrap">
+          <div style="flex: 1; min-width: 300px">
+            <span class="num" style="font-size: 13.5px; color: #46536F">Rekha T. in Lalitpur · Hand Creation · delivered 15 Nov · asked 18 Nov (day 3 of 7)</span>
+            <h2 class="serif" style="font-size: 34px; line-height: 1.1; letter-spacing: -0.015em">“The red looks orange”</h2>
+            <span style="font-size: 14.5px; color: #46536F">Return request on <a href="Admin-OrderDetail.dc.html" class="tlink">HB-24770</a> · Red flower drop earrings · NPR 485 cash on delivery</span>
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center">
+            <span class="badge bad dot">Escalated · 2 h late</span>
+            <sc-if value="{{noOwner}}" hint-placeholder-val="{{ true }}"><button class="btn btn-ghost btn-sm" onClick="{{assign}}"><span class="ic s16 i-user"></span>Assign to me</button></sc-if>
+            <sc-if value="{{mine}}" hint-placeholder-val="{{ false }}"><span style="display: flex; gap: 8px; align-items: center; font-size: 14px"><span class="avatar" style="width: 26px; height: 26px; background: #14213D; color: #fff; font-size: 11px">NS</span>You</span></sc-if>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; align-items: start">
+          <div style="display: flex; flex-direction: column; gap: 16px">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
+              <div class="ev"><img src="/_blob/eef4ef68f82a1e98e267463ef9651908" alt="Listing photo of the red flower drop earrings"><span class="tag">Listing photo</span></div>
+              <!-- stand-in: customer's photo, warmed with a filter to show the reported colour shift -->
+              <div class="ev"><img src="/_blob/eef4ef68f82a1e98e267463ef9651908" alt="Customer's photo, 18 Nov, indoor light" style="filter: hue-rotate(16deg) saturate(.85) sepia(.18) brightness(1.04)"><span class="tag">Customer’s photo · 18 Nov</span></div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
+              <div class="quote"><span style="font-size: 12.5px; font-weight: 600; color: #675B4E">Customer said</span><span>“I ordered them for Tihar to match a red sari. They look orange next to it. I haven't worn them.”</span></div>
+              <div class="quote"><span style="font-size: 12.5px; font-weight: 600; color: #675B4E">Hand Creation said</span><span>“Same batch as the photo. Indoor light makes the red look warmer. Happy to swap for the deep red pair.”</span></div>
+            </div>
+            <section aria-label="Activity" style="display: flex; flex-direction: column; gap: 8px; font-size: 14px">
+              <h3 style="font-size: 15px; font-weight: 650">Activity</h3>
+              <span><b>System</b> escalated: no decision within 24 h <span style="color: #675B4E">· today, 11:00 am</span></span>
+              <span><b>Hand Creation</b> replied and offered an exchange <span style="color: #675B4E">· 19 Nov</span></span>
+              <span><b>Rekha T.</b> asked to return, 2 photos <span style="color: #675B4E">· 18 Nov</span></span>
+            </section>
+          </div>
+
+          <section class="panel" style="padding: 20px; display: flex; flex-direction: column; gap: 4px" aria-label="Decide">
+            <h3 style="font-size: 16px; font-weight: 650">Normal handmade variation?</h3>
+            <p style="font-size: 13.5px; color: #46536F; margin-bottom: 8px">It only counts as normal if all four are yes.</p>
+            <sc-for list="{{checks}}" as="c" hint-placeholder-count="4">
+              <div class="chk"><span>{{c.q}}</span><span class="yn" role="group" aria-label="{{c.q}}"><button class="{{c.yCls}}" onClick="{{c.yes}}" aria-pressed="{{c.isY}}">Yes</button><button class="{{c.nCls}}" onClick="{{c.no}}" aria-pressed="{{c.isN}}">No</button></span></div>
+            </sc-for>
+            <div class="verdict" style="background: {{v.bg}}; color: {{v.fg}}; margin-top: 10px"><span class="{{v.icon}}" style="margin-top: 2px; flex: none"></span><span><b style="display: block">{{v.title}}</b>{{v.text}}</span></div>
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 14px">
+              <button class="btn btn-primary" disabled="{{v.undecided}}">{{v.cta}}</button>
+              <button class="btn btn-ghost">Offer the seller’s exchange</button>
+              <button class="btn btn-ghost">Ask customer for a daylight photo</button>
+            </div>
+            <span style="font-size: 12.5px; color: #675B4E; margin-top: 10px; display: flex; gap: 6px"><span class="ic s14 i-lock" style="margin-top: 2px"></span>Seller earnings for this order stay on hold until the case closes.</span>
+          </section>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1080}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { sel: 'c1', owner: null, a: { q1: 'y', q2: 'n' }, helpOpen: false }; }
+  renderVals() {
+    const s = this.state;
+    const Q = [
+      ['q1', 'Does the listing say it’s handmade?'],
+      ['q2', 'Is the colour within what the photos showed?'],
+      ['q3', 'Is it safe and does it work as earrings?'],
+      ['q4', 'Is it still the same product as listed?']
+    ];
+    const checks = Q.map(([k, q]) => ({ q, isY: s.a[k] === 'y', isN: s.a[k] === 'n', yCls: s.a[k] === 'y' ? 'y' : '', nCls: s.a[k] === 'n' ? 'n' : '',
+      yes: () => this.setState({ a: { ...s.a, [k]: 'y' } }), no: () => this.setState({ a: { ...s.a, [k]: 'n' } }) }));
+    const vals = Q.map(([k]) => s.a[k]);
+    const anyNo = vals.includes('n'), allYes = vals.every((x) => x === 'y');
+    const v = anyNo
+      ? { bg: '#F8E1DE', fg: '#6E1219', icon: 'ic s16 i-alert', title: 'Different from the listing', text: ' Approve the return. Rekha pays nothing to send it back, and gets NPR 485 once we’ve checked it.', cta: 'Approve return · NPR 485', undecided: false }
+      : allYes
+        ? { bg: '#E1EEE5', fg: '#1F4D35', icon: 'ic s16 i-check', title: 'Normal handmade variation', text: ' A return isn’t required. Explain why, and offer the seller’s exchange.', cta: 'Explain and close', undecided: false }
+        : { bg: '#EDE4D3', fg: '#46536F', icon: 'ic s16 i-help', title: 'Answer all four', text: ' The decision appears here.', cta: 'Decide', undecided: true };
+    const C = [
+      { id: 'c1', order: 'HB-24770', badge: '2 h late', badgeCls: 'badge bad', title: 'Colour looks different', sub: 'Rekha T. · Hand Creation · day 3 of 7' },
+      { id: 'c2', order: 'HB-24733', badge: 'Courier checking', badgeCls: 'badge info', title: 'One earring missing', sub: 'Sabina K. · Himalayan Craft · day 2 of 7' },
+      { id: 'c3', order: 'HB-24690', badge: 'Waiting on customer', badgeCls: 'badge warn', title: 'Clay bowl arrived chipped', sub: 'Dipesh G. · Patan Clay Studio · photo asked 19 Nov' }
+    ];
+    const cases = C.map((k) => ({ ...k, cls: k.id === s.sel ? 'ccard on' : 'ccard', pick: () => this.setState({ sel: k.id }) }));
+    return { cases, checks, v, noOwner: !s.owner, mine: !!s.owner, assign: () => this.setState({ owner: 'NS' }),
+      helpOpen: s.helpOpen, toggleHelp: () => this.setState({ helpOpen: !s.helpOpen }) };
+  }
+}
+</script>
+</body>
+</html>

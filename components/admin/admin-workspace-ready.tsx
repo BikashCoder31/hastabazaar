@@ -12,9 +12,10 @@ const serverSnapshot = () => false;
  * server snapshot is also the first browser snapshot. Authentication and page
  * permissions are still checked by the server layout and pages.
  */
-export function AdminWorkspaceReady({ children }: { children: ReactNode }) {
+export function AdminWorkspaceReady({ children, fallback }: { children: ReactNode; fallback?: ReactNode }) {
   const ready = useSyncExternalStore(subscribe, browserSnapshot, serverSnapshot);
-  return ready ? children : (
+  if (ready) return children;
+  return fallback ?? (
     <output className="col-span-full block min-h-64 rounded-2xl border bg-card p-6 text-sm text-muted-foreground">
       Loading workspace…
     </output>

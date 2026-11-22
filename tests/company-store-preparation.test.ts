@@ -24,6 +24,11 @@ void test('Super Admin prepares only company-snapshot items with atomic authorit
     .map(({name})=>[name,f.sqlite.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]),items:f.sqlite.prepare('SELECT * FROM order_items').all(),
    events:f.sqlite.prepare('SELECT * FROM order_item_status_events').all(),answers:f.sqlite.prepare('SELECT * FROM form_answer_sets').all(),
    audits:f.sqlite.prepare('SELECT * FROM audit_logs').all()});
+  const placed=state();
+  await assert.rejects(prepare(f.db,input),/Company items, form or staff authority changed/);
+  assert.equal(state(),placed,'A historical placed order must not be prepared before confirmation');
+  // This isolated historical fixture begins the supported preparation journey after confirmation.
+  f.sqlite.prepare("UPDATE orders SET status='confirmed' WHERE id=?").run(f.orderId);
   for(const change of [
    "UPDATE user_roles SET role='admin' WHERE user_id='reviewer'",
    "UPDATE users SET status='disabled' WHERE id='reviewer'",
@@ -83,6 +88,7 @@ void test('Super Admin prepares only company-snapshot items with atomic authorit
 void test('a valid first-COD hold introduced at commit rolls back company preparation',async()=>{
  const f=await earnedMaker('calculated');
  try{
+  f.sqlite.prepare("UPDATE orders SET status='confirmed' WHERE id=?").run(f.orderId);
   f.sqlite.prepare(`INSERT INTO form_config_versions(id,form_id,version,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
    VALUES('cod-prepare-v1','staff.order-fulfillment',1,'published',?,'SIMULATED','reviewer',1,'reviewer',1,'reviewer',1,'cod-publish')`)
    .run(JSON.stringify({formId:'staff.order-fulfillment',fields:[]}));
@@ -91,9 +97,20 @@ void test('a valid first-COD hold introduced at commit rolls back company prepar
   const state=()=>JSON.stringify(tables.map(name=>[name,f.sqlite.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
   const before=state();let inserted=false;
   f.setBeforeBatch(()=>{f.sqlite.prepare("INSERT INTO first_cod_reviews(order_id,customer_id,total_paisa,status,created_at) VALUES(?,'buyer',500000,'pending',1)").run(f.orderId);inserted=true;});
-  await assert.rejects(fulfillment.transitionCompanyPreparation(f.db,{orderId:f.orderId,sellerId:f.sellerId,actorId:'reviewer',action:'start_packing',
+  const input={orderId:f.orderId,sellerId:f.sellerId,actorId:'reviewer',action:'start_packing' as const,
    note:'SIMULATED COD commit guard',requestId:'cod-race-packing',now:f.now+8,form:{requestId:'cod-race-packing',versionId:'cod-prepare-v1',
-    answers:{formId:'staff.order-fulfillment',version:1,answers:[]}}}),/Company items, form or staff authority changed/);
+    answers:{formId:'staff.order-fulfillment' as const,version:1,answers:[]}}};
+  await assert.rejects(fulfillment.transitionCompanyPreparation(f.db,input),/Company items, form or staff authority changed/);
   assert.equal(inserted,true,'The valid race fixture must reach the operation batch');assert.equal(state(),before);
+  const control=await earnedMaker('calculated',f.now);
+  try {
+   control.sqlite.prepare("UPDATE orders SET status='confirmed' WHERE id=?").run(control.orderId);
+   const published=f.sqlite.prepare("SELECT * FROM form_config_versions WHERE id='cod-prepare-v1'").get()!;
+   const columns=Object.keys(published);
+   control.sqlite.prepare(`INSERT INTO form_config_versions(${columns.join(',')}) VALUES(${columns.map(()=>'?').join(',')})`).run(...columns.map(column=>published[column]));
+   await fulfillment.transitionCompanyPreparation(control.db,input);
+   assert.equal(control.sqlite.prepare('SELECT fulfillment_status FROM order_items WHERE id=?').get(control.itemId)?.fulfillment_status,'packing',
+    'The same operation succeeds in an independent fixture without the injected hold');
+  } finally {control.dispose();}
  }finally{f.dispose();}
 });

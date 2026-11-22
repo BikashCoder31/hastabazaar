@@ -14,6 +14,7 @@ import { FormRuntimeError, resolvePublishedForm, validateSubmittedForm } from '@
 import { canonicalKey } from '@/lib/forms/submission';
 import type { FormId, PublishedFormConfig } from '@/lib/forms/types';
 import { FormValidationError } from '@/lib/forms/validation';
+import {coreFormVersionId,isCoreFormDefinition} from '@/lib/forms/core-contracts';
 import { readBoundedForm } from '@/lib/http/bounded-body';
 import {
   consumePublicRequestRateLimit,
@@ -188,11 +189,14 @@ export async function POST(request: Request): Promise<Response> {
 
     const payloadHash = await formHash(form);
     const config = await resolvePublishedForm(database, contract.formId);
+    // Preserve the server-observed native origin even if first publication is
+    // also numeric version 1 between validation reads; the batch must then lose.
+    const nativeVersionId=isCoreFormDefinition(config)?coreFormVersionId(contract.formId):undefined;
     const answers = await validateSubmittedForm(database, contract.formId, contract.version,
       configuredAnswers(form, config, validation.feedback));
     try {
       job = await createFeedbackSubmission(database, { formId: contract.formId, requestId: contract.requestId,
-        payloadHash, feedback: validation.feedback, answers, now: Date.now() });
+        payloadHash, feedback: validation.feedback, answers, nativeVersionId, now: Date.now() });
     } catch {
       job = await findFeedbackDeliveryJob(database, contract.requestId);
       if (!job) {

@@ -1,4 +1,5 @@
 import type { FormAnswerSnapshot } from '@/lib/forms/types';
+import { formAnswerSourceSql, formAnswerSnapshotMatches } from '@/lib/forms/answer-proof';
 
 export type CommerceForm = { versionId: string; answers: FormAnswerSnapshot };
 
@@ -10,13 +11,13 @@ export async function assertCommerceFormReplay(db: D1Database, input: {
   if (!input.form) return;
   const row = await db.prepare(`SELECT config_version_id AS versionId, subject_type AS subjectType,
     subject_id AS subjectId, actor_id AS actorId, answers_json AS answersJson
-    FROM form_answer_sets WHERE form_id=? AND request_id=? LIMIT 1`)
+    FROM ${formAnswerSourceSql(db)} original_answers WHERE form_id=? AND request_id=? LIMIT 1`)
     .bind(input.formId, input.requestId)
     .first<{ versionId: string; subjectType: string; subjectId: string;
       actorId: string | null; answersJson: string }>();
   if (!row || row.versionId !== input.form.versionId || row.subjectType !== input.subjectType ||
     row.subjectId !== input.subjectId || row.actorId !== input.actorId ||
-    row.answersJson !== JSON.stringify(input.form.answers)) {
+    !formAnswerSnapshotMatches(row.answersJson, input.form.answers)) {
     throw new input.conflictError('This request was already used for different form answers.');
   }
 }

@@ -79,6 +79,12 @@ async function fixture() {
     const source = await readFile(new URL(`../drizzle/${migration}`, import.meta.url), 'utf8');
     for (const statement of source.split('--> statement-breakpoint')) if (statement.trim()) sqlite.exec(statement);
   }
+  const originalSchema=await readFile(new URL('../drizzle/0000_clear_lizard.sql',import.meta.url),'utf8');
+  const auditTable=originalSchema.split('--> statement-breakpoint').find(statement=>statement.includes('CREATE TABLE `audit_logs`'));
+  assert.ok(auditTable);sqlite.exec(auditTable);
+  const health=await readFile(new URL('../drizzle/0151_form_health_records.sql',import.meta.url),'utf8');
+  for(const statement of health.split('--> statement-breakpoint'))if(statement.includes('ALTER TABLE form_answer_sets ADD COLUMN'))sqlite.exec(statement);
+  sqlite.exec(await readFile(new URL('../drizzle/0154_native_public_feedback_defaults.sql',import.meta.url),'utf8'));
   const db = new Database(sqlite);
   globalThis.feedbackCatalogDb = db as unknown as D1Database;
   globalThis.feedbackCatalogMail = { sent: [], attempts: 0, configured: true, reject: false, hold: null,
@@ -396,13 +402,29 @@ void test('oversized feedback remains rejected before creating a job or sending 
   const { sqlite } = await fixture();
   try {
     seed(sqlite, 'public.contact', 1);
-    const payload = await request('oversized-one').formData();
-    payload.set('custom.delivery_note', 'A'.repeat(3 * 1024 * 1024));
+    const boundary = 'feedback-oversize';
+    const encode = new TextEncoder();
+    const chunks = [
+      encode.encode(`--${boundary}\r\nContent-Disposition: form-data; name="custom.delivery_note"\r\n\r\n`),
+      encode.encode('A'.repeat(3 * 1024 * 1024)),
+      encode.encode(`\r\n--${boundary}--\r\n`),
+    ];
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        const chunk = chunks.shift();
+        if (chunk) controller.enqueue(chunk);
+        else controller.close();
+      },
+      cancel() { cancelled = true; },
+    });
     const { POST } = await import('../app/api/feedback/route');
     const response = await POST(new Request('http://localhost:3000/api/feedback', {
-      method: 'POST', headers: { origin: 'http://localhost:3000' }, body: payload,
-    }));
+      method: 'POST', headers: { origin: 'http://localhost:3000', 'content-type': `multipart/form-data; boundary=${boundary}` },
+      body, duplex: 'half',
+    } as RequestInit & { duplex: 'half' }));
     assert.equal(response.status, 413);
+    assert.equal(cancelled, true);
     assert.equal(count(sqlite, 'feedback_delivery_jobs'), 0);
     assert.equal(count(sqlite, 'form_answer_sets'), 0);
     assert.equal(globalThis.feedbackCatalogMail.sent.length, 0);

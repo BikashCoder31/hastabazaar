@@ -17,7 +17,7 @@ const fixtures = `
       <StaffPermissionManager actorId="reviewer" requests={[]} presets={[]} members={[
         {userId:'colleague', displayName:'Test colleague', email:'colleague@local.hastabazaar.test', permissions:['order.manage'], version:1}
       ]}/>
-      <StaffInvitationManager pendingInvitations={[]}/>
+      <StaffInvitationManager actorId="reviewer" pendingInvitations={[]}/>
     </>})}</>;
   }
 `;
@@ -25,11 +25,19 @@ const plugin: Plugin = { name: 'admin-autofill-fixtures', setup(bundler) {
   stubFixtureLink(bundler);
   stubFixtureImage(bundler);
   bundler.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'admin-autofill' }));
+  bundler.onResolve({ filter: /^next\/headers$/ }, () => ({ path: 'headers', namespace: 'admin-autofill' }));
+  bundler.onResolve({ filter: /^cloudflare:workers$/ }, () => ({ path: 'workers', namespace: 'admin-autofill' }));
+  bundler.onResolve({ filter: /^\.\/workspace\.css$/ }, () => ({ path: 'styles', namespace: 'admin-autofill' }));
   bundler.onResolve({ filter: /^@\/app\/auth$/ }, () => ({ path: 'auth', namespace: 'admin-autofill' }));
   bundler.onResolve({ filter: /^@\/lib\/auth\/staff$/ }, () => ({ path: 'staff', namespace: 'admin-autofill' }));
+  bundler.onResolve({ filter: /^@\/components\/admin\/admin-review-data$/ }, () => ({ path: 'counts', namespace: 'admin-autofill' }));
   bundler.onResolve({ filter: /^@\/components\/forms\/form-config-client$/ }, () => ({ path: 'config', namespace: 'admin-autofill' }));
   const modules: Record<string, string> = {
-    navigation: "export function usePathname(){return '/admin/team'}; export function useRouter(){return {refresh(){}}}",
+    navigation: "export function usePathname(){return '/admin/team'}; export function useRouter(){return {refresh(){}}}; export function useSearchParams(){return new URLSearchParams()}",
+    headers: "export async function headers(){return new Headers({host:'localhost'})}",
+    workers: 'export const env = {}',
+    styles: '',
+    counts: 'export async function readAdminSidebarCounts(){return {}}',
     auth: "export function signOutPath(){return '/api/auth/logout'}",
     staff: "export async function requireStaffPage(){return {id:'reviewer',role:'super_admin',displayName:'Test reviewer',permissions:[]}}",
     config: "export function usePublishedFormConfig(formId){return {config:{formId,version:1,publishedAt:1,fields:[]},status:'ready',canSubmit:true,message:'',refresh(){},handleSubmissionResponse(){}}}",
@@ -59,7 +67,7 @@ void test('staff workspace tolerates autofill DOM changes without hiding real hy
     bundle: true, write: false, platform: 'node', format: 'cjs', external: ['react', 'react-dom/server'], plugins: [plugin] });
   const serverModule = { exports: {} as { markup(mismatch: boolean): Promise<string> } };
   runInNewContext(server.outputFiles[0].text, { module: serverModule, exports: serverModule.exports,
-    require: createRequire(import.meta.url), process, console, TextEncoder, TextDecoder });
+    require: createRequire(import.meta.url), process, console, Headers, TextEncoder, TextDecoder });
   const client = await build({ stdin: { resolveDir: process.cwd(), sourcefile: 'admin-autofill-client.tsx', loader: 'tsx',
     contents: fixtures + `import {hydrateRoot} from 'react-dom/client';
       window.hydrationErrors=[];window.consoleErrors=[];
@@ -75,8 +83,17 @@ void test('staff workspace tolerates autofill DOM changes without hiding real hy
       const page = await browser.newPage();
       try {
         const markup = await serverModule.exports.markup(mode === 'mismatch');
-        await page.route('https://admin-autofill.test/**', route => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8',
-          body: `<!doctype html><div id="root">${markup}</div>${mode === 'autofill' ? `<script>${extension}</script>` : ''}` }));
+        await page.route('https://admin-autofill.test/**', route => {
+          const url = new URL(route.request().url());
+          if (url.pathname === '/api/admin/search') {
+            const results = url.searchParams.get('q') === 'form'
+              ? [{ group: 'Pages', title: 'Forms', href: '/admin/forms' }]
+              : [];
+            return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ results }) });
+          }
+          return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8',
+            body: `<!doctype html><div id="root">${markup}</div>${mode === 'autofill' ? `<script>${extension}</script>` : ''}` });
+        });
         await page.goto(`https://admin-autofill.test/admin/team${mode === 'mismatch' ? '?mismatch' : ''}`);
         await page.addScriptTag({ content: client.outputFiles[0].text });
         await page.getByLabel('Staff email').waitFor();
@@ -91,9 +108,12 @@ void test('staff workspace tolerates autofill DOM changes without hiding real hy
         assert.deepEqual(errors.recoverable, [], 'Chrome autofill must not force the staff workspace to regenerate');
         assert.deepEqual(errors.console, [], 'The workspace must not produce hydration warnings');
         if (mode === 'autofill') assert.equal(await page.locator('shark-icon-container').count(), 1, 'Autofill decoration is retained');
-        await page.getByLabel('Find a task').fill('form');
-        await page.getByRole('link', { name: /^Form catalog/ }).waitFor();
-        assert.ok(await page.getByRole('link', { name: /^Form catalog/ }).isVisible());
+        await page.getByRole('button', { name: 'Jump to an order, seller, phone or setting…' }).click();
+        const search = page.getByRole('dialog', { name: 'Search everything', exact: true });
+        await search.getByRole('combobox', { name: 'Search everything', exact: true }).fill('form');
+        await search.getByRole('option', { name: 'Forms', exact: true }).waitFor();
+        assert.ok(await search.getByRole('option', { name: 'Forms', exact: true }).isVisible());
+        await search.getByRole('button', { name: 'Close search', exact: true }).click();
         await page.getByLabel('Staff email').fill('colleague@local.hastabazaar.test');
         await page.getByRole('button', { name: 'Review invitation', exact: true }).click();
         await page.getByRole('alertdialog').getByText('Create this staff invitation?', { exact: true }).waitFor();

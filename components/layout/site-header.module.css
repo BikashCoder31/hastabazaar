@@ -110,6 +110,12 @@
   .utility > div { font-size: 10px; gap: 4px; letter-spacing: 0; }
   .main :global(.site-header-actions) { gap: 2px; }
 }
+@media (min-width: 390px) and (max-width: 639px) {
+  .main:global(.site-header-main) { --header-control-size: 44px; }
+}
+@media (max-width: 389px) {
+  .main:global(.site-header-main) { padding-inline: 2px; }
+}
 @media (prefers-reduced-motion: reduce) {
   .main :global(.site-header-brand), .searchForm,
   .navigation :global(.nav-link)::after, .sell { transition: none; }

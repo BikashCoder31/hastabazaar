@@ -1,4 +1,5 @@
 import {
+  moneyViewPermissions,
   validateAdminPermissions,
   type Permission,
 } from '../marketplace/permissions';
@@ -24,6 +25,21 @@ export interface StaffAccessComparison {
 }
 
 export const STAFF_ACCESS_RIGHTS: readonly StaffAccessRight[] = [
+  {
+    permission: 'system.health.view',
+    label: 'View service health',
+    description: 'Read sanitized service health, form outcomes and scoped technical records. Private business evidence and mail setup remain separately protected.',
+  },
+  {
+    permission: 'system.incidents.manage',
+    label: 'Respond to service incidents',
+    description: 'Acknowledge and update eligible assigned incidents with recovery evidence. Sensitive closure and severity reductions require Super Admin authority.',
+  },
+  {
+    permission: 'payment.receipt.verify',
+    label: 'Verify ordinary incoming receipts',
+    description: 'Inspect scoped company receipt evidence and confirm ordinary completed incoming payments. Exceptions, COD remittance and seller recovery retain their separate Super Admin checks.',
+  },
   {
     permission: 'seller.application.review',
     label: 'Review sellers',
@@ -52,7 +68,7 @@ export const STAFF_ACCESS_RIGHTS: readonly StaffAccessRight[] = [
     permission: 'order.manage',
     label: 'Manage orders and shipping',
     description:
-      'Manage orders, cancellations, shipping and delivery claims; retry order emails and follow up on order and delivery problems. Rider controls still require a Super Admin.',
+      'Manage orders, cancellations, shipping and delivery claims. Retry order emails and follow up on order and delivery problems. Archived delivery controls require a Super Admin.',
   },
   {
     permission: 'support.manage',
@@ -73,6 +89,21 @@ export const STAFF_ACCESS_RIGHTS: readonly StaffAccessRight[] = [
       'Prepare seller payouts and review payout requests. A Super Admin approves payouts and records payment.',
   },
   {
+    permission: 'payout.view',
+    label: 'View seller payouts and the business report',
+    description: 'Read payout balances, history and the payout run. Bank instructions and payout actions stay protected.',
+  },
+  {
+    permission: 'cod.view',
+    label: 'View courier cash',
+    description: 'Read delivered cash balances, matched credits and differences. Matching money needs separate access.',
+  },
+  {
+    permission: 'refund.view',
+    label: 'View refunds and recoveries',
+    description: 'Read refund and recovery progress. Bank details and finance actions stay protected.',
+  },
+  {
     permission: 'audit_log.view',
     label: 'View reports and recorded work',
     description:
@@ -82,10 +113,17 @@ export const STAFF_ACCESS_RIGHTS: readonly StaffAccessRight[] = [
 
 export const BUILT_IN_STAFF_ACCESS_TEMPLATES: readonly StaffAccessTemplate[] = [
   {
+    id: 'technical-responder',
+    name: 'Technical responder',
+    description: 'View sanitized health and respond to assigned incidents. Staff access, private business evidence, publication and financial execution need their own authority.',
+    permissions: ['system.health.view', 'system.incidents.manage'],
+    source: 'built-in',
+  },
+  {
     id: 'orders-assistant',
     name: 'Orders assistant',
     description:
-      'Manage orders, shipping, cancellations and delivery claims; retry order emails and follow up on order and delivery problems. Rider controls require a Super Admin.',
+      'Manage orders, shipping, cancellations and delivery claims. Retry order emails and follow up on order and delivery problems. Archived delivery controls require a Super Admin.',
     permissions: ['order.manage'],
     source: 'built-in',
   },
@@ -127,6 +165,13 @@ export const BUILT_IN_STAFF_ACCESS_TEMPLATES: readonly StaffAccessTemplate[] = [
     description:
       'Prepare seller payouts. Approval and payment recording require a Super Admin.',
     permissions: ['payout.prepare'],
+    source: 'built-in',
+  },
+  {
+    id: 'money-view-only',
+    name: 'Money (view only)',
+    description: 'View payouts, the payout run, courier cash, refunds, recoveries and the business report.',
+    permissions: moneyViewPermissions,
     source: 'built-in',
   },
   {

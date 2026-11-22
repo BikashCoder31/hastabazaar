@@ -14,7 +14,6 @@ function fixture() {
   for (const f of readdirSync('drizzle')
     .filter((f) => /^\d+.*\.sql$/.test(f))
     .sort()) {
-    if (Number(f.slice(0, 4)) > 36) continue;
     sqlite.exec(readFileSync('drizzle/' + f, 'utf8'));
   }
   for (const [id, role] of [
@@ -156,7 +155,7 @@ void test('SA issuance stores only a hash, retries hide code, redemption posts o
           "SELECT COUNT(*) AS n FROM notification_messages WHERE channel<>'in_app'",
         )
         .get()?.n,
-      0,
+      3,
     );
     assert.ok(
       !JSON.stringify(
@@ -272,6 +271,6 @@ void test('gift links remain role scoped and maximum safe money displays its exa
  assert.equal(formatPaisaExact(-1),'-NPR 0.01');
  assert.ok(adminNavigation('super_admin').some(n=>n.href==='/admin/gift-cards'));
  assert.ok(!adminNavigation('admin').some(n=>n.href==='/admin/gift-cards'));
- assert.equal(notificationDestination('customer','customer','gift_card','safe-id'),'/account/wallet#credit-activity');
- assert.equal(notificationDestination('staff','staff','gift_card_issued','safe-id'),'/admin/gift-cards');
+ assert.equal(notificationDestination('customer','customer','gift_card','safe-id'),'/account/wallet?giftId=safe-id#gift-record-safe-id');
+ assert.equal(notificationDestination('staff','staff','gift_card_issued','safe-id'),'/admin/gift-cards?giftId=safe-id#gift-record-safe-id');
 });

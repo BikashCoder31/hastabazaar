@@ -1,0 +1,16 @@
+'use client';
+import {useState} from 'react';
+import type {getProductPublicationReview} from '@/lib/products/publication';
+import {offerMoney} from '@/lib/products/offer-contracts';
+type Review=Awaited<ReturnType<typeof getProductPublicationReview>>;
+const money=(paisa:number)=>(paisa/100).toFixed(2);
+function scopeLabel(scope:string){const facts=JSON.parse(scope) as Record<string,string>;return [facts.condition,facts.unitContents,facts.packQuantity?`Pack quantity: ${facts.packQuantity}`:''].filter(Boolean).join(' · ');}
+export function ProductOrderablePriceHistory({view,disabled,onCapture}:{view:Review;disabled:boolean;onCapture:(offerId:string,reason:string)=>Promise<void>}){
+ const [offerId,setOfferId]=useState(''),[reason,setReason]=useState('');
+ const current=view.current?.offers??[],chosen=current.find(row=>row.id===offerId)??current[0],history=view.priceHistory??[];
+ return <section aria-label="Observed orderable price history" className="space-y-3 rounded border p-4"><h3 className="font-medium">Observed orderable prices</h3><p className="text-sm">These records prove that an offer could be bought at the recorded moment. They do not prove continuous availability between observations. Review the chronology, condition and any intervening price changes; the highest recorded price is not automatically a genuine Original price.</p>
+ {current.map(row=>{const proposed=view.candidate.snapshot.offers.offers.find(offer=>offer.id===row.id&&offer.included),price=proposed?offerMoney(proposed.price):null,amount=price===null?null:price-row.pricePaisa;return <p key={row.id} className="text-sm">{row.sku||row.id}: current public Selling price NPR {money(row.pricePaisa)}{amount!==null&&amount!==0?`; proposed ${amount>0?'increase':'decrease'} NPR ${money(Math.abs(amount))} (${(Math.abs(amount)/row.pricePaisa*100).toFixed(2)}%)`:''}.</p>;})}
+ {history.length?<ol className="max-h-72 space-y-2 overflow-y-auto text-sm">{history.map(row=><li key={row.id} className="break-words">{current.find(offer=>offer.id===row.offerId)?.sku||row.offerId} · NPR {money(row.sellingPaisa)} · observed {new Date(row.observedAt).toLocaleString()} · {scopeLabel(row.scope)}</li>)}</ol>:<p className="text-sm">No verified orderable-price observations are retained. A publication badge or an earlier draft does not establish this history.</p>}
+ {chosen&&view.currentVersionId&&<fieldset disabled={disabled} className="space-y-3"><label className="grid gap-2 text-sm">Current public offer to observe<select className="min-h-11 rounded border p-2" value={chosen.id} onChange={event=>setOfferId(event.target.value)}>{current.map(row=><option key={row.id} value={row.id}>{row.sku||row.id} · NPR {money(row.pricePaisa)}</option>)}</select></label><label className="grid gap-2 text-sm">Observation reason<textarea className="min-h-16 rounded border p-2" value={reason} maxLength={1000} onChange={event=>setReason(event.target.value)}/></label><button type="button" className="min-h-11 rounded border px-4 py-2 disabled:opacity-50" disabled={reason.trim().length<10} onClick={()=>void onCapture(chosen.id,reason)}>Record current orderable price</button><p className="text-sm">The server checks current public facts, seller readiness and confirmed available stock together. Recording an observation does not approve a comparison claim.</p></fieldset>}
+ </section>;
+}

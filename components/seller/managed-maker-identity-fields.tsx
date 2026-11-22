@@ -41,8 +41,12 @@ export function CompanySellingIdentity({
 }
 export function ManagedMakerIdentityFields({
   includeUploads = false,
+  requirePersonalPan = false,
+  deferBank = false,
 }: {
   includeUploads?: boolean;
+  requirePersonalPan?: boolean;
+  deferBank?: boolean;
 }) {
   const [type, setType] = useState('');
   return (
@@ -82,17 +86,17 @@ export function ManagedMakerIdentityFields({
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="personalPan">Personal PAN (optional)</Label>
+        <Label htmlFor="personalPan">Personal PAN {requirePersonalPan ? '*' : '(optional)'}</Label>
         <Input
           id="personalPan"
           name="personalPan"
+          required={requirePersonalPan}
           inputMode="numeric"
           pattern="[0-9]{9}"
           maxLength={9}
         />
         <p className="text-xs text-muted-foreground">
-          If issued, enter your 9-digit personal PAN. This is separate from
-          business PAN and the company PAN.
+          Enter your own 9-digit personal PAN. It does not establish business registration or authorise trading under the company PAN.
         </p>
       </div>
       {includeUploads ? (
@@ -111,15 +115,17 @@ export function ManagedMakerIdentityFields({
           </div>
           <div className="space-y-2">
             <Label htmlFor="personalPanCertificate">
-              Personal PAN certificate (optional)
+              Personal PAN certificate {requirePersonalPan ? '*' : '(optional)'}
             </Label>
             <Input
               type="file"
               id="personalPanCertificate"
               name="personalPanCertificate"
+              required={requirePersonalPan}
               accept="application/pdf,image/jpeg,image/png"
             />
           </div>
+          {requirePersonalPan && !deferBank ? <div className="space-y-2"><Label htmlFor="bankVerification">Bank evidence showing beneficiary and account *</Label><Input type="file" id="bankVerification" name="bankVerification" required accept="application/pdf,image/jpeg,image/png"/></div> : null}
         </>
       ) : null}
       <p className="text-xs text-muted-foreground sm:col-span-2">
@@ -131,17 +137,19 @@ export function ManagedMakerIdentityFields({
 }
 export function ManagedMakerAgreementFields({
   terms,
+  optional = false,
+  collapseTerms = false,
+  onAcceptedChange,
 }: {
   terms: ManagedMakerApplicationTerms;
+  optional?: boolean;
+  collapseTerms?: boolean;
+  onAcceptedChange?: (checked: boolean) => void;
 }) {
-  return (
-    <fieldset className="space-y-4 rounded-lg border p-4">
-      <legend className="px-2 font-semibold">
-        Managed Maker selling agreement
-      </legend>
-      <p className="text-sm">Version: {MANAGED_MAKER_AGREEMENT_VERSION}</p>
+  const agreementDetails = <>
+      <p className="text-sm">Version: {terms.version ?? MANAGED_MAKER_AGREEMENT_VERSION}</p>
       <ol className="list-decimal space-y-3 pl-5 text-sm leading-6">
-        {managedMakerAgreementTerms(terms.platformRetentionBps).map((term) => (
+        {managedMakerAgreementTerms(terms.platformRetentionBps, terms.version).map((term) => (
           <li key={term}>{term}</li>
         ))}
       </ol>
@@ -153,10 +161,20 @@ export function ManagedMakerAgreementFields({
       >
         Prohibited &amp; Restricted Products Policy
       </a>
+  </>;
+  return (
+    <fieldset className="space-y-4 rounded-lg border p-4">
+      <legend className="px-2 font-semibold">
+        Managed Supplier/Maker Agreement
+      </legend>
+      {collapseTerms ? <details className="space-y-4">
+        <summary className="cursor-pointer text-sm font-medium">Read the full agreement</summary>
+        {agreementDetails}
+      </details> : agreementDetails}
       <input
         type="hidden"
         name="managedAgreementVersion"
-        value={MANAGED_MAKER_AGREEMENT_VERSION}
+        value={terms.version ?? MANAGED_MAKER_AGREEMENT_VERSION}
       />
       <input
         type="hidden"
@@ -168,7 +186,8 @@ export function ManagedMakerAgreementFields({
           id="managedAgreementAccepted"
           name="managedAgreementAccepted"
           value="yes"
-          required
+          required={!optional}
+          onCheckedChange={onAcceptedChange}
         />
         <Label
           htmlFor="managedAgreementAccepted"
@@ -176,7 +195,7 @@ export function ManagedMakerAgreementFields({
         >
           I have read and explicitly accept this Managed Maker selling
           agreement, the company identity and the{' '}
-          {terms.platformRetentionBps / 100}% platform retention shown above. *
+          {terms.platformRetentionBps / 100}% platform retention described in the agreement.{optional ? ' You may review and accept this later from your dashboard.' : ' *'}
         </Label>
       </div>
     </fieldset>

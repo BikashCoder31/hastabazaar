@@ -1,11 +1,12 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFile, lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { assertReleasePath, inventoryRelease, verifyRelease } from './release-files.mjs';
+import { verifyRelease } from './release-files.mjs';
+import { verifyStandaloneAssets } from './release-schema-assets.mjs';
 import { smokeStandalone } from './smoke-standalone.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -14,28 +15,13 @@ if (!/^hastabazaar-release-[a-z0-9._-]+$/.test(release ?? '')) throw new Error('
 if (process.platform !== 'linux' || process.arch !== 'x64') throw new Error('CI packages must be built on Linux x64 for Babalhost.');
 const standalone = resolve(root, 'dist/standalone');
 const output = resolve(root, 'outputs', release);
-await mkdir(dirname(output), { recursive: true });
-await mkdir(output); // Never replace an earlier artifact.
-const manifestSource = resolve(root, 'deployment/babal/release-manifest.json');
-const manifest = JSON.parse(await readFile(manifestSource, 'utf8'));
-if (manifest.release !== release) throw new Error('Build release ID does not match the requested package.');
-for (const migration of manifest.migrations) {
-  assertReleasePath(migration.path);
-  if (!migration.path.startsWith('deployment/babal/') || !migration.path.endsWith('.sql')) throw new Error('Invalid migration path.');
-  const source = resolve(root, migration.path);
-  if (!(await lstat(source)).isFile() || createHash('sha256').update(await readFile(source)).digest('hex') !== migration.sha256) {
-    throw new Error(`Migration hash mismatch: ${migration.path}`);
-  }
-  const destination = resolve(standalone, migration.path);
-  await mkdir(dirname(destination), { recursive: true });
-  await copyFile(source, destination);
-}
-await copyFile(manifestSource, resolve(standalone, 'deployment/babal/release-manifest.json'));
-const migrationPaths = manifest.migrations.map((migration) => migration.path);
-const files = await inventoryRelease(standalone, migrationPaths);
-await verifyRelease(standalone, files, migrationPaths);
+// The build owns the selected schema and manifest. Never recopy historical
+// repository SQL into this verified standalone artifact at packaging time.
+const { files, migrationPaths } = await verifyStandaloneAssets(standalone, release);
 const commit = process.env.GITHUB_SHA;
 if (!/^[a-f0-9]{40}$/.test(commit ?? '')) throw new Error('GITHUB_SHA must identify the exact source commit.');
+await mkdir(dirname(output), { recursive: true });
+await mkdir(output); // Never replace an earlier artifact.
 const archive = `${release}.tar.gz`;
 function tar(args) {
   const result = spawnSync('tar', args, { stdio: 'inherit' });
@@ -48,6 +34,7 @@ let runtime;
 try {
   tar(['-xzf', resolve(output, archive), '--no-same-owner', '-C', verification]);
   await verifyRelease(verification, files, migrationPaths);
+  await verifyStandaloneAssets(verification, release);
   runtime = await smokeStandalone(verification, release);
 } finally { await rm(verification, { recursive: true, force: true }); }
 const bytes = await readFile(resolve(output, archive));

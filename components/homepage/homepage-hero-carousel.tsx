@@ -3,9 +3,9 @@
 import { ParallaxImage } from './parallax-image';
 
 import Link from 'next/link';
+import { Banknote, CircleHelp, Pause, Play, RotateCcw, ShieldCheck } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { SliderDots } from '@/components/ui/slider-dots';
 import { useSliderAutoplay } from '@/lib/homepage/slider-autoplay';
 import {
   Carousel,
@@ -14,6 +14,7 @@ import {
   CarouselItem,
 } from '@/components/ui/carousel';
 import {
+  heroAdvanceDelayMs,
   heroSelectionAnnouncement,
   nextHeroIndex,
 } from '@/lib/homepage/hero-autoplay';
@@ -29,6 +30,7 @@ import {
   mediaFrameClass,
   mediaObjectClass,
 } from '@/lib/media/responsive-media';
+import styles from './homepage-hero.module.css';
 
 function headingForAnnouncement(
   slides: HomepageHeroSlides,
@@ -42,10 +44,18 @@ function headingForAnnouncement(
 
 const heroMediaClass = mediaObjectClass('cover', heroMediaVisualClass);
 
+const shortLabels: Record<string, string> = {
+  'hero-nepal-craft': 'Thoughtful finds',
+  'hero-maker-stories': 'Closer look',
+  'hero-meaningful-gifts': 'Gifting',
+};
+
 export function HomepageHeroCarousel({
   slides,
+  returnDays,
 }: {
   slides: HomepageHeroSlides;
+  returnDays?: number;
 }) {
   const enabledSlides = useMemo(
     () =>
@@ -58,14 +68,22 @@ export function HomepageHeroCarousel({
   const [api, setApi] = useState<CarouselApi>();
   const [current, setCurrent] = useState(0);
   const [announcement, setAnnouncement] = useState('');
+  const hero = useRef<HTMLElement>(null);
   const videos = useRef(new Map<number, HTMLVideoElement>());
   const [playingVideo, setPlayingVideo] = useState<number | null>(null);
   const {
     reset: resetAutoplay,
     selectionKind,
+    paused,
+    pausedByUser,
+    progress,
+    toggleUserPause,
     interactionProps,
   } = useSliderAutoplay(api, enabledSlides.length, playingVideo !== null, {
-    manualHoldMs: 12_000, pauseOnPointerFocus: false,
+    delayMs: heroAdvanceDelayMs('image'),
+    manualHoldMs: 12_000,
+    pauseOnPointerFocus: false,
+    trackProgress: true,
   });
 
   useEffect(() => {
@@ -123,26 +141,52 @@ export function HomepageHeroCarousel({
     });
   }, [current]);
 
+  useEffect(() => {
+    const region = hero.current;
+    const activeSlide = region?.querySelector('[data-slot="carousel-item"]:not([inert])');
+    const intro = activeSlide?.querySelector('.homepage-hero-intro');
+    const details = activeSlide?.querySelector('.homepage-hero-details');
+    const actions = details?.querySelector('.homepage-hero-actions');
+    if (!region || !intro || !details || !actions) return;
+
+    const align = () => {
+      const endOfCopy = actions.getBoundingClientRect().bottom - region.getBoundingClientRect().top;
+      region.style.setProperty('--hero-controls-top', `${endOfCopy + 32}px`);
+    };
+    align();
+    const observer = new ResizeObserver(align);
+    observer.observe(intro);
+    observer.observe(details);
+    return () => observer.disconnect();
+  }, [current, enabledSlides]);
+
   if (!enabledSlides.length) return null;
 
   function manualDirection(direction: 'next' | 'previous') {
     selectManually(nextHeroIndex(current, enabledSlides.length, direction));
   }
 
+  const benefits = [
+    { Icon: Banknote, label: 'Pay on delivery' },
+    { Icon: ShieldCheck, label: 'Reviewed sellers' },
+    { Icon: RotateCcw, label: returnDays === undefined ? 'Returns' : `${returnDays}-day returns`, href: '/returns' },
+    { Icon: CircleHelp, label: 'Help after delivery', href: '/help' },
+  ];
+
   return (
     <section
-      className="homepage-hero-carousel relative bg-[#f2ebe1]"
+      ref={hero}
+      className={`homepage-hero-carousel ${styles.hero}`}
       {...interactionProps}
     >
       <Carousel
-        className="pb-14"
         opts={{ loop: true }}
         setApi={setApi}
         aria-label="Featured Hastabazaar stories"
         aria-roledescription="carousel"
         onKeyDownCapture={(event) => {
           if (
-            (event.target as HTMLElement).closest('video, [data-slider-dots]')
+            (event.target as HTMLElement).closest('video, [data-hero-controls]')
           )
             return;
           if (event.key === 'ArrowLeft') {
@@ -170,7 +214,7 @@ export function HomepageHeroCarousel({
               >
                 <div className="@container/hero w-full">
                   <div className={heroLayoutClass}>
-                    <HomepageHeroCopy slide={slide} LinkComponent={Link} />
+                    <HomepageHeroCopy slide={slide} LinkComponent={Link} showBenefits={isNativeSellerRegistrationSlide(slide)} />
                     <div className="homepage-hero-visual">
                       <div
                         data-media-frame="cover"
@@ -220,7 +264,6 @@ export function HomepageHeroCarousel({
                             className={heroMediaClass}
                           />
                         )}
-                        {!isNativeSellerRegistrationSlide(slide) ? <div className="pointer-events-none absolute inset-0 z-[2] bg-gradient-to-tr from-[#071d35]/25 via-[#102b43]/5 to-[#5a3824]/10" /> : null}
                       </div>
                       {slide.imageNote ? (
                         <p className={heroNoteClass}>{slide.imageNote}</p>
@@ -233,18 +276,60 @@ export function HomepageHeroCarousel({
           })}
         </CarouselContent>
 
-        <div className="flex flex-wrap items-center justify-center gap-2 px-3 py-3">
-          <SliderDots
-            label="Choose featured story"
-            labels={enabledSlides.map(
-              (_, index) =>
-                `Show slide ${index + 1}: ${headingForAnnouncement(enabledSlides, index)}`,
-            )}
-            current={current}
-            onSelect={selectManually}
-            dotClassName="homepage-hero-dot"
-            className="!w-auto"
-          />
+        <div className={styles.controls}>
+          {enabledSlides.length > 1 ? (
+            <div className={styles.picker} data-hero-controls>
+              <fieldset className={styles.stories} data-slider-dots>
+                <legend className="sr-only">Choose featured story</legend>
+                {enabledSlides.map((slide, index) => (
+                  <button
+                    key={slide.id}
+                    type="button"
+                    aria-label={`Show slide ${index + 1}: ${headingForAnnouncement(enabledSlides, index)}`}
+                    aria-current={index === current ? 'true' : undefined}
+                    onClick={() => selectManually(index)}
+                    onKeyDown={event => {
+                      const direction = event.key === 'ArrowRight' ? 'next' : event.key === 'ArrowLeft' ? 'previous' : null;
+                      if (!direction) return;
+                      event.preventDefault();
+                      const next = nextHeroIndex(index, enabledSlides.length, direction);
+                      selectManually(next);
+                      event.currentTarget.parentElement?.querySelectorAll('button')[next]?.focus();
+                    }}
+                    className={styles.story}
+                  >
+                    <span className={styles.track} aria-hidden="true">
+                      {index === current ? (
+                        <span
+                          key={progress.cycle}
+                          className={styles.fill}
+                          style={{ animationDuration: `${progress.duration}ms`, animationPlayState: paused ? 'paused' : 'running' }}
+                        />
+                      ) : null}
+                    </span>
+                    <span className={styles.label}>{shortLabels[slide.id] ?? slide.eyebrow}</span>
+                  </button>
+                ))}
+              </fieldset>
+              <button
+                type="button"
+                data-autoplay-toggle
+                aria-label={pausedByUser ? 'Play featured stories' : 'Pause featured stories'}
+                onClick={toggleUserPause}
+                className={styles.pause}
+              >
+                {pausedByUser ? <Play size={16} aria-hidden="true" /> : <Pause size={16} aria-hidden="true" />}
+              </button>
+            </div>
+          ) : null}
+          <ul aria-label="Why shop with us" className={styles.benefits}>
+            {benefits.map(({ Icon, label, href }) => (
+              <li key={label}>
+                <Icon size={16} aria-hidden="true" />
+                {href ? <Link href={href}>{label}</Link> : label}
+              </li>
+            ))}
+          </ul>
         </div>
       </Carousel>
       <p className="sr-only" aria-live="polite" aria-atomic="true">

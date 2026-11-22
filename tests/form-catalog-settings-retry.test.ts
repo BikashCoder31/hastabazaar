@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { build } from 'esbuild';
+import {stubFixtureLink} from './helpers/browser-fixture-link';
 import { businessSettingFormId } from '../lib/db/repositories/business-settings';
 import { FORM_REGISTRY } from '../lib/forms/registry';
 import { validateAnswersForDefinition, validateFormDraftForDefinition } from '../lib/forms/validation';
@@ -32,7 +33,7 @@ const targets = [
   { id: 'staff.business-settings-manager', mode: 'general', button: 'Save changes' },
 ] as const;
 
-void test('all settings editors preserve an opaque retry across reload and require confirmation to reset', async () => {
+void test('settings editors retain opaque exact retries through malformed replies and refresh explicitly rejected form versions', async () => {
   const playwrightPath = process.env.PLAYWRIGHT_MODULE ??
     'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
   // oxlint-disable-next-line typescript/no-explicit-any -- The browser runtime is loaded dynamically from the optional external dependency.
@@ -56,12 +57,15 @@ void test('all settings editors preserve an opaque retry across reload and requi
       effective:{key:'official_social_links',value:links,source:'default',version:null,versionId:null,effectiveFrom:null,approvedBy:null},history:requestedAction?[version]:[]};
     const mode=new URLSearchParams(location.search).get('mode');
     createRoot(document.getElementById('root')).render(mode==='hero'
-      ? <HomepageHeroManager initialSlides={[]} initialMedia={[]} history={requestedAction?[{...version,key:'homepage_hero_slides',value:INITIAL_HOMEPAGE_HERO_SLIDES}]:[]} asOf={1}/>
-      : mode==='occasion' ? <HomepageOccasionManager initialSlides={[]} history={requestedAction?[{...version,key:'homepage_occasion_slides',value:INITIAL_HOMEPAGE_OCCASION_SLIDES}]:[]} asOf={1}/>
-      : <BusinessSettingsManager initialSettings={[setting]} asOf={1}/>);
+      ? <HomepageHeroManager actorId={'reviewer'} initialSlides={[]} initialMedia={[]} history={requestedAction?[{...version,key:'homepage_hero_slides',value:INITIAL_HOMEPAGE_HERO_SLIDES}]:[]} asOf={1}/>
+      : mode==='occasion' ? <HomepageOccasionManager actorId={'reviewer'} initialSlides={[]} history={requestedAction?[{...version,key:'homepage_occasion_slides',value:INITIAL_HOMEPAGE_OCCASION_SLIDES}]:[]} asOf={1}/>
+      : <BusinessSettingsManager actorId={'reviewer'} initialSettings={[setting]} asOf={1}/>);
   `, resolveDir: process.cwd(), loader: 'tsx' }, bundle: true, write: false,
     platform: 'browser', format: 'iife', define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'settings-retry-stubs', setup(bundler) {
+      stubFixtureLink(bundler);
+      bundler.onResolve({filter:/^next\/navigation$/},()=>({path:'navigation',namespace:'settings-stub'}));
+      bundler.onLoad({filter:/^navigation$/,namespace:'settings-stub'},()=>({contents:'export function useRouter(){return{refresh(){}}}',loader:'js'}));
       bundler.onResolve({ filter: /^@\/components\/forms\/form-config-client$/ }, () => ({ path: 'config', namespace: 'settings-stub' }));
       bundler.onResolve({ filter: /^@\/components\/admin\/homepage-hero-preview$/ }, () => ({ path: 'hero-preview', namespace: 'settings-stub' }));
       bundler.onResolve({ filter: /^@\/components\/homepage\/homepage-occasion-carousel$/ }, () => ({ path: 'occasion-preview', namespace: 'settings-stub' }));
@@ -106,7 +110,7 @@ void test('all settings editors preserve an opaque retry across reload and requi
         const mount = async () => page.addScriptTag({ content: bundle.outputFiles[0].text });
         await page.goto(`https://settings-retry.test/?mode=${target.mode}`);
         await mount();
-        let form = page.locator(`form[data-form-id="${target.id}"]`);
+        const form = page.locator(`form[data-form-id="${target.id}"]`);
         await form.getByLabel('Review context').fill('Fictional review evidence');
         await form.getByLabel('Reason and expected impact').fill('Fictional settings review');
         await form.getByRole('button', { name: target.button }).click();
@@ -124,36 +128,19 @@ void test('all settings editors preserve an opaque retry across reload and requi
         assert.ok(stored.some(([, value]: [string, string]) => value === firstId), `${target.mode}: opaque attempt survives`);
         assert.ok(stored.every(([, value]: [string, string]) => typeof value === 'string' && !value.includes('Fictional')));
 
-        await page.reload();
-        await mount();
-        form = page.locator(`form[data-form-id="${target.id}"]`);
-        await form.getByLabel('Review context').fill('Fictional review evidence');
-        await form.getByLabel('Reason and expected impact').fill('Changed fictional settings review');
-        await form.getByRole('button', { name: target.button }).click();
-        await form.getByText('Request reference already used for different content').waitFor();
-        assert.equal(bodies[1].requestId, firstId, `${target.mode}: changed data keeps original request ID`);
-
-        page.once('dialog', (dialog: {dismiss():Promise<void>}) => dialog.dismiss());
-        await form.getByRole('button', { name: /Start a new attempt/i }).click();
-        await form.getByRole('button', { name: target.button }).click();
-        await form.getByText('Request reference already used for different content').waitFor();
-        assert.equal(bodies[2].requestId, firstId, `${target.mode}: cancelled reset keeps original request ID`);
-
-        page.once('dialog', (dialog: {accept():Promise<void>}) => dialog.accept());
-        await form.getByRole('button', { name: /Start a new attempt/i }).click();
-        for(let index=3;index<9;index++){
-          await form.getByRole('button', { name: target.button }).click();
-          await form.getByText('The response could not be verified. Retry with the same request.',{exact:true}).waitFor();
-          assert.notEqual(bodies[index].requestId,firstId);
-          assert.equal(bodies[index].requestId,bodies[3].requestId);
-          assert.equal(await page.evaluate((id:string)=>Object.values(sessionStorage).includes(id),String(bodies[index].requestId)),true);
+        // Actual native reload/ownership recovery is exercised in homepage-content-browser and commercial-workspace-browser.
+        // This retained fixture keeps the independent malformed-success/custom-answer decoder matrix.
+        const retry=()=>form.getByRole('button',{name:target.mode==='general'?target.button:'Retry original action',exact:true});
+        for(let index=1;index<9;index++){
+          await retry().click();
+          await form.getByText(index<3?'Request reference already used for different content':'The response could not be verified. Retry with the same request.',{exact:true}).waitFor();
+          await assertMountedPayload(target,bodies[index]);
+          assert.deepEqual(bodies[index],bodies[0],'A response failure cannot change the original request or configured answers.');
+          assert.equal(await page.evaluate((id:string)=>Object.values(sessionStorage).includes(id),String(firstId)),true);
         }
-        const reloaded = page.waitForEvent('load');
-        await form.getByRole('button', { name: target.button }).click();
-        await reloaded;
-        assert.equal(bodies[9].requestId,bodies[3].requestId);
-        assert.equal(await page.evaluate((requestId: string) => Object.values(sessionStorage).includes(requestId), String(bodies[9].requestId)), false,
-          `${target.mode}: confirmed success clears attempt`);
+        const reloaded=page.waitForEvent('load');await retry().click();await reloaded;
+        assert.deepEqual(bodies[9],bodies[0]);
+        assert.equal(await page.evaluate((id:string)=>Object.values(sessionStorage).includes(id),String(firstId)),false,'Only a validated success clears the original reference.');
       } finally { await page.close(); }
     }
     for(const target of targets) for(const action of target.mode==='general'
@@ -165,8 +152,8 @@ void test('all settings editors preserve an opaque retry across reload and requi
           if(route.request().method()!=='POST')return route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:'<div id="root"></div>'});
           const body=JSON.parse(route.request().postData()??'{}');bodies.push(body);
           const step=bodies.length;
-          const response=step===1?{status:409,body:{error:'Domain conflict'}}
-            :step===2?{status:409,body:{error:'Stale form',code:'stale_version'}}
+          const response=step===1?{status:409,body:{error:'Domain conflict',phase:'rejected_before_write'}}
+            :step===2?{status:409,body:{error:'Stale form',code:'stale_version',phase:'rejected_before_write'}}
               :step===3?{status:200,body:{}}:step===4?{status:200,body:null}
                 :step===5?{status:200,body:{ok:true,action:'unrelated'}}:step===6?{status:200,body:{error:'Saved'}}
                   :{status:200,body:action==='reverse'
@@ -185,15 +172,16 @@ void test('all settings editors preserve an opaque retry across reload and requi
         const button=form.getByRole('button',{name:action==='submit'?'Submit for review':action==='approve'?'Approve / schedule':action==='reject'?'Reject'
           :action==='reverse'?(target.mode==='general'?'Create reversal draft':'Create restoration draft'):'Publish / schedule',exact:true});
         for(let step=1;step<=6;step++){
-          await button.click();
+          await (target.mode!=='general'&&step>=4?form.getByRole('button',{name:'Retry original action',exact:true}):button).click();
           await form.getByText(step===1?'Domain conflict':step===2?'Stale form':'The response could not be verified. Retry with the same request.',{exact:true}).waitFor();
-          const expectedId=step<=2?bodies[0].requestId:bodies[2].requestId;
+          const expectedId=step<=2?(target.mode==='general'?bodies[0].requestId:bodies[step-1].requestId):bodies[2].requestId;
           await assertMountedPayload(target, bodies.at(-1)!);
           assert.equal(bodies.at(-1)?.requestId,expectedId);
-          assert.equal(await page.evaluate((id:string)=>Object.values(sessionStorage).includes(id),String(expectedId)),true);
+          assert.equal(await page.evaluate((id:string)=>Object.values(sessionStorage).includes(id),String(expectedId)),target.mode==='general'||step>=3);
           assert.deepEqual(await page.evaluate(()=> (window as unknown as {staleCodes?:string[]}).staleCodes??[]),step===1?[]:['stale_version']);
           if(step===2){
             assert.equal(await button.isEnabled(),false);
+            if(target.mode==='general'){
             page.once('dialog',(dialog:{dismiss():Promise<void>})=>dialog.dismiss());
             await form.getByRole('button',{name:/Start a new attempt/i}).click();
             assert.equal(await button.isEnabled(),false);
@@ -204,11 +192,17 @@ void test('all settings editors preserve an opaque retry across reload and requi
             assert.equal(await page.evaluate(()=> (window as unknown as {refreshCalls?:number}).refreshCalls??0),1);
             assert.equal(await button.isEnabled(),false,'Refreshing configuration must finish before another submission.');
             assert.equal(await page.evaluate((id:string)=>Object.values(sessionStorage).includes(id),String(expectedId)),false);
+            }else{
+              await form.getByRole('button',{name:'Refresh form',exact:true}).click();
+              assert.equal(await page.evaluate(()=> (window as unknown as {refreshCalls?:number}).refreshCalls??0),1);
+              assert.equal(await button.isEnabled(),false,'The replacement form must finish loading before another action.');
+              assert.equal(await page.evaluate((id:string)=>Object.values(sessionStorage).includes(id),String(expectedId)),false);
+            }
             await page.evaluate(()=> (window as unknown as {resolveFormRefresh:()=>void}).resolveFormRefresh());
           }
           if(step>=3){assert.notEqual(expectedId,bodies[0].requestId);assert.equal(bodies.at(-1)?.formVersion,2);}
         }
-        const reloaded=page.waitForEvent('load');await button.click();await reloaded;
+        const reloaded=page.waitForEvent('load');await (target.mode==='general'?button:form.getByRole('button',{name:'Retry original action',exact:true})).click();await reloaded;
         assert.equal(bodies.at(-1)?.requestId,bodies[2].requestId);
         assert.equal(await page.evaluate((id:string)=>Object.values(sessionStorage).includes(id),String(bodies[2].requestId)),false);
       }finally{await page.close();}

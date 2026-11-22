@@ -1,6 +1,13 @@
+import { GUEST_NATIVE_FORM_IDS } from '../../forms/catalog-policy';
+import { coreFormReceiptId } from '../../forms/core-receipts';
 import { FORM_REGISTRY } from '../../forms/registry';
 import type { CustomFieldType, FormAnswerSnapshot, FormId } from '../../forms/types';
 import { validateAnswersForDefinition } from '../../forms/validation';
+import { normalizeSellerSku } from '../../products/stock-codes';
+import { coreFormContract, coreFormVersionId } from '../../forms/core-contracts';
+import { compatibilityGrantId, compatibilityRevocationId } from '../../forms/compatibility';
+import { compatibilityAwareSellerForms } from '../../forms/catalog-changes';
+import {readDatabaseHealthScope} from '../health-context';
 
 export class FormAnswerRepositoryError extends Error {
   constructor(message = 'Form answer snapshot is invalid.') {
@@ -42,9 +49,23 @@ function unsafeName(value: string): boolean {
 }
 
 function validateInput(formId: FormId, raw: unknown): FormAnswerSnapshot {
-  if (!FORM_REGISTRY[formId] || !record(raw) || Object.keys(raw).some((key) => !['formId', 'version', 'answers'].includes(key)) ||
+  if (!FORM_REGISTRY[formId] || !record(raw) || Object.keys(raw).some((key) => !['formId', 'version', 'presentedVersion', 'answers', 'productIdentity'].includes(key)) ||
       raw.formId !== formId || !Number.isSafeInteger(raw.version) || Number(raw.version) < 1 ||
       !Array.isArray(raw.answers) || raw.answers.length > 64) throw new FormAnswerRepositoryError();
+  if (raw.presentedVersion !== undefined && (!compatibilityAwareSellerForms.has(formId) || !Number.isSafeInteger(raw.presentedVersion) || Number(raw.presentedVersion) < 1 || Number(raw.presentedVersion) >= Number(raw.version)))
+    throw new FormAnswerRepositoryError();
+  let productIdentity: FormAnswerSnapshot['productIdentity'];
+  if (raw.productIdentity !== undefined) {
+    if (formId !== 'seller.product-submission' || !record(raw.productIdentity) ||
+      Object.keys(raw.productIdentity).some(key=>!['sellerSku','revision'].includes(key)) || !Object.hasOwn(raw.productIdentity, 'sellerSku')) throw new FormAnswerRepositoryError();
+    try {
+      const sellerSku = normalizeSellerSku(raw.productIdentity.sellerSku);
+      if (sellerSku !== raw.productIdentity.sellerSku) throw new FormAnswerRepositoryError();
+      const revision=raw.productIdentity.revision;
+      if(revision!==undefined&&(!Number.isSafeInteger(revision)||Number(revision)<1))throw new FormAnswerRepositoryError();
+      productIdentity = { sellerSku,...(revision===undefined?{}:{revision:Number(revision)}) };
+    } catch { throw new FormAnswerRepositoryError(); }
+  }
   const seen = new Set<string>();
   const answers: FormAnswerSnapshot['answers'][number][] = [];
   for (const entry of raw.answers) {
@@ -85,14 +106,14 @@ function validateInput(formId: FormId, raw: unknown): FormAnswerSnapshot {
     })),
   }, answers.map((answer) => ({ fieldId: answer.fieldId, value: answer.value })));
   if (checked.answers.length !== answers.length) throw new FormAnswerRepositoryError();
-  return { formId, version, answers };
+  return { formId, version, answers, ...(raw.presentedVersion === undefined ? {} : { presentedVersion: Number(raw.presentedVersion) }), ...(productIdentity ? { productIdentity } : {}) };
 }
 
 // Every predicate runs inside the caller's D1 batch, so invalid versions or
 // snapshots abort the parent action instead of leaving an unlinked write.
 // Materialize the validation stages to stay below D1's SQLite expression-depth
 // limit without dropping any checks from the native parent transaction.
-const validAgainstVersion = `WITH current_version AS MATERIALIZED (
+const validAgainstVersion = (optionalRegistration = false) => `WITH current_version AS MATERIALIZED (
   SELECT v.config_json FROM form_config_versions v
   WHERE v.id=? AND v.form_id=? AND v.status='published' AND v.version=?
     AND json_type(v.config_json,'$.formId')='text' AND json_extract(v.config_json,'$.formId')=v.form_id
@@ -145,7 +166,7 @@ SELECT EXISTS(SELECT 1 FROM current_version)
     OR json_extract(answer.field_json,'$.type') IS NOT json_extract(answer.answer_json,'$.type')
     OR json_extract(answer.field_json,'$.status') IS NOT 'active'
     OR (json_extract(answer.field_json,'$.type')='checkbox'
-      AND (json_extract(answer.field_json,'$.required')!=1
+      AND (${optionalRegistration ? '1' : "json_extract(answer.field_json,'$.required')!=1"}
         OR json_type(answer.answer_json,'$.value')='true') IS NOT 1)
     OR (json_extract(answer.field_json,'$.type') IN ('single_choice','multiple_choice')
       AND json_type(answer.answer_json,'$.choiceLabels') IS NOT NULL
@@ -176,7 +197,7 @@ SELECT EXISTS(SELECT 1 FROM current_version)
   ))
   AND NOT EXISTS (SELECT 1 FROM current_version v,json_each(v.config_json,'$.fields') required_field
     WHERE json_extract(required_field.value,'$.status')='active'
-      AND json_extract(required_field.value,'$.required')=1
+      AND ${optionalRegistration ? '0' : "json_extract(required_field.value,'$.required')=1"}
       AND NOT EXISTS (SELECT 1 FROM json_each(?) built_in
         WHERE built_in.value=lower(replace(json_extract(required_field.value,'$.key'),'_','')))
       AND NOT EXISTS (SELECT 1 FROM json_each(?,'$.answers') given
@@ -186,7 +207,7 @@ SELECT EXISTS(SELECT 1 FROM current_version)
 // MariaDB has no MATERIALIZED hint or json_each. JSON_TABLE provides the same
 // array rows. String type guards and binary scalar comparisons preserve both
 // JSON types and text identity; JSON_VALUE alone coerces numbers into text.
-const mariaValidAgainstVersion = `WITH current_version AS (
+const mariaValidAgainstVersion = (optionalRegistration = false) => `WITH current_version AS (
   SELECT v.config_json FROM form_config_versions v
   WHERE v.id=? AND v.form_id=? AND v.status='published' AND v.version=?
     AND JSON_TYPE(JSON_EXTRACT(v.config_json,'$.formId'))='STRING'
@@ -243,7 +264,7 @@ SELECT EXISTS(SELECT 1 FROM current_version)
     OR NOT (BINARY JSON_VALUE(answer.field_json,'$.type') <=> BINARY JSON_VALUE(answer.answer_json,'$.type'))
     OR NOT (BINARY JSON_VALUE(answer.field_json,'$.status') <=> BINARY 'active')
     OR (JSON_VALUE(answer.field_json,'$.type')='checkbox'
-      AND (NULLIF(JSON_EXTRACT(answer.field_json,'$.required'),'null')!='true'
+      AND (${optionalRegistration ? 'TRUE' : "NULLIF(JSON_EXTRACT(answer.field_json,'$.required'),'null')!='true'"}
         OR JSON_EXTRACT(answer.answer_json,'$.value')='true') IS NOT TRUE)
     OR (JSON_VALUE(answer.field_json,'$.type') IN ('single_choice','multiple_choice')
       AND JSON_TYPE(JSON_EXTRACT(answer.answer_json,'$.choiceLabels')) IS NOT NULL
@@ -276,7 +297,7 @@ SELECT EXISTS(SELECT 1 FROM current_version)
   ))
   AND NOT EXISTS (SELECT 1 FROM current_version v,JSON_TABLE(v.config_json,'$.fields[*]' COLUMNS (value JSON PATH '$')) required_field
     WHERE JSON_VALUE(required_field.value,'$.status')='active'
-      AND JSON_EXTRACT(required_field.value,'$.required')='true'
+      AND ${optionalRegistration ? 'FALSE' : "JSON_EXTRACT(required_field.value,'$.required')='true'"}
       AND NOT EXISTS (SELECT 1 FROM JSON_TABLE(?,'$[*]' COLUMNS (value LONGTEXT PATH '$')) built_in
         WHERE BINARY built_in.value=BINARY LOWER(REPLACE(JSON_VALUE(required_field.value,'$.key'),'_','')))
       AND NOT EXISTS (SELECT 1 FROM JSON_TABLE(?,'$.answers[*]' COLUMNS (value JSON PATH '$')) given
@@ -287,6 +308,7 @@ SELECT EXISTS(SELECT 1 FROM current_version)
 export function buildFormAnswerInsert(db: D1Database, input: {
   formId: FormId; requestId: string; versionId: string; subjectType: string; subjectId: string;
   actorId: string | null; answers: FormAnswerSnapshot; now: number;
+  optionalRegistration?: boolean;
 }): D1PreparedStatement {
   const formId = required(input.formId, 'Form ID', 191);
   const requestId = required(input.requestId, 'Request ID', 191);
@@ -296,36 +318,73 @@ export function buildFormAnswerInsert(db: D1Database, input: {
   const actorId = input.actorId === null ? null : required(input.actorId, 'Actor ID', 191);
   if (!Number.isSafeInteger(input.now) || input.now < 0) throw new FormAnswerRepositoryError('Timestamp is invalid.');
   const snapshot = validateInput(formId, input.answers);
+  const healthScope=readDatabaseHealthScope(db);
+  if (snapshot.productIdentity && (subjectType !== 'product' || !actorId)) throw new FormAnswerRepositoryError();
+  const optionalRegistration = input.optionalRegistration === true;
+  if (optionalRegistration && (formId !== 'seller.application' || subjectType !== 'seller' || !actorId)) throw new FormAnswerRepositoryError();
+  if (versionId.startsWith('core:')) {
+    if (!coreFormContract(formId) || versionId !== coreFormVersionId(formId) || snapshot.version !== 1 || snapshot.answers.length !== 0 || (!actorId && !GUEST_NATIVE_FORM_IDS.has(formId)))
+      throw new FormAnswerRepositoryError();
+    if (formId === 'seller.application' && !optionalRegistration) throw new FormAnswerRepositoryError();
+    // Core-only snapshots contain no custom answers or protected values. Keep
+    // a durable receipt in the existing audit store, never silently create or
+    // publish catalogue data. The domain write and this guard share one batch.
+    return db.prepare(`/* core-form-answer-insert */ INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,next_json,created_at)
+      VALUES(?,?,CASE WHEN NOT EXISTS(SELECT 1 FROM form_config_versions WHERE form_id=? AND status='published')
+        ${optionalRegistration ? 'AND EXISTS(SELECT 1 FROM seller_registration_intakes WHERE seller_id=? AND user_id=?)' : ''}
+        THEN 'form.core_answers' ELSE NULL END,?,?,?,?)`)
+      .bind(coreFormReceiptId(formId, requestId), actorId, formId, ...(optionalRegistration ? [subjectId, actorId] : []), subjectType, subjectId,
+        JSON.stringify({ ...snapshot, requestId, versionId,...(healthScope?{healthScope}:{}) }), input.now);
+  }
+  if (snapshot.productIdentity && (subjectType !== 'product' || !actorId)) throw new FormAnswerRepositoryError();
   const builtInKeys = JSON.stringify(FORM_REGISTRY[formId].baseFields.map((field) =>
     field.key.replace(/[^a-z0-9]/gi, '').toLowerCase()));
   const json = JSON.stringify(snapshot);
   if (new TextEncoder().encode(json).length > 131072) throw new FormAnswerRepositoryError('Answer snapshot is too large.');
   const maria = (db as D1Database & { dialect?: string }).dialect === 'mariadb';
-  const validation = maria ? mariaValidAgainstVersion : validAgainstVersion;
+  const validation = (maria ? mariaValidAgainstVersion : validAgainstVersion)(optionalRegistration);
+  const intakeGuard = optionalRegistration ? ' AND EXISTS(SELECT 1 FROM seller_registration_intakes WHERE seller_id=? AND user_id=?)' : '';
+  const scalar = maria ? 'JSON_VALUE' : 'json_extract';
+  const compatibilityGuard = snapshot.presentedVersion ? ` AND NOT EXISTS(SELECT 1 FROM audit_logs WHERE id=? AND action='form.compatibility.revoked')
+    AND (NOT EXISTS(SELECT 1 FROM audit_logs WHERE id=? AND action='form.compatibility.granted') OR
+      EXISTS(SELECT 1 FROM audit_logs WHERE id=? AND action='form.compatibility.granted'
+        AND ${scalar}(next_json,'$.fromVersion')=? AND ${scalar}(next_json,'$.toVersion')=?
+        AND ${scalar}(next_json,'$.createdAt')<=? AND ${scalar}(next_json,'$.expiresAt')>?
+        AND ${scalar}(next_json,'$.expiresAt')<=${scalar}(next_json,'$.createdAt')+86400000))` : '';
+  const compatibilityValues = snapshot.presentedVersion ? [compatibilityRevocationId(formId, snapshot.version),
+    compatibilityGrantId(formId, snapshot.version), compatibilityGrantId(formId, snapshot.version),
+    snapshot.presentedVersion, snapshot.version, input.now, input.now] : [];
   const failure = maria ? 'NULL' : "json_extract('invalid', '$')";
   return db.prepare(`${maria ? '/* form-answer-insert */ ' : ''}INSERT INTO form_answer_sets
-    (id,form_id,request_id,config_version_id,subject_type,subject_id,actor_id,answers_json,created_at)
-    VALUES (?,?,?,?,?,?,?,CASE WHEN (${validation}) THEN ? ELSE ${failure} END,?)`)
+    (id,form_id,request_id,config_version_id,subject_type,subject_id,actor_id,answers_json,created_at,health_environment,health_release_id)
+    VALUES (?,?,?,?,?,?,?,CASE WHEN (${validation})${intakeGuard}${compatibilityGuard} THEN ? ELSE ${failure} END,?,?,?)`)
     .bind(crypto.randomUUID(), formId, requestId, versionId, subjectType, subjectId, actorId,
-      versionId, formId, snapshot.version, json, builtInKeys, builtInKeys, json, json, input.now);
+      versionId, formId, snapshot.version, json, builtInKeys, builtInKeys, json, ...(optionalRegistration ? [subjectId, actorId] : []), ...compatibilityValues, json, input.now,healthScope?.environment??null,healthScope?.releaseId??null);
 }
 
 type AnswerRow = Omit<StoredFormAnswer, 'answers' | 'historicalFieldIds'> & {
   answersJson: string; configJson: string; currentConfigJson: string | null;
 };
 
-const answerSelect = `SELECT a.id, a.form_id AS formId, a.request_id AS requestId,
+const answerSelect = (db: D1Database) => {
+  const value = (db as D1Database & { dialect?: string }).dialect === 'mariadb' ? 'JSON_VALUE' : 'json_extract';
+  return `SELECT a.id, a.form_id AS formId, a.request_id AS requestId,
     a.config_version_id AS versionId, a.subject_type AS subjectType, a.subject_id AS subjectId,
     a.actor_id AS actorId, a.answers_json AS answersJson, a.created_at AS createdAt,
-    v.config_json AS configJson, current.config_json AS currentConfigJson
-    FROM form_answer_sets a JOIN form_config_versions v ON v.id=a.config_version_id
+    COALESCE(v.config_json,a.core_config) AS configJson, current.config_json AS currentConfigJson
+    FROM (SELECT id,form_id,request_id,config_version_id,subject_type,subject_id,actor_id,answers_json,created_at,NULL AS core_config FROM form_answer_sets
+      UNION ALL SELECT id,${value}(next_json,'$.formId'),${value}(next_json,'$.requestId'),${value}(next_json,'$.versionId'),
+        subject_type,subject_id,actor_id,${(db as D1Database & { dialect?: string }).dialect === 'mariadb' ? 'JSON_REMOVE' : 'json_remove'}(next_json,'$.requestId','$.versionId','$.healthScope'),created_at,'{"fields":[]}'
+      FROM audit_logs WHERE action='form.core_answers') a LEFT JOIN form_config_versions v ON v.id=a.config_version_id
     LEFT JOIN form_config_versions current ON current.id=(SELECT id FROM form_config_versions
       WHERE form_id=a.form_id AND status='published' ORDER BY version DESC LIMIT 1)`;
+};
 
 function decodeAnswer(row: AnswerRow): StoredFormAnswer {
   const { answersJson, configJson, currentConfigJson, ...metadata } = row;
   try {
     const snapshot = validateInput(metadata.formId, JSON.parse(answersJson) as unknown);
+    if (snapshot.productIdentity && (metadata.subjectType !== 'product' || !metadata.actorId)) throw new FormAnswerRepositoryError();
     const config = JSON.parse(configJson) as { fields: { id: string; type: string; choices?: { value: string; label: string }[] }[] };
     const current = currentConfigJson ? JSON.parse(currentConfigJson) as { fields: { id: string; status: string }[] } : null;
     if (!Array.isArray(config.fields) || (current && !Array.isArray(current.fields))) throw new FormAnswerRepositoryError();
@@ -349,7 +408,7 @@ function decodeAnswer(row: AnswerRow): StoredFormAnswer {
 
 export async function getFormAnswerById(db: D1Database, answerId: string): Promise<StoredFormAnswer | null> {
   const id = required(answerId, 'Answer ID', 191);
-  const row = await db.prepare(`${answerSelect} WHERE a.id=? LIMIT 1`).bind(id).first<AnswerRow>();
+  const row = await db.prepare(`${answerSelect(db)} WHERE a.id=? LIMIT 1`).bind(id).first<AnswerRow>();
   return row ? decodeAnswer(row) : null;
 }
 
@@ -359,7 +418,7 @@ export async function listFormAnswersForSubject(db: D1Database, subjectType: str
   const answers: StoredFormAnswer[] = [];
   let cursor: { createdAt: number; id: string } | null = null;
   while (true) {
-    const rows: { results: AnswerRow[] } = await db.prepare(`${answerSelect}
+    const rows: { results: AnswerRow[] } = await db.prepare(`${answerSelect(db)}
       WHERE a.subject_type=? AND a.subject_id=?
         AND (? IS NULL OR a.created_at>? OR (a.created_at=? AND a.id>?))
       ORDER BY a.created_at,a.id LIMIT 100`)
@@ -383,7 +442,7 @@ export async function listFormAnswersForSubjectPage(db: D1Database, input: {
   if (after && (!Number.isSafeInteger(after.createdAt) || after.createdAt < 0))
     throw new FormAnswerRepositoryError('History cursor is invalid.');
   const cursorId = after ? required(after.id, 'History cursor', 191) : '';
-  const rows = await db.prepare(`${answerSelect}
+  const rows = await db.prepare(`${answerSelect(db)}
     WHERE a.subject_type=? AND a.subject_id=? AND a.form_id=?
       AND (? IS NULL OR a.created_at>? OR (a.created_at=? AND a.id>?))
     ORDER BY a.created_at,a.id LIMIT 51`)

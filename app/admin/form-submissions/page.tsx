@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -24,14 +25,14 @@ export default async function RestrictedFormSubmissionsPage({ searchParams }: {
   const allowed = await Promise.all(history.answers.map((answer) =>
     authorizeFormAnswerRead(db, { id: staff.id, role: staff.role }, answer)));
   if (allowed.some((value) => !value)) notFound();
-  return <main className="space-y-5">
-    <p><Link href="/admin/forms" className="underline">← Form catalog</Link></p>
-    <h1 className="text-2xl font-semibold">Restricted identity request history</h1>
+  return <div className="space-y-5">
+    <p><Link href="/admin/forms" className="section-link underline">← Form Management</Link></p>
+    <AdminPageTitle><h1 className="text-2xl font-semibold">Restricted identity request history</h1></AdminPageTitle>
     <p className="text-sm text-muted-foreground">Accepted code requests are unlinked from account ownership. Handle these answers as restricted records.</p>
     {history.answers.length ? history.answers.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)
       : <p>No saved identity request answers.</p>}
-    {history.nextCursor ? <Link className="underline" href={
+    {history.nextCursor ? <Link className="section-link underline" href={
       `/admin/form-submissions?afterAt=${history.nextCursor.createdAt}&afterId=${encodeURIComponent(history.nextCursor.id)}`
     }>Next 50 answers</Link> : null}
-  </main>;
+  </div>;
 }

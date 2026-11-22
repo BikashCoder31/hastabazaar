@@ -34,15 +34,45 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run lint
       - run: npm run typecheck
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
 
   tests:
-    name: Tests ${{ matrix.shard }}/4
+    name: Tests ${{ matrix.shard }}/8
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          # Browser comparisons use a checked-in historical source reference.
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.23.2'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - name: Configure portable browser fixtures
+        run: |
+          printf 'PLAYWRIGHT_MODULE=file://%s/node_modules/playwright/index.mjs\n' "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+          printf 'FRONTEND_RECOVERY_EVIDENCE_ROOT=%s/frontend-recovery-%s\n' "$RUNNER_TEMP" '${{ matrix.shard }}' >> "$GITHUB_ENV"
+          node --input-type=module -e "import {chromium} from 'playwright'; console.log('CHROME_PATH='+chromium.executablePath())" >> "$GITHUB_ENV"
+      - run: node --import tsx --test --test-concurrency=1 --test-shard=${{ matrix.shard }}/8 tests/*.test.ts tests/seller-registration-browser.test.mjs tests/prepare-release-schema-input.test.mjs
+        env:
+          NODE_OPTIONS: --import=${{ github.workspace }}/scripts/testing/legacy-d1-fixture-migrations.mjs
+
+  native:
+    # Both the historical and selected-artifact gates must finish before packaging.
+    name: Artifact Build, Historical and Selected Native Gates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      HASTABAZAAR_RELEASE_ID: hastabazaar-release-ci-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -53,26 +83,61 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npx playwright install --with-deps chromium
-      - name: Configure portable browser fixtures
+      - name: Configure required packaged browser gates
         run: |
           printf 'PLAYWRIGHT_MODULE=file://%s/node_modules/playwright/index.mjs\n' "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
           node --input-type=module -e "import {chromium} from 'playwright'; console.log('CHROME_PATH='+chromium.executablePath())" >> "$GITHUB_ENV"
-      - run: node --import tsx --test --test-concurrency=1 --test-shard=${{ matrix.shard }}/4 tests/*.test.ts
-
-  native:
-    name: MariaDB Staging Compatibility
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Generate and verify explicitly selected reviewed NUL schema source
+        # Generate from checked-out sources, never from ignored historical fixtures.
+        # Any source/hash mismatch stops this job before compilation or packaging.
+        run: node scripts/prepare-release-schema-input.mjs --output-directory=".test-artifacts/t35/ci-schema-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --expected-sha256=aa248443d0f54096a83a11c74c6b3cda66774431417cd64be9cd127af98a3493
+      - run: npm run build:babal -- --schema-input="$GITHUB_WORKSPACE/.test-artifacts/t35/ci-schema-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/mariadb-schema.sql"
+      - run: npm run package:babal:ci -- "$HASTABAZAAR_RELEASE_ID"
+      - name: Pull reviewed MariaDB image
+        id: mariadb
+        run: |
+          set -euo pipefail
+          # The Linux x64 manifest of the reviewed MariaDB 10.11 index
+          # sha256:7f22313fc130a377a44999965bcb0a08dd5b21e8502824c1b864f792f9bc66ab.
+          image='docker.io/library/mariadb@sha256:5ae7fc7b20f8e07c0ee169ff24617b39cb99b4bfc147555cea758baa69834d9e'
+          docker pull --platform linux/amd64 "$image"
+          docker image tag "$image" mariadb:10.11
+          read -r platform image_id <<< "$(docker image inspect mariadb:10.11 --format '{{.Os}}/{{.Architecture}} {{.Id}}')"
+          test "$platform" = linux/amd64
+          [[ "$image_id" =~ ^sha256:[a-f0-9]{64}$ ]]
+          printf 'image_id=%s\n' "$image_id" >> "$GITHUB_OUTPUT"
+      - name: Require preserved historical bootstrap and upgrade native gate
+        env:
+          NODE_OPTIONS: --import=${{ github.workspace }}/scripts/testing/legacy-d1-fixture-migrations.mjs
+        run: node --import tsx scripts/verify-staging-native.mjs --historical-only
+      - name: Require selected artifact native journeys, browsers and isolated recovery
+        env:
+          HASTABAZAAR_REVIEWED_MARIADB_IMAGE_ID: ${{ steps.mariadb.outputs.image_id }}
+          NODE_OPTIONS: --import=${{ github.workspace }}/scripts/testing/legacy-d1-fixture-migrations.mjs
+        run: HASTABAZAAR_NATIVE_ARTIFACT_DIRECTORY="$GITHUB_WORKSPACE/outputs/$HASTABAZAAR_RELEASE_ID" node --import tsx scripts/testing/verify-current-artifact-native.mjs
+      - name: Retain enumerated non-secret browser acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+          name: browser-gates-${{ env.HASTABAZAAR_RELEASE_ID }}
+          path: |
+            outputs/${{ env.HASTABAZAAR_RELEASE_ID }}/browser-evidence/catalog.tap
+            outputs/${{ env.HASTABAZAAR_RELEASE_ID }}/browser-evidence/summary.tap
+            outputs/${{ env.HASTABAZAAR_RELEASE_ID }}/browser-evidence/contact-232.png
+            outputs/${{ env.HASTABAZAAR_RELEASE_ID }}/browser-evidence/catalog-232.png
+            outputs/${{ env.HASTABAZAAR_RELEASE_ID }}/browser-evidence/summary-1280.png
+            outputs/${{ env.HASTABAZAAR_RELEASE_ID }}/browser-evidence/summary-390.png
+            outputs/${{ env.HASTABAZAAR_RELEASE_ID }}/browser-evidence/verification.json
+            outputs/${{ env.HASTABAZAAR_RELEASE_ID }}/browser-evidence/failure.json
+          if-no-files-found: warn
+          retention-days: 14
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          node-version: '22.23.2'
-          cache: npm
-      - run: npm ci --no-audit --no-fund
-      - run: node --import tsx scripts/verify-staging-native.mjs
+          name: native-verified-${{ env.HASTABAZAAR_RELEASE_ID }}
+          path: outputs/${{ env.HASTABAZAAR_RELEASE_ID }}/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
 
   package:
     name: Linux Babal Package
@@ -92,11 +157,15 @@ jobs:
         with:
           node-version: '22.23.2'
           cache: npm
-      - run: npm ci --no-audit --no-fund
       - id: identity
         run: printf 'release_id=%s\n' "$HASTABAZAAR_RELEASE_ID" >> "$GITHUB_OUTPUT"
-      - run: npm run build:babal
-      - run: npm run package:babal:ci -- "$HASTABAZAAR_RELEASE_ID"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: native-verified-${{ env.HASTABAZAAR_RELEASE_ID }}
+          path: outputs/${{ env.HASTABAZAAR_RELEASE_ID }}/
+      - name: Verify retained artifact checksums
+        working-directory: outputs/${{ env.HASTABAZAAR_RELEASE_ID }}
+        run: sha256sum --check SHA256SUMS
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ${{ env.HASTABAZAAR_RELEASE_ID }}
@@ -106,13 +175,13 @@ jobs:
           compression-level: 0
       - name: Release summary
         run: |
-          printf '### Verified Babal package\n\nRelease: `%s`\n\nSource: `%s`\n\nNo hosting credentials were used. Production is unchanged.\n' "$HASTABAZAAR_RELEASE_ID" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          printf '### Verified Linux artifact\n\nRelease: `%s`\n\nSource: `%s`\n\nStaging deployment is eligible only on a push to main. Production promotion requires a separate review.\n' "$HASTABAZAAR_RELEASE_ID" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
           cat "outputs/$HASTABAZAAR_RELEASE_ID/SHA256SUMS" >> "$GITHUB_STEP_SUMMARY"
 
   staging:
     name: Deploy Isolated Staging
     needs: [package]
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     concurrency:

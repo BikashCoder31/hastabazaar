@@ -24,4 +24,5 @@ export function districtBelongsToProvince(district:string,province:string):boole
  const p=normalizeProvince(province),d=normalizeDistrict(district);
  return !!p && !!d && (DISTRICTS_BY_PROVINCE[p] as readonly string[]).includes(d);
 }
+export const wardNumberError = 'Enter a ward number from 1 to 99.';
 export function validWard(value:string|undefined):boolean {return !value || (/^\d{1,2}$/.test(value) && Number(value)>=1 && Number(value)<=99);}

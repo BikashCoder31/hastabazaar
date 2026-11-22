@@ -72,6 +72,7 @@ void test('staff classification keeps an opaque request across lost response and
     await page.getByRole('button', { name: 'Save classification' }).click();
     await fourthResponse;
     assert.notEqual(requests[3].idempotencyKey, original);
+    await page.getByText('Classification saved.', { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => Object.values(sessionStorage).length), 0);
   } finally { await page.close(); await browser.close(); }
 });
@@ -91,7 +92,7 @@ void test('staff catalogue, exception, payout, privacy and both rider sites requ
     const mode=new URLSearchParams(location.search).get('mode');
     const element=mode==='catalog'?<CatalogManager categories={[]} occasions={[]}/>
       :mode==='exception'?<ExceptionWorkForm jobs={[{id:'job-one',status:'delivery_failed'}]} owners={[]} finance={false}/>
-      :mode==='payout'?<PayoutRequestActions id="payout-one"/>
+      :mode==='payout'?<PayoutRequestActions id="payout-one" actorId="admin"/>
       :mode==='privacy'?<PrivacyActions id="privacy-one" canDecide={true} status="submitted" requestType="correction" assignedToCurrentStaff={false}/>
       :mode==='rider'?<RiderAdminAction action="review" fields={{userId:'rider-one',version:0}} label="Record decision"/>
       :<RiderPolicyForm policy={{version:0,openBox:0,otpScope:'off'}}/>;
@@ -144,7 +145,7 @@ void test('staff catalogue, exception, payout, privacy and both rider sites requ
           if (target.mode === 'catalog') await page.getByRole('button', { name: 'Add category' }).click();
           const form = page.locator(`form[data-form-id="${target.formId}"]`);
           if (target.mode === 'catalog') {
-            await form.getByLabel('Display name').fill('Fictional Category');
+            await form.getByLabel('English name').fill('Fictional Category');
             await form.getByLabel('URL slug').fill('fictional-category');
           } else if (target.mode === 'exception') {
             await form.getByLabel('Next action *').fill('Call the customer and review evidence');

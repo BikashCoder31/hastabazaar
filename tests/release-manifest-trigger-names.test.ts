@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import { copyReleaseManifestInputs } from './helpers/copy-release-manifest-inputs';
 import {execFile} from 'node:child_process';
-import {mkdtemp,mkdir,readFile,writeFile,rm} from 'node:fs/promises';
+import {mkdtemp,mkdir,readdir,readFile,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join,dirname} from 'node:path';
 import {promisify} from 'node:util';
@@ -10,8 +11,15 @@ import test from 'node:test';
 void test('release manifest records actual guarded trigger names for native readiness',async()=>{
  const root=await mkdtemp(join(tmpdir(),'hb-manifest-trigger-names-'));
  try{
-  const source=JSON.parse(await readFile(new URL('../deployment/babal/release-manifest.json',import.meta.url),'utf8')) as {migrations:{path:string}[]};
-  for(const {path} of source.migrations){await mkdir(dirname(join(root,path)),{recursive:true});await writeFile(join(root,path),'');}
+  await copyReleaseManifestInputs(root);
+  // A checked-in generated manifest may predate a newly added migration.
+  // Build this isolated fixture from the available SQL sources instead.
+  const sqlSources=await readdir(new URL('../deployment/babal/',import.meta.url),{recursive:true});
+  for(const path of sqlSources.filter(path=>path.endsWith('.sql'))){
+   const target=join(root,'deployment/babal',path);
+   await mkdir(dirname(target),{recursive:true});await writeFile(target,'');
+  }
+  await writeFile(join(root,'deployment/babal/mariadb-customer-service-fee-waivers.sql'),await readFile(new URL('../deployment/babal/mariadb-customer-service-fee-waivers.sql',import.meta.url)));
   await writeFile(join(root,'deployment/babal/mariadb-schema.sql'),
    'CREATE TABLE IF NOT EXISTS users (id BIGINT PRIMARY KEY) ENGINE=InnoDB;\n'+
    'CREATE TRIGGER IF NOT EXISTS fixture_plain BEFORE INSERT ON users FOR EACH ROW SET NEW.id=1;\n'+

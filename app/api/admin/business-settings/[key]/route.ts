@@ -1,3 +1,4 @@
+import {hasActorIntentMismatch} from '@/lib/http/actor-intent';
 import { env } from 'cloudflare:workers';
 
 import { requireStaffApi, StaffAuthorizationError } from '@/lib/auth/staff';
@@ -7,7 +8,7 @@ import {
 } from '@/lib/configuration/definitions';
 import { requireDatabase } from '@/lib/db/d1';
 import {
-  getEffectiveBusinessSetting,
+  getBusinessSettingForManagement,
   listBusinessSettingHistory,
 } from '@/lib/db/repositories/business-settings';
 
@@ -22,13 +23,14 @@ export async function GET(
 ): Promise<Response> {
   try {
     const staff = await requireStaffApi('business_settings.view');
+    if(_request &&hasActorIntentMismatch(_request,staff.id))throw new StaffAuthorizationError('The signed-in account changed. Refresh this settings view.',403);
     const key = parseBusinessSettingKey((await context.params).key);
     const definition = getBusinessSettingDefinition(key);
     if (staff.role !== 'super_admin' && definition.affectedSurfaces.includes('rider')) return json({ error: 'Business setting not found.' }, 404);
     const database = requireDatabase(env as unknown as { DB?: D1Database });
     const now = Date.now();
     const [effective, history] = await Promise.all([
-      getEffectiveBusinessSetting(database, key, now),
+      getBusinessSettingForManagement(database, key, now),
       listBusinessSettingHistory(database, key),
     ]);
     return json(

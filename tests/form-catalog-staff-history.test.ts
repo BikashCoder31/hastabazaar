@@ -66,7 +66,7 @@ function fixture() {
     CREATE TABLE rider_profiles(user_id TEXT PRIMARY KEY);
     CREATE TABLE rider_reports(id TEXT PRIMARY KEY,shipping_job_id TEXT,status TEXT,reviewed_by TEXT,rider_user_id TEXT);
     CREATE TABLE rider_policy(id TEXT PRIMARY KEY);
-    CREATE TABLE audit_logs(id TEXT PRIMARY KEY,actor_id TEXT,action TEXT,subject_type TEXT,subject_id TEXT,request_id TEXT,next_json TEXT);
+    CREATE TABLE audit_logs(id TEXT PRIMARY KEY,actor_id TEXT,action TEXT,subject_type TEXT,subject_id TEXT,request_id TEXT,next_json TEXT,created_at INTEGER NOT NULL);
     CREATE TABLE form_config_versions(id TEXT PRIMARY KEY,form_id TEXT,version INTEGER,status TEXT,config_json TEXT);
     CREATE TABLE form_answer_sets(id TEXT PRIMARY KEY,form_id TEXT,request_id TEXT,config_version_id TEXT,
       subject_type TEXT,subject_id TEXT,actor_id TEXT,answers_json TEXT,created_at INTEGER);
@@ -77,10 +77,10 @@ function fixture() {
     INSERT INTO orders VALUES ('order-one','customer-one');
     INSERT INTO shipping_jobs(id,order_id) VALUES ('job-one','order-one');
     INSERT INTO parcel_operation_events VALUES ('parcel-one','order-one','job-one','actor-one','dispatch','{}');
-    INSERT INTO audit_logs VALUES ('audit-parcel','actor-one','parcel.dispatch','order','order-one','parcel-one:audit',NULL);
-    INSERT INTO audit_logs VALUES ('audit-catalog','actor-one','catalog.category.created','category','category-one','catalog-one',NULL);
+    INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,request_id,next_json,created_at) VALUES ('audit-parcel','actor-one','parcel.dispatch','order','order-one','parcel-one:audit',NULL,100);
+    INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,request_id,next_json,created_at) VALUES ('audit-catalog','actor-one','catalog.category.created','category','category-one','catalog-one',NULL,100);
     INSERT INTO payout_requests(id,operation_request_id,processed_by) VALUES ('payout-one','payout-one-attempt','actor-one');
-    INSERT INTO audit_logs VALUES ('audit-payout','actor-one','payout.request.prepared','payout_request','payout-one','payout-one-attempt',NULL);`);
+    INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,request_id,next_json,created_at) VALUES ('audit-payout','actor-one','payout.request.prepared','payout_request','payout-one','payout-one-attempt',NULL,100);`);
   return { sqlite, db: new Database(sqlite) as unknown as D1Database };
 }
 
@@ -113,7 +113,7 @@ void test('staff parcel cancellation review request remains visible through its 
       action: 'cancel', version: 1, note: 'Production review', formDigest: 'fictional-digest' });
     sqlite.prepare('INSERT INTO order_cancellation_reviews VALUES (?,?,?,?)')
       .run(requestId, 'order-one', 'actor-one', 'pending');
-    sqlite.prepare(`INSERT INTO audit_logs VALUES (?,?,?,'order','order-one',?,?)`)
+    sqlite.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,request_id,next_json,created_at) VALUES (?,?,?,'order','order-one',?,?,101)`)
       .run('review-audit-one', 'actor-one', 'cancellation.review_requested', `${requestId}:parcel-form`,
         JSON.stringify({ jobId: 'job-one', payload }));
     sqlite.prepare('INSERT INTO form_config_versions VALUES (?,?,?,?,?)').run('parcel-v1', formId, 1,
@@ -159,17 +159,17 @@ void test('all twelve fixed staff form/subject branches bind source events and r
       INSERT INTO rider_reports(id,shipping_job_id,status,reviewed_by) VALUES ('report-two','job-one','accepted','actor-one');
       INSERT INTO rider_policy VALUES ('current');
       INSERT INTO parcel_operation_events VALUES ('confirm-attempt','order-one','job-one','actor-one','deliver','{"riderReportId":"report-two"}');
-      INSERT INTO audit_logs VALUES
-        ('audit-occasion','actor-one','catalog.occasion.created','occasion','occasion-one','occasion-attempt',NULL),
-        ('audit-classify','actor-one','catalog.product.classified','product','product-one','classify-attempt',NULL),
-        ('audit-exception','actor-one','exception.created','order','order-one','exception-attempt:audit',NULL),
-        ('audit-invoice','actor-one','invoice.adjustment.issued','managed_invoice_adjustment','adjustment-one','invoice-attempt:audit',NULL),
-        ('audit-activation','actor-one','managed_maker.simulation_activated','seller','seller-one','activation-attempt',NULL),
-        ('audit-privacy','actor-one','privacy.assign','data_rights_request','privacy-one','privacy-attempt:audit',NULL),
-        ('audit-rider','actor-one','rider.review.configured','rider','rider-one','staff.rider-control-1:rider-attempt',NULL),
-        ('audit-rider-report','actor-one','rider.report.rejected.configured','rider_report','report-one','staff.rider-control-1:report-attempt',NULL),
-        ('audit-rider-confirm','actor-one','parcel.deliver','order','order-one','confirm-attempt:audit',NULL),
-        ('audit-rider-policy','actor-one','rider.policy.configured','rider_policy','current','staff.rider-control-2:policy-attempt',NULL);`);
+      INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,request_id,next_json,created_at) VALUES
+        ('audit-occasion','actor-one','catalog.occasion.created','occasion','occasion-one','occasion-attempt',NULL,100),
+        ('audit-classify','actor-one','catalog.product.classified','product','product-one','classify-attempt',NULL,100),
+        ('audit-exception','actor-one','exception.created','order','order-one','exception-attempt:audit',NULL,100),
+        ('audit-invoice','actor-one','invoice.adjustment.issued','managed_invoice_adjustment','adjustment-one','invoice-attempt:audit',NULL,100),
+        ('audit-activation','actor-one','managed_maker.simulation_activated','seller','seller-one','activation-attempt',NULL,100),
+        ('audit-privacy','actor-one','privacy.assign','data_rights_request','privacy-one','privacy-attempt:audit',NULL,100),
+        ('audit-rider','actor-one','rider.review.configured','rider','rider-one','staff.rider-control-1:rider-attempt',NULL,100),
+        ('audit-rider-report','actor-one','rider.report.rejected.configured','rider_report','report-one','staff.rider-control-1:report-attempt',NULL,100),
+        ('audit-rider-confirm','actor-one','parcel.deliver','order','order-one','confirm-attempt:audit',NULL,100),
+        ('audit-rider-policy','actor-one','rider.policy.configured','rider_policy','current','staff.rider-control-2:policy-attempt',NULL,100);`);
     const superViewer = { id: 'super-one', role: 'super_admin' as const };
     const cases = [
       ['staff.catalog','category','category-one','catalog-one',viewer],
@@ -217,7 +217,7 @@ void test('staff history has fixed kinds, keyset discovery past 50, exact-subjec
         type: 'short_text', required: false, order: 0, status: 'archived' }] }));
     for (let i = 0; i < 55; i++) {
       const id = `catalog-${String(i).padStart(3, '0')}`;
-      sqlite.prepare(`INSERT INTO audit_logs VALUES (?,?,?,'category','category-one',?,NULL)`)
+      sqlite.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,request_id,next_json,created_at) VALUES (?,?,?,'category','category-one',?,NULL,100)`)
         .run(`audit-${id}`, 'actor-one', 'catalog.category.updated', id);
       sqlite.prepare(`INSERT INTO form_answer_sets VALUES (?,?,?,?,?,?,?,?,?)`).run(`answer-${id}`, formId,
         id, 'catalog-v1', 'category', 'category-one', 'actor-one', JSON.stringify({ formId, version: 1,

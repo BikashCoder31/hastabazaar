@@ -4,23 +4,29 @@ import { categoryMediaDb } from './helpers/category-media-db';
 import { getPublishedProductBySlug } from '../lib/db/repositories/products';
 import { createCodOrder, getOrderDocument, getOrderReceipt } from '../lib/db/repositories/orders';
 import { getCart } from '../lib/db/repositories/cart';
-import { SELLER_AGREEMENT_VERSION } from '../lib/content/legal-policies';
+import { readyCheckoutSeller } from './helpers/checkout-contact';
+import { historicalCommissionFixture } from './helpers/historical-commission-fixture';
+import { withReviewedPromoQuote } from './helpers/promo-checkout-fixture';
 
 const importedName = 'Beige & Brown Handmade Crochet Bow Wallet';
 const publicName = 'Beige & Brown Crochet Bow Wallet';
 const now = 1_000;
 
-async function fixture() {
+async function fixture({ checkout = false } = {}) {
   const f = await categoryMediaDb();
   f.sqlite.exec(`
     INSERT INTO users(id,auth_subject,email,display_name,phone,locale,status,created_at,updated_at)
       VALUES ('buyer','buyer-subject','buyer@example.invalid','Fictional buyer','+9779811111111','en-NP','active',1,1);
-    INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('buyer','customer',1);
+    INSERT INTO users(id,auth_subject,email,display_name,status,created_at,updated_at) VALUES
+      ('seller-owner','seller-owner','seller-owner@example.invalid','Fictional seller owner','active',1,1),
+      ('reviewer','reviewer','reviewer@example.invalid','Fictional reviewer','active',1,1);
+    INSERT INTO user_roles(user_id,role,assigned_at) VALUES
+      ('buyer','customer',1),('seller-owner','seller',1),('reviewer','super_admin',1);
     INSERT INTO account_email_verifications(user_id,email,verified_at) VALUES ('buyer','buyer@example.invalid',1);
     INSERT INTO seller_profiles(id,user_id,legal_name,trading_name,registration_authority,registration_number,tax_mode,
       tax_registration_number,representative_name,support_phone,support_email,province,district,municipality,locality,
       payout_account_reference,status,approved_at,created_at,updated_at)
-      VALUES ('seller','buyer','Fictional seller','Fictional shop','Local','FIX-REG','PAN','FIX-PAN','Seller',
+      VALUES ('seller','seller-owner','Fictional seller','Fictional shop','Local','FIX-REG','PAN','FIX-PAN','Seller',
       '9800000000','seller@example.invalid','Bagmati','Kathmandu','Kathmandu','Ward 1','FIX-PAYOUT','approved',1,1,1);
     INSERT INTO categories(id,slug,name_en,is_active,sort_order,created_at,updated_at)
       VALUES ('category','fixture-category','Fixture',1,1,1,1);
@@ -33,18 +39,21 @@ async function fixture() {
     INSERT INTO cart_items(id,cart_id,product_id,quantity,created_at,updated_at) VALUES ('line','cart','product',2,1,1);
     INSERT INTO wallet_accounts(user_id,referral_code,created_at) VALUES ('buyer','FIX-REFERRAL',1);
   `);
-  f.sqlite.prepare("UPDATE seller_profiles SET seller_agreement_version=?,seller_agreement_accepted_at=1 WHERE id='seller'")
-    .run(SELLER_AGREEMENT_VERSION);
-  const input = {
+  historicalCommissionFixture(f.sqlite, 'reviewer');
+  if (checkout) {
+    await readyCheckoutSeller({ database: f.db, sqlite: f.sqlite }, 'seller', 'seller-owner', 'reviewer');
+    assert.equal((await getCart(f.db, 'cart-token')).hasUnavailableItems, false);
+  }
+  const input = await withReviewedPromoQuote(f.db, 'cart', {
     customerEmail: 'buyer@example.invalid', customerPhone: '9811111111', customerAuthSubject: 'buyer-subject',
     locale: 'en-NP' as const, termsAccepted: true, idempotencyKey: crypto.randomUUID(),
     address: {recipientName:'Fictional buyer',phone:'9811111111',province:'Bagmati',district:'Kathmandu',municipality:'Kathmandu',locality:'Ward 1'},
-  };
+  }, now);
   return {...f,input};
 }
 
 void test('new checkout snapshots preserve the truthful public title, original source record, quantities and prices', async () => {
-  const f = await fixture();
+  const f = await fixture({ checkout: true });
   try {
     f.sqlite.prepare("UPDATE products SET name_en=? WHERE id='product'").run(importedName);
     const cart = await getCart(f.db,'cart-token');
@@ -72,7 +81,7 @@ void test('new checkout snapshots preserve the truthful public title, original s
 });
 
 void test('historical accepted item and statement snapshots are returned and replayed exactly as stored', async () => {
-  const f = await fixture();
+  const f = await fixture({ checkout: true });
   try {
     const placed = await createCodOrder(f.db,'cart-token','receipt-token',f.input,now,'buyer',undefined,'email_only');
     const document = f.sqlite.prepare("SELECT id,snapshot_json FROM order_documents WHERE kind='order_statement'").get();

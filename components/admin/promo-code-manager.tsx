@@ -1,6 +1,8 @@
 'use client';
 
 import { FormGuide } from '@/components/forms/form-guide';
+import {useCommercialScope,CommercialRecovery} from '@/components/admin/commercial-recovery';
+import {FinanceAccessNotice} from '@/components/admin/finance-access-notice';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -11,7 +13,7 @@ import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import {
   configuredJsonPayload,
   readConfiguredSubmission,
-} from '@/lib/forms/submission';
+} from '@/lib/forms/client-submission';
 import {
   clearVersionedSessionAttempt,
   getOrCreateVersionedSessionAttempt,
@@ -32,6 +34,7 @@ import {
   percentageToBps,
 } from '@/lib/incentives/presentation';
 import { PromoCodeCostPreview } from '@/components/admin/promo-code-cost-preview';
+import type { FeeWaiverCampaign } from '@/lib/marketplace/fee-waivers';
 import type {
   PromoCampaignPage,
   PromoRedemptionPage,
@@ -185,28 +188,50 @@ function discountSummary(terms: PromoTerms) {
         money(terms.maxDiscountPaisa);
 }
 
+type DraftStart = {
+  code: string;
+  percentage: string;
+  budget: string;
+  averageSubtotalPaisa: number | null;
+  onCancel: () => void;
+};
+
 /** Keep the authorized child unmounted so its configuration hook cannot fetch for ordinary admins. */
 export function PromoCodeManager(props: {
+  actorId:string;
   role: string;
   initialPage: PromoCampaignPage;
   defaultCommissionBps?: number;
+  feeWaiver?: FeeWaiverCampaign | null;
+  draftStart?: DraftStart;
 }) {
   return props.role === 'super_admin' ? (
     <AuthorizedPromoCodeManager
+      key={JSON.stringify([props.actorId,props.initialPage.campaigns[0]?.campaignId??'new'])}
+      actorId={props.actorId}
       initialPage={props.initialPage}
-      defaultCommissionBps={props.defaultCommissionBps ?? 900}
+      defaultCommissionBps={props.defaultCommissionBps}
+      feeWaiver={props.feeWaiver}
+      draftStart={props.draftStart}
     />
   ) : (
     <p role="alert">Super Admin access is required.</p>
   );
 }
 function AuthorizedPromoCodeManager({
+  actorId,
   initialPage,
   defaultCommissionBps,
+  feeWaiver,
+  draftStart,
 }: {
+  actorId:string;
   initialPage: PromoCampaignPage;
-  defaultCommissionBps: number;
+  defaultCommissionBps?: number;
+  feeWaiver?: FeeWaiverCampaign | null;
+  draftStart?: DraftStart;
 }) {
+  const commercial=useCommercialScope(actorId);
   const router = useRouter();
   const published = usePublishedFormConfig('staff.promo-code');
   const [campaigns, setCampaigns] = useState(initialPage.campaigns);
@@ -216,7 +241,7 @@ function AuthorizedPromoCodeManager({
   );
   const [editorGeneration, setEditorGeneration] = useState(0);
   const [kind, setKind] = useState<'fixed' | 'percentage'>(
-    selected?.terms.kind ?? 'fixed',
+    selected?.terms.kind ?? (draftStart ? 'percentage' : 'fixed'),
   );
   const [campaignSearch, setCampaignSearch] = useState('');
   const [previewTerms, setPreviewTerms] = useState<PromoTerms | null>(
@@ -231,6 +256,7 @@ function AuthorizedPromoCodeManager({
   const [historyLoading, setHistoryLoading] = useState(false);
   const [action, setAction] = useState<'draft' | 'publish' | 'pause'>('draft');
   const formRef = useRef<HTMLFormElement>(null);
+  const draftLabelRef = useRef<HTMLInputElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
   const pendingRef = useRef(false);
   const readGeneration = useRef(0);
@@ -238,13 +264,16 @@ function AuthorizedPromoCodeManager({
   const subject = selected?.campaignId ?? 'new';
   const attemptKey = sessionAttemptKey(
     'staff.promo-code',
-    subject + ':' + action,
+    actorId+':'+subject + ':' + action,
   );
   const retained = useSyncExternalStore(
     subscribeToAttempt,
     () => hasSessionAttempt(attemptKey),
     () => false,
   );
+  useEffect(() => {
+    if (draftStart) draftLabelRef.current?.focus();
+  }, [draftStart]);
   useEffect(() => {
     if (error) errorRef.current?.focus();
   }, [error]);
@@ -331,10 +360,11 @@ function AuthorizedPromoCodeManager({
       try {
         const response = await fetch('/api/admin/promo-codes', {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: { 'content-type': 'application/json',...commercial.headers },
           body: intent,
         });
         const result = decodedRecord(await response.json().catch(() => null));
+        if(!commercial.current())return;commercial.observe(response);
         if (response.status === 409 && result?.code === 'stale_version')
           published.handleSubmissionResponse(response, result.code);
         if (!response.ok)
@@ -377,7 +407,7 @@ function AuthorizedPromoCodeManager({
         router.refresh();
       } finally {
         pendingRef.current = false;
-        setPending(false);
+        if(commercial.current())setPending(false);
       }
     } catch (reason) {
       setError(
@@ -396,10 +426,10 @@ function AuthorizedPromoCodeManager({
         const response = await fetch(
           '/api/admin/promo-codes?campaignId=' +
             encodeURIComponent(selected.campaignId),
-          { cache: 'no-store' },
+          { cache: 'no-store',headers:commercial.headers },
         );
-        const result = decodedRecord(await response.json());
-        if (token !== readGeneration.current) return;
+        const result = decodedRecord(await response.json().catch(() => null));
+        if (!commercial.current() || token !== readGeneration.current) return;commercial.observe(response);
         if (!response.ok || !validState(result))
           throw new Error('Latest campaign could not be loaded.');
         setCampaigns((current) =>
@@ -429,10 +459,10 @@ function AuthorizedPromoCodeManager({
       });
       if (history?.nextCursor) query.set('cursor', history.nextCursor);
       const response = await fetch('/api/admin/promo-codes?' + query, {
-        cache: 'no-store',
+        cache: 'no-store',headers:commercial.headers,
       });
-      const result = decodedRecord(await response.json());
-      if (token !== readGeneration.current) return;
+      const result = decodedRecord(await response.json().catch(() => null));
+      if (!commercial.current() || token !== readGeneration.current) return;commercial.observe(response);
       if (
         !response.ok ||
         !Array.isArray(result.redemptions) ||
@@ -465,10 +495,10 @@ function AuthorizedPromoCodeManager({
     try {
       const response = await fetch(
         '/api/admin/promo-codes?cursor=' + encodeURIComponent(nextCursor),
-        { cache: 'no-store' },
+        { cache: 'no-store',headers:commercial.headers },
       );
-      const result = decodedRecord(await response.json());
-      if (token !== readGeneration.current) return;
+      const result = decodedRecord(await response.json().catch(() => null));
+      if (!commercial.current() || token !== readGeneration.current) return;commercial.observe(response);
       if (
         !response.ok ||
         !Array.isArray(result?.campaigns) ||
@@ -504,9 +534,12 @@ function AuthorizedPromoCodeManager({
         campaignStatus(campaign),
       ].some((value) => value.toLowerCase().includes(query)),
   );
+  const recovery=<CommercialRecovery actorId={actorId} kind="promo" attemptKey={attemptKey} onDenied={commercial.deny} onReauthorized={commercial.reauthorize} onRecovered={()=>{clearVersionedSessionAttempt(attemptKey);intents.current.delete(attemptKey);setAttemptRevision(v=>v+1);setNotice('Original committed operation confirmed. Open its current source before another action.');void refreshCampaign();router.refresh();}}/>;
+  if(commercial.accessDenied)return <div className="space-y-3"><FinanceAccessNotice message={error}/>{recovery}</div>;
   return (
     <div className="grid min-w-0 gap-6">
-      <section
+      {retained?recovery:null}
+      {!draftStart ? <section
         aria-label="Campaign management"
         className="min-w-0 space-y-4 rounded-xl border p-4 sm:p-6"
       >
@@ -519,26 +552,30 @@ function AuthorizedPromoCodeManager({
             <Input
               id="promo-campaign-search"
               type="search"
+              className="min-h-11"
               value={campaignSearch}
               placeholder="Search code, label or status"
               onChange={(event) => setCampaignSearch(event.target.value)}
             />
           </div>
           <Button
+            size="workspace"
             type="button"
-            variant="outline"
+            variant="workspace-primary"
             disabled={pending}
             onClick={() => choose(null)}
           >
             New campaign
           </Button>
         </div>
-        <div className="min-w-0 overflow-x-auto">
+        <div className="min-w-0">
           <table
             aria-label="Loaded campaigns"
-            className="w-full text-left text-sm"
+            // oxlint-disable-next-line jsx-a11y/no-redundant-roles -- Retain table semantics when CSS reflows rows.
+            role="table"
+            className="block w-full min-w-0 text-left text-sm xl:table xl:table-fixed"
           >
-            <thead className="border-b text-xs text-muted-foreground">
+            <thead className="sr-only border-b text-xs text-muted-foreground xl:not-sr-only xl:table-header-group">
               <tr>
                 <th scope="col" className="p-3">
                   Campaign
@@ -560,18 +597,18 @@ function AuthorizedPromoCodeManager({
                 </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="block xl:table-row-group">
               {visibleCampaigns.map((campaign) => (
                 <tr
                   key={campaign.campaignId}
                   className={
-                    'border-b align-top ' +
+                    'grid min-w-0 grid-cols-2 gap-2 border-b px-2 py-3 align-top wrap-anywhere xl:table-row xl:p-0 ' +
                     (selected?.campaignId === campaign.campaignId
                       ? 'bg-muted/40'
                       : '')
                   }
                 >
-                  <th scope="row" className="p-3 font-normal">
+                  <th scope="row" className="col-span-full block min-w-0 font-normal xl:table-cell xl:p-3">
                     <span className="block font-semibold">
                       {campaign.terms.code}
                     </span>
@@ -579,7 +616,7 @@ function AuthorizedPromoCodeManager({
                       {campaign.terms.label}
                     </span>
                   </th>
-                  <td className="p-3">
+                  <td className="block min-w-0 xl:table-cell xl:p-3">
                     <span className="inline-flex rounded-full border px-2 py-1 text-xs">
                       {campaignStatus(campaign)}
                     </span>
@@ -589,7 +626,7 @@ function AuthorizedPromoCodeManager({
                       </p>
                     ) : null}
                   </td>
-                  <td className="p-3">
+                  <td className="block min-w-0 xl:table-cell xl:p-3">
                     <p>{discountSummary(campaign.terms)}</p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {campaign.draftRevision
@@ -598,14 +635,16 @@ function AuthorizedPromoCodeManager({
                       · revision {campaign.revision}
                     </p>
                   </td>
-                  <td className="p-3 tabular-nums">{campaign.usedCount}</td>
-                  <td className="whitespace-nowrap p-3 tabular-nums">
+                  <td className="block min-w-0 tabular-nums xl:table-cell xl:p-3"><span className="block text-xs text-muted-foreground xl:hidden" aria-hidden="true">Lifetime use</span>{campaign.usedCount}</td>
+                  <td className="block min-w-0 tabular-nums xl:table-cell xl:p-3">
+                    <span className="block text-xs text-muted-foreground xl:hidden" aria-hidden="true">Lifetime spend</span>
                     {money(campaign.spentPaisa)}
                   </td>
-                  <td className="p-3">
+                  <td className="col-span-full block min-w-0 xl:table-cell xl:p-3">
                     <Button
+                      size="workspace"
                       type="button"
-                      variant="outline"
+                      variant={selected?.campaignId === campaign.campaignId ? 'workspace-outline' : 'workspace-primary'}
                       disabled={pending}
                       aria-label={'Manage ' + campaign.terms.code}
                       aria-pressed={
@@ -637,8 +676,9 @@ function AuthorizedPromoCodeManager({
           </p>
           {nextCursor ? (
             <Button
+              size="workspace"
               type="button"
-              variant="outline"
+              variant="workspace-outline"
               disabled={pending}
               onClick={() => void moreCampaigns()}
             >
@@ -646,7 +686,7 @@ function AuthorizedPromoCodeManager({
             </Button>
           ) : null}
         </div>
-      </section>
+      </section> : null}
       {selected ? (
         <section
           className="grid gap-2 rounded-xl border p-4 text-sm"
@@ -681,8 +721,9 @@ function AuthorizedPromoCodeManager({
             Cancellation and refunds do not restore campaign uses or budget.
           </p>
           <Button
+            size="workspace"
             type="button"
-            variant="outline"
+            variant="workspace-outline"
             disabled={pending}
             onClick={() => void refreshCampaign()}
           >
@@ -705,7 +746,7 @@ function AuthorizedPromoCodeManager({
             );
           }
         }}
-        className="min-w-0 space-y-5 rounded-xl border p-4 sm:p-6"
+        className={draftStart ? 'min-w-0 space-y-5' : 'min-w-0 space-y-5 rounded-xl border p-4 sm:p-6'}
       >
       <FormGuide formId="staff.promo-code" />
 
@@ -720,7 +761,7 @@ function AuthorizedPromoCodeManager({
           <Control
             name="code"
             label="Code"
-            defaultValue={terms?.code}
+            defaultValue={terms?.code ?? draftStart?.code}
             maxLength={32}
             required
           />
@@ -728,6 +769,7 @@ function AuthorizedPromoCodeManager({
             name="label"
             label="Label"
             defaultValue={terms?.label}
+            ref={draftStart && !selected ? draftLabelRef : undefined}
             maxLength={200}
             required
           />
@@ -737,7 +779,7 @@ function AuthorizedPromoCodeManager({
               id="promo-kind"
               name="kind"
               value={kind}
-              className="mt-2 w-full rounded-md border p-2"
+              className="mt-2 min-h-11 w-full rounded-md border p-2"
               onChange={(e) =>
                 setKind(e.target.value as 'fixed' | 'percentage')
               }
@@ -771,7 +813,7 @@ function AuthorizedPromoCodeManager({
                 defaultValue={
                   terms?.kind === 'percentage'
                     ? moneyInput(terms.percentBps)
-                    : undefined
+                    : draftStart?.percentage
                 }
                 required
               />
@@ -837,7 +879,7 @@ function AuthorizedPromoCodeManager({
             type="text"
             inputMode="decimal"
             pattern="[0-9]+([.][0-9]{1,2})?"
-            defaultValue={terms ? moneyInput(terms.budgetPaisa) : undefined}
+            defaultValue={terms ? moneyInput(terms.budgetPaisa) : draftStart?.budget}
             required
           />
         </fieldset>
@@ -848,9 +890,11 @@ function AuthorizedPromoCodeManager({
           financial terms until publication.
         </p>
         <PromoCodeCostPreview
+          feeWaiver={feeWaiver}
           terms={previewTerms}
           error={previewError}
           defaultCommissionBps={defaultCommissionBps}
+          averageSubtotalPaisa={draftStart?.averageSubtotalPaisa}
           disabled={pending}
         />
         <Control
@@ -868,7 +912,7 @@ function AuthorizedPromoCodeManager({
           <select
             id="promo-action"
             value={action}
-            className="mt-2 rounded-md border p-2"
+            className="mt-2 min-h-11 max-w-full rounded-md border p-2"
             disabled={pending}
             onChange={(e) => setAction(e.target.value as typeof action)}
           >
@@ -901,7 +945,7 @@ function AuthorizedPromoCodeManager({
         {notice ? <output aria-live="polite">{notice}</output> : null}
         {published.message ? <p role="alert">{published.message}</p> : null}
         <div className="flex flex-wrap gap-3">
-          <Button type="submit" disabled={pending || !published.canSubmit}>
+          <Button variant={action === 'publish' ? 'workspace-decision' : action === 'pause' ? 'workspace-outline' : 'workspace-primary'} size="workspace" type="submit" disabled={pending || !published.canSubmit}>
             {pending
               ? 'Saving…'
               : action === 'draft'
@@ -911,8 +955,9 @@ function AuthorizedPromoCodeManager({
                   : 'Pause campaign'}
           </Button>
           <Button
+            size="workspace"
             type="button"
-            variant="outline"
+            variant="workspace-outline"
             disabled={pending}
             onClick={() => {
               if (
@@ -931,10 +976,14 @@ function AuthorizedPromoCodeManager({
           >
             Start a new attempt
           </Button>
+          {draftStart && !selected && !retained ? (
+            <Button size="workspace" type="button" variant="ghost" disabled={pending} onClick={draftStart.onCancel}>Cancel</Button>
+          ) : null}
           {published.status !== 'ready' ? (
             <Button
+              size="workspace"
               type="button"
-              variant="outline"
+              variant="workspace-outline"
               disabled={pending}
               onClick={published.refresh}
             >
@@ -960,6 +1009,8 @@ function AuthorizedPromoCodeManager({
             Customer identities and private audit reasons are excluded.
           </p>
           <Button
+            variant="workspace-outline"
+            size="workspace"
             type="button"
             disabled={
               pending ||
@@ -1005,6 +1056,7 @@ function Control({
       <Label htmlFor={'promo-' + name}>{label}</Label>
       <Input
         id={'promo-' + name}
+        className="min-h-11"
         name={name}
         step={
           props.type === 'number'

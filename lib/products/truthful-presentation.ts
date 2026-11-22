@@ -8,6 +8,8 @@ interface ProductDetails {
   countryOfOrigin?: string;
   originEvidenceStatus?: string;
   originEvidenceReference?: string | null;
+  licenceReference?: string | null;
+  sellerSku?: string | null;
   materials: string;
   originStory: string | null;
   dimensions: string | null;
@@ -56,8 +58,8 @@ export function publicProductName(name: string): string {
   return importsByName.has(normalizedName(name)) ? name.replace(/\b(?:handmade|handcrafted|hand-crafted|artisan-made)\s+/gi, '').trim() : name;
 }
 
-export function publicProductDetails<T extends ProductDetails>(product: T): Omit<T, 'originEvidenceReference'> & { originDisclosure: string } {
-  const {originEvidenceReference: _privateOriginEvidence, ...publicFields} = product;
+export function publicProductDetails<T extends ProductDetails>(product: T): Omit<T, 'originEvidenceReference'|'licenceReference'|'sellerSku'> & { originDisclosure: string } {
+  const {originEvidenceReference: _privateOriginEvidence, licenceReference: _privateLicence, sellerSku: _internalSellerCode, ...publicFields} = product;
   const asin = [product.specifications, product.descriptionEn].join('\n').match(/\bASIN\s*:?\s*([A-Z0-9]{10})\b/i)?.[1]?.toUpperCase();
   const sourceImport = asin ? importsByAsin.get(asin) : undefined;
   const imported = sourceImport ?? importsByName.get(normalizedName(product.nameEn));

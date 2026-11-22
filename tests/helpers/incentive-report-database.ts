@@ -1,7 +1,7 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 
-/** All real migrations and triggers, with plain D1-shaped result rows. */
+/** Historical migrations and triggers, with plain D1-shaped result rows. */
 export async function incentiveReportDatabase(beforeMigration?: (name: string, sqlite: DatabaseSync) => Promise<void>) {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec('PRAGMA foreign_keys = ON');
@@ -9,7 +9,8 @@ export async function incentiveReportDatabase(beforeMigration?: (name: string, s
     const migrations = (
       await readdir(new URL('../../drizzle/', import.meta.url))
     )
-      .filter((name) => /^\d{4}_.+\.sql$/.test(name))
+      // Discovery covers the optional table in both storage states.
+      .filter((name) => /^\d{4}_.+\.sql$/.test(name) && name !== '0169_occasion_discovery.sql')
       .sort();
     for (const name of migrations) {
       await beforeMigration?.(name, sqlite);

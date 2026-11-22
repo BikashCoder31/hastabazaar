@@ -1,0 +1,44 @@
+# T34 refund/remittance fixture regression correction
+
+Date: 4 November 2026. Scope: `tests/commerce-financial-transitions.test.ts` and `tests/helpers/financial-transition-scenarios.ts` only. Both already existed as untracked work when assigned; their complete initial bytes are preserved. No production source, shared execution helper, schema, canonical data, Git settings, progress ledger or coverage ledger was changed by this slice. Deployment, including staging, remains held; video remains deferred.
+
+## Requirement and diagnosis
+
+The original full-suite failures are retained in `.test-artifacts/t34/full-npm-test-20261104-1446.tap`, top-level tests 559–562 and 571. A bounded rerun reproduced all five failures before edits: **0/5, exit 1, 21.896s**. The preserved extraction and initial source copies are in [.test-artifacts/t34/refund-transition-regression-astra-20261104](../../../.test-artifacts/t34/refund-transition-regression-astra-20261104/README.md).
+
+Three outdated fixture assumptions caused the failures:
+
+1. The partial refund offered 50,000 merchandise paisa and zero delivery paisa for the entire quantity-one item, despite its original 15,000 delivery allocation. [Approved cancellation/return rules §7](../specs/2026-10-31-cancellation-return-rules.md#7-return-shipping-costs-and-original-charges) explicitly require: “Refund the **attributable original delivery charge for eligible no-fault returns too**” and say partial returns use the saved fair allocation, with cumulative refunds capped at the actual charge. A partial merchandise settlement does not reduce the returned quantity or erase its delivery entitlement. Accordingly, the exact total is **65,000 = 50,000 + 15,000**. The previous partial ledger expectation **−50,000**, and resulting net **45,500**, are retained in the before-source; their approved replacements are **−65,000** and **30,500**. Full refund **115,000**, original sale **100,000**, original commission **−9,000**, and commission reversal **4,500 / 9,000** remain unchanged.
+2. The old fixture called `advanceReturnAsAdmin(start_refund/complete_refund)` directly. [Finance workspace §§6–7](../specs/2026-10-30-finance-payments-workspace.md), [single-Super-Admin amendment §§2–3](../specs/2026-10-31-single-super-admin-finance-approval.md), and [implementation part 5, T25](2026-11-01-implementation-5-finance-activation.md#t25-implement-refund-obligations-funding-and-uncertain-execution) require distinct entitlement, verified destination/funding, reservation and actual completion evidence. The existing rejection is correct and remains tested explicitly. One eligible Super Admin may perform the separate stages; this does not invent another reviewer.
+3. The handcrafted full-schema scenario lacked original delivery-allocation rows and verified customer email evidence. Its initial fixture construction now records original allocation from the existing fictional order/item amounts using the production allocation function, before case intake or cancellation. Only its own unique fictional customer's email verification is recorded. No retained allocation is overwritten or reconstructed after seeing a refund request.
+
+The current progress document, local startup instructions, implementation part 4's return work, part 5's T25 and part 6's T34 were inspected. This is bounded T34 regression work under the resumed implementation authorization, not renewed permission to launch, repair canonical data or release.
+
+## Changed behavior and assertions
+
+The two assigned files reuse the unchanged `executeFixtureRefund` helper. It calls the native obligation, authenticated customer destination, company-account verification, funding statement, packet preparation/approval/start and actual fictional bank-outcome commands. Company capital is explicit fictional independent funding; unremitted customer COD is not relabeled as company funding.
+
+The new shared assertion routine inside the owned scenario file checks the exact approved source amounts; rejects legacy direct start/completion; proves processing has no bank outcome or refund/reversal posting; records the native outcome; then replays the identical outcome command. Replays preserve the complete original packet and bank-identity row, exact bank amount/account/time/identity, a single packet, the completed obligation and paid native refund. All four financial actor fields retain the same actual eligible Super Admin. The original earned sale/commission and exactly one refund/reversal remain asserted after repeated earnings accrual.
+
+Before/after-remittance cases explicitly check zero versus 115,000 remitted paisa and zero versus one original sale before refund. The before-remittance branch still proves no earned sale before remittance and then remits the original collected cash. Original delivery allocations remain byte-for-value unchanged through refund completion and replay. Foreign-key checks pass in all four checkout cases and at the end of the grouped full-schema fixture. Cancellation, wallet, receipt rollback and managed-accrual recovery assertions remain intact; full-schema cancellation setup also now contains its actual original delivery allocation.
+
+## Evidence
+
+All commands ran in the canonical checkout against the inspected `DatabaseSync(':memory:')` fixture with foreign keys enabled. Migration SQL was loaded only into that newly allocated memory database. No existing local D1 file, browser, MariaDB service, host, mail service or payment service was used.
+
+| Artifact | Command/result |
+|---|---|
+| `before.tap` | `node --import tsx --test --test-concurrency=1 --test-name-pattern='^(partial|full) refund\|^disposable native financial' tests/commerce-financial-transitions.test.ts`; 0/5, exit 1, 21.896s. |
+| `after-focused.tap` | Same selected command; 4/5, exit 1, 29.826s. The remaining failure was duplicate synthetic `users.phone` from applying the general contact fixture repeatedly in one database. Corrected to the unique per-customer email proof actually required for sensitive refund instructions; no general verification/acceptance bypass added. |
+| `after-complete-file.tap` | `node --import tsx --test --test-concurrency=1 tests/commerce-financial-transitions.test.ts`; **13/13**, exit 0, 69.591s, no skipped tests. The grouped final test executes four refund and four cancellation scenarios; these are not eight extra TAP tests. |
+| `scoped-lint.txt` | Two-file type-aware lint initially exited 1: nullable source captured in the replay closure. |
+| `scoped-lint-final.txt` | `node node_modules/oxlint/bin/oxlint --disable-nested-config tests/commerce-financial-transitions.test.ts tests/helpers/financial-transition-scenarios.ts`; exit 0 after retaining the narrowed source ID as a constant. No production behavior changed. |
+| `final-focused.tap` | Final-source selected five-test command above; **5/5**, exit 0, 34.212s, no skipped tests. Includes all four refund/remittance cases and the eight-scenario full-schema group. Counts overlap with the prior 13/13; do not sum them. |
+
+The final full-file result precedes only that nullable-capture correction: immediately after `assert.ok(source)`, retain `const refundId = source.id`, and use `.bind(refundId)` instead of `.bind(source.id)` in the replay closure's paid-status query. The ID and SQL remain identical at runtime. Final 5/5 and final scoped lint cover the actual final source. Initial failures, intermediates, exact before copies, final source copies, source diffs and SHA256 manifest are preserved in the artifact directory. `source-freeze.json` hashes the owned sources, inspected helpers and relevant production/schema/specification inputs at evidence capture; it is a source identity record, not a claim that every hashed file was individually tested or that later concurrent edits cannot supersede this evidence.
+
+## Limits and handoff
+
+No full-suite, global compiler/lint/build, browser, D1 or MariaDB acceptance is claimed. Root owns the full suite and heavy-check scheduling. The native-compatible scenario helper was executed through the full SQLite schema in memory; actual MariaDB adapter behavior remains unverified by this slice. Its historical synthetic delivered/cash rows remain historical fixture setup, not proof of real onboarding/checkout/custody transitions. The four separate checkout cases use the existing native order/delivery/collection helper. No claim is made that the physical return case is closed merely because its refund is paid.
+
+No production guard was weakened and no failed assertion was removed. The only monetary expectation correction is the original delivery entitlement required by the approved rule. The root agent should integrate this bounded evidence with the ongoing full-suite result; canonical preflight/data and deployment gates remain unchanged.

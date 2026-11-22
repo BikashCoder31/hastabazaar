@@ -25,19 +25,19 @@ type Capture = {
   label: string;
 };
 type Pending = { token: string; expiresAt: number };
-export function ContactVerificationPanel({
+type ContactVerificationPanelProps={
+  initialStatus?:Status|null;captureAvailable?:boolean;onStatusChange?:(status:Status|null)=>void;ownerKey?:string;contactPolicy?:CheckoutContactPolicy;
+};
+export function ContactVerificationPanel(props:ContactVerificationPanelProps) {
+ return <CurrentContactVerificationPanel key={JSON.stringify([props.ownerKey??null,props.initialStatus?.email??null,props.initialStatus?.phone??null])} {...props}/>;
+}
+function CurrentContactVerificationPanel({
   initialStatus,
   captureAvailable = false,
   onStatusChange,
   ownerKey,
   contactPolicy = 'email_and_phone',
-}: {
-  initialStatus?: Status | null;
-  captureAvailable?: boolean;
-  onStatusChange?: (status: Status | null) => void;
-  ownerKey?: string;
-  contactPolicy?: CheckoutContactPolicy;
-}) {
+}: ContactVerificationPanelProps) {
   const router = useRouter();
   const [status, setStatus] = useState<Status | null>(initialStatus ?? null);
   const [loading, setLoading] = useState(!initialStatus);
@@ -50,6 +50,7 @@ export function ContactVerificationPanel({
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [unavailable, setUnavailable] = useState(false);
+  const [accessDenied,setAccessDenied]=useState(false);
   const [statusRetry, setStatusRetry] = useState(0);
   const subscription = useRef<{ ownerKey?: string; initialStatus?: Status | null } | null>(null);
   const statusCallback = useRef(onStatusChange);
@@ -63,6 +64,20 @@ export function ContactVerificationPanel({
   function current(version: number) {
     return mounted.current && version === generation.current;
   }
+  function clearPrivateContacts(){
+    ++generation.current;activeController.current?.abort();busyRef.current=false;
+    setStatus(null);setPending({});setCodes({email:'',phone:''});setCaptures([]);setMessage('');setError('');setBusy(null);setAccessDenied(true);statusCallback.current?.(null);
+  }
+  function denyResponse(response:Response,version:number){
+    if(!current(version)||![401,403].includes(response.status))return false;
+    clearPrivateContacts();window.dispatchEvent(new CustomEvent('hb:account-access-denied',{detail:{actorId:ownerKey??''}}));router.refresh();return true;
+  }
+  const denyResponseHandler=useRef(denyResponse);
+  useEffect(()=>{denyResponseHandler.current=denyResponse;});
+  useEffect(()=>{
+    const changed=(event:Event)=>{if((event as CustomEvent<{actorId?:unknown}>).detail?.actorId===(ownerKey??''))clearPrivateContacts();};
+    window.addEventListener('hb:account-access-denied',changed);return()=>window.removeEventListener('hb:account-access-denied',changed);
+  },[ownerKey]);
   useEffect(() => {
     mounted.current = true;
     const version = ++generation.current;
@@ -84,20 +99,23 @@ export function ContactVerificationPanel({
     setError('');
     setMessage('');
     setUnavailable(false);
+    setAccessDenied(false);
     setLoading(true);
     /* oxlint-enable react/react-compiler */
     statusCallback.current?.(null);
     void fetch('/api/account/contact-verification', {
       cache: 'no-store',
+      headers:{'X-Hastabazaar-Actor':ownerKey??''},
       signal: controller.signal,
     })
       .then(async (response) => {
         if (!current(version)) return;
-        if (response.status === 401) {
+        if (response.status === 401&&!ownerKey) {
           setStatus(null);
           statusCallback.current?.(null);
           return;
         }
+        if(denyResponseHandler.current(response,version))return;
         const result = (await response.json()) as Status & { error?: string };
         if (!current(version)) return;
         if (!response.ok)
@@ -134,8 +152,10 @@ export function ContactVerificationPanel({
   async function capturedCodes(version: number, signal: AbortSignal) {
     const response = await fetch('/api/account/contact-verification/capture', {
       cache: 'no-store',
+      headers:{'X-Hastabazaar-Actor':ownerKey??''},
       signal,
     });
+    if(denyResponse(response,version))return;
     const result = (await response.json()) as {
       captures?: Capture[];
       error?: string;
@@ -159,7 +179,7 @@ export function ContactVerificationPanel({
       const response = await fetch('/api/account/contact-verification', {
         method: 'POST',
         signal: controller.signal,
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json','X-Hastabazaar-Actor':ownerKey??'' },
         body: JSON.stringify({
           action,
           channel,
@@ -168,6 +188,7 @@ export function ContactVerificationPanel({
             : {}),
         }),
       });
+      if(denyResponse(response,version))return;
       const result = (await response.json()) as {
         error?: string;
         verified?: boolean;
@@ -201,8 +222,10 @@ export function ContactVerificationPanel({
             ? parseContactStatus(result.status, status)
             : await fetch('/api/account/contact-verification', {
                 cache: 'no-store',
+                headers:{'X-Hastabazaar-Actor':ownerKey??''},
                 signal: controller.signal,
               }).then(async (response) => {
+                if(denyResponse(response,version))throw Error('Account access changed.');
                 if (!response.ok)
                   throw Error('Refresh to check your current contacts.');
                 return response.json() as Promise<Status>;
@@ -253,6 +276,7 @@ export function ContactVerificationPanel({
         );
     });
   }
+  if(accessDenied)return <section role="alert" className="rounded-xl border bg-card p-5">Account access changed. Reopen this page to load the current contact details.</section>;
   if (loading && !status)
     return (
       <section className="rounded-2xl border bg-card p-5" aria-live="polite">

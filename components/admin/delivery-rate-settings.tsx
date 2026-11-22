@@ -8,7 +8,7 @@ import type { DeliveryRates } from '@/lib/checkout/delivery-rates';
 import { DISTRICTS_BY_PROVINCE } from '@/lib/checkout/nepal-address';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 
 const districts = Object.values(DISTRICTS_BY_PROVINCE).flat().sort();
@@ -79,16 +79,16 @@ export function DeliveryRateSettings({ rates }: { rates: DeliveryRates }) {
       <h2 className="font-semibold">District base-rate overrides</h2>
       <div className="flex flex-wrap items-end gap-3">
         <label htmlFor="rate-district">District
-          <select id="rate-district" className="block rounded border bg-background p-2" value={district} onChange={(event) => setDistrict(event.target.value)}>
+          <select id="rate-district" className="block rounded border bg-background p-2 max-md:min-h-11" value={district} onChange={(event) => setDistrict(event.target.value)}>
             <option value="">Select district</option>
             {districts.filter((name) => !overrides.includes(name)).map((name) => <option key={name}>{name}</option>)}
           </select>
         </label>
-        <button type="button" className="rounded border p-2" disabled={!district} onClick={() => { setOverrides([...overrides, district]); setDistrict(''); }}>Add district rate</button>
+        <button type="button" className="rounded border p-2 max-md:min-h-11" disabled={!district} onClick={() => { setOverrides([...overrides, district]); setDistrict(''); }}>Add district rate</button>
       </div>
       {overrides.map((name) => <div key={name} className="flex items-end gap-3">
         {field(`district-${name}`, name, rates.districts[name] ?? 0)}
-        <button type="button" className="rounded border p-2" onClick={() => setOverrides(overrides.filter((value) => value !== name))}>Use zone rate for {name}</button>
+        <button type="button" className="rounded border p-2 max-md:min-h-11" onClick={() => setOverrides(overrides.filter((value) => value !== name))}>Use zone rate for {name}</button>
       </div>)}
       <label htmlFor="rate-reason" className="block">Reason for change <span aria-hidden="true">*</span>
         <textarea id="rate-reason" name="reason" minLength={10} maxLength={500} required className="mt-1 block w-full rounded border bg-background p-2" />
@@ -99,7 +99,7 @@ export function DeliveryRateSettings({ rates }: { rates: DeliveryRates }) {
       <button disabled={!catalog.canSubmit || pending} className="rounded bg-primary p-3 text-primary-foreground">Save rates for future orders</button>
     </fieldset>
     {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-    {retry ? <div className="space-y-2 text-xs text-muted-foreground"><p>A rate change may already have succeeded. Check current rates before retrying. Changed values keep the same request reference and may conflict.</p><button type="button" className="rounded border p-2" disabled={pending} onClick={() => {
+    {retry ? <div className="space-y-2 text-xs text-muted-foreground"><p>A rate change may already have succeeded. Check current rates before retrying. Changed values keep the same request reference and may conflict.</p><button type="button" className="rounded border p-2 max-md:min-h-11" disabled={pending} onClick={() => {
       if (!window.confirm('A prior rate change may already have succeeded. Check the rates first. Starting a new attempt may duplicate it. Continue?')) return;
       clearSessionAttempt(attemptKey); setRetry(false); setError('');
       if (catalog.status === 'stale') catalog.refresh();

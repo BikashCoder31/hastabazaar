@@ -1,7 +1,16 @@
+import { validateSellerFormSubmission } from '../../forms/submission';
+import { currentFormVersionCondition } from '../../forms/native-version';
+import { formAnswerSourceSql } from '../../forms/answer-proof';
+import {publicCatalogueQuery} from '@/lib/products/public-catalogue-query';
+import {CURRENT_CUSTOMER_ROLE_SQL,assertCurrentCustomerScope} from '@/lib/auth/customer-scope';
+import {attachPublicOfferRows,publicOfferQueryColumns,type PublicOfferProductFields,type PublicOfferQueryFields} from '@/lib/products/public-offers';
+import {currentProductMediaSql,currentProductMediaOrder} from '../../products/publication-media';
 import { publicProductName } from '@/lib/products/truthful-presentation';
+import {publicProfileFieldSql} from '@/lib/sellers/public-profile-sql';
+import { payableOrderTotalSql } from './platform-service-fee';
 import {normalizeProvince,normalizeDistrict,districtBelongsToProvince,validWard} from '@/lib/checkout/nepal-address';
 import {normalizeNepalMobile} from '@/lib/auth/nepal-phone';
-import { publicProductEligibility } from '@/lib/products/eligibility';
+import { publicProductVisibility } from '@/lib/products/eligibility';
 import {parseLocation} from '@/lib/delivery/validation';
 import { buildFormAnswerInsert, getFormAnswerById, type StoredFormAnswer } from './form-answers';
 import { authorizeFormAnswerRead } from '@/lib/forms/access';
@@ -55,12 +64,13 @@ export interface CustomerAddressInput {
   isDefault?: boolean;
 }
 
-export interface WishlistProductRow {
+export interface WishlistProductRow extends PublicOfferProductFields {
+  purchasable?: boolean;
   id: string;
   slug: string;
   nameEn: string;
   nameNe: string | null;
-  pricePaisa: number;
+  pricePaisa: number | null;
   inventoryQuantity: number;
   tradingName: string;
   primaryMediaId: string | null;
@@ -83,8 +93,6 @@ export interface PublicMakerProfile {
   publicCity: string;
   businessDescription: string | null;
   productCategories: string | null;
-  province: string;
-  district: string;
   approvedAt: number | null;
   productCount: number;
 }
@@ -92,42 +100,52 @@ export interface PublicMakerProfile {
 export async function getPublicMakerProfile(database: D1Database, sellerId: string): Promise<PublicMakerProfile | null> {
   return (await database.prepare(
     `SELECT seller_profiles.id,
-      COALESCE(participation.public_name, seller_profiles.trading_name) AS tradingName,
+      ${publicProfileFieldSql('publicName')} AS tradingName,
       participation.participation_route AS participationRoute,
-      COALESCE(participation.public_city, seller_profiles.municipality) AS publicCity,
-      seller_profiles.business_description AS businessDescription,
-      seller_profiles.product_categories AS productCategories,
-      seller_profiles.province, seller_profiles.district,
+      ${publicProfileFieldSql('publicCity')} AS publicCity,
+      ${publicProfileFieldSql('about')} AS businessDescription,
+      ${publicProfileFieldSql('specialties')} AS productCategories,
       seller_profiles.approved_at AS approvedAt, COUNT(products.id) AS productCount
      FROM seller_profiles
      LEFT JOIN seller_participation_profiles participation ON participation.seller_id = seller_profiles.id
-     LEFT JOIN products ON products.seller_id = seller_profiles.id AND ${publicProductEligibility()}
+     LEFT JOIN products ON products.seller_id = seller_profiles.id AND ${publicProductVisibility()}
      WHERE seller_profiles.id = ?
-       AND (seller_profiles.status = 'approved' OR (participation.participation_route = 'managed_maker' AND participation.application_stage = 'active'))
+       AND (seller_profiles.status = 'approved' OR (participation.participation_route = 'managed_maker' AND participation.application_stage = 'active')
+         OR (participation.participation_route = 'managed_maker' AND participation.application_stage = 'approved_for_activation' AND products.id IS NOT NULL))
        AND EXISTS(SELECT 1 FROM users maker_owner WHERE maker_owner.id=seller_profiles.user_id AND maker_owner.status='active')
      GROUP BY seller_profiles.id LIMIT 1`,
   ).bind(sellerId).first<PublicMakerProfile>()) ?? null;
 }
 
-export async function listPublishedProductsByMaker(database: D1Database, sellerId: string): Promise<readonly WishlistProductRow[]> {
+export type MakerProductRow = WishlistProductRow & {
+  categorySlug: string;
+  categoryName: string;
+  madeToOrder: number;
+  preparationDays: number;
+};
+
+export async function listPublishedProductsByMaker(database: D1Database, sellerId: string): Promise<readonly MakerProductRow[]> {
+  const catalogue=await publicCatalogueQuery(database);
   const result = await database.prepare(
-    `SELECT products.id, products.slug, products.name_en AS nameEn, products.name_ne AS nameNe,
-      products.price_paisa AS pricePaisa, products.inventory_quantity AS inventoryQuantity,
-      COALESCE(participation.public_name, seller_profiles.trading_name) AS tradingName, products.published_at AS savedAt,
-      (SELECT product_media.id FROM product_media WHERE product_media.product_id = products.id ORDER BY product_media.sort_order LIMIT 1) AS primaryMediaId
+    `${catalogue.withClause} SELECT ${publicOfferQueryColumns(catalogue)}, CASE WHEN ${catalogue.purchasable()} THEN 1 ELSE 0 END AS purchasable, products.id, products.slug, products.name_en AS nameEn, products.name_ne AS nameNe,
+      ${catalogue.price()} AS pricePaisa, ${catalogue.stock()} AS inventoryQuantity,
+      categories.slug AS categorySlug, categories.name_en AS categoryName,
+      products.made_to_order AS madeToOrder, products.preparation_days AS preparationDays,
+      ${publicProfileFieldSql('publicName')} AS tradingName, products.published_at AS savedAt,
+      (SELECT product_media.id FROM product_media WHERE product_media.product_id = products.id AND ${currentProductMediaSql('product_media')} ORDER BY ${currentProductMediaOrder('product_media')} LIMIT 1) AS primaryMediaId
      FROM products INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
+     INNER JOIN categories ON categories.id=products.category_id
      LEFT JOIN seller_participation_profiles participation ON participation.seller_id = seller_profiles.id
-     WHERE products.seller_id = ? AND ${publicProductEligibility()}
-       AND (seller_profiles.status = 'approved' OR (participation.participation_route = 'managed_maker' AND participation.application_stage = 'active'))
+     WHERE products.seller_id = ? AND ${publicProductVisibility()}
      ORDER BY products.published_at DESC`,
-  ).bind(sellerId).all<WishlistProductRow>();
-  return result.results.map(item => ({...item,nameEn:publicProductName(item.nameEn)}));
+  ).bind(sellerId).all<MakerProductRow & PublicOfferQueryFields>();
+  return attachPublicOfferRows(database,result.results.map(item=>({...item,nameEn:publicProductName(item.nameEn)})),catalogue.now);
 }
 
 export async function listCustomerOrders(database: D1Database, userId: string, limit = 100): Promise<readonly CustomerOrderRow[]> {
   const result = await database.prepare(
     `SELECT orders.order_number AS orderNumber, orders.status,
-      orders.payment_status AS paymentStatus, COALESCE(orders.current_total_paisa,orders.grand_total_paisa) AS grandTotalPaisa,
+      orders.payment_status AS paymentStatus, ${payableOrderTotalSql()} AS grandTotalPaisa,
       orders.placed_at AS placedAt, orders.delivered_at AS deliveredAt,
       COALESCE(SUM(order_items.quantity), 0) AS itemCount
      FROM orders LEFT JOIN order_items ON order_items.order_id = orders.id
@@ -266,7 +284,7 @@ export async function saveCustomerAddress(database: D1Database, options: { userI
   if (options.addressId && !existing) throw new CustomerDataConflictError('Address not found.');
   const statements: D1PreparedStatement[] = [];
   if (options.form) statements.push(database.prepare(`SELECT CASE WHEN
-      EXISTS(SELECT 1 FROM users WHERE id=? AND status='active')
+      EXISTS(SELECT 1 FROM users WHERE id=? AND status='active' AND ${CURRENT_CUSTOMER_ROLE_SQL})
       AND (SELECT MAX(version) FROM form_config_versions WHERE form_id='account.address' AND status='published')=?
       AND NOT EXISTS(SELECT 1 FROM audit_logs WHERE request_id=?)
       AND NOT EXISTS(SELECT 1 FROM form_answer_sets WHERE form_id='account.address' AND request_id=?)
@@ -300,6 +318,7 @@ export async function saveCustomerAddress(database: D1Database, options: { userI
         customAnswers: options.form.answers.answers.map((answer) => ({ fieldId: answer.fieldId, value: answer.value })) });
       if (replay.status === 'same') return replay.id!;
       if (replay.status === 'conflict') throw new CustomerDataConflictError('This request ID was already used for different address values.');
+      await assertCurrentCustomerScope(database,options.userId);
       const current = await database.prepare(`SELECT MAX(version) AS version FROM form_config_versions WHERE form_id='account.address' AND status='published'`).first<{ version: number | null }>();
       if (current?.version !== options.form.formVersion) throw new FormRuntimeError('stale_version', 'This form changed. Refresh it and review your answers.');
     }
@@ -325,6 +344,8 @@ export async function deleteCustomerAddress(database: D1Database, options: { use
   if (!existing) throw new CustomerDataConflictError('Address not found.');
   try {
     await database.batch([
+    database.prepare(`SELECT CASE WHEN EXISTS(SELECT 1 FROM users WHERE id=? AND status='active'
+      AND ${CURRENT_CUSTOMER_ROLE_SQL}) THEN 1 ELSE json_extract('invalid','$') END AS valid`).bind(options.userId),
     database.prepare(`INSERT INTO address_answer_owner_tombstones
       (address_id,user_id,deletion_request_id,deleted_at)
       SELECT a.id,a.user_id,?,? FROM addresses a WHERE a.id=? AND a.user_id=?
@@ -345,6 +366,7 @@ export async function deleteCustomerAddress(database: D1Database, options: { use
     const committed = await addressDeletionRequestStatus(database, options);
     if (committed === 'same') return;
     if (committed === 'conflict') throw new CustomerDataConflictError('This request ID was already used for a different address action.');
+    await assertCurrentCustomerScope(database,options.userId);
     throw error;
   }
 }
@@ -404,7 +426,7 @@ export async function updateCustomerProfile(database: D1Database, options: { use
   // whitespace/country-prefix presentation cannot revoke a valid proof.
   const phone=canonicalPhone && normalizeNepalMobile(current.phone)===canonicalPhone ? current.phone : canonicalPhone;
   const statements = [
-    database.prepare(`SELECT CASE WHEN EXISTS (SELECT 1 FROM users WHERE id = ? AND status = 'active'
+    database.prepare(`SELECT CASE WHEN EXISTS (SELECT 1 FROM users WHERE id = ? AND status = 'active' AND ${CURRENT_CUSTOMER_ROLE_SQL}
       AND (phone=? OR (phone IS NULL AND ? IS NULL)))
       AND (SELECT MAX(version) FROM form_config_versions WHERE form_id = 'account.profile' AND status = 'published') = ?
       AND NOT EXISTS (SELECT 1 FROM audit_logs WHERE request_id = ?)
@@ -427,6 +449,7 @@ export async function updateCustomerProfile(database: D1Database, options: { use
       customAnswers: options.answers.answers.map((answer) => ({ fieldId: answer.fieldId, value: answer.value })) });
     if (concurrent === 'same') return;
     if (concurrent === 'conflict') throw new CustomerDataConflictError('This request ID was already used for different profile values.');
+    await assertCurrentCustomerScope(database,options.userId);
     const current = await database.prepare(`SELECT MAX(version) AS version FROM form_config_versions
       WHERE form_id = 'account.profile' AND status = 'published'`).first<{ version: number | null }>();
     if (current?.version !== options.formVersion) throw new FormRuntimeError('stale_version', 'This form changed. Refresh it and review your answers.');
@@ -435,17 +458,18 @@ export async function updateCustomerProfile(database: D1Database, options: { use
 }
 
 export async function listWishlist(database: D1Database, userId: string): Promise<readonly WishlistProductRow[]> {
+  const catalogue=await publicCatalogueQuery(database);
   const result = await database.prepare(
-    `SELECT products.id, products.slug, products.name_en AS nameEn, products.name_ne AS nameNe,
-      products.price_paisa AS pricePaisa, products.inventory_quantity AS inventoryQuantity,
-      seller_profiles.trading_name AS tradingName, wishlist_items.created_at AS savedAt,
-      (SELECT product_media.id FROM product_media WHERE product_media.product_id = products.id ORDER BY product_media.sort_order LIMIT 1) AS primaryMediaId
+    `${catalogue.withClause} SELECT ${publicOfferQueryColumns(catalogue)}, CASE WHEN ${catalogue.purchasable()} THEN 1 ELSE 0 END AS purchasable, products.id, products.slug, products.name_en AS nameEn, products.name_ne AS nameNe,
+      ${catalogue.price()} AS pricePaisa, ${catalogue.stock()} AS inventoryQuantity,
+      ${publicProfileFieldSql('publicName')} AS tradingName, wishlist_items.created_at AS savedAt,
+      (SELECT product_media.id FROM product_media WHERE product_media.product_id = products.id AND ${currentProductMediaSql('product_media')} ORDER BY ${currentProductMediaOrder('product_media')} LIMIT 1) AS primaryMediaId
      FROM wishlist_items INNER JOIN products ON products.id = wishlist_items.product_id
      INNER JOIN seller_profiles ON seller_profiles.id = products.seller_id
-     WHERE wishlist_items.user_id = ? AND ${publicProductEligibility()}
+     WHERE wishlist_items.user_id = ? AND ${publicProductVisibility()}
      ORDER BY wishlist_items.created_at DESC`,
-  ).bind(userId).all<WishlistProductRow>();
-  return result.results.map(item => ({...item,nameEn:publicProductName(item.nameEn)}));
+  ).bind(userId).all<WishlistProductRow & PublicOfferQueryFields>();
+  return attachPublicOfferRows(database,result.results.map(item=>({...item,nameEn:publicProductName(item.nameEn)})),catalogue.now);
 }
 
 export async function isWishlisted(database: D1Database, userId: string, productId: string): Promise<boolean> {
@@ -488,13 +512,8 @@ export interface ReviewPhotoInput {id:string;objectKey:string;mimeType:string;si
 type ReviewFormSubmission = { formVersion: number; versionId: string; answers: FormAnswerSnapshot };
 
 export async function validateReviewFormSubmission(database: D1Database, formVersion: number, customAnswers: unknown): Promise<ReviewFormSubmission> {
-  const config = await resolvePublishedForm(database, 'account.review');
-  if (config.version !== formVersion) throw new FormRuntimeError('stale_version', 'This form changed. Refresh it and review your answers.');
-  const answers = validateAnswersForDefinition(FORM_REGISTRY['account.review'], config, customAnswers);
-  const version = await database.prepare(`SELECT id FROM form_config_versions WHERE form_id='account.review' AND status='published' AND version=? LIMIT 1`)
-    .bind(config.version).first<{ id: string }>();
-  if (!version) throw new FormRuntimeError('config_unavailable', 'Published form version unavailable');
-  return { formVersion: config.version, versionId: version.id, answers };
+  const checked = await validateSellerFormSubmission(database, 'account.review', formVersion, customAnswers);
+  return { formVersion: checked.answers.version, versionId: checked.versionId, answers: checked.answers };
 }
 
 export async function listCustomerReviewAnswerHistory(database: D1Database, userId: string,
@@ -503,7 +522,7 @@ export async function listCustomerReviewAnswerHistory(database: D1Database, user
   if (after && (!Number.isSafeInteger(after.createdAt) || after.createdAt < 0 || !after.id || after.id.length > 191))
     throw new CustomerDataConflictError('Review history cursor is invalid.');
   const rows = await database.prepare(`SELECT f.id AS answerId,f.created_at AS createdAt,o.order_number AS orderNumber
-    FROM form_answer_sets f JOIN product_reviews r ON r.id=f.subject_id AND f.subject_type='product_review'
+    FROM ${formAnswerSourceSql(database)} f JOIN product_reviews r ON r.id=f.subject_id AND f.subject_type='product_review'
     JOIN order_items i ON i.id=r.order_item_id JOIN orders o ON o.id=i.order_id
     WHERE f.form_id='account.review' AND r.customer_id=? AND o.customer_id=?
       AND (? IS NULL OR f.created_at<? OR (f.created_at=? AND f.id<?))
@@ -529,9 +548,10 @@ export async function productReviewRequestStatus(database: D1Database, options: 
   try {
     row = await database.prepare(`SELECT a.subject_id AS id,r.customer_id AS customerId,r.product_id AS productId,
         r.order_item_id AS orderItemId,a.next_json AS nextJson,f.answers_json AS answersJson,
-        v.config_json AS configJson,v.version AS savedVersion,v.published_at AS publishedAt
+        COALESCE(v.config_json,f.core_config) AS configJson,COALESCE(v.version,f.core_version) AS savedVersion,
+        COALESCE(v.published_at,f.core_published_at) AS publishedAt
       FROM audit_logs a LEFT JOIN product_reviews r ON r.id=a.subject_id
-      LEFT JOIN form_answer_sets f ON f.form_id='account.review' AND f.request_id=a.request_id
+      LEFT JOIN ${formAnswerSourceSql(database)} f ON f.form_id='account.review' AND f.request_id=a.request_id
       LEFT JOIN form_config_versions v ON v.id=f.config_version_id
       WHERE a.request_id=? AND a.action='review.submitted' AND a.subject_type='product_review' LIMIT 1`)
       .bind(options.requestId).first<typeof row & object>();
@@ -580,15 +600,15 @@ export async function createProductReview(database: D1Database, options: { userI
   try {
     await database.batch([
       ...(options.form ? [database.prepare(`SELECT CASE WHEN
-        EXISTS(SELECT 1 FROM users WHERE id=? AND status='active')
-        AND (SELECT MAX(version) FROM form_config_versions WHERE form_id='account.review' AND status='published')=?
+        EXISTS(SELECT 1 FROM users WHERE id=? AND status='active' AND ${CURRENT_CUSTOMER_ROLE_SQL})
+        AND ${currentFormVersionCondition('account.review', options.form.versionId).sql}
         AND NOT EXISTS(SELECT 1 FROM audit_logs WHERE request_id=?)
         AND NOT EXISTS(SELECT 1 FROM form_answer_sets WHERE form_id='account.review' AND request_id=?)
         AND EXISTS(SELECT 1 FROM order_items i JOIN orders o ON o.id=i.order_id
           WHERE i.id=? AND i.product_id=? AND o.customer_id=? AND o.status='delivered' AND i.fulfillment_status='delivered')
         AND NOT EXISTS(SELECT 1 FROM product_reviews WHERE order_item_id=?)
         THEN 1 ELSE json_extract('invalid','$') END AS valid`)
-        .bind(options.userId, options.form.formVersion, options.requestId, options.requestId,
+        .bind(options.userId, ...currentFormVersionCondition('account.review', options.form.versionId).bindings, options.requestId, options.requestId,
           options.orderItemId, options.productId, options.userId, options.orderItemId)] : []),
       database.prepare(
         `INSERT INTO product_reviews (id, product_id, customer_id, order_item_id, rating, title, body, status, moderation_note, moderated_by, created_at, updated_at)
@@ -610,9 +630,11 @@ export async function createProductReview(database: D1Database, options: { userI
         customAnswers: options.form.answers.answers.map((answer) => ({ fieldId: answer.fieldId, value: answer.value })), requestDigest: options.requestDigest });
       if (replay.status === 'same') return replay.id!;
       if (replay.status === 'conflict') throw new CustomerDataConflictError('This request ID was already used for different review values.');
+      await assertCurrentCustomerScope(database,options.userId);
       const current = await database.prepare(`SELECT MAX(version) AS version FROM form_config_versions WHERE form_id='account.review' AND status='published'`).first<{ version: number | null }>();
       if (current?.version !== options.form.formVersion) throw new FormRuntimeError('stale_version', 'This form changed. Refresh it and review your answers.');
     }
+    if(options.form&&!options.requestDigest)await assertCurrentCustomerScope(database,options.userId);
     const reviewed = await database.prepare(`SELECT id FROM product_reviews WHERE order_item_id=? LIMIT 1`)
       .bind(options.orderItemId).first<{ id: string }>();
     if (reviewed) throw new CustomerDataConflictError('This delivered item has already been reviewed.');
@@ -660,7 +682,7 @@ export async function moderateProductReview(database: D1Database, options: { rev
     let savedDigest: unknown;
     try { savedDigest = JSON.parse(prior.nextJson ?? '').catalogDigest; } catch { /* invalid audit is a conflict */ }
     const answer = await database.prepare(`SELECT actor_id AS actorId,config_version_id AS versionId,subject_type AS subjectType,subject_id AS subjectId
-      FROM form_answer_sets WHERE form_id='staff.review-moderation' AND request_id=? LIMIT 1`)
+      FROM ${formAnswerSourceSql(database)} moderation_answer WHERE form_id='staff.review-moderation' AND request_id=? LIMIT 1`)
       .bind(options.requestId).first<{ actorId: string; versionId: string; subjectType: string; subjectId: string }>();
     if (prior.actorId !== options.actorId || prior.action !== `review.${options.action}` ||
       prior.subjectType !== 'product_review' || prior.subjectId !== options.reviewId ||

@@ -241,10 +241,18 @@ void test('a real save links the complete receipt and applies changed Admin acce
     assert.deepEqual(JSON.parse(String(receipt.previous_json)), {
       userId: 'admin-target', permissions: ['support.manage'], version: 3, updatedBy: 'other-super', updatedAt: 20,
     });
-    assert.deepEqual(JSON.parse(String(receipt.next_json)), {
+    const nextReceipt=JSON.parse(String(receipt.next_json)) as Record<string,unknown>;
+    const {commandProof,...originalReceipt}=nextReceipt;
+    assert.deepEqual(originalReceipt, {
       id: 'save-orders', permissions: ['order.manage'], presetName: 'Order desk', version: 4,
       status: 'approved', approvalMode: 'direct',
     });
+    assert.ok(commandProof&&typeof commandProof==='object');
+    const proof=commandProof as Record<string,unknown>;
+    assert.equal(proof.version,1);assert.equal(proof.actorAuthSubject,'identity-super');
+    assert.equal(proof.action,'propose');assert.equal(proof.sourceId,'admin-target');assert.equal(proof.requestId,'save-orders');
+    assert.equal(typeof proof.inputDigest,'string');assert.match(String(proof.inputDigest),/^[a-f0-9]{64}$/);
+    assert.equal(typeof proof.answersDigest,'string');assert.match(String(proof.answersDigest),/^[a-f0-9]{64}$/);
     assert.ok(Number(receipt.created_at) >= startedAt && Number(receipt.created_at) <= Date.now());
     assert.deepEqual({ ...f.sqlite.prepare(`SELECT user_id,permissions_json,version,last_request_id,updated_by,updated_at
       FROM staff_permission_profiles WHERE user_id='admin-target'`).get() }, {
@@ -278,10 +286,11 @@ void test('a real save links the complete receipt and applies changed Admin acce
     });
     const notifications = f.sqlite.prepare(`SELECT recipient_user_id,channel,template_key,related_type,related_id,created_at
       FROM notification_messages ORDER BY channel`).all();
-    assert.deepEqual(notifications.map(row => ({ ...row })), ['email', 'in_app'].map(channel => ({
-      recipient_user_id: 'admin-target', channel, template_key: 'business.permissions.changed',
-      related_type: 'staff_permission', related_id: 'admin-target', created_at: receipt.created_at,
-    })));
+    const event=f.sqlite.prepare("SELECT id FROM team_governance_events WHERE action='access_changed' AND source_id='admin-target' AND request_id='save-orders'").get();assert.ok(event);
+    const expected=['super','other-super','dual-target','admin-target'].flatMap(recipient=>['email','in_app'].map(channel=>({recipient_user_id:recipient,channel,template_key:'business.team.governance',related_type:'team_governance_event',related_id:event.id,created_at:receipt.created_at})));
+    const key=(row:Record<string,unknown>)=>String(row.recipient_user_id)+':'+String(row.channel);
+    assert.deepEqual(notifications.map(row=>({...row})).sort((a,b)=>key(a).localeCompare(key(b))),expected.sort((a,b)=>key(a).localeCompare(key(b))));
+    assert.equal(f.sqlite.prepare("SELECT COUNT(*) n FROM notification_messages WHERE template_key='business.permissions.changed'").get()!.n,0);
     const committed = f.snapshot();
     assert.equal((await send()).status, 201);
     assert.deepEqual(f.snapshot(), committed, 'An exact retry must preserve every committed row.');

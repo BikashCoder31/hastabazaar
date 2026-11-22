@@ -35,7 +35,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
     'data:text/javascript,export const env={get DB(){return globalThis.productCatalogDb}}', shortCircuit: true };
   if (specifier === '@/lib/auth/staff') return { url: `data:text/javascript,
     export class StaffAuthorizationError extends Error {constructor(message,status){super(message);this.status=status}}
-    export async function requireStaffApi(permission){return {id:'super-one',role:'super_admin',permissions:[permission]}}`, shortCircuit: true };
+    export async function requireStaffApi(permission){return {id:'super-one',authSubject:'fixture-super-one',role:'super_admin',permissions:[permission]}}`, shortCircuit: true };
   return nextResolve(specifier, context);
 } });
 
@@ -68,8 +68,8 @@ function fixture() {
     for (const sql of readFileSync(`drizzle/${name}`, 'utf8').split('--> statement-breakpoint'))
       if (sql.trim()) sqlite.exec(sql);
   for (const [id, role] of [['super-one', 'super_admin'], ['admin-one', 'admin'], ['seller-user', 'customer']] as const) {
-    sqlite.prepare("INSERT INTO users(id,email,display_name,status,created_at,updated_at) VALUES (?,?,?,'active',1,1)")
-      .run(id, `${id}@example.test`, id);
+    sqlite.prepare("INSERT INTO users(id,auth_subject,email,display_name,status,created_at,updated_at) VALUES (?,?,?,?,'active',1,1)")
+      .run(id, `fixture-${id}`, `${id}@example.test`, id);
     sqlite.prepare('INSERT INTO user_roles(user_id,role,assigned_at) VALUES (?,?,1)').run(id, role);
   }
   sqlite.prepare(`INSERT INTO seller_profiles(id,user_id,legal_name,trading_name,registration_authority,
@@ -259,19 +259,21 @@ void test('mounted product decisions render configured context and retain opaque
     import {HomepageVisibilityControl} from './components/admin/homepage-visibility-control';
     createRoot(document.getElementById('root')).render(<>
       <ProductReviewActions productId="review-product" status="submitted" />
-      <HomepageVisibilityControl productId="homepage-product" productName="Fictional product" hidden={false} version={0} lastReason={null} />
+      <HomepageVisibilityControl actorId="super-one" productId="homepage-product" productName="Fictional product" hidden={false} version={0} lastReason={null} />
     </>);
   `, resolveDir: process.cwd(), loader: 'tsx' }, bundle: true, write: false,
     platform: 'browser', format: 'iife', define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'product-client-stubs', setup(bundler) {
       bundler.onResolve({ filter: /^@\/components\/forms\/form-config-client$/ }, () => ({ path: 'form-config', namespace: 'product-stub' }));
       bundler.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'product-stub' }));
+      bundler.onResolve({ filter: /^next\/link$/ }, () => ({ path: 'link', namespace: 'product-stub' }));
       bundler.onResolve({ filter: /^@\/components\/ui\/alert-dialog$/ }, () => ({ path: 'dialog', namespace: 'product-stub' }));
       bundler.onLoad({ filter: /^form-config$/, namespace: 'product-stub' }, () => ({ contents: `
         const config=(formId)=>({formId,version:1,publishedAt:1,fields:[{id:'context_note',key:'context_note',label:'Staff context',type:'short_text',required:true,order:0,status:'active'}]});
         export function usePublishedFormConfig(formId){return {config:config(formId),canSubmit:true,status:'ready',message:'',refresh(){},handleSubmissionResponse(){return true}}}
       `, loader: 'js' }));
       bundler.onLoad({ filter: /^navigation$/, namespace: 'product-stub' }, () => ({ contents: 'export function useRouter(){return {refresh(){}}}', loader: 'js' }));
+      bundler.onLoad({ filter: /^link$/, namespace: 'product-stub' }, () => ({ resolveDir: process.cwd(), contents: "import React from 'react';export default function Link(props){return <a {...props}/>}", loader: 'tsx' }));
       bundler.onLoad({ filter: /^dialog$/, namespace: 'product-stub' }, () => ({ resolveDir: process.cwd(), contents: `
         import React from 'react';
         export function AlertDialog({open,children}){return open?<div role="dialog">{children}</div>:null}
@@ -321,10 +323,11 @@ void test('mounted product decisions render configured context and retain opaque
     await homepage.getByLabel('Staff context').fill('Fictional placement evidence');
     await homepage.getByRole('button', { name: 'Hide from homepage' }).click();
     await homepage.getByText('Uncertain decision response').waitFor();
-    await homepage.getByRole('button', { name: 'Hide from homepage' }).click();
+    await homepage.getByRole('button', { name: 'Retry original action' }).click();
     await page.waitForFunction(() => document.querySelector('form[data-form-id="staff.homepage-visibility"]')?.textContent?.includes('Uncertain decision response'));
     assert.equal(homepageBodies.length, 2);
     assert.equal(homepageBodies[0].requestId, homepageBodies[1].requestId);
+    assert.deepEqual(homepageBodies[0], homepageBodies[1], 'The original homepage action is retried unchanged');
     assert.equal(homepageBodies[0].formVersion, 1);
     assert.equal((homepageBodies[0].customAnswers as { fieldId: string }[])[0].fieldId, 'context_note');
   } finally { await browser.close(); }

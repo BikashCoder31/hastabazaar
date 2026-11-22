@@ -71,14 +71,15 @@ void test('customer, seller, and staff navigation wrap labels instead of truncat
   assert.doesNotMatch(buttonVariants, /\[&>span:last-child\]:truncate/);
   assert.match(buttonVariants, /\[&>span:last-child\]:whitespace-normal/);
   assert.match(buttonVariants, /\[&>span:last-child\]:break-words/);
-  assert.match(
-    account,
-    /grid-cols-1 gap-1 min-\[360px\]:grid-cols-2 sm:grid-cols-4/,
-  );
-  assert.match(
-    seller,
-    /grid-cols-1 gap-1 min-\[380px\]:grid-cols-2 sm:grid-cols-3/,
-  );
+  assert.match(account, /<details className="[^"]*\blg:hidden\b[^"]*">/);
+  assert.match(account, /const baseLink = '[^']*\bmin-w-0\b[^']*'/);
+  assert.doesNotMatch(account, /(?:className="[^"]*|const baseLink = '[^']*)\b(?:truncate|whitespace-nowrap)\b/);
+  assert.match(seller, /<nav aria-label="Seller quick links" className="seller-mobile-tabs">/);
+  assert.match(seller, /aria-label="Open seller menu" aria-haspopup="dialog"/);
+  assert.match(seller, /<WorkspaceLinks\b[^>]*label="All seller pages"[^>]*\/>/);
+  assert.match(seller, /<nav aria-label=\{label\}>\s*<ul className="grid\b[^"]*">\{rows\(false\)\}<\/ul>/);
+  assert.match(seller, /<span className="min-w-0 flex-1">\{section\.label\}<\/span>/);
+  assert.doesNotMatch(seller, /className="[^"]*\b(?:truncate|whitespace-nowrap)\b[^"]*"/);
   // The searchable staff menu now collapses on mobile; labels must still wrap.
   assert.match(admin, /className="min-w-0 whitespace-normal"/);
   assert.doesNotMatch(admin, /className="[^"]*\btruncate\b[^"]*"/);
@@ -95,7 +96,7 @@ void test('Super Admin homepage product titles wrap inside narrow preview cards'
 
   assert.match(
     adminHome,
-    /className="block min-w-0 break-words font-semibold hover:underline"/,
+    /className="section-link block min-w-0 wrap-anywhere text-base underline"/,
   );
   assert.doesNotMatch(
     adminHome,

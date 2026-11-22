@@ -29,7 +29,6 @@ export async function POST(request: Request) {
       { status: 403 },
     );
   try {
-    const staff = await requireStaffApi('catalog.manage');
     let body: {
       action?: string;
       requestId?: string;
@@ -53,6 +52,9 @@ export async function POST(request: Request) {
       );
     if (['action', 'requestId', 'formVersion', 'customAnswers'].some((key) => Object.hasOwn(body.data!, key)))
       return Response.json({ error: 'Protected governance fields must be submitted separately.' }, { status: 400 });
+    const incidentAction=body.action==='incident.create'||body.action==='incident.update';
+    const staff=await requireStaffApi(incidentAction?'system.incidents.manage':'catalog.manage');
+    if(incidentAction)return Response.json({error:'Use the System health incident workspace. Legacy history is retained and cannot be resolved through this older form.',href:'/admin/system-health/incidents'+(typeof body.data.id==='string'?'?legacy='+encodeURIComponent(body.data.id):'')},{status:409,headers:{'Cache-Control':'no-store'}});
     const db = requireDatabase(env as unknown as { DB?: D1Database });
     const formId = formForAction[body.action as keyof typeof formForAction];
     if (!formId && (body.formVersion !== undefined || body.customAnswers !== undefined))

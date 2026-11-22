@@ -3,11 +3,12 @@ import test from 'node:test';
 import { readFile, mkdir } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { build } from 'esbuild';
+import {STAFF_ACCESS_RIGHTS} from '../lib/staff/access';
 import type { Page } from 'playwright';
 import { stubFixtureLink } from './helpers/browser-fixture-link';
 
 const fixture = `
-import React from 'react'; import {createRoot} from 'react-dom/client';
+import React from 'react'; import {createRoot} from 'react-dom/client'; import {flushSync} from 'react-dom';
 import {StaffPermissionManager} from './components/admin/staff-permission-manager';
 const members=[
  {userId:'maya',displayName:'Maya Rai',email:'maya@example.test',permissions:['order.manage'],version:3,updatedAt:0,updatedBy:'owner'},
@@ -19,7 +20,8 @@ const base={actorId:'owner',members,presets:[
  {id:'reserved',name:'Reserved template',permissionsJson:'["admin.invite"]'}],
  staffNames:{owner:'Asha Sharma',maya:'Maya Rai',nima:'Nima Sherpa'},requests:[],history:[]};
 const root=createRoot(document.getElementById('root'));
-window.renderStaff=(patch={})=>root.render(<StaffPermissionManager {...base} {...patch}/>);
+// The test checks the DOM immediately after applying these new server props.
+window.renderStaff=(patch={})=>flushSync(()=>root.render(<StaffPermissionManager {...base} {...patch}/>));
 window.fixtureMembers=members;
 window.renderStaff();
 `;
@@ -117,10 +119,7 @@ void test('staff access editor uses real mounted drafts and protected history', 
           },
         });
       if (path === '/api/admin/staff-permissions') {
-        bodies.push(route.request().postDataJSON());
-        return route.fulfill({
-          json: { id: 'saved-request', message: 'Permissions saved.' },
-        });
+        const body:unknown=route.request().postDataJSON();assert.ok(body&&typeof body==='object'&&!Array.isArray(body));const payload=body as Record<string,unknown>;bodies.push(payload);assert.equal(route.request().headers()['x-hastabazaar-actor'],'owner');const action=payload.action,nonce=action==='propose'?payload.requestId:payload.formRequestId,sourceId=action==='propose'?payload.userId:payload.requestId;assert.ok(typeof nonce==='string'&&typeof sourceId==='string');return route.fulfill({json:{recorded:true,phase:'recorded',actorId:'owner',action,requestId:nonce,sourceId,id:action==='propose'?nonce:sourceId,status:action==='reject'?'rejected':'approved',message:'Original permission action recorded.'}});
       }
       return route.fulfill({
         contentType: 'text/html',
@@ -191,7 +190,7 @@ void test('staff access editor uses real mounted drafts and protected history', 
             await page
               .getByRole('region', { name: 'Staff summary' })
               .innerText(),
-            /1 of 9/,
+            new RegExp('1 of '+STAFF_ACCESS_RIGHTS.length),
           );
           assert.match(
             await page
@@ -213,7 +212,7 @@ void test('staff access editor uses real mounted drafts and protected history', 
               exact: true,
             })
             .click();
-          await page.getByText('Permissions saved.', { exact: true }).waitFor();
+          await page.getByText('The original staff access action is recorded. Review current access separately; this confirmation does not claim those grants are still effective.', { exact: true }).waitFor();
           assert.deepEqual(bodies[0].permissions, [
             'product.review',
             'product.publish',
@@ -244,7 +243,7 @@ void test('staff access editor uses real mounted drafts and protected history', 
           });
           await page
             .getByRole('region', { name: 'Staff summary' })
-            .getByText(/2 of 9/)
+            .getByText(new RegExp('2 of '+STAFF_ACCESS_RIGHTS.length))
             .waitFor();
           assert.equal(
             await page

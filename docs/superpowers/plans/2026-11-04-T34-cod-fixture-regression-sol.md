@@ -1,0 +1,38 @@
+# T34 first-COD fixture correction and read-only regression triage
+
+Scope: `C:/Users/abinash/Desktop/HastaBazaar` only. Owned implementation file: `tests/first-cod-confirmation-route.test.ts`. No shared helper or application source changed. No canonical database, launcher, Git settings, Git mutation, deployment, actual mail/money or seller approval operation. Root retained the full-suite/heavy execution slot; this worker ran only the inspected in-memory COD test file.
+
+Read AGENTS.md, LOCAL-START.md, current implementation progress, implementation part6, order/customer-care workspace and seller-response requirements, order-fulfillment architecture, T29 reminder evidence, first-COD module/tests and actual fulfillment command order. Required confirmation precedes preparation and original6/12-hour release clocks. No changed clock or production authorization behavior.
+
+## Proven fixture cause and bounded correction
+
+The original empty migrated in-memory database had a buyer/admin/outsider and held order, but no seller owner/profile/product/items. Current `transitionPreparation` checks actual active ownership, then eligible selected items, before first-COD confirmation. The test called both seller actions as the customer and consequently never exercised the COD gate.
+
+Added a fictional active seller/role, owned approved profile, category and product, plus one confirmed and one packing item. Each item carries245,000 merchandise paisa, preserving original490,000 subtotal/10,000 delivery/500,000 total. The different item states provide the real `from` precondition for each action; no action is falsely claimed to progress while held. The owner calls retain the exact `/awaiting.*confirmation/` expectation. A separate buyer call requires the active-owner refusal. `total_changes()` proves the wrong-owner and both COD-held preparation calls perform zero writes.
+
+All original admin dispatch/deliver, parcel preparation, delivery assignment, origin/auth/body/current permission, exact replay, conflicting replay, single audit decision, customer wording and notification assertions remain.
+
+Command: `node --import tsx --test --test-concurrency=1 tests/first-cod-confirmation-route.test.ts`.
+
+- Before:2/3 pass,1fail,12.160s; original owner-denial mismatch reproduced. `before.tap` retains actual output.
+- Initial correction:3/3 pass,0skip, exit0,7.522s (`after.tap`).
+- Final source after readable formatting:3/3 pass,0skip, exit0,7.496s (`final.tap`).
+- Final test SHA256: `857aa05a84dd89a0d3b1bc5f66c6e02759f39df7a2e5568f55e57ff832a55f45`.
+
+Artifacts: `.test-artifacts/t34/cod-fixture-regression-sol-20261104/`. `source-sha256.json` also binds the inspected triage source. No lint/compiler/browser/native-D1/build command was launched by this worker.
+
+## Read-only classification of newly unassigned full-suite failures
+
+Source: `.test-artifacts/t34/full-npm-test-20261104-1446.tap`. Final bounded snapshot at2026-11-04T16:12:18Z:574,436bytes, last completed case1471; the suite was still active. `failures-final-snapshot.json` retains exact blocks since1148 plus log time/tail. Earlier repaired groups and active form-access/account/privacy owners were excluded from duplicate work. No aggregate pass is inferred and no classified file below was edited.
+
+| Original case(s) | Affected files and observed cause | Recommended fresh owner/work |
+|---|---|---|
+|1286,1311|`tests/form-catalog-commerce-success.test.ts`, `tests/form-catalog-commerce.test.ts`: mounted CheckoutForm omits `paymentCapabilities`; current component deliberately defaults both COD/manual-bank to false/unknown and disables submit. Contact/form mocks alone cannot make it eligible.|Sol: supply explicit genuine fictional capability preconditions in the tests and preserve all malformed-success/ambiguity/replay assertions. Check current checkout recovery behavior before copying older expectations. Escalate consequential runtime findings.|
+|1305,1307|`tests/form-catalog-commerce.test.ts`: `caseDatabase` inserts seller/profile/product and historical terms but no protected revision/public-profile state or verified owner document evidence. Current `publicCatalogueQuery` inner-joins those readiness records and checks verified identity. Repository1305 stops at cart unavailable; route1307 gives503. This is an incomplete-current-readiness fixture, not evidence that the availability guard is wrong.|Same fresh Sol owning the two commerce tests: establish actual current fictional readiness/offer prerequisites and exact reviewed quote; preserve order/answer atomicity, changed-payload rejection and duplicate answer count. Confirm route503 response cause after reaching the genuine ready path.|
+|1310|`tests/form-catalog-commerce.test.ts`: isolated aftercare bundle stubs only `next/navigation`; actual CustomerAftercare imports `next/link`, so esbuild cannot resolve it.|Same Sol: faithful Link shim patterned on neighboring mounted tests; no application dependency workaround.|
+|1378,1380–1382|`tests/form-catalog-form-answers-d1.test.ts`: handcrafted disposable native schema applies0056(+0081) but omits0151. Current `buildFormAnswerInsert` names `health_environment`/`health_release_id`; actual error is missing health_environment column before expected assertions.|Fresh Sol, coordinated with root's heavy slot: repair disposable current migration dependencies; preserve native compatible-version revocation, rollback, safe-type and immutable-core-receipt tests. No canonical D1 access.|
+|1383–1385,1387,1389–1390|`tests/form-catalog-governance-domain.test.ts`: handcrafted in-memory schema applies0056 only. Direct failures name the same missing health_environment column; route failures hide that as generic500 instead of expected200/409.|Same schema-fixture Sol: apply faithful current form schema/dependencies in the fixture; keep five governance actions, history/current-grant proof, exact replay and stale publication rollback assertions. Further failures after repairing the schema require renewed diagnosis.|
+|1313|`tests/form-catalog-coverage.test.ts`, `tests/helpers/form-policy*.ts`, registry and26 reported UI form sites. Mixed cause: scanner resolves direct literals/conditionals and simple string consts but rejects a const initialized by a conditional (GiftCardForm); several other actual forms omit an ID (document-change request, manual-payment, system-health records), and protected wrappers sometimes emit an undefined ID. This is not safely dismissed as scanner drift.|Fresh Astra: audit actual submit/adapter/registry ownership at all26 sites; separate scanner-expression support from genuinely missing form integration. Preserve empty historical exemption ledger and current capability/privacy/answer contracts; do not blanket exempt or merely remove assertions. Coordinate document-change owner.|
+|1399|`tests/form-catalog-history-links.test.ts`: mock CancellationReviewControl unconditionally emits `data-live-decision`, ignoring `canDecide=false`. Actual section now always mounts the real control so an original pending/settlement attempt can recover; the real fieldset is disabled when decisions are unavailable. The old stub makes a recovery-capable container look like a new-decision affordance.|Fresh Sol: use a prop-faithful stub for the history-link contract and a real control render/behavior assertion that completed reviews cannot make new decisions while permitted original recovery remains. Preserve encoded original history links and cancellation completion evidence.|
+
+No newly unassigned failure was observed between1400 and1471 in this snapshot. Later suite output still needs root reconciliation.

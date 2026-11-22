@@ -18,11 +18,15 @@ import { FORM_REGISTRY } from '../lib/forms/registry';
 import { validateAnswersForDefinition, validateFormDraft } from '../lib/forms/validation';
 
 declare global {
+  var settingsCatalogCreateElement: typeof createElement;
   var settingsCatalogConfigs: Record<string, unknown>;
   var settingsRouteDatabase: D1Database;
   var settingsRouteActor: { id: string; role: 'super_admin' } | null;
 }
+globalThis.settingsCatalogCreateElement = createElement;
 registerHooks({ resolve(specifier, context, nextResolve) {
+  if(specifier==='next/link')return{url:'data:text/javascript,export default function Link({children,...props}){return globalThis.settingsCatalogCreateElement("a",props,children)}',shortCircuit:true};
+  if(specifier==='next/navigation')return{url:'data:text/javascript,export const useRouter=()=>({refresh(){}});export const usePathname=()=>"/admin/business-settings";export const useSearchParams=()=>new URLSearchParams();',shortCircuit:true};
   if (specifier === 'cloudflare:workers') return { url: `data:text/javascript,
     export const env={get DB(){return globalThis.settingsRouteDatabase},
       HASTABAZAAR_RUNTIME_ENV:'local_staging',APP_ORIGIN:'http://localhost:3000'}`, shortCircuit: true };
@@ -78,7 +82,7 @@ async function fixture(withCustomFields = true) {
       ip_hash TEXT,created_at INTEGER);
     INSERT INTO users VALUES('admin-a','active','Admin A'),('admin-b','active','Admin B');
     INSERT INTO user_roles VALUES('admin-a','super_admin'),('admin-b','super_admin');`);
-  for (const migration of ['0044_business_configuration.sql', '0055_homepage_hero_carousel.sql', '0056_form_catalog.sql']) {
+  for (const migration of ['0044_business_configuration.sql', '0055_homepage_hero_carousel.sql', '0056_form_catalog.sql','0151_form_health_records.sql']) {
     const sql = await readFile(new URL(`../drizzle/${migration}`, import.meta.url), 'utf8');
     for (const part of sql.split('--> statement-breakpoint')) if (part.trim()) sqlite.exec(part);
   }
@@ -172,7 +176,8 @@ void test('direct settings save retains date, capability, version and authority 
       value: 1200, actorId: 'admin-a', reason: 'SIMULATED sufficient commission notice', requestId: 'direct-notice',
       now: 100, effectiveFrom: 100 + 15 * 86400000, expectedVersion: 0, form: form('staff.business-settings-manager') });
     assert.equal(saved.status, 'published');
-    assert.equal((await settingsRepository.getEffectiveBusinessSetting(database, saved.key, 100)).source, 'default');
+    await assert.rejects(settingsRepository.getEffectiveBusinessSetting(database, saved.key, 100),
+      /No effective published commission rate/);
     assert.equal((await settingsRepository.getEffectiveBusinessSetting(database, saved.key, 100 + 15 * 86400000)).value, 1200);
   } finally { sqlite.close(); }
 });
@@ -185,9 +190,10 @@ void test('actual settings save route returns an authoritative publication rathe
     const { POST } = await import('../app/api/admin/business-settings/route');
     const response = await POST(new Request('http://localhost/api/admin/business-settings', { method: 'POST',
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save',
-        key: 'managed_sale_linked_platform_retention_bps', value: 800, reason: 'SIMULATED single save route',
+        key: 'official_social_links', value: officialLinks, reason: 'SIMULATED single save route',
         expectedVersion: 0, effectiveFrom: null, requestId: 'route-direct-save', sourceFormId: 'staff.business-settings-manager',
         formVersion: 1, customAnswers: [{ fieldId: 'review_context', value: 'Approved fixture context' }] }) }));
+    const retired=await POST(new Request('http://localhost/api/admin/business-settings',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'save',key:'managed_sale_linked_platform_retention_bps',value:800,reason:'The old solo fee route must remain retired.',expectedVersion:0,requestId:'retired-solo-fee',sourceFormId:'staff.business-settings-manager',formVersion:1,customAnswers:[{fieldId:'review_context',value:'Reviewed fixture context'}]})}));assert.equal(retired.status,409);
     assert.equal(response.status, 201);
     const body = await response.json() as { ok: boolean; action: string; version: { status: string }; draft?: unknown };
     assert.equal(body.ok, true);
@@ -367,7 +373,7 @@ void test('all settings source IDs and conditional actions enforce live required
     { key: 'homepage_hero_slides', formId: 'staff.homepage-hero-manager', value: INITIAL_HOMEPAGE_HERO_SLIDES, actions: ['draft', 'publish', 'reverse'] },
     { key: 'homepage_occasion_slides', formId: 'staff.homepage-occasion-manager', value: INITIAL_HOMEPAGE_OCCASION_SLIDES, actions: ['draft', 'publish', 'reverse'] },
     { key: 'official_social_links', formId: 'staff.business-settings-manager', value: officialLinks, actions: ['draft', 'publish', 'reverse'] },
-    { key: 'independent_seller_commission_bps', formId: 'staff.business-settings-manager', value: 1200, actions: ['submit', 'approve', 'reject'] },
+    { key: 'platform_service_fee_policy', formId: 'staff.business-settings-manager', value: {enabled:true,amountPaisa:700}, actions: ['submit', 'approve', 'reject'] },
   ] as const;
   for (const source of sources) for (const action of source.actions) await t.test(`${source.formId}:${action}`, async () => {
     const { sqlite, database } = await fixture();
@@ -429,9 +435,9 @@ void test('all three settings managers render their own published custom control
   const { HomepageOccasionManager } = await import('../components/admin/homepage-occasion-manager');
   const { BusinessSettingsManager } = await import('../components/admin/business-settings-manager');
   const html = [
-    renderToStaticMarkup(createElement(HomepageHeroManager, { initialSlides: [], initialMedia: [], history: [], asOf: 1 })),
-    renderToStaticMarkup(createElement(HomepageOccasionManager, { initialSlides: [], history: [], asOf: 1 })),
-    renderToStaticMarkup(createElement(BusinessSettingsManager, { initialSettings: [{
+    renderToStaticMarkup(createElement(HomepageHeroManager, { actorId: 'admin-a', initialSlides: [], initialMedia: [], history: [], asOf: 1 })),
+    renderToStaticMarkup(createElement(HomepageOccasionManager, { actorId: 'admin-a', initialSlides: [], history: [], asOf: 1 })),
+    renderToStaticMarkup(createElement(BusinessSettingsManager, {actorId:'reviewer', initialSettings: [{
       key: 'official_social_links', label: 'Social links', description: 'Official links', sensitivity: 'public_content',
       changeControl: 'simple', effectiveMode: 'immediate', snapshotOnTransaction: false,
       affectedSurfaces: [], requiredCapability: null, effective: { key: 'official_social_links',
@@ -649,8 +655,8 @@ void test('both settings routes accept a validated large custom snapshot while r
         created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
         VALUES('large-settings-v2',?,2,1,'published',?,'Large fixture','admin-a',2,'admin-a',2,'admin-a',2,'large-settings-publish')`)
         .run(formId,JSON.stringify({formId,fields}));
-      const parent=endpoint==='change'?await createBusinessSettingDraft(database,{key:'independent_seller_commission_bps',
-        value:1200,actorId:'admin-a',reason:'Fictional controlled setting',requestId:'large-fixture-draft',now:100}):null;
+      const parent=endpoint==='change'?await createBusinessSettingDraft(database,{key:'platform_service_fee_policy',
+        value:{enabled:true,amountPaisa:700},actorId:'admin-a',reason:'Fictional controlled setting',requestId:'large-fixture-draft',now:100}):null;
       const body={key:'official_social_links',value:officialLinks,action:parent?'submit':'draft',expectedRevision:1,
         reason:'Fictional large-context setting',requestId:'large-custom-context',sourceFormId:formId,formVersion:2,
         customAnswers:fields.map(field=>({fieldId:field.id,value:'Fictional detail'.repeat(300)}))};

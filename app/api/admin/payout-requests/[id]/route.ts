@@ -8,9 +8,21 @@ import {
   processPayoutRequest,
 } from '@/lib/db/repositories/payouts';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
+import {hasActorIntentMismatch} from '@/lib/http/actor-intent';
+import {readPayoutRequestFinanceScope} from '@/lib/admin/finance-work-items';
 import { isValidatedFormVersionStale, validateSellerFormSubmission } from '@/lib/forms/submission';
 import { FormRuntimeError } from '@/lib/forms/runtime';
 import { FormValidationError } from '@/lib/forms/validation';
+export async function GET(request:Request,context:{params:Promise<{id:string}>}){
+ try{
+  const actor=await requireStaffApi('payout.prepare');if(hasActorIntentMismatch(request,actor.id))throw new StaffAuthorizationError('The signed-in account changed. Refresh this Finance view before using its retained fields.',403);
+  const {id}=await context.params,attempt=new URL(request.url).searchParams.get('attempt');if(!attempt||attempt.length>191)return Response.json({error:'Use the original saved request reference.'},{status:400});
+  const db=requireDatabase(env as unknown as {DB?:D1Database}),source=await readPayoutRequestFinanceScope(db,actor.id,id);if(!source)return Response.json({error:'The original request is unavailable.'},{status:404});
+  const saved=await db.prepare("SELECT id FROM payout_requests WHERE id=? AND operation_request_id=? AND processed_by=? AND status IN('prepared','rejected')").bind(source.id,attempt,actor.id).first<{id:string}>();
+  const current=await readPayoutRequestFinanceScope(db,actor.id,id);if(!current)return Response.json({error:'The original request is unavailable.'},{status:404});
+  return Response.json({outcome:saved?{id:saved.id}:null,currentStatus:current.status},{headers:{'Cache-Control':'private, no-store',Vary:'Cookie'}});
+ }catch(error){return Response.json({error:error instanceof StaffAuthorizationError?error.message:'The original request outcome could not be checked.'},{status:error instanceof StaffAuthorizationError?error.status:503,headers:{'Cache-Control':'private, no-store'}});}
+}
 export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
@@ -23,6 +35,7 @@ export async function POST(
     );
   try {
     const staff = await requireStaffApi('payout.prepare');
+    if(hasActorIntentMismatch(request,staff.id))throw new StaffAuthorizationError('The signed-in account changed. Refresh this Finance view before using its retained fields.',403);
     const body = (await readBoundedJsonObject(request)) as {
       action?: 'prepare' | 'reject';
       note?: string;

@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import {RecordedDateRangeFields} from '@/components/admin/recorded-date-range-fields';
 import {RecordedTime} from '@/components/admin/recorded-time';
 import {dateCalendar} from '@/lib/dates/nepal-calendar';
@@ -14,6 +15,14 @@ import { listBusinessActivity, auditDestination, type BusinessActivity } from '@
 import { getAdminWorkSummary } from '@/lib/db/repositories/admin-workspace';
 import { loadQueryPresentationConfig, queryFieldPresentation } from '@/lib/catalog/shop-query';
 export const dynamic='force-dynamic';
+
+function ActivityRecord({ event }: { event: BusinessActivity }) {
+ const href = auditDestination(event.subjectType, event.subjectId);
+ return href
+  ? <Link className="section-link wrap-anywhere min-w-11 underline" href={href} prefetch={false}>{event.subjectType}: {event.subjectId}</Link>
+  : event.subjectType;
+}
+
 export default async function BusinessActivityPage({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}) {
  const staff=await requireStaffPage('/admin/activity','audit_log.view');if(staff.role!=='super_admin')notFound();
  const db=requireDatabase(env as unknown as {DB?:D1Database});const params=await searchParams;const filters=Object.fromEntries(['action','actor','type','from','to','calendar'].map(k=>[k,typeof params[k]==='string'?params[k]:undefined]));
@@ -22,7 +31,7 @@ export default async function BusinessActivityPage({searchParams}:{searchParams:
  const work=await getAdminWorkSummary(db,staff.role);
  const presentation=await presentationPromise;
  const queues=[['Seller applications awaiting review',work.sellers,'/admin/sellers'],['Products awaiting review',work.products,'/admin/products'],['Orders with items ready for pickup',work.readyOrders,'/admin/orders'],['Active returns',work.returns,'/admin/cases'],['Active complaints',work.complaints,'/admin/cases'],['Seller payout requests awaiting preparation',work.payoutRequests,'/admin/payouts'],['Payouts awaiting Super Admin decision',work.approvals?.payouts??0,'/admin/payouts'],['Returns awaiting high-value decision',work.approvals?.highValueRefunds??0,'/admin/cases']] as const;
- return <div className="space-y-6"><header><p className="eyebrow">Super Admin</p><h1 className="mt-2 font-heading text-4xl">Business activity</h1><p className="mt-3 text-muted-foreground">Current work and recorded business actions. Counts below describe records in their current state; they are not counts of completed approvals or staff performance.</p></header>
+ return <div className="space-y-6"><header><AdminPageTitle><h1 className="font-heading text-4xl">Business activity</h1></AdminPageTitle><p className="mt-3 text-muted-foreground">Current work and recorded business actions. Counts below describe records in their current state; they are not counts of completed approvals or staff performance.</p></header>
  <section aria-label="Current work" className="grid gap-3 sm:grid-cols-2">{queues.map(([label,count,href])=><Link key={label} href={href} className="rounded-xl border p-4"><strong className="text-2xl">{count}</strong><span className="block mt-2">{label}</span><span className="mt-2 block text-sm underline">Open review queue</span></Link>)}</section>
  <RecordedProgressSection db={db} staff={staff} filters={filters}/>
  <section className="rounded-xl border p-4"><h2 className="font-semibold">Recorded actions</h2><p className="mt-2 text-sm text-muted-foreground">Latest 100 matching audit records. Older actions appear only if the application recorded them at the time. Parcel history recorded before audit coverage remains in its original event records. An audit action records a business event, not proof that every related obligation is complete. Private notes and raw before/after data are excluded.</p>
@@ -33,7 +42,52 @@ export default async function BusinessActivityPage({searchParams}:{searchParams:
     emptyDateHelp="No date selected; this side of the action-history range is unrestricted.">
     {(['action','actor','type'] as const).map(key=>{const field=queryFieldPresentation('staff.activity-filter',presentation.config,key,{label:({action:'Exact action',actor:'Exact actor ID',type:'Exact record type'})[key]});return <Field className="min-w-0" key={key}><FieldLabel htmlFor={'activity-'+key}>{field.label}</FieldLabel><Input id={'activity-'+key} type="text" name={key} maxLength={160} defaultValue={filters[key]??''} placeholder={field.placeholder} aria-describedby={field.helpText?'activity-'+key+'-help':undefined}/>{field.helpText?<FieldDescription id={'activity-'+key+'-help'}>{field.helpText}</FieldDescription>:null}</Field>;})}
   </RecordedDateRangeFields>
-  <div className="flex flex-wrap items-center gap-3"><Button type="submit">Filter recorded actions</Button><Link href="/admin/activity" className="p-2 text-sm underline">Clear filters</Link></div>
+  <div className="flex flex-wrap items-center gap-3"><Button variant="workspace-primary" size="workspace" type="submit">Filter recorded actions</Button><Link href="/admin/activity" className="section-link underline">Clear filters</Link></div>
  </form>{presentation.unavailable?<output className="mt-2 block text-sm text-muted-foreground">Filter presentation is unavailable. Standard filters remain available.</output>:null}
- {error?<p role="alert" className="mt-4">{error}</p>:<div className="mt-4 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr>{['Date (AD / BS) · Nepal time','Actor','Recorded action','Record'].map(h=><th className="p-3" key={h}>{h}</th>)}</tr></thead><tbody>{events.map(event=>{const href=auditDestination(event.subjectType,event.subjectId);return <tr className="border-t" key={event.id}><td className="p-3"><RecordedTime timestamp={event.createdAt}/></td><td className="p-3">{event.actorName??'Unattributed'}<span className="block text-xs">{event.actorId??'No actor ID recorded'}</span></td><td className="p-3">{event.action}</td><td className="p-3">{href?<Link className="underline" href={href}>{event.subjectType}: {event.subjectId}</Link>:event.subjectType}</td></tr>})}</tbody></table>{!events.length?<p className="p-3">No recorded actions match these filters.</p>:null}</div>}</section></div>;
+ {error ? <p role="alert" className="mt-4">{error}</p> : events.length === 0 ? (
+  <p className="mt-4 p-3">No recorded actions match these filters.</p>
+ ) : <>
+  <ul aria-label="Recorded actions" className="mt-4 divide-y border-y text-sm md:hidden">
+   {events.map(event => (
+    <li key={event.id} className="space-y-3 py-3">
+     <p className="wrap-anywhere font-semibold">{event.action}</p>
+     <dl className="grid grid-cols-2 gap-3">
+      <div className="min-w-0">
+       <dt className="font-medium text-muted-foreground">Date</dt>
+       <dd><RecordedTime timestamp={event.createdAt} /></dd>
+      </div>
+      <div className="min-w-0 wrap-anywhere">
+       <dt className="font-medium text-muted-foreground">Actor</dt>
+       <dd>{event.actorName ?? 'Unattributed'}<span className="block text-xs">{event.actorId ?? 'No actor ID recorded'}</span></dd>
+      </div>
+      <div className="col-span-2 min-w-0 wrap-anywhere">
+       <dt className="font-medium text-muted-foreground">Record</dt>
+       <dd><ActivityRecord event={event} /></dd>
+      </div>
+     </dl>
+    </li>
+   ))}
+  </ul>
+  <table aria-label="Recorded actions" className="mt-4 hidden w-full table-fixed text-left text-sm md:table">
+   <thead>
+    <tr>
+     <th scope="col" className="w-[22%] p-3">Date (AD / BS) · Nepal time</th>
+     <th scope="col" className="w-[23%] p-3">Actor</th>
+     <th scope="col" className="w-[25%] p-3">Recorded action</th>
+     <th scope="col" className="p-3">Record</th>
+    </tr>
+   </thead>
+   <tbody>
+    {events.map(event => (
+     <tr className="border-t" key={event.id}>
+      <td className="p-3"><RecordedTime timestamp={event.createdAt} /></td>
+      <td className="wrap-anywhere p-3">{event.actorName ?? 'Unattributed'}<span className="block text-xs">{event.actorId ?? 'No actor ID recorded'}</span></td>
+      <td className="wrap-anywhere p-3">{event.action}</td>
+      <td className="wrap-anywhere p-3"><ActivityRecord event={event} /></td>
+     </tr>
+    ))}
+   </tbody>
+  </table>
+ </>}
+ </section></div>;
 }

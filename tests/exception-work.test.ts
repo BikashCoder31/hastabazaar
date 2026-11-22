@@ -68,7 +68,12 @@ void test('exception work is source-bound, idempotent, assigned safely and never
  await assert.rejects(()=>updateExceptionWork(f.db,{id,actorId:'admin',version:0,ownerId:'seller',nextAction:'Invalid stale owner change.',note:'This must fail safely.',requestId:'stale',now:1200}));
  assert.equal(f.sqlite.prepare("SELECT status FROM shipping_jobs WHERE id='job'").get()?.status,'delivery_failed');
  assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM exception_work_events WHERE work_id=?").get(id)?.n,2);
- assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM notification_messages').get()?.n,2);
+ const notices=f.sqlite.prepare('SELECT recipient_user_id,audience_role,channel,template_key,related_type,related_id,request_id FROM notification_messages ORDER BY recipient_user_id,channel').all();
+ assert.deepEqual(notices.map(row=>[row.recipient_user_id,row.channel]),[['finance','email'],['finance','in_app'],['super','email'],['super','in_app']]);
+ assert.equal(new Set(notices.map(row=>row.request_id)).size,4);
+ for(const row of notices){assert.equal(row.audience_role,'staff');assert.equal(row.template_key,'business.exception.assigned');assert.equal(row.related_type,'exception_work');assert.equal(row.related_id,id);}
+ await updateExceptionWork(f.db,{id,actorId:'admin',version:0,ownerId:'finance',nextAction:'Review evidence before arranging another attempt.',note:'Assigned to the active operations reviewer.',requestId:'assign',now:1100});
+ assert.deepEqual(f.sqlite.prepare('SELECT recipient_user_id,audience_role,channel,template_key,related_type,related_id,request_id FROM notification_messages ORDER BY recipient_user_id,channel').all(),notices,'Exact replay must not duplicate either the assignee notice or Super Admin copy.');
  }finally{f.sqlite.close();}
 });
 void test('incorrect cash requires posted same-parcel evidence and cannot be resolved without a correction workflow',async()=>{

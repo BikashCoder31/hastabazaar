@@ -4,7 +4,7 @@ import test from 'node:test';
 import sharp from 'sharp';
 import type { SharpConstructor } from '../node_modules/sharp/dist/index.d.mts';
 import { can, type PermissionSubject } from '../lib/marketplace/permissions';
-import { categoryMediaDb } from './helpers/category-media-db';
+import { categoryMediaDb, declareOccasionImageFixtureStorage } from './helpers/category-media-db';
 
 const globals = globalThis as typeof globalThis & {
   categoryRouteDb: D1Database;
@@ -64,6 +64,50 @@ async function publicImage(id: string) {
   const { GET } = await import('../app/api/categories/image/[id]/route');
   return GET(new Request(`https://category.test/api/categories/image/${id}`), { params: Promise.resolve({ id }) });
 }
+
+void test('occasion image routes guard missing storage and publish only a saved active occasion image', async () => {
+  const f = await fixture();
+  try {
+    const { POST } = await import('../app/api/admin/catalog/occasion-media/route');
+    const { GET: preview } = await import('../app/api/admin/catalog/occasion-media/[id]/route');
+    const { GET: published } = await import('../app/api/occasions/image/[id]/route');
+    const send = async () => {
+      const form = new FormData();
+      form.set('file', await imageFile());
+      form.set('requestId', 'occasion-upload');
+      return POST(new Request('https://category.test/api/admin/catalog/occasion-media', {
+        method: 'POST', headers: { Origin: 'https://category.test' }, body: form,
+      }));
+    };
+    const get = (handler: typeof published, id: string) => handler(new Request('https://category.test/image'), { params: Promise.resolve({ id }) });
+    const unavailable = await send();
+    assert.equal(unavailable.status, 400);
+    assert.match(await unavailable.text(), /after the database update/);
+    assert.equal((await get(published, 'missing')).status, 404);
+    assert.equal(f.objects.size, 0);
+
+    declareOccasionImageFixtureStorage(f.sqlite);
+    const result = await send();
+    assert.equal(result.status, 201);
+    const imageId = (await result.json() as { media: { id: string } }).media.id;
+    assert.equal((await get(preview, imageId)).status, 200);
+    assert.equal((await get(published, imageId)).status, 404);
+    assert.equal((await publicImage(imageId)).status, 404);
+    assert.equal(f.objects.has(`private/occasion-images/${imageId}`), true);
+
+    const created = await saved({ kind: 'occasion', id: undefined, slug: 'review-occasion', nameEn: 'Review occasion', nameNe: 'उपहार',
+      idempotencyKey: 'create-occasion', imageId, expectedImageId: null });
+    assert.equal(created.status, 201);
+    const { id } = await created.json() as { id: string };
+    const imageResponse = await get(published, imageId);
+    assert.equal(imageResponse.status, 200);
+    assert.equal(imageResponse.headers.get('content-type'), 'image/webp');
+    assert.equal((await saved({ kind: 'occasion', id, slug: 'review-occasion', idempotencyKey: 'remove-occasion-image',
+      imageId: null, expectedImageId: imageId })).status, 201);
+    assert.equal((await get(published, imageId)).status, 404);
+    assert.equal(f.sqlite.prepare("SELECT actor_id AS actor FROM audit_logs WHERE action='catalog.occasion.image_uploaded'").get()?.actor, 'staff-one');
+  } finally { f.dispose(); }
+});
 
 void test('category upload enforces staff permission, trusted origin, bounded raster content and exact replay', async () => {
   const f = await fixture();

@@ -1,6 +1,10 @@
 import type { CustomerFeedback } from '../../feedback/customer-feedback';
 import type { FormAnswerSnapshot, FormId } from '../../forms/types';
 import { buildFormAnswerInsert } from './form-answers';
+import {coreFormReceiptId} from '../../forms/core-receipts';
+import {coreFormContract,coreFormVersionId} from '../../forms/core-contracts';
+import {PUBLIC_NATIVE_FORM_IDS} from '../../forms/catalog-policy';
+import {currentFormVersionCondition,publishedFormVersionId} from '../../forms/native-version';
 
 export type FeedbackJobStatus = 'pending' | 'leased' | 'sending' | 'failed' | 'sent';
 export const FEEDBACK_MAX_ATTEMPTS = 5;
@@ -48,27 +52,38 @@ export async function listSupportFeedbackDeliveryJobs(db: D1Database,
 /** Both writes commit together. The answer insert rechecks the immutable published version. */
 export async function createFeedbackSubmission(db: D1Database, input: {
   formId: FormId; requestId: string; payloadHash: string; feedback: CustomerFeedback;
-  answers: FormAnswerSnapshot; now: number;
+  answers: FormAnswerSnapshot; nativeVersionId?:string; now: number;
 }): Promise<FeedbackDeliveryJob> {
-  const version = await db.prepare(`SELECT id FROM form_config_versions WHERE form_id=? AND version=?
+  const native=input.nativeVersionId!==undefined;
+  if(native&&(!PUBLIC_NATIVE_FORM_IDS.has(input.formId)||!coreFormContract(input.formId)||input.nativeVersionId!==coreFormVersionId(input.formId)||input.answers.version!==1||input.answers.answers.length!==0))throw new Error('Invalid native public feedback contract.');
+  const version = native?{id:input.nativeVersionId!}:await db.prepare(`SELECT id FROM form_config_versions WHERE form_id=? AND version=?
     AND status='published' LIMIT 1`).bind(input.formId, input.answers.version).first<{ id: string }>();
   if (!version) throw new Error('Published feedback version unavailable.');
   const id = crypto.randomUUID();
   const feedbackJson = JSON.stringify(input.feedback);
-  await db.batch([
+  const current=currentFormVersionCondition(input.formId,version.id);
+  const answer=buildFormAnswerInsert(db, { formId: input.formId, requestId: input.requestId,
+    versionId: version.id, subjectType: 'feedback_submission', subjectId: id,
+    actorId: null, answers: input.answers, now: input.now });
+  const statements:D1PreparedStatement[]=[];
+  if(native){
+    statements.push(answer,db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,next_json,created_at)
+      VALUES(?,NULL,'feedback.submitted','feedback_submission',?,?,?)`)
+      .bind(`feedback:${id}:submitted`,id,JSON.stringify({formId:input.formId,requestId:input.requestId,versionId:version.id,
+        payloadHash:input.payloadHash,coreReceiptId:coreFormReceiptId(input.formId,input.requestId)}),input.now));
+  }
+  statements.push(
     db.prepare(`INSERT INTO feedback_delivery_jobs
       (id,request_id,form_id,config_version_id,payload_hash,feedback_json,status,
         lease_token,lease_expires_at,attempt_count,created_at,updated_at,sent_at)
       VALUES (?, ?, ?, ?, ?,
-        CASE WHEN (SELECT MAX(version) FROM form_config_versions WHERE form_id=? AND status='published')=?
+        CASE WHEN ${current.sql}
           THEN ? ELSE json_extract('invalid', '$') END,
         'pending', NULL, NULL, 0, ?, ?, NULL)`)
-      .bind(id, input.requestId, input.formId, version.id, input.payloadHash,
-        input.formId, input.answers.version, feedbackJson, input.now, input.now),
-    buildFormAnswerInsert(db, { formId: input.formId, requestId: input.requestId,
-      versionId: version.id, subjectType: 'feedback_submission', subjectId: id,
-      actorId: null, answers: input.answers, now: input.now }),
-  ]);
+      .bind(id, input.requestId, input.formId, publishedFormVersionId(input.formId,version.id), input.payloadHash,
+        ...current.bindings, feedbackJson, input.now, input.now));
+  if(!native)statements.push(answer);
+  await db.batch(statements);
   const job = await findFeedbackDeliveryJob(db, input.requestId);
   if (!job) throw new Error('Feedback job unavailable after commit.');
   return job;

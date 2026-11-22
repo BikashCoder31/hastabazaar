@@ -1,0 +1,41 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {nativeFinanceClone} from './helpers/native-finance-clone';
+import {fundingBankReversalFixture,reverifyFunding,reverseFundingCredit,fundingDbNow} from './helpers/funding-bank-reversal-fixture';
+import {getRefundFundingAvailability,fundingAvailableSql} from '../lib/payments/refund-funding';
+import * as payouts from '../lib/payments/payout-transfers';
+for(const model of ['refund','payout'] as const)void test(`native ${model} funding reversals stop the actual reserve race, permit stale unsent retirement, and preserve actual sent reconciliation`,async()=>{
+ const f=await fundingBankReversalFixture(model,200000);let target:Awaited<ReturnType<typeof nativeFinanceClone>>|undefined;try{
+ const original=model==='refund'?await f.m.prepareRefundPacket(f.db,f.ctx('native-funding-original-prepared','0'),{obligationId:f.obligationId,destinationVersionId:f.destinationId,fundingStatementId:f.currentFundingId,reason:'Prepare only the original obligation against separately verified actual company bank funds.'}):await payouts.preparePayoutTransfer(f.db,f.ctx('native-funding-original-prepared'),{model:'registered',payoutId:String('payoutId'in f?f.payoutId:''),accountVersionId:f.accountVersionId,reason:'Prepare the original registered payout using the current independent verified company statement.'});
+ target=await nativeFinanceClone(f.sqlite);const nativeDb=target.db,db=Object.create(nativeDb) as D1Database;
+ db.batch=async statements=>{try{return await nativeDb.batch(statements);}catch(error){if(/Expression tree/.test(String(error))){let diagnosed=false;for(const [index,statement] of statements.entries()){const source=statement as unknown as {statement:string;params:unknown[]};try{await nativeDb.prepare('EXPLAIN '+source.statement).bind(...source.params).all();}catch(explainError){console.error('FUNDING NATIVE DEPTH SQL INDEX',index,source.statement);console.error(String(explainError));diagnosed=true;break;}}
+ if(!diagnosed){let low=0,high=statements.length;while(low<high){const middle=Math.floor((low+high)/2);try{await nativeDb.batch([...statements.slice(0,middle+1),nativeDb.prepare('INSERT INTO operation_transaction_guards(id,valid) VALUES(?,0)').bind(crypto.randomUUID())]);throw new Error('Diagnostic rollback guard did not abort.');}catch(prefixError){if(/Expression tree/.test(String(prefixError)))high=middle;else if(/CHECK constraint/.test(String(prefixError)))low=middle+1;else throw prefixError;}}console.error('FUNDING NATIVE DEPTH PREFIX INDEX',low,(statements[low] as unknown as {statement:string}).statement);}
+ }throw error;}};
+ const nativeF={...f,db},table=model==='refund'?'outgoing_payment_packets':'payout_transfer_packets';
+ if(model==='payout')await payouts.approvePayoutTransfer(db,f.ctx('native-funding-before-start-approved','0'),{packetId:original.id,reason:'Approve the exact original payout while its independently verified bank balance is still current.'});
+ let injected=false;const raced=Object.create(db) as D1Database;raced.batch=async statements=>{
+ const targetState=model==='refund'?'approved':'processing';
+ if(!injected&&statements.some(statement=>String((statement as unknown as {statement?:string}).statement??'').includes('UPDATE '+table+" SET state='"+targetState+"'"))){injected=true;await reverseFundingCredit(nativeF,'native-funding-reversal-at-reserve');}
+ return db.batch(statements);
+ };
+ const phase=model==='refund'?f.m.approveRefundPacket(raced,f.ctx('native-funding-raced-approval','0'),{packetId:original.id,reason:'Require bank-statement freshness inside this exact native funding approval transaction.'}):payouts.startPayoutTransfer(raced,f.ctx('native-funding-raced-start','1'),{packetId:original.id,reason:'Require bank-statement freshness inside this exact native instruction-start transaction.'});
+ await assert.rejects(phase,/reverify.*bank.*reversal/i);assert.equal(injected,true);
+ assert.equal((await db.prepare('SELECT state FROM '+table+' WHERE id=?').bind(original.id).first<{state:string}>())!.state,model==='refund'?'prepared':'approved');
+ assert.equal((await db.prepare(`SELECT ${fundingAvailableSql()} amount FROM company_funding_statements s WHERE s.id=?`).bind(f.currentFundingId).first<{amount:number|null}>())!.amount,null);
+ const retire={packetId:original.id,notSentConfirmed:true,evidenceReference:'FICTIONAL-NATIVE-FUNDING-UNSENT-PROOF',reason:'Retire only this independently confirmed unsent stale-funded instruction while retaining its original facts.'};
+ if(model==='refund')await f.m.voidUnsentRefundPacket(db,f.ctx('native-funding-safe-retirement','0'),retire);else await payouts.voidUnsentPayoutTransfer(db,f.ctx('native-funding-safe-retirement','1'),retire);
+ const fresh=await reverifyFunding(nativeF,'native-funding-independent-reverification',f.accountVersionId,200000);assert.equal((await getRefundFundingAvailability(db,f.accountVersionId)).id,fresh.id);
+ const rowRevision=String((await db.prepare('SELECT revision FROM refund_obligations WHERE id=?').bind(f.obligationId).first<{revision:number}>())!.revision);
+ const current=model==='refund'?await f.m.prepareRefundPacket(db,f.ctx('native-funding-refreshed-prepared',rowRevision),{obligationId:f.obligationId,destinationVersionId:f.destinationId,fundingStatementId:fresh.id,reason:'Prepare the original obligation again only against the independently reverified current bank statement.'}):await payouts.preparePayoutTransfer(db,f.ctx('native-funding-refreshed-prepared'),{model:'registered',payoutId:String('payoutId'in f?f.payoutId:''),accountVersionId:f.accountVersionId,reason:'Prepare the unchanged original payout against newly and independently reverified current bank money.'});
+ if(model==='refund'){await f.m.approveRefundPacket(db,f.ctx('native-funding-refreshed-approved','0'),{packetId:current.id,reason:'Approve exactly this refreshed packet and current independently verified company bank funding.'});await f.m.startRefundPacket(db,f.ctx('native-funding-refreshed-started','1'),{packetId:current.id,reason:'Start only this exact newly reviewed instruction on the reverified current bank funding.'});}
+ else{await payouts.approvePayoutTransfer(db,f.ctx('native-funding-refreshed-approved','0'),{packetId:current.id,reason:'Approve exactly this refreshed payout and current independently verified company bank funding.'});await payouts.startPayoutTransfer(db,f.ctx('native-funding-refreshed-started','1'),{packetId:current.id,reason:'Start only this exact newly reviewed payout on the reverified current bank funding.'});}
+ await reverseFundingCredit(nativeF,'native-funding-bank-reversal-after-sent');
+ const uncertain={packetId:current.id,outcome:'uncertain' as const,evidenceReference:'FICTIONAL-NATIVE-ORIGINAL-BANK-UNCERTAINTY',reason:'Retain the actual original sent instruction as uncertain without issuing any replacement transfer.'};
+ if(model==='refund')await f.m.recordRefundPacketOutcome(db,f.ctx('native-funding-sent-uncertain','2'),uncertain);else await payouts.recordPayoutTransferOutcome(db,f.ctx('native-funding-sent-uncertain','2'),uncertain);
+ const amount=(await db.prepare('SELECT amount_paisa amount FROM '+table+' WHERE id=?').bind(current.id).first<{amount:number}>())!.amount;
+ const paid={packetId:current.id,outcome:'paid' as const,amountPaisa:amount,bankAt:await fundingDbNow(db)-1,transactionIdentity:'FICTIONAL-NATIVE-TRUTHFUL-'+model+'-PAID',completedTransferConfirmed:true,exactBeneficiaryConfirmed:true,evidenceReference:'FICTIONAL-NATIVE-ORIGINAL-COMPLETED-BANK-PROOF',reason:'Reconcile the actual original sent instruction as completed while retaining the later incoming bank reversal and funding recheck.'};
+ if(model==='refund')await f.m.recordRefundPacketOutcome(db,f.ctx('native-funding-truthful-sent-paid','3'),paid);else await payouts.recordPayoutTransferOutcome(db,f.ctx('native-funding-truthful-sent-paid','3'),paid);
+ assert.equal((await db.prepare('SELECT state FROM '+table+' WHERE id=?').bind(current.id).first<{state:string}>())!.state,'paid');
+ await assert.rejects(getRefundFundingAvailability(db,f.accountVersionId),/reverify.*bank.*reversal/i);
+ }finally{await target?.dispose();f.dispose();}
+});

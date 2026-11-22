@@ -1,29 +1,26 @@
-import { withFirstCodPresentation } from '@/lib/orders/first-cod-review';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
-import { Package, ReceiptText } from 'lucide-react';
-import { AccountEmpty, AccountHeading } from '@/components/account/account-ui';
+import { ReceiptText } from 'lucide-react';
 import { CustomerOrderList } from '@/components/account/order-list';
+import { accountSurface } from '@/components/account/account-sections';
 import { AnswerDetails } from '@/components/forms/answer-details';
 import { requireCustomerPage } from '@/lib/auth/customer';
 import { requireDatabase } from '@/lib/db/d1';
-import {
-  listCustomerOrders,
-  listCustomerReviewAnswerHistory,
-} from '@/lib/db/repositories/customers';
+import { listCustomerReviewAnswerHistory } from '@/lib/db/repositories/customers';
+import { customerOrderTabs, readCustomerOrderList } from '@/lib/orders/customer-order-list';
 
 export const dynamic = 'force-dynamic';
 
 export default async function CustomerOrdersPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ reviewAt?: string; reviewId?: string }>;
+  searchParams?: Promise<{ reviewAt?: string; reviewId?: string; tab?: string; q?: string }>;
 } = {}) {
   const customer = await requireCustomerPage('/account/orders');
   const db = requireDatabase(env as unknown as { DB?: D1Database });
-  const orders = await listCustomerOrders(db, customer.userId);
-  const displayedOrders = await withFirstCodPresentation(db, orders);
   const params = await searchParams;
+  const tab = customerOrderTabs.find(([key]) => key === params?.tab)?.[0] ?? 'active';
+  const query = typeof params?.q === 'string' ? params.q.slice(0, 100).trim() : '';
   const at = params?.reviewAt ? Number(params.reviewAt) : NaN;
   const after =
     Number.isSafeInteger(at) &&
@@ -32,36 +29,19 @@ export default async function CustomerOrdersPage({
     params.reviewId.length <= 191
       ? { createdAt: at, id: params.reviewId }
       : undefined;
-  const reviewHistory = await listCustomerReviewAnswerHistory(
-    db,
-    customer.userId,
-    after,
-  );
+  const [orders, reviewHistory] = await Promise.all([
+    readCustomerOrderList(db, { id: customer.userId, authSubject: customer.authSubject }),
+    listCustomerReviewAnswerHistory(db, customer.userId, after),
+  ]);
   return (
-    <div>
-      <AccountHeading
-        eyebrow="From maker to doorstep"
-        title="Your orders."
-        description="Follow each delivery, open your receipt, or get help with an item."
-      />
-      {orders.length ? (
-        <>
-          <p className="mb-4 text-sm text-muted-foreground">
-            Showing your{' '}
-            {orders.length === 100 ? '100 most recent' : orders.length}{' '}
-            {orders.length === 1 ? 'order' : 'orders'}.
-          </p>
-          <CustomerOrderList orders={displayedOrders} />
-        </>
-      ) : (
-        <AccountEmpty
-          icon={Package}
-          title="A new story starts with a find."
-          description="Your orders will appear here when you check out while signed in."
-          href="/shop"
-          action="Discover the collection"
-        />
-      )}
+    <div className="min-w-0">
+      <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-2 text-sm text-[#465573]">
+        <Link href="/account" className="inline-flex min-h-11 items-center hover:underline">Your account</Link>
+        <span aria-hidden="true">/</span><span aria-current="page">My orders</span>
+      </nav>
+      <h1 className="mb-6 font-heading text-4xl tracking-tight sm:text-5xl">My orders</h1>
+      <CustomerOrderList orders={orders} tab={tab} query={query} />
+      {orders.length === 100 ? <p className="mt-3 text-sm text-[#465573]">Showing your 100 most recent orders.</p> : null}
       {reviewHistory.entries.length ? (
         <section
           className="mt-7 space-y-4"
@@ -78,7 +58,7 @@ export default async function CustomerOrdersPage({
           ))}
           {reviewHistory.nextCursor ? (
             <a
-              className="inline-flex rounded-lg border px-4 py-2 text-sm font-medium"
+              className="inline-flex min-h-11 items-center rounded-lg border px-4 py-2 text-sm font-medium"
               href={`/account/orders?reviewAt=${reviewHistory.nextCursor.createdAt}&reviewId=${encodeURIComponent(reviewHistory.nextCursor.id)}`}
             >
               Next 50 review answers
@@ -86,7 +66,7 @@ export default async function CustomerOrdersPage({
           ) : null}
         </section>
       ) : null}
-      <div className="mt-6 flex items-start gap-3 rounded-2xl bg-secondary p-5">
+      <div className={accountSurface + ' mt-6 flex items-start gap-3 p-5'}>
         <ReceiptText className="mt-0.5 size-5 shrink-0 text-primary" />
         <div>
           <p className="font-semibold">Bought something as a guest?</p>
@@ -94,9 +74,12 @@ export default async function CustomerOrdersPage({
             Use the private receipt link you received after checkout to view
             that order.
           </p>
-          <Link href="/help#tracking" className="section-link mt-1">
-            Help finding a guest order →
-          </Link>
+          <div className="mt-1 flex flex-wrap gap-x-4">
+            <Link href="/track" className="section-link inline-flex min-h-11 items-center">Track an order</Link>
+            <Link href="/help#tracking" className="section-link inline-flex min-h-11 items-center">
+              Help finding a guest order →
+            </Link>
+          </div>
         </div>
       </div>
     </div>

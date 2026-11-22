@@ -51,7 +51,7 @@ void test('NPR 200 to NPR 100 reports both 50% and NPR 100 saved', () => {
 void test('additive product-story migration and public rendering keep blank sections hidden', async () => {
   const migration = await readFile(new URL('../drizzle/0047_product_story_materials.sql', import.meta.url),'utf8');
   const mariaMigration = await readFile(new URL('../deployment/babal/mariadb-product-story-materials.sql', import.meta.url),'utf8');
-  const publicPage = await readFile(new URL('../app/products/[slug]/page.tsx', import.meta.url),'utf8');
+  const publicPage = await readFile(new URL('../components/catalog/storefront-product-detail.tsx', import.meta.url),'utf8');
   assert.match(migration,/materials_json/);
   assert.match(migration,/origin_story/);
   assert.match(mariaMigration,/materials_json/);

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import {DatabaseSync,type SQLInputValue,type StatementSync} from 'node:sqlite';
 import {archiveSellerProduct,deleteSellerProduct} from '../lib/db/repositories/products';
@@ -52,7 +53,11 @@ class TestD1Database {
 
 
 
-function fixture(){const sqlite=new DatabaseSync(':memory:');sqlite.exec(`
+function fixture(){
+ const publicationLinkTable=readFileSync(new URL('../drizzle/0093_product_publication_versions.sql',import.meta.url),'utf8')
+  .split('--> statement-breakpoint').find(sql=>/^CREATE TABLE product_publication_links\b/m.test(sql));
+ assert.ok(publicationLinkTable);
+ const sqlite=new DatabaseSync(':memory:');sqlite.exec(`
 CREATE TABLE products(id TEXT PRIMARY KEY,seller_id TEXT,status TEXT,updated_at INTEGER,review_request_id TEXT);
 CREATE TABLE product_deletions(product_id TEXT PRIMARY KEY,deleted_by TEXT,deleted_at INTEGER,request_id TEXT);
 CREATE TABLE audit_logs(id TEXT,actor_id TEXT,action TEXT,subject_type TEXT,subject_id TEXT,reason TEXT,previous_json TEXT,next_json TEXT,request_id TEXT,ip_hash TEXT,created_at INTEGER);
@@ -70,12 +75,12 @@ INSERT INTO products VALUES ('p','s','published',1,NULL),('other','s','published
 INSERT INTO orders VALUES ('o','paid');INSERT INTO order_items VALUES ('i','p','s','o','delivered'),('other-i','other','s','o','delivered');
 INSERT INTO seller_ledger_entries(id,seller_id,order_item_id,payout_id,type,amount_paisa) VALUES ('sale','s','i',NULL,'sale',100),('commission','s','i',NULL,'commission',-10);
 INSERT INTO payouts VALUES ('paid','s','paid');INSERT INTO payout_entries VALUES ('paid','sale',NULL),('paid','commission',NULL);
-`);sqlite.exec('ALTER TABLE seller_ledger_entries ADD refund_id TEXT');return {sqlite,db:new TestD1Database(sqlite) as unknown as D1Database};}
+`);sqlite.exec(publicationLinkTable);sqlite.exec('ALTER TABLE seller_ledger_entries ADD refund_id TEXT');return {sqlite,db:new TestD1Database(sqlite) as unknown as D1Database};}
 const options={productId:'p',sellerId:'s',actorId:'seller',now:100};
 void test('actual unpaid product earnings block archive and delete while paid history stays retained',async()=>{const f=fixture();try{
  f.sqlite.exec("DELETE FROM payout_entries");assert.ok((await productClosureBlockers(f.db,'p','s')).some(b=>b.kind==='earnings'));
- await assert.rejects(()=>archiveSellerProduct(f.db,options));assert.equal(f.sqlite.prepare("SELECT status FROM products WHERE id='p'").get()?.status,'published');
- f.sqlite.exec("UPDATE products SET status='archived' WHERE id='p'");await assert.rejects(()=>deleteSellerProduct(f.db,options));assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM product_deletions').get()?.n,0);
+ await assert.rejects(()=>archiveSellerProduct(f.db,options),/related obligations remain/i);assert.equal(f.sqlite.prepare("SELECT status FROM products WHERE id='p'").get()?.status,'published');
+ f.sqlite.exec("UPDATE products SET status='archived' WHERE id='p'");await assert.rejects(()=>deleteSellerProduct(f.db,options),/related obligations must be cleared/i);assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM product_deletions').get()?.n,0);
  }finally{f.sqlite.close();}});
 void test('paid product can close with historical items and without waiting an unused return window; unrelated item reserves do not block',async()=>{const f=fixture();try{
  f.sqlite.exec("INSERT INTO seller_ledger_entries(id,seller_id,order_item_id,payout_id,type,amount_paisa) VALUES ('other-reserve','s','other-i',NULL,'reserve_hold',-20)");assert.deepEqual(await productClosureBlockers(f.db,'p','s'),[]);
@@ -90,10 +95,12 @@ void test('related cases refunds cash and missing or ambiguous ledger evidence a
  ["DELETE FROM seller_ledger_entries WHERE id='commission'",'earnings_review'],
  ["INSERT INTO seller_ledger_entries(id,seller_id,order_item_id,payout_id,type,amount_paisa) VALUES ('unknown','s',NULL,NULL,'adjustment',-20)",'attribution_review'],
  ["INSERT INTO seller_ledger_entries(id,seller_id,order_item_id,payout_id,type,amount_paisa) VALUES ('reserve','s','i',NULL,'reserve_hold',-20)",'reserve']
- ];for(const [sql,kind]of samples){const f=fixture();try{f.sqlite.exec(sql);const blockers=await productClosureBlockers(f.db,'p','s');assert.ok(blockers.some(b=>b.kind===kind),kind);await assert.rejects(()=>archiveSellerProduct(f.db,options));assert.deepEqual(await productClosureBlockers(f.db,'p','outsider'),[]);}finally{f.sqlite.close();}}});
+ ];for(const [sql,kind]of samples){const f=fixture();try{f.sqlite.exec(sql);const blockers=await productClosureBlockers(f.db,'p','s');assert.ok(blockers.some(b=>b.kind===kind),kind);await assert.rejects(()=>archiveSellerProduct(f.db,options),/related obligations remain/i);assert.deepEqual(await productClosureBlockers(f.db,'p','outsider'),[]);}finally{f.sqlite.close();}}});
 void test('closure mutation rechecks an obligation arriving after the screen read',async()=>{const f=fixture();try{
  assert.deepEqual(await productClosureBlockers(f.db,'p','s'),[]);const original=f.db.batch.bind(f.db);f.db.batch=async statements=>{f.sqlite.exec("INSERT INTO return_requests VALUES ('late','i','requested')");return original(statements);};
- await assert.rejects(()=>archiveSellerProduct(f.db,options));assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM audit_logs').get()?.n,0);
+ await assert.rejects(()=>archiveSellerProduct(f.db,options),/related obligations remain/i);
+ assert.ok(f.sqlite.prepare("SELECT 1 FROM return_requests WHERE id='late'").get());
+ assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM audit_logs').get()?.n,0);
  }finally{f.sqlite.close();}});
 
 void test('refund-linked legacy ledger follows its actual item and seller-wide unknown complaint requires review',async()=>{const f=fixture();try{

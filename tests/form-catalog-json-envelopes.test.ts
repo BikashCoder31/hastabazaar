@@ -375,7 +375,7 @@ registerHooks({
     if (specifier === '@/lib/auth/staff')
       return {
         url: sourceUrl(
-          'export class StaffAuthorizationError extends Error{};export async function requireStaffApi(){return {id:"sa-one",role:"super_admin"}}',
+          'export class StaffAuthorizationError extends Error{};export async function requireStaffApi(){return {id:"sa-one",role:"super_admin",authSubject:"fictional-envelope-super-admin"}}',
         ),
         shortCircuit: true,
       };
@@ -424,7 +424,7 @@ class FixtureDatabase {
   prepare(sql: string) {
     let values: SQLInputValue[] = [];
     const statement =
-      sql.includes('form_config_versions') || sql.includes('form_answer_sets')
+      sql.includes('form_config_versions') || sql.includes('form_answer_sets') || sql.includes('audit_logs') || sql.startsWith('SELECT u.id,r.role,p.permissions_json AS profile FROM users u') || sql.startsWith('SELECT auth_subject subject FROM users WHERE')
         ? this.sqlite.prepare(sql)
         : null;
     const result = {
@@ -433,6 +433,8 @@ class FixtureDatabase {
         return result;
       },
       async first<T>() {
+        if (sql.startsWith('SELECT COALESCE(control.version,0) version'))
+          return { version: 1, hidden: 0, requestId: null } as T;
         return (
           ((statement
             ? statement.get(...values)
@@ -459,12 +461,16 @@ class FixtureDatabase {
 }
 function fixture(item: (typeof cases)[number]) {
   const sqlite = new DatabaseSync(':memory:');
-  sqlite.exec('CREATE TABLE users(id TEXT PRIMARY KEY);');
+  sqlite.exec('PRAGMA foreign_keys=ON; CREATE TABLE users(id TEXT PRIMARY KEY,status TEXT,auth_subject TEXT); CREATE TABLE user_roles(user_id TEXT REFERENCES users(id),role TEXT); CREATE TABLE staff_permission_profiles(user_id TEXT REFERENCES users(id),permissions_json TEXT);');
+  const auditSchema = readFileSync('drizzle/0000_clear_lizard.sql', 'utf8')
+    .split('--> statement-breakpoint').find((sql) => sql.includes('CREATE TABLE `audit_logs`'));
+  assert.ok(auditSchema, 'canonical audit receipt schema must exist');
+  sqlite.exec(auditSchema);
   for (const sql of readFileSync('drizzle/0056_form_catalog.sql', 'utf8').split(
     '--> statement-breakpoint',
   ))
     if (sql.trim()) sqlite.exec(sql);
-  sqlite.exec("INSERT INTO users VALUES('sa-one')");
+  sqlite.exec("INSERT INTO users VALUES('sa-one','active','fictional-envelope-super-admin'); INSERT INTO user_roles VALUES('sa-one','super_admin')");
   const fields = Array.from({ length: 26 }, (_, order) => ({
     id: `context_${order}`,
     key: `context_${order}`,
@@ -623,7 +629,7 @@ for (const item of cases) {
             item.id +
               ': upper-budget validated context accepted (' +
               response.status +
-              ')',
+              '): ' + (await response.clone().text()),
           );
           assert.equal(globalThis.envelopeMutations.length, 1);
           assert.deepEqual(globalThis.envelopeMutations[0], h.snapshot);

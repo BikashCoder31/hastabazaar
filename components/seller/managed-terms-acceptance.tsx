@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import type { ManagedTermsOffer } from '@/lib/managed-commerce/accepted-terms';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 import {readManagedTermsAttempt,retainManagedTermsAttempt,verifiedManagedTermsReceipt,managedTermsAttemptKey,type ManagedTermsAttempt} from './managed-terms-attempt';
 import { Button } from '@/components/ui/button';
 

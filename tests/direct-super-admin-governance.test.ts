@@ -5,6 +5,7 @@ import test from 'node:test';
 import { performGovernanceAction } from '../lib/db/repositories/operations';
 import { getStaffPermissionProfile, proposeStaffPermissions, decideStaffPermissions } from '../lib/db/repositories/staff-permissions';
 import { listStaffFormHistory } from '../lib/forms/staff-history';
+import {can} from '../lib/marketplace/permissions';
 
 function fixture() {
   const sqlite = new DatabaseSync(':memory:');
@@ -53,6 +54,28 @@ const form = (formId: 'staff.staff-permission-1' | 'staff.staff-permission-2' | 
   requestId, versionId: `${formId}-v1`, answers: { formId, version: 1, answers: [] },
 });
 
+for(const permissions of [[],['order.manage']])void test('first explicit '+(permissions.length?'scoped':'empty')+' profile retains one personal notice and current recipient role fences',async()=>{
+ const f=fixture();try{
+  assert.equal(can({role:'admin',permissions:[]},'account.self.manage'),true);
+  assert.equal(can({role:'admin',permissions:[]},'order.manage'),false);
+  f.sqlite.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES('other','super_admin',1)").run();
+  f.race(()=>{f.sqlite.prepare("DELETE FROM user_roles WHERE user_id='other' AND role='super_admin'").run();});
+  const input={...permission,permissions,requestId:'first-profile',form:form('staff.staff-permission-1','first-profile')};
+  await proposeStaffPermissions(f.db,input);
+  const event=f.sqlite.prepare("SELECT id FROM team_governance_events WHERE action='access_changed' AND source_id='admin'").get();assert.ok(event);
+  const rows=f.sqlite.prepare('SELECT recipient_user_id,channel,template_key,related_type,related_id,request_id,audience_role FROM notification_messages WHERE related_id=?').all(event.id);
+  assert.equal(rows.length,4);assert.deepEqual(new Set(rows.map(row=>row.recipient_user_id)),new Set(['super','admin']));
+  assert.equal(rows.filter(row=>row.recipient_user_id==='admin').length,2);assert.ok(rows.every(row=>row.template_key==='business.team.governance'));
+  assert.equal(f.sqlite.prepare("SELECT COUNT(*) n FROM notification_messages WHERE template_key='business.permissions.changed'").get()!.n,0);
+  await proposeStaffPermissions(f.db,input);assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM notification_messages WHERE related_id=?').get(event.id)!.n,4);
+  const notice=rows.find(row=>row.recipient_user_id==='admin');assert.ok(notice);
+  const current=(await import('../lib/operations/team-notice-sources')).isCurrentTeamNotice;
+  const projected={userId:String(notice.recipient_user_id),channel:String(notice.channel),template:String(notice.template_key),relatedId:String(notice.related_id),requestId:String(notice.request_id),audience:String(notice.audience_role),relatedType:String(notice.related_type)};
+  assert.equal(await current(f.db,projected,100),true);
+  f.sqlite.prepare("DELETE FROM user_roles WHERE user_id='admin' AND role='admin'").run();assert.equal(await current(f.db,projected,100),false);
+ }finally{f.sqlite.close();}
+});
+
 void test('Super Admin saves effective permissions, audited receipt and one target notification in one operation', async () => {
   const f = fixture();
   try {
@@ -66,7 +89,8 @@ void test('Super Admin saves effective permissions, audited receipt and one targ
     assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM form_answer_sets WHERE request_id='permission-one'").get()?.n, 1);
     assert.equal((await listStaffFormHistory(f.db, { id: 'super', role: 'super_admin' }, 'staff-permission-proposal', { subjectId: id })).items.length, 1);
     assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM notification_messages WHERE template_key='business.permissions.proposed'").get()?.n, 0);
-    assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM notification_messages WHERE template_key='business.permissions.changed' AND recipient_user_id='admin' AND channel='in_app'").get()?.n, 1);
+    assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM notification_messages WHERE template_key='business.permissions.changed'").get()?.n, 0);
+    assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM notification_messages WHERE template_key='business.team.governance' AND recipient_user_id='admin' AND channel='in_app'").get()?.n, 1);
     await proposeStaffPermissions(f.db, { ...permission, requestId: id, form: form('staff.staff-permission-1', id), now: 200 });
     assert.equal((await getStaffPermissionProfile(f.db, 'admin')).version, 1);
     await assert.rejects(() => proposeStaffPermissions(f.db, { ...permission, permissions: [], requestId: id, form: form('staff.staff-permission-1', id) }));

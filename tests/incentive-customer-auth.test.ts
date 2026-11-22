@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { basename } from 'node:path';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import test from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
+import type { ReactNode } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { stubFixtureLink } from './helpers/browser-fixture-link';
 import type { AuthenticatedUser } from '../app/auth';
 import type { CustomerUser } from '../lib/auth/customer';
 
@@ -15,10 +20,75 @@ type CustomerApi = {
   requireCustomerPage(returnTo: string): Promise<CustomerUser>;
 };
 
-// Only the request identity and platform bindings are substituted. Production
-// customer logic and every emitted query execute against real disposable SQL.
+// Customer authorization and its emitted queries execute against real disposable SQL.
+const publicRouteDependencies: Record<string, string> = {
+  '@/lib/db/repositories/products': `
+    export const getPublishedProductBySlug = async () => ({
+      id: 'cup', slug: 'cup', nameEn: 'Fictional cup', media: [],
+    });
+    export const getUnavailablePublishedProductBySlug = async () => null;
+    export const listPublishedProducts = async () => [];
+  `,
+  '@/lib/db/repositories/customers': `
+    export const listPublishedReviews = async () => [];
+    export const isWishlisted = async (_, id) => id === 'existing';
+    export const getReviewableOrderItem = async (_, id) =>
+      id === 'existing' ? { orderItemId: 'delivered-item', orderNumber: 'order' } : null;
+    export class CustomerDataConflictError extends Error {}
+    export const setWishlistItem = async () => {};
+  `,
+  '@/lib/db/repositories/delivery-rates': 'export const getDeliveryRates = async () => [];',
+  '@/lib/db/repositories/review-extras':
+    'export const getReviewExtras = async () => ({ photos: [], replies: [] });',
+  '@/lib/seo/discovery': `
+    export const publicUrl = (path) => path;
+    export const productStructuredData = () => ({});
+    export const safeJsonLd = JSON.stringify;
+    export const publishedRating = async () => ({ count: 0, average: null });
+  `,
+  '@/lib/db/repositories/recently-viewed': `
+    export const listRecentlyViewedProducts = async (_, { userId }) => [{ id: userId }];
+    export const recordRecentlyViewedProduct = async (_, { userId }) => userId === 'existing';
+    export const resolveRecentlyViewedProducts = async () => [];
+    export const clearRecentlyViewed = async () => {};
+  `,
+  '@/lib/db/repositories/business-settings':
+    'export const getEffectiveBusinessSetting = async () => ({ value: { maxItems: 12, retentionDays: 90 } });',
+  'cloudflare:workers': 'export const env = { DB: globalThis.customerDb };',
+  'next/navigation': `
+    export const redirect = globalThis.customerRedirect;
+    export const notFound = () => redirect('/404');
+    export const useRouter = () => ({ refresh() {} });
+  `,
+  '@/app/auth': `
+    export async function getAuthenticatedUser(options) {
+      globalThis.authCalls.push(Boolean(options?.readOnly));
+      return globalThis.customerIdentity;
+    }
+    export const requireAuthenticatedUser = getAuthenticatedUser;
+    export const signInPath = (path) => '/login?return_to=' + encodeURIComponent(path);
+  `,
+};
+const publicWidgets = `
+  const unusedWidget = () => null;
+  export const ProductOfferProvider = ({ children }) => children;
+  export const OfferAddToCart = unusedWidget, ProductOfferPrice = unusedWidget, ProductCard = unusedWidget,
+    ProductDelivery = unusedWidget, ProductGallery = unusedWidget, SiteFooter = unusedWidget,
+    SiteHeader = unusedWidget, ReviewForm = unusedWidget, ReviewPhotos = unusedWidget,
+    PublicSellerReply = unusedWidget;
+  export const RecentlyViewed = ({ authenticated }) =>
+    authenticated ? 'Customer view history' : 'Guest view history';
+`;
 const compiled = build({
-  entryPoints: ['lib/auth/customer.ts'],
+  entryPoints: {
+    customer: 'lib/auth/customer.ts',
+    'public-product-page': 'app/products/[slug]/page.tsx',
+    'recently-viewed-route': 'app/api/recently-viewed/route.ts',
+    'wishlist-route': 'app/api/account/wishlist/route.ts',
+  },
+  outdir: 'customer-fixture',
+  jsx: 'automatic',
+  external: ['react', 'react/*'],
   bundle: true,
   write: false,
   platform: 'node',
@@ -27,18 +97,22 @@ const compiled = build({
     {
       name: 'customer-request-boundaries',
       setup(bundle) {
-        bundle.onResolve(
-          { filter: /^(cloudflare:workers|next\/navigation|@\/app\/auth)$/ },
-          ({ path }) => ({ path, namespace: 'request' }),
+        stubFixtureLink(bundle);
+        bundle.onResolve({ filter: /.*/ }, ({ path }) =>
+          path in publicRouteDependencies ? { path, namespace: 'public-data' } : undefined,
         );
-        bundle.onLoad({ filter: /.*/, namespace: 'request' }, ({ path }) => ({
+        bundle.onLoad({ filter: /.*/, namespace: 'public-data' }, ({ path }) => ({
           loader: 'js',
-          contents:
-            path === 'cloudflare:workers'
-              ? 'export const env = { DB: globalThis.customerDb };'
-              : path === 'next/navigation'
-                ? 'export const redirect = globalThis.customerRedirect;'
-                : 'export const getAuthenticatedUser = async () => globalThis.customerIdentity; export const requireAuthenticatedUser = getAuthenticatedUser;',
+          contents: publicRouteDependencies[path],
+        }));
+        bundle.onResolve({ filter: /^@\/components\// }, ({ path }) =>
+          ['@/components/account/wishlist-button', '@/components/ui/button'].includes(path)
+            ? undefined
+            : { path, namespace: 'public-widget' },
+        );
+        bundle.onLoad({ filter: /.*/, namespace: 'public-widget' }, () => ({
+          loader: 'js',
+          contents: publicWidgets,
         }));
       },
     },
@@ -88,20 +162,46 @@ async function fixture(identity: AuthenticatedUser | null = signIn()) {
       }
     },
   } as unknown as D1Database;
-  const loadedModule = { exports: {} as CustomerApi };
-  runInNewContext((await compiled).outputFiles[0].text, {
-    module: loadedModule,
-    exports: loadedModule.exports,
-    customerDb: db,
-    customerIdentity: identity,
-    customerRedirect: (path: string) => {
-      throw new Error(`redirect:${path}`);
-    },
-    crypto: { randomUUID },
-  });
+  const bundles = (await compiled).outputFiles;
+  const authCalls: boolean[] = [];
+  function load<T>(name: string): T {
+    const output = bundles.find(({ path }) => basename(path) === name + '.js');
+    assert.ok(output, name);
+    const loadedModule = { exports: {} as T };
+    runInNewContext(output.text, {
+      module: loadedModule,
+      exports: loadedModule.exports,
+      require: createRequire(import.meta.url),
+      process,
+      Request,
+      Response,
+      TextEncoder,
+      customerDb: db,
+      customerIdentity: identity,
+      authCalls,
+      customerRedirect: (path: string) => {
+        throw new Error(`redirect:${path}`);
+      },
+      crypto: { randomUUID, subtle: crypto.subtle },
+    });
+    return loadedModule.exports;
+  }
   return {
     sqlite,
-    api: loadedModule.exports,
+    authCalls,
+    api: load<CustomerApi>('customer'),
+    async renderPublicProduct() {
+      const page = load<{
+        default(props: { params: Promise<{ slug: string }> }): Promise<ReactNode>;
+      }>('public-product-page');
+      return renderToStaticMarkup(await page.default({ params: Promise.resolve({ slug: 'cup' }) }));
+    },
+    history: () => load<{
+      GET(): Promise<Response>;
+      POST(request: Request): Promise<Response>;
+      DELETE(request: Request): Promise<Response>;
+    }>('recently-viewed-route'),
+    wishlist: () => load<{ PUT(request: Request): Promise<Response> }>('wishlist-route'),
     beforeBatch(callback: () => void) {
       beforeBatch = callback;
     },
@@ -433,3 +533,170 @@ for (const record of [
     }
   });
 }
+
+void test('a seller-only public product view leaves their roles untouched until an explicit dashboard visit', async () => {
+  const f = await fixture();
+  try {
+    f.seed(['seller']);
+    const before = f.state();
+    const html = await f.renderPublicProduct();
+    assert.deepEqual(f.state(), before);
+    assert.match(html, /<button[^>]+aria-pressed="false"[^>]+aria-label="Save to wishlist"/);
+    assert.doesNotMatch(html, /return_to=|Review this item/);
+    assert.match(html, /Guest view history/);
+    assert.deepEqual(f.authCalls, [true]);
+
+    const deliberateVisit = Date.now();
+    assert.equal((await f.api.requireCustomerPage('/account')).userId, 'existing');
+    const after = f.state();
+    const customerRole = after.roles.find((row) => row.role === 'customer');
+    assert.equal(customerRole?.user_id, 'existing');
+    assert.equal(customerRole?.assigned_at, after.users[0].updated_at);
+    assert.ok(Number(customerRole?.assigned_at) >= deliberateVisit);
+    assert.equal(after.roles.length, 2);
+  } finally {
+    f.sqlite.close();
+  }
+});
+
+void test('an existing customer can still see a saved product and review eligibility', async () => {
+  const f = await fixture();
+  try {
+    f.seed(['customer']);
+    const before = f.state();
+    const html = await f.renderPublicProduct();
+    assert.match(html, /<button[^>]+aria-pressed="true"[^>]+aria-label="Remove from wishlist"/);
+    assert.match(html, /Review this item/);
+    assert.match(html, /Customer view history/);
+    assert.deepEqual(f.authCalls, [true]);
+    assert.deepEqual(f.state(), before);
+  } finally {
+    f.sqlite.close();
+  }
+});
+
+void test('a guest product view leads to sign-in and guest history without account writes', async () => {
+  const f = await fixture(null);
+  try {
+    const before = f.state();
+    const html = await f.renderPublicProduct();
+    assert.match(html, /<a href="\/login\?return_to=%2Fproducts%2Fcup"/);
+    assert.doesNotMatch(html, /aria-pressed=|Review this item/);
+    assert.match(html, /Guest view history/);
+    assert.deepEqual(f.authCalls, [true]);
+    const response = await f.history().GET();
+    assert.equal(response.status, 200);
+    assert.equal((await response.json() as { authenticated: boolean }).authenticated, false);
+    assert.deepEqual(f.state(), before);
+  } finally {
+    f.sqlite.close();
+  }
+});
+
+function wishlistSaveRequest(): Request {
+  return new Request('http://fixture.invalid/api/account/wishlist', {
+    method: 'PUT', body: JSON.stringify({ productId: 'cup', saved: true }),
+  });
+}
+
+void test('a signed-in seller can intentionally save a product', async () => {
+  const f = await fixture();
+  try {
+    f.seed(['seller']);
+    const response = await f.wishlist().PUT(wishlistSaveRequest());
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { saved: true });
+    assert.deepEqual(f.state().roles.map(({ role }) => role), ['customer', 'seller']);
+  } finally {
+    f.sqlite.close();
+  }
+});
+
+void test('a staff-only identity cannot gain customer privileges from a wishlist save', async () => {
+  const f = await fixture();
+  try {
+    f.seed(['super_admin']);
+    const before = f.state();
+    const response = await f.wishlist().PUT(wishlistSaveRequest());
+    assert.equal(response.status, 403);
+    assert.deepEqual(f.state(), before);
+  } finally {
+    f.sqlite.close();
+  }
+});
+
+void test('a background history fetch returns guest history for a seller without provisioning', async () => {
+  const f = await fixture();
+  try {
+    f.seed(['seller']);
+    const before = f.state();
+    const response = await f.history().GET();
+    assert.equal(response.status, 200);
+    assert.deepEqual(f.state(), before);
+    assert.deepEqual(await response.json(), {
+      products: [], policy: { maxItems: 12, retentionDays: 90 }, authenticated: false,
+    });
+  } finally {
+    f.sqlite.close();
+  }
+});
+
+function historyRecordRequest(): Request {
+  return new Request('http://fixture.invalid/api/recently-viewed', {
+    method: 'POST', body: JSON.stringify({ action: 'record', productId: 'cup' }),
+  });
+}
+
+void test('a background history record requires an existing customer role', async () => {
+  const f = await fixture();
+  try {
+    f.seed(['seller']);
+    const { users, roles } = f.state();
+    const response = await f.history().POST(historyRecordRequest());
+    assert.deepEqual(f.state().users, users);
+    assert.deepEqual(f.state().roles, roles);
+    assert.equal(response.status, 403);
+  } finally {
+    f.sqlite.close();
+  }
+});
+
+function historyClearRequest(): Request {
+  return new Request('http://fixture.invalid/api/recently-viewed', { method: 'DELETE' });
+}
+
+void test('clearing customer view history cannot create a customer role', async () => {
+  const f = await fixture();
+  try {
+    f.seed(['seller']);
+    const before = f.state();
+    const response = await f.history().DELETE(historyClearRequest());
+    assert.deepEqual(f.state(), before);
+    assert.equal(response.status, 403);
+  } finally {
+    f.sqlite.close();
+  }
+});
+
+void test('an existing customer can still record and retrieve recent views', async () => {
+  const f = await fixture();
+  try {
+    f.seed(['customer']);
+    const { users, roles } = f.state();
+    const response = await f.history().GET();
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      products: [{ id: 'existing' }], policy: { maxItems: 12, retentionDays: 90 }, authenticated: true,
+    });
+    const record = await f.history().POST(historyRecordRequest());
+    assert.equal(record.status, 200);
+    assert.equal((await record.json() as { recorded: boolean }).recorded, true);
+    const clear = await f.history().DELETE(historyClearRequest());
+    assert.equal(clear.status, 200);
+    assert.deepEqual(await clear.json(), { cleared: true });
+    assert.deepEqual(f.state().users, users);
+    assert.deepEqual(f.state().roles, roles);
+  } finally {
+    f.sqlite.close();
+  }
+});

@@ -12,10 +12,11 @@ import {
   type HomepageHeroSlides,
 } from '../lib/homepage/hero-slides';
 
-void test('rendered hero reserves space after its dots beyond the overlapping category panel', async () => {
+void test('rendered hero keeps each story control above the overlapping category panel', async () => {
   const compiled = await build({
     entryPoints: ['components/homepage/homepage-hero-carousel.tsx'],
     bundle: true,
+    loader: { '.module.css': 'empty' },
     write: false,
     platform: 'node',
     format: 'cjs',
@@ -45,25 +46,13 @@ void test('rendered hero reserves space after its dots beyond the overlapping ca
     }),
   );
   assert.match(html, /data-slider-dots/);
-  const carouselTag = html.match(/<div\b[^>]*data-slot="carousel"[^>]*>/)?.[0];
-  assert.ok(carouselTag);
-  // Tailwind's numeric padding units are quarter-rem. Read the emitted ancestor
-  // padding and compare with the actual desktop/mobile category overlaps.
-  const paddingUnits = Number(
-    carouselTag.match(/class="[^"]*\bpb-(\d+)\b/)?.[1] ?? 0,
-  );
-  const styles = await readFile(
-    new URL('../app/globals.css', import.meta.url),
-    'utf8',
-  );
-  const overlaps = [
-    ...styles.matchAll(
-      /\.homepage-category-wrap\s*\{[^}]*?margin-top:\s*-(\d+(?:\.\d+)?)rem/g,
-    ),
-  ].map((match) => Number(match[1]));
-  assert.ok(overlaps.length > 0);
-  assert.ok(
-    paddingUnits / 4 > Math.max(...overlaps),
-    'the category overlap must end below every hero dot hit area',
-  );
+  assert.match(html, /aria-label="Pause featured stories"/);
+  assert.equal((html.match(/aria-label="Show slide /g) ?? []).length, 3);
+  const [homepageStyles, heroStyles] = await Promise.all([
+    readFile(new URL('../components/homepage/homepage.module.css', import.meta.url), 'utf8'),
+    readFile(new URL('../components/homepage/homepage-hero.module.css', import.meta.url), 'utf8'),
+  ]);
+  const overlap = Number(homepageStyles.match(/margin-top: -(\d+(?:\.\d+)?)rem/)?.[1]);
+  const clearance = Number(heroStyles.match(/\.controls\s*\{[^}]*bottom: (\d+(?:\.\d+)?)rem/)?.[1]);
+  assert.ok(overlap > 0 && clearance > overlap, 'the category panel must sit below the hero controls');
 });

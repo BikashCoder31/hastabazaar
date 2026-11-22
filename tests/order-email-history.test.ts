@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
@@ -7,7 +8,14 @@ function fixture() {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec(`CREATE TABLE orders(id TEXT PRIMARY KEY,order_number TEXT,status TEXT);
     CREATE TABLE order_email_jobs(id TEXT PRIMARY KEY,order_id TEXT,order_status TEXT,created_at INTEGER,
-    status TEXT,attempts INTEGER,next_attempt_at INTEGER,lease_until INTEGER,claim_token TEXT,sent_at INTEGER,failure_code TEXT);`);
+    status TEXT,attempts INTEGER,next_attempt_at INTEGER,lease_until INTEGER,claim_token TEXT,sent_at INTEGER,failure_code TEXT);
+`);
+  sqlite.exec(
+    readFileSync(
+      new URL('../drizzle/0147_durable_email_delivery.sql', import.meta.url),
+      'utf8',
+    ),
+  );
   const db = {
     prepare(sql: string) {
       const statement = sqlite.prepare(sql);
@@ -71,6 +79,19 @@ type List = (
 }>;
 const now = 2_000_000_000_000;
 
+void test('unproven legacy order attempts are uncertain before a worker observes them, even when the old update is obsolete',async()=>{
+ const f=fixture();try{
+  f.add('legacy-gap','LEGACY-GAP',now-2*86400000,'retry',2,'delivered','packing');
+  const before=f.sqlite.prepare('SELECT * FROM order_email_jobs').all();
+  assert.equal((await queue.listOrderEmailHistory(f.db,{status:'uncertain'},now)).total,1);
+  assert.equal((await queue.listOrderEmailHistory(f.db,{status:'ready'},now)).total,0);
+  assert.equal((await queue.listOrderEmailHistory(f.db,{status:'expired'},now)).total,0);
+  const summary=await queue.emailQueueSummary(f.db,now);assert.equal(summary.uncertain,1);assert.equal(summary.due,0);assert.equal(summary.skipped,0);
+  assert.deepEqual(f.sqlite.prepare('SELECT * FROM order_email_jobs').all(),before);
+  assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM email_delivery_attempts').get()!.n,0,'Reading does not fabricate a historical attempt.');
+ }finally{f.sqlite.close();}
+});
+
 void test('email history searches all records and preserves counts and bounded pages', async () => {
   const f = fixture();
   try {
@@ -123,7 +144,12 @@ void test('staff queue excludes stale updates immediately without changing them 
     assert.equal(expired.jobs[0].skipReason, 'expired_order_update');
     assert.equal(expired.jobs[0].status, 'queued');
     assert.equal((await list(f.db, { status: 'skipped' }, now)).total, 2);
-    assert.equal((await list(f.db, { status: 'sent' }, now)).total, 1);
+    assert.equal((await list(f.db, { status: 'sent_record' }, now)).total, 1);
+    assert.equal(
+      (await list(f.db, { status: 'sent' }, now)).total,
+      0,
+      'Legacy sent rows do not invent provider receipt evidence',
+    );
     assert.equal(
       f.sqlite
         .prepare("SELECT status FROM order_email_jobs WHERE id='expired'")
@@ -146,12 +172,29 @@ void test('staff queue excludes stale updates immediately without changing them 
   }
 });
 
-void test('email attention filters distinguish retry waiting, exhausted work and ready work', async () => {
+void test('email attention filters use durable outcomes and never stop temporary retries at five attempts', async () => {
   const f = fixture();
   try {
     f.add('ready', 'ORDER-READY', now - 1);
     f.add('retry', 'ORDER-RETRY', now - 2, 'retry', 1);
-    f.add('exhausted', 'ORDER-REVIEW', now - 3, 'retry', 5);
+    f.add('exhausted', 'ORDER-REVIEW', now - 3, 'retry', 8);
+    f.sqlite
+      .prepare(
+        "INSERT INTO email_delivery_attempts(id,queue_kind,queue_id,attempt_number,phase,failure_category,claim_token,message_id,started_at) VALUES('failure','order','exhausted',8,'not_accepted','permanent_recipient','claim-failure','mail-failure',1)",
+      )
+      .run();
+    f.add('temporary', 'ORDER-TEMP', now - 5, 'retry', 12);
+    f.sqlite
+      .prepare(
+        "INSERT INTO email_delivery_attempts(id,queue_kind,queue_id,attempt_number,phase,failure_category,claim_token,message_id,started_at) VALUES('temporary','order','temporary',12,'not_accepted','temporary','claim-temp','mail-temp',1)",
+      )
+      .run();
+    f.add('uncertain', 'ORDER-UNKNOWN', now - 6, 'retry', 2);
+    f.sqlite
+      .prepare(
+        "INSERT INTO email_delivery_attempts(id,queue_kind,queue_id,attempt_number,phase,failure_category,claim_token,message_id,started_at) VALUES('unknown','order','uncertain',2,'uncertain','unknown','claim-unknown','mail-unknown',1)",
+      )
+      .run();
     f.add('active-final', 'ORDER-ACTIVE', now - 4, 'sending', 5);
     f.sqlite
       .prepare(
@@ -161,11 +204,15 @@ void test('email attention filters distinguish retry waiting, exhausted work and
     f.sqlite
       .prepare("UPDATE order_email_jobs SET next_attempt_at=? WHERE id='retry'")
       .run(now + 60_000);
+    // These cases model proven rejections, rather than unverified legacy gaps.
+    for(const [id,count] of [['retry',1],['exhausted',7],['temporary',11]] as const)
+      for(let attempt=1;attempt<=count;attempt++)
+        f.sqlite.prepare("INSERT INTO email_delivery_attempts(id,queue_kind,queue_id,attempt_number,phase,failure_category,claim_token,message_id,started_at,completed_at) VALUES(?,'order',?,?,'not_accepted','temporary',?,?,1,1)").run(id+'-known-'+attempt,id,attempt,id+'-claim-'+attempt,id+'-mail-'+attempt);
     const list = Reflect.get(queue, 'listOrderEmailHistory') as List;
     assert.equal(typeof list, 'function');
     assert.deepEqual(
       (await list(f.db, { status: 'ready' }, now)).jobs.map((row) => row.id),
-      ['ready'],
+      ['ready', 'temporary'],
     );
     assert.deepEqual(
       (await list(f.db, { status: 'needs_review' }, now)).jobs.map(
@@ -175,12 +222,41 @@ void test('email attention filters distinguish retry waiting, exhausted work and
     );
     assert.deepEqual(
       (await list(f.db, { status: 'retry' }, now)).jobs.map((row) => row.id),
-      ['retry'],
+      ['retry', 'temporary'],
     );
     const summary = await queue.emailQueueSummary(f.db, now);
-    assert.equal(summary.due, 1);
+    assert.equal(summary.due, 2);
     assert.equal(summary.exhausted, 1);
     assert.equal(Reflect.get(summary, 'retryWaiting'), 1);
+    assert.equal(Reflect.get(summary, 'uncertain'), 1);
+    assert.equal((await list(f.db, { status: 'uncertain' }, now)).total, 1);
+  } finally {
+    f.sqlite.close();
+  }
+});
+
+void test('first-attempt health excludes valid backoff only for the exact current transport configuration', async () => {
+  const f = fixture();
+  try {
+    f.add('waiting-provider', 'ORDER-PROVIDER', now - 400000);
+    f.sqlite
+      .prepare(
+        'INSERT INTO email_transport_backoff(transport_key,config_fingerprint,blocked_until,updated_at) VALUES(?,?,?,0)',
+      )
+      .run('smtp', 'current', now + 60000);
+    const blocked = await queue.emailQueueSummary(f.db, now, {
+      transportKey: 'smtp',
+      configurationFingerprint: 'current',
+    });
+    assert.equal(blocked.due, 0);
+    assert.equal(blocked.oldestEligibleAt, null);
+    assert.equal(blocked.overdueFirstAttempts, false);
+    const changed = await queue.emailQueueSummary(f.db, now, {
+      transportKey: 'smtp',
+      configurationFingerprint: 'new-config',
+    });
+    assert.equal(changed.due, 1);
+    assert.equal(changed.overdueFirstAttempts, true);
   } finally {
     f.sqlite.close();
   }

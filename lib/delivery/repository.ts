@@ -1,4 +1,5 @@
 import { assertFirstCodFulfillmentAllowed } from '../orders/first-cod-review';
+import {formAnswerSourceSql} from '../forms/answer-proof';
 import {
   parseLocation,
   safeCourierUrl,
@@ -108,7 +109,7 @@ export async function assignDelivery(
     if (rows.results.length) {
       const answer = await db
         .prepare(`SELECT subject_id AS subjectId,actor_id AS actorId,
-     config_version_id AS versionId FROM form_answer_sets
+     config_version_id AS versionId FROM ${formAnswerSourceSql(db)} retained_answers
      WHERE form_id='staff.delivery-assignment' AND request_id=? LIMIT 1`)
         .bind(o.requestId)
         .first<{ subjectId: string; actorId: string; versionId: string }>();

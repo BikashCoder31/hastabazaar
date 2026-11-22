@@ -1,4 +1,5 @@
 'use client';
+import { AdminPageTitle } from '@/components/admin/page-help';
 
 import { FormGuide } from '@/components/forms/form-guide';
 import { useMemo, useRef, useState } from 'react';
@@ -20,8 +21,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import type { BusinessSettingVersion } from '@/lib/db/repositories/business-settings';
 import type { HomepageHeroMediaRecord } from '@/lib/db/repositories/homepage-hero';
-import { configuredMultipartAnswers } from '@/lib/forms/submission';
-import { clearSessionAttempt, getOrCreateSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
+import { configuredMultipartAnswers } from '@/lib/forms/client-submission';
+import {useHomepageCommand} from './use-homepage-command';
+import {useHomepageUpload} from './use-homepage-upload';
+import {HomepageAccessNotice} from './homepage-access-boundary';
 import {
   addHomepageHeroSlide,
   addSellerRegistrationSlide,
@@ -89,17 +92,20 @@ function versionLabel(version: HeroVersion, now: number): string {
   return 'Current';
 }
 
-export function HomepageHeroManager({
-  initialSlides,
-  initialMedia,
-  history,
-  asOf,
-}: {
+type HeroManagerProps={actorId:string;
   initialSlides: HomepageHeroSlides;
   initialMedia: readonly HomepageHeroMediaRecord[];
   history: readonly HeroVersion[];
   asOf: number;
-}) {
+};
+export function HomepageHeroManager(props:HeroManagerProps){return <HomepageHeroManagerScope key={props.actorId} {...props}/>;}
+function HomepageHeroManagerScope({actorId,
+  initialSlides,
+  initialMedia,
+  history,
+  asOf,
+}:HeroManagerProps){
+  const command=useHomepageCommand(actorId,'staff.homepage-hero-manager');
   const [slides, setSlides] = useState<HomepageHeroSlide[]>(() =>
     initialSlides.map((slide) => ({ ...slide })),
   );
@@ -110,11 +116,10 @@ export function HomepageHeroManager({
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
   const [reason, setReason] = useState('');
   const [effectiveFrom, setEffectiveFrom] = useState('');
-  const [busy, setBusy] = useState(false);
+  const upload=useHomepageUpload(actorId,record=>setMedia(current=>[record,...current.filter(item=>item.id!==record.id)]));
+  const busy=upload.busy||command.busy;
   const [message, setMessage] = useState('');
   const formRef = useRef<HTMLFormElement>(null);
-  const latestAttemptKey = useRef<string | null>(null);
-  const [failedAttemptKey, setFailedAttemptKey] = useState<string | null>(null);
   const catalog = usePublishedFormConfig('staff.homepage-hero-manager');
   function verifyResponse(response: Response, result: SettingsResponse | null, action: 'save' | 'publish' | 'reverse', fallback: string) {
     if (result?.code === 'stale_version') catalog.handleSubmissionResponse(response, result.code);
@@ -132,25 +137,22 @@ export function HomepageHeroManager({
   const readiness = useMemo(() => homepageHeroReadiness(slides), [slides]);
   const preview = slides.find((slide) => slide.id === previewId) ?? slides[0];
 
-  function catalogPayload(action: string, subjectId: string) {
-    if (!catalog.canSubmit || !catalog.config || !formRef.current)
-      throw new Error('Form configuration is unavailable. Please try again.');
-    const data = new FormData(formRef.current);
-    const attemptKey = sessionAttemptKey('staff.homepage-hero-manager', `${action}:${subjectId}`);
-    latestAttemptKey.current = attemptKey;
-    data.set('requestId', getOrCreateSessionAttempt(attemptKey));
-    const { version, ...answers } = configuredMultipartAnswers(data, catalog.config);
-    return { sourceFormId: 'staff.homepage-hero-manager',
-      formVersion: version, ...answers };
+  function catalogPayload() {
+    if (!catalog.canSubmit || !catalog.config || !formRef.current) throw new Error('Form configuration is unavailable. Please try again.');
+    const data=new FormData(formRef.current);data.set('requestId',crypto.randomUUID());
+    const {version,...answers}=configuredMultipartAnswers(data,catalog.config);
+    return {sourceFormId:'staff.homepage-hero-manager',formVersion:version,...answers};
   }
 
   function updateSlide(id: string, patch: Partial<HomepageHeroSlide>) {
+    upload.setMessage('');
     setSlides((current) =>
       current.map((slide) => (slide.id === id ? { ...slide, ...patch } : slide)),
     );
   }
 
   function apply(operation: () => HomepageHeroSlide[]) {
+    upload.setMessage('');
     try {
       const next = operation();
       setSlides(next);
@@ -163,113 +165,33 @@ export function HomepageHeroManager({
     }
   }
 
-  async function uploadMedia(file: File) {
-    setBusy(true);
-    setMessage('');
-    try {
-      const form = new FormData();
-      form.set('file', file);
-      const response = await fetch('/api/admin/homepage/hero-media', {
-        method: 'POST',
-        body: form,
-      });
-      const result = (await response.json().catch(() => null)) as
-        | { media?: HomepageHeroMediaRecord; error?: string }
-        | null;
-      if (!response.ok || !result?.media) {
-        throw new Error(result?.error || 'Hero media could not be uploaded.');
-      }
-      setMedia((current) => [result.media!, ...current]);
-      setMessage('Media uploaded to the private hero library. Select it on a slide.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Hero media could not be uploaded.');
-    } finally {
-      setBusy(false);
-    }
-  }
+  async function uploadMedia(file:File){if(busy||command.pending||upload.pending||!command.scope.current())return;setMessage('');command.setMessage('');await upload.start(file);}
 
   async function saveDraft() {
-    setBusy(true);
-    setMessage('');
-    setFailedAttemptKey(null);
-    latestAttemptKey.current = null;
-    try {
-      const response = await fetch('/api/admin/business-settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          key: 'homepage_hero_slides',
-          value: slides,
-          reason,
-          ...catalogPayload('save', 'homepage_hero_slides'),
-        }),
-      });
-      const result = (await response.json().catch(() => null)) as
-        | SettingsResponse
-        | null;
-      verifyResponse(response, result, 'save', 'Hero draft could not be saved.');
-      if (latestAttemptKey.current) clearSessionAttempt(latestAttemptKey.current);
-      setMessage('Draft saved. Refreshing the authoritative version history…');
-      window.location.reload();
-    } catch (error) {
-      setFailedAttemptKey(latestAttemptKey.current);
-      setMessage(error instanceof Error ? error.message : 'Hero draft could not be saved.');
-    } finally {
-      setBusy(false);
-    }
+    if(busy||command.pending||upload.pending||!command.scope.current())return;setMessage('');command.setMessage('');upload.setMessage('');
+    try {await command.run({action:'save',sourceId:'homepage_hero_slides',endpoint:'/api/admin/business-settings',body:{key:'homepage_hero_slides',value:slides,reason,...catalogPayload()},verify:(response,data)=>verifyResponse(response,data as SettingsResponse|null,'save','Hero draft could not be saved.'),onRecorded:()=>window.location.reload()});}
+    catch(error){if(command.scope.current())setMessage(error instanceof Error?error.message:'Hero draft could not be saved.');}
   }
 
-  async function changeVersion(version: HeroVersion, action: 'publish' | 'reverse') {
-    setBusy(true);
-    setMessage('');
-    setFailedAttemptKey(null);
-    latestAttemptKey.current = null;
-    try {
-      const response = await fetch(
-        `/api/admin/business-settings/changes/${encodeURIComponent(version.id)}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action,
-            expectedRevision: version.revision,
-            effectiveFrom:
-              action === 'publish' && effectiveFrom
-                ? new Date(effectiveFrom).getTime()
-                : undefined,
-            reason,
-            ...catalogPayload(action, version.id),
-          }),
-        },
-      );
-      const result = (await response.json().catch(() => null)) as
-        | SettingsResponse
-        | null;
-      verifyResponse(response, result, action, 'Hero change could not be recorded.');
-      if (latestAttemptKey.current) clearSessionAttempt(latestAttemptKey.current);
-      setMessage(
-        action === 'reverse'
-          ? 'Restoration draft created without changing published history.'
-          : 'Hero publication was scheduled. Refreshing authoritative history…',
-      );
-      window.location.reload();
-    } catch (error) {
-      setFailedAttemptKey(latestAttemptKey.current);
-      setMessage(error instanceof Error ? error.message : 'Hero change could not be recorded.');
-    } finally {
-      setBusy(false);
-    }
+  async function changeVersion(version:HeroVersion,action:'publish'|'reverse') {
+    if(busy||command.pending||upload.pending||!command.scope.current())return;setMessage('');command.setMessage('');upload.setMessage('');
+    try {await command.run({action,sourceId:version.id,endpoint:'/api/admin/business-settings/changes/'+encodeURIComponent(version.id),body:{action,expectedRevision:version.revision,effectiveFrom:action==='publish'&&effectiveFrom?new Date(effectiveFrom).getTime():undefined,reason,...catalogPayload()},verify:(response,data)=>verifyResponse(response,data as SettingsResponse|null,action,'Hero change could not be recorded.'),onRecorded:()=>window.location.reload()});}
+    catch(error){if(command.scope.current())setMessage(error instanceof Error?error.message:'Hero change could not be recorded.');}
   }
 
+  if(command.scope.accessDenied||upload.scope.accessDenied)return <HomepageAccessNotice/>;
   return (
     <form ref={formRef} data-form-id="staff.homepage-hero-manager" id="hero-slides"
       className="space-y-6" onSubmit={(event) => event.preventDefault()}>
+      {command.recovery}
+      {upload.recovery}
+      {catalog.status==='stale'&&!command.pending?<Button size="workspace" type="button" variant="workspace-outline" disabled={busy||upload.pending} onClick={()=>{if(command.scope.current())catalog.refresh();}}>Refresh form</Button>:null}
+      <fieldset disabled={busy||command.pending||upload.pending} className="min-w-0 space-y-6">
       <FormGuide formId="staff.homepage-hero-manager" />
 
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="eyebrow">Customer homepage</p>
-          <h1 className="mt-2 font-heading text-4xl tracking-tight">Hero slides</h1>
+          <AdminPageTitle><h1 className="font-heading text-4xl tracking-tight">Hero slides</h1></AdminPageTitle>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
             Edit, order, preview, schedule, and restore the homepage story. All
             slides—including the first—use the same controls. Draft changes stay
@@ -278,8 +200,9 @@ export function HomepageHeroManager({
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
+            size="workspace"
             type="button"
-            variant="outline"
+            variant="workspace-primary"
             disabled={busy || slides.length >= 8 || slides.some((slide) => slide.id === SELLER_REGISTRATION_HERO_SLIDE.id)}
             onClick={() => {
               apply(() => addSellerRegistrationSlide(slides));
@@ -289,8 +212,9 @@ export function HomepageHeroManager({
             <Plus aria-hidden="true" /> Add seller slide first
           </Button>
         <Button
+          size="workspace"
           type="button"
-          variant="outline"
+          variant="workspace-outline"
           disabled={slides.length >= 8}
           onClick={() =>
             apply(() => addHomepageHeroSlide(slides, crypto.randomUUID()))
@@ -348,15 +272,19 @@ export function HomepageHeroManager({
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
             <Button
+              size="workspace"
               type="button"
-              variant={previewMode === 'desktop' ? 'secondary' : 'outline'}
+              variant="workspace-outline"
+              aria-pressed={previewMode === 'desktop'}
               onClick={() => setPreviewMode('desktop')}
             >
               Desktop preview
             </Button>
             <Button
+              size="workspace"
               type="button"
-              variant={previewMode === 'mobile' ? 'secondary' : 'outline'}
+              variant="workspace-outline"
+              aria-pressed={previewMode === 'mobile'}
               onClick={() => setPreviewMode('mobile')}
             >
               Mobile preview
@@ -434,16 +362,10 @@ export function HomepageHeroManager({
               onChange={(event) => setEffectiveFrom(event.target.value)}
             />
           </div>
-          {message ? <output aria-live="polite" className="block text-sm font-medium">{message}</output> : null}
-          {failedAttemptKey ? <Button type="button" variant="outline" disabled={busy}
-            onClick={() => {
-              if (!window.confirm('This attempt may already have succeeded. Check the latest history before starting a new attempt, which could duplicate the action. Continue?')) return;
-              clearSessionAttempt(failedAttemptKey);
-              if (catalog.status === 'stale') catalog.refresh();
-              setFailedAttemptKey(null);
-              setMessage('New attempt ready. Review the latest history before submitting again.');
-            }}>Start a new attempt</Button> : null}
+          {upload.message||command.message||message ? <output aria-live="polite" className="block text-sm font-medium">{upload.message||command.message||message}</output> : null}
           <Button
+            variant="workspace-primary"
+            size="workspace"
             type="button"
             disabled={busy || !catalog.canSubmit || !readiness.draftValid || reason.trim().length < 8}
             onClick={() => void saveDraft()}
@@ -474,8 +396,8 @@ export function HomepageHeroManager({
                   <div className="flex flex-wrap gap-2">
                     <Button
                       type="button"
-                      size="sm"
-                      variant="outline"
+                      size="workspace"
+                      variant="workspace-outline"
                       onClick={() => {
                         setSlides(version.value.map((slide) => ({ ...slide })));
                         setPreviewId(version.value[0]?.id ?? '');
@@ -485,8 +407,9 @@ export function HomepageHeroManager({
                     </Button>
                     {version.status === 'draft' ? (
                       <Button
+                        variant="workspace-primary"
                         type="button"
-                        size="sm"
+                        size="workspace"
                         disabled={
                           busy ||
                           !catalog.canSubmit ||
@@ -502,8 +425,8 @@ export function HomepageHeroManager({
                     {version.status === 'published' ? (
                       <Button
                         type="button"
-                        size="sm"
-                        variant="outline"
+                        size="workspace"
+                        variant="workspace-outline"
                         disabled={busy || !catalog.canSubmit || reason.trim().length < 8}
                         onClick={() => void changeVersion(version, 'reverse')}
                       >
@@ -521,6 +444,7 @@ export function HomepageHeroManager({
           )}
         </CardContent>
       </Card>
+      </fieldset>
     </form>
   );
 }
@@ -589,10 +513,10 @@ function SlideEditor({
             <CardDescription>{slide.id}</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" variant="outline" disabled={index === 0} onClick={() => onMove('up')} aria-label={`Move slide ${index + 1} up`}><ArrowUp /></Button>
-            <Button type="button" size="sm" variant="outline" disabled={index === total - 1} onClick={() => onMove('down')} aria-label={`Move slide ${index + 1} down`}><ArrowDown /></Button>
-            <Button type="button" size="sm" variant="outline" onClick={onPreview}>Preview</Button>
-            <Button type="button" size="sm" variant="destructive" onClick={onRemove}><Trash2 /> Remove</Button>
+            <Button type="button" size="workspace" variant="workspace-outline" disabled={index === 0} onClick={() => onMove('up')} aria-label={`Move slide ${index + 1} up`}><ArrowUp /></Button>
+            <Button type="button" size="workspace" variant="workspace-outline" disabled={index === total - 1} onClick={() => onMove('down')} aria-label={`Move slide ${index + 1} down`}><ArrowDown /></Button>
+            <Button type="button" size="workspace" variant="workspace-outline" onClick={onPreview}>Preview</Button>
+            <Button type="button" size="workspace" variant="workspace-destructive" onClick={() => { if (window.confirm('Remove this slide from the working draft?')) onRemove(); }}><Trash2 /> Remove</Button>
           </div>
         </div>
       </CardHeader>

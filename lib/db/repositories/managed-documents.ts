@@ -4,12 +4,16 @@ import { staffMutationGuard } from './staff-mutation-guard';
 import { digestFormRequest } from '../../forms/submission';
 import type { FormAnswerSnapshot } from '../../forms/types';
 import type { managedMakerAgreementSnapshot } from '../../sellers/managed-identity';
+import { APPROVED_BILLING_VERSION } from '../../documents/billing';
 type CompanySellingIdentity = Pick<ReturnType<typeof managedMakerAgreementSnapshot>, 'company' | 'companyAccount'>;
 
 export async function issueManagedInvoiceGroups(
   database:D1Database,
   options:{orderId:string;requestId:string;now:number},
 ):Promise<number>{
+  const statement=await database.prepare("SELECT snapshot_json AS json FROM order_documents WHERE order_id=? AND kind='order_statement'")
+    .bind(options.orderId).first<{json:string}>();
+  if(statement && (JSON.parse(statement.json) as {billing?:{version?:string}}).billing?.version===APPROVED_BILLING_VERSION)return 0;
   const order=await database.prepare(`SELECT order_number AS orderNumber,customer_email AS customerEmail,
     payment_status AS paymentStatus,currency,delivered_at AS deliveredAt FROM orders o
     WHERE o.id=? AND o.status='delivered'
@@ -60,13 +64,13 @@ export interface ManagedInvoiceSnapshot {
   simulationLabel:string;taxDocument:false;reviewStatus:string;orderNumber:string;
   issuerReference:string;legalSellerReference:string;agreementVersion:string;currency:string;
   customerEmail:string;issuedAt:number;productTotalPaisa:number;
-  items:readonly {orderItemId:string;productName:string;sku:string;quantity:number;unitPricePaisa:number;lineTotalPaisa:number}[];
+  items:readonly {orderItemId:string;productName:string;sku:string;quantity:number;unitPricePaisa:number;lineTotalPaisa:number;makerName?:string|null}[];
 }
 export async function getManagedInvoiceGroup(database:D1Database,options:{orderNumber:string;invoiceId:string;receiptTokenHash:string|null;customerId:string|null}){
   const row=await database.prepare(`SELECT g.id,g.invoice_number AS invoiceNumber,g.status,g.snapshot_json AS snapshotJson,
     g.barcode_payload AS barcodePayload,g.qr_payload AS qrPayload,g.simulation_label AS simulationLabel,g.issued_at AS issuedAt
     FROM managed_invoice_groups g JOIN orders o ON o.id=g.order_id
-    WHERE o.order_number=? AND g.id=? AND ((? IS NOT NULL AND o.receipt_token_hash=?) OR (? IS NOT NULL AND o.customer_id=?)) LIMIT 1`).bind(
+    WHERE g.record_kind='simulation' AND o.order_number=? AND g.id=? AND ((? IS NOT NULL AND o.receipt_token_hash=?) OR (? IS NOT NULL AND o.customer_id=?)) LIMIT 1`).bind(
       options.orderNumber,options.invoiceId,options.receiptTokenHash,options.receiptTokenHash,options.customerId,options.customerId,
     ).first<{id:string;invoiceNumber:string;status:string;snapshotJson:string;barcodePayload:string;qrPayload:string;simulationLabel:string;issuedAt:number}>();
   if(!row)return null;
@@ -167,8 +171,8 @@ export async function listManagedInvoiceAdjustments(database:D1Database,invoiceG
 
 export async function listManagedInvoiceGroupsForOrder(database:D1Database,orderId:string){
   const rows=await database.prepare(`SELECT g.id,g.invoice_number AS invoiceNumber,g.issuer_reference AS issuerReference,
-    g.status,g.simulation_label AS simulationLabel,g.issued_at AS issuedAt,
+    g.status,g.record_kind AS recordKind,g.simulation_label AS simulationLabel,g.issued_at AS issuedAt,
     (SELECT COUNT(*) FROM managed_invoice_adjustments a WHERE a.invoice_group_id=g.id) AS adjustmentCount
-    FROM managed_invoice_groups g WHERE g.order_id=? ORDER BY g.issued_at,g.id`).bind(orderId).all<{id:string;invoiceNumber:string;issuerReference:string;status:string;simulationLabel:string;issuedAt:number;adjustmentCount:number}>();
+    FROM managed_invoice_groups g WHERE g.order_id=? ORDER BY g.issued_at,g.id`).bind(orderId).all<{id:string;invoiceNumber:string;issuerReference:string;status:string;recordKind:'live'|'simulation';simulationLabel:string|null;issuedAt:number;adjustmentCount:number}>();
   return rows.results;
 }

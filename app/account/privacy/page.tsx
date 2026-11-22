@@ -1,7 +1,8 @@
 import { env } from 'cloudflare:workers';
 import { PrivacyRequestForm } from '@/components/account/privacy-request-form';
 import { AnswerDetails } from '@/components/forms/answer-details';
-import { AccountHeading } from '@/components/account/account-ui';
+import { CustomerSettings } from '@/components/account/account-sections';
+import { CustomerActingChip } from '@/components/storefront/customer-acting-chip';
 import { requireCustomerPage } from '@/lib/auth/customer';
 import { requireDatabase } from '@/lib/db/d1';
 import { listDataRightsRequests } from '@/lib/db/repositories/operations';
@@ -16,18 +17,14 @@ export default async function PrivacyPage() {
   );
   const answers = await Promise.all(rows.map((row) => listFormAnswersForSubject(db, 'data_rights_request', row.id)));
   return (
-    <div className="space-y-7">
-      <AccountHeading
-        eyebrow="Your information"
-        title="Privacy, with care."
-        description="Request a copy of your data, ask for a correction, or request deletion of eligible information. We’ll review your request and explain the outcome here."
-      />
+    <CustomerSettings active="privacy">
+      <p className="text-sm text-muted-foreground">Request a copy of your data, correct your details, object to keeping your data, or ask us to delete eligible data.</p>
       <p className="rounded-xl bg-secondary p-4 text-sm leading-6 text-muted-foreground">
         Some order and payment records may need to be retained. Submitting a
         deletion request does not immediately erase your account or purchase
         history.
       </p>
-      <PrivacyRequestForm />
+      <PrivacyRequestForm actorId={customer.userId} />
       <div className="space-y-3">
         <h2 className="font-heading text-2xl">Request history</h2>
         {rows.length ? (
@@ -38,6 +35,8 @@ export default async function PrivacyPage() {
                 <span className="capitalize">
                   {row.status.replaceAll('_', ' ')}
                 </span>
+                <CustomerActingChip actor={row.status === 'needs_information' ? 'you'
+                  : ['completed', 'rejected'].includes(row.status) ? 'done' : 'hastabazaar'} />
               </div>
               <p className="mt-2 text-sm capitalize">
                 {row.requestType.replaceAll('_', ' ')}
@@ -58,6 +57,6 @@ export default async function PrivacyPage() {
           <p className="text-sm text-muted-foreground">No requests yet.</p>
         )}
       </div>
-    </div>
+    </CustomerSettings>
   );
 }

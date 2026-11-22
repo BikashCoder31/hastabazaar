@@ -1,4 +1,7 @@
 import { readBoundedJsonObject } from '@/lib/http/form-json-body';
+import {readCheckoutPaymentCapabilities} from '@/lib/checkout/payment-capabilities';
+import {requireCustomerIntentApi} from '@/lib/auth/customer-intent';
+import {readOrderCustomerIntent} from '@/lib/orders/customer-intent';
 import { env } from 'cloudflare:workers';
 import { sendPendingOrderUpdates } from '@/lib/email/send-order-updates';
 import { recordRequestTrafficEvent } from '@/lib/analytics/request';
@@ -14,13 +17,15 @@ import { requireDatabase } from '@/lib/db/d1';
 import {
   CheckoutConflictError,
   createCodOrder,
+  createManualBankOrder,
+  CheckoutUnavailableError,
 } from '@/lib/db/repositories/orders';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
 import {
   consumePublicRequestRateLimit as consumeRequestRateLimit,
   rateLimitJson,
 } from '@/lib/http/rate-limit';
-import { getCustomerUser, requireExistingCustomerApi, CustomerAuthorizationError } from '@/lib/auth/customer';
+import { requireExistingCustomerApi, CustomerAuthorizationError } from '@/lib/auth/customer';
 import { WalletConflictError } from '@/lib/db/repositories/wallet';
 import { BodyTooLargeError } from '@/lib/http/bounded-body';
 import { validateSellerFormSubmission } from '@/lib/forms/submission';
@@ -28,6 +33,8 @@ import { FormRuntimeError } from '@/lib/forms/runtime';
 import { IncentiveError } from '@/lib/incentives/types';
 import { FormValidationError } from '@/lib/forms/validation';
 import { ContactVerificationError, resolveCheckoutContactPolicy } from '@/lib/auth/contact-verification';
+import { ReviewedCheckoutChangedError } from '@/lib/checkout/reviewed-quote';
+import { ncmDemoCheckout, NcmDemoQuoteError } from '@/lib/shipping/ncm-demo-checkout';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,8 +71,10 @@ export async function POST(request: Request): Promise<Response> {
         { error: 'Reload checkout to review current delivery rates.' },
         409,
       );
-    const customer = parsed.value.promoCode
-      ? await requireExistingCustomerApi() : await getCustomerUser();
+    const intent = parsed.value.promoCode || parsed.value.paymentMethod==='manual_bank'
+      ? {ok:true as const,customer:await requireCustomerIntentApi(request,requireExistingCustomerApi)} : await readOrderCustomerIntent(request);
+    if(!intent.ok)return json({error:intent.error},intent.status);
+    const customer=intent.customer;
     if (customer) parsed.value.customerEmail = customer.email;
     if (customer) parsed.value.customerAuthSubject = customer.authSubject;
     const configured = await validateSellerFormSubmission(database, 'commerce.checkout',
@@ -74,7 +83,8 @@ export async function POST(request: Request): Promise<Response> {
       hashOpaqueToken(cartToken),
       hashOpaqueToken(parsed.value.idempotencyKey),
     ]);
-    const result = await createCodOrder(
+    const paymentCapabilities=await readCheckoutPaymentCapabilities(database,{cartHash});
+    const result = await (parsed.value.paymentMethod==='manual_bank'?createManualBankOrder:createCodOrder)(
       database,
       cartHash,
       receiptHash,
@@ -83,8 +93,10 @@ export async function POST(request: Request): Promise<Response> {
       customer?.userId ?? null,
       { versionId: configured.versionId, answers: configured.answers },
       resolveCheckoutContactPolicy((env as unknown as { CHECKOUT_CONTACT_POLICY?: string }).CHECKOUT_CONTACT_POLICY),
+      paymentCapabilities[parsed.value.paymentMethod??'cod'],
+      ncmDemoCheckout(env),
     );
-    await sendPendingOrderUpdates({ orderNumber: result.orderNumber });
+    if(parsed.value.paymentMethod!=='manual_bank')await sendPendingOrderUpdates({ orderNumber: result.orderNumber });
     const response = json(
       result,
       201,
@@ -106,6 +118,11 @@ export async function POST(request: Request): Promise<Response> {
     }
     return response;
   } catch (error) {
+    if (error instanceof NcmDemoQuoteError)
+      return json({ error: error.message, code: 'ncm_quote_unavailable' }, 503);
+    if(error instanceof CheckoutUnavailableError)return json({error:error.message},503);
+    if (error instanceof ReviewedCheckoutChangedError)
+      return json({ error: error.message, code: 'quote_changed' }, 409);
     if (error instanceof ContactVerificationError)
       return json({error:error.message,code:'contact_verification_required'},error.status);
     if (

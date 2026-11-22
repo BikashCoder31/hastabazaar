@@ -1,9 +1,43 @@
+import {productAvailabilitySql} from './availability-state';
 import {currentManagedSaleEvidence} from './managed-sale-evidence';
+import {noProtectedHoldSql} from '../sellers/protected-change-policy';
+
+/** Public browsing is separate from permission to add an item to a cart or buy it. */
+export function publicProductVisibility(alias = 'products', now = Date.now()): string {
+ return `(${publicationSellerEligibility(alias,now)}) AND ${currentPublicContentSql(alias)} AND ${productAvailabilitySql(alias)}`;
+}
+/** Publication may correct a held listing, without making it visible or lifting its holds. */
+export function publicationSellerEligibility(alias = 'products', now = Date.now()): string {
+ if (!/^[a-z_]+$/.test(alias) || !Number.isSafeInteger(now) || now < 0) throw new Error('Invalid visibility lookup.');
+ return `(${productEligibility(alias, now, false)} OR (${alias}.status='published' AND EXISTS (
+   SELECT 1 FROM seller_profiles visible_seller
+   JOIN users visible_owner ON visible_owner.id=visible_seller.user_id
+   JOIN seller_participation_profiles visible_participation ON visible_participation.seller_id=visible_seller.id
+   WHERE visible_seller.id=${alias}.seller_id AND visible_owner.status='active'
+     AND visible_seller.status IN ('under_review','approved')
+     AND visible_participation.participation_route='managed_maker'
+     AND visible_participation.application_stage='approved_for_activation'
+  ) AND NOT EXISTS(SELECT 1 FROM seller_restrictions r WHERE r.seller_id=${alias}.seller_id
+    AND (r.mode='disabled' OR (r.mode='suspended' AND r.suspended_until>${now})))
+  AND NOT EXISTS(SELECT 1 FROM product_deletions d WHERE d.product_id=${alias}.id)))`;
+}
 // Internal SQL fragments only: aliases must be code-owned, never request data.
 export function publicProductEligibility(alias = 'products', now = Date.now()): string {
+ return balancedConjunction([...productEligibilityTerms(alias,now,true),...currentPublicContentTerms(alias),productAvailabilitySql(alias,true),`NOT EXISTS(
+  SELECT 1 FROM product_publication_heads publication_head
+  JOIN product_publication_decisions publication_decision ON publication_decision.id=publication_head.current_publication_id
+  WHERE publication_head.product_id=${alias}.id AND publication_decision.ordering_facts_ready=0)`]);
+}
+function productEligibility(alias:string,now:number,requireOrderAccess:boolean):string {
+ const terms=productEligibilityTerms(alias,now,requireOrderAccess);
+ return `${terms.slice(0,3).join(' AND ')}\n AND ${terms[3]}\n ${requireOrderAccess?'AND '+terms[4]:''}`;
+}
+function productEligibilityTerms(alias:string,now:number,requireOrderAccess:boolean):string[] {
  if (!/^[a-z_]+$/.test(alias)) throw new Error('Invalid SQL alias');
  if (!Number.isSafeInteger(now) || now < 0) throw new Error('Invalid eligibility time');
- return `${alias}.status='published' AND EXISTS (
+ return [
+  `${alias}.status='published'`,
+  `EXISTS (
   SELECT 1 FROM seller_profiles eligible_seller
   JOIN users eligible_owner ON eligible_owner.id=eligible_seller.user_id
   LEFT JOIN seller_participation_profiles eligible_participation ON eligible_participation.seller_id=eligible_seller.id
@@ -17,13 +51,36 @@ export function publicProductEligibility(alias = 'products', now = Date.now()): 
       AND eligible_participation.payout_beneficiary_reference IS NOT NULL
       AND eligible_participation.managed_agreement_version IS NOT NULL
       AND eligible_participation.managed_agreement_accepted_at IS NOT NULL
-      AND (eligible_participation.commercial_model<>'managed_sale_linked_percentage_v1'
-        OR EXISTS(SELECT 1 ${currentManagedSaleEvidence('eligible_seller.id','eligible_seller.user_id',now)})))
+      ${requireOrderAccess?`AND (eligible_participation.commercial_model<>'managed_sale_linked_percentage_v1'
+        OR EXISTS(SELECT 1 ${currentManagedSaleEvidence('eligible_seller.id','eligible_seller.user_id',now)}))`:''})
   )
- ) AND NOT EXISTS(SELECT 1 FROM seller_restrictions active_restriction
+ )`,
+  `NOT EXISTS(SELECT 1 FROM seller_restrictions active_restriction
     WHERE active_restriction.seller_id=${alias}.seller_id AND (
       active_restriction.mode='disabled' OR
       (active_restriction.mode='suspended' AND active_restriction.suspended_until>${now})
-    ))
- AND NOT EXISTS(SELECT 1 FROM product_deletions deleted_product WHERE deleted_product.product_id=${alias}.id)`;
+    ))`,
+  `NOT EXISTS(SELECT 1 FROM product_deletions deleted_product WHERE deleted_product.product_id=${alias}.id)`,
+  ...(requireOrderAccess?[noProtectedHoldSql(`${alias}.seller_id`,'new_orders')]:[]),
+ ];
+}
+
+/** An imported observation cannot be treated as a verified whole-product baseline. */
+function currentPublicContentSql(alias:string){return currentPublicContentTerms(alias).join('\n AND ');}
+function currentPublicContentTerms(alias:string){
+ if(!/^[a-z_]+$/.test(alias))throw new Error('Invalid publication alias.');
+ return [
+  `EXISTS(SELECT 1 FROM categories public_category WHERE public_category.id=${alias}.category_id AND public_category.is_active=1)`,
+  `(NOT EXISTS(SELECT 1 FROM product_publication_links public_link WHERE public_link.product_id=${alias}.id)
+ OR EXISTS(SELECT 1 FROM product_publication_heads public_head WHERE public_head.product_id=${alias}.id AND public_head.current_version_id IS NOT NULL))`
+ ];
+}
+
+/** Keep every code-owned predicate and its order while avoiding D1's left-deep
+ * expression limit. Other visibility/publication fragment output is retained. */
+function balancedConjunction(terms:string[]):string{
+ if(terms.length===0)throw new Error('Eligibility requires a predicate.');
+ if(terms.length===1)return terms[0];
+ const middle=Math.ceil(terms.length/2);
+ return `(${balancedConjunction(terms.slice(0,middle))} AND ${balancedConjunction(terms.slice(middle))})`;
 }

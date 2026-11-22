@@ -60,13 +60,13 @@ async function fixture() {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec(`
     PRAGMA foreign_keys = ON;
-    CREATE TABLE users (id TEXT PRIMARY KEY, display_name TEXT NOT NULL);
+    CREATE TABLE users (id TEXT PRIMARY KEY, display_name TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active');
     CREATE TABLE audit_logs (
       id TEXT PRIMARY KEY, actor_id TEXT, action TEXT, subject_type TEXT,
       subject_id TEXT, reason TEXT, previous_json TEXT, next_json TEXT,
       request_id TEXT, ip_hash TEXT, created_at INTEGER
     );
-    INSERT INTO users VALUES ('super-admin', 'Super Admin');
+    INSERT INTO users(id,display_name) VALUES ('super-admin', 'Super Admin');
   `);
   const [businessSettings, heroMedia] = await Promise.all([
     readFile(
@@ -78,6 +78,11 @@ async function fixture() {
       'utf8',
     ),
   ]);
+  // Actual native staff permission tables/guards, not a permissive authority mock.
+  const baseSchema=await readFile(new URL('../drizzle/0000_clear_lizard.sql',import.meta.url),'utf8');
+  const roles=baseSchema.match(/CREATE TABLE `user_roles` \([\s\S]*?\n\);/);assert.ok(roles);sqlite.exec(roles[0]);
+  sqlite.exec(await readFile(new URL('../drizzle/0031_staff_permissions.sql',import.meta.url),'utf8'));
+  sqlite.prepare("INSERT INTO user_roles(user_id,role,assigned_at)VALUES('super-admin','super_admin',1)").run();
   sqlite.exec(businessSettings);
   sqlite.exec(heroMedia);
   return {

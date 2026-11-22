@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
@@ -7,6 +7,12 @@ import { resolve, sep } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 export async function smokeStandalone(root, release) {
+  const operator = spawnSync(process.execPath, ['hosted-security.mjs', '--help'], {
+    cwd: root, env: { PATH: process.env.PATH, SYSTEMROOT: process.env.SYSTEMROOT, TEMP: process.env.TEMP, TMPDIR: process.env.TMPDIR },
+    encoding: 'utf8', timeout: 10_000,
+  });
+  assert.equal(operator.status, 0, 'Packaged hosted-security operator must run without source or a TypeScript loader.');
+  assert.ok(operator.stdout.includes('--provision-new-host') && operator.stdout.includes('--recover-existing-host') && operator.stdout.includes('--check-readiness'));
   const require = createRequire(resolve(root, 'package.json'));
   const dependency = require.resolve('sharp');
   assert.ok(dependency.startsWith(resolve(root) + sep), 'Sharp dependency must come from the extracted package.');
@@ -50,7 +56,7 @@ export async function smokeStandalone(root, release) {
     assert.equal(identity.release, release, 'Compiled release identity must match the artifact.');
     assert.equal(health.status, 503, 'Missing database configuration must fail closed.');
     assert.equal(identity.marketplaceReady, false);
-    return { sharp: sharp.versions.sharp, vips: sharp.versions.vips, release, liveness: true, databaseUntouched: true };
+    return { sharp: sharp.versions.sharp, vips: sharp.versions.vips, release, liveness: true, hostedSecurityOperator: true, databaseUntouched: true };
   } finally {
     if (child.exitCode === null && child.pid) {
       const exited = once(child, 'exit');

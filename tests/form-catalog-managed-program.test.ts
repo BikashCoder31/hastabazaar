@@ -1,6 +1,8 @@
+import { cataloguePayoutSources, cataloguePayoutPacket } from './helpers/catalogue-payout-execution';
+import { recordPayoutTransferOutcome } from '../lib/payments/payout-transfers';
+import { incentiveReportDatabase } from './helpers/incentive-report-database';
 import { registerTransitionFixture,submitRegisteredTransitionFixture as submitRegisteredSellerTransition } from './helpers/registered-transition-fixture';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
 import { registerHooks } from 'node:module';
 import test from 'node:test';
@@ -36,9 +38,11 @@ class Statement {
 class Database {
   failAt: number | null = null;
   beforeBatch?: () => void;
+  batchCalls = 0;
   constructor(readonly sqlite: DatabaseSync) {}
   prepare(sql: string) { return new Statement(this.sqlite.prepare(sql)); }
   async batch(statements: readonly Statement[]) {
+    this.batchCalls++;
     this.beforeBatch?.(); this.beforeBatch = undefined;
     this.sqlite.exec('BEGIN');
     try {
@@ -91,44 +95,46 @@ function publishRequiredContext(sqlite: DatabaseSync) {
 }
 
 async function fixture() {
-  const sqlite = new DatabaseSync(':memory:');
-  sqlite.exec(`PRAGMA foreign_keys=ON;
-    CREATE TABLE users(id TEXT PRIMARY KEY,status TEXT NOT NULL);
-    CREATE TABLE user_roles(user_id TEXT NOT NULL,role TEXT NOT NULL,PRIMARY KEY(user_id,role));
-    CREATE TABLE staff_permission_profiles(user_id TEXT PRIMARY KEY,permissions_json TEXT NOT NULL);
-    CREATE TABLE staff_permission_guards(id TEXT PRIMARY KEY,valid INTEGER NOT NULL CHECK(valid=1));
-    CREATE TABLE seller_profiles(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,legal_name TEXT,registration_authority TEXT,registration_number TEXT,tax_mode TEXT,tax_registration_number TEXT,seller_agreement_version TEXT,seller_agreement_accepted_at INTEGER,updated_at INTEGER);
-    CREATE TABLE seller_participation_profiles(seller_id TEXT PRIMARY KEY,participation_route TEXT,application_stage TEXT,commercial_model TEXT,payout_beneficiary_reference TEXT,managed_agreement_version TEXT,managed_agreement_language TEXT,managed_agreement_accepted_at INTEGER,version INTEGER,updated_at INTEGER);
-    CREATE TABLE products(id TEXT PRIMARY KEY,seller_id TEXT NOT NULL);
-    CREATE TABLE business_setting_versions(id TEXT PRIMARY KEY);
-    CREATE TABLE audit_logs(id TEXT PRIMARY KEY,actor_id TEXT,action TEXT,subject_type TEXT,subject_id TEXT,reason TEXT,previous_json TEXT,next_json TEXT,request_id TEXT UNIQUE,ip_hash TEXT,created_at INTEGER);
-    INSERT INTO users VALUES('maker','active'),('reviewer','active'),('finance','active'),('other','active');
-    INSERT INTO user_roles VALUES('reviewer','super_admin'),('finance','super_admin'),('maker','seller'),('other','admin');
-    INSERT INTO seller_profiles VALUES('seller','maker','Original Maker','','','NONE','',NULL,NULL,1);
-    INSERT INTO seller_participation_profiles VALUES('seller','managed_maker','active','managed_fixed_supplier_price_v1','SIM-MAKER-ACCOUNT','SIM-FIXED-V1','ne',1,1,1);
-    INSERT INTO products VALUES('product','seller');`);
-  for (const migration of ['0054_managed_fixed_supply.sql', '0056_form_catalog.sql']) {
-    const sql = await readFile(new URL(`../drizzle/${migration}`, import.meta.url), 'utf8');
-    for (const part of sql.split('--> statement-breakpoint')) if (part.trim()) sqlite.exec(part);
-  }
+  const { sqlite } = await incentiveReportDatabase();
+  // Explicit original fictional supplier terms; every current migration and guard remains installed.
+  for (const id of ['maker','reviewer','finance','other']) sqlite.prepare(`INSERT INTO users
+    (id,email,display_name,status,created_at,updated_at) VALUES(?,?,?,'active',1,1)`)
+    .run(id,`${id}@local.hastabazaar.test`,id);
+  sqlite.exec(`INSERT INTO user_roles(user_id,role,assigned_at) VALUES
+    ('reviewer','super_admin',1),('finance','super_admin',1),('maker','seller',1),('other','admin',1);
+    INSERT INTO seller_profiles(id,user_id,legal_name,trading_name,registration_authority,registration_number,
+      tax_mode,tax_registration_number,representative_name,support_phone,support_email,province,district,
+      municipality,locality,status,applicant_type,created_at,updated_at)
+    VALUES('seller','maker','Original Maker','Original Maker','','','NONE','','Original Maker','9800000000',
+      'maker@local.hastabazaar.test','Bagmati','Kathmandu','Kathmandu','Original workshop','approved','individual',1,1);
+    INSERT INTO seller_participation_profiles(seller_id,participation_route,application_stage,public_name,public_city,
+      commercial_model,payout_beneficiary_reference,managed_agreement_version,managed_agreement_language,
+      managed_agreement_accepted_at,version,created_at,updated_at)
+    VALUES('seller','managed_maker','active','Original Maker','Kathmandu','managed_fixed_supplier_price_v1',
+      'SIM-MAKER-ACCOUNT','SIM-FIXED-V1','ne',1,1,1,1);
+    INSERT INTO categories(id,slug,name_en,is_active,sort_order,created_at,updated_at)
+    VALUES('craft','craft','Craft',1,1,1,1);
+    INSERT INTO products(id,seller_id,category_id,slug,sku,name_en,description_en,price_paisa,inventory_quantity,
+      producer,materials,status,created_at,updated_at)
+    VALUES('product','seller','craft','original-product','ORIGINAL','Original product','Original accepted supply',50000,10,
+      'Original Maker','Clay','draft',1,1);`);
+  assert.deepEqual(sqlite.prepare('PRAGMA foreign_key_check').all(),[]);
   for (const id of ['staff.managed-supply-decision', 'staff.managed-adjustment',
     'staff.managed-payment-preparation', 'staff.managed-payment-action', 'staff.managed-transition-decision']) {
     sqlite.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
       VALUES (?, ?, 1, 1, 'published', ?, 'Test publication', 'reviewer', 1, 'reviewer', 1, 'reviewer', 1, ?)`)
       .run(`${id}-v1`, id, JSON.stringify({ formId: id, fields: [] }), `publish-${id}`);
   }
-  const upgrade = await readFile(new URL('../drizzle/0062_single_super_admin_approvals.sql', import.meta.url), 'utf8');
-  sqlite.exec('PRAGMA foreign_keys=OFF;' + upgrade.split('-- BEGIN managed_supplier_payments')[1].split('-- END managed_supplier_payments')[0].replaceAll('--> statement-breakpoint', '') + 'PRAGMA foreign_keys=ON;');
   const db = new Database(sqlite);
   registerTransitionFixture(db as unknown as D1Database,sqlite);
   globalThis.managedProgramDb = db as unknown as D1Database;
   globalThis.managedProgramActor = { id: 'reviewer', role: 'super_admin' };
   return { sqlite, db, database: db as unknown as D1Database };
 }
-async function proposed(database: D1Database, requestId = 'proposal') {
+async function proposed(database: D1Database, requestId = 'proposal', payoutBeneficiaryReference = 'SIM-MAKER-ACCOUNT') {
   return createFixedSupplyRecord(database, { sellerId: 'seller', productId: 'product', quantity: 2,
     agreedUnitPaisa: 50_000, createdBy: 'maker', agreementVersion: 'SIM-FIXED-V1',
-    agreementLanguage: 'ne', payoutBeneficiaryReference: 'SIM-MAKER-ACCOUNT',
+    agreementLanguage: 'ne', payoutBeneficiaryReference,
     requestId, now: 100, environment });
 }
 function decision(recordId: string, requestId = 'decision') { return { recordId, actorId: 'reviewer', action: 'accept' as const,
@@ -171,13 +177,14 @@ void test('adjustment answer commits with protected amount and exact actor repla
   } finally { sqlite.close(); }
 });
 
-void test('payment preparation and both payment actions own separate exact replay answers', async () => {
+void test('payment preparation and both payment actions retain exact form and native execution receipts', async () => {
   const { sqlite, database } = await fixture();
   try {
-    const id = await proposed(database);
+    const sources=await cataloguePayoutSources({sqlite,db:database},'seller','reviewer');
+    const id = await proposed(database,'proposal',sources.beneficiaryReference);
     await decideFixedSupplyRecord(database, decision(id));
     const prepareRequest = 'prepare-one';
-    const prepare = { recordId: id, actorId: 'reviewer', destinationReference: 'SIM-MAKER-ACCOUNT',
+    const prepare = { recordId: id, actorId: 'reviewer', destinationReference: sources.beneficiaryReference,
       requestId: prepareRequest, now: 300, environment, form: form('staff.managed-payment-preparation', prepareRequest) };
     const paymentId = await prepareFixedSupplierPayment(database, prepare);
     sqlite.prepare("UPDATE managed_supplier_payments SET status='prepared',approved_by=NULL WHERE id=?").run(paymentId);
@@ -191,11 +198,22 @@ void test('payment preparation and both payment actions own separate exact repla
     await transitionFixedSupplierPayment(database, approval);
     await assert.rejects(transitionFixedSupplierPayment(database, { ...approval, action: 'mark_paid' }));
     const markRequest = 'mark-one';
-    await transitionFixedSupplierPayment(database, { ...approval, action: 'mark_paid', requestId: markRequest,
-      form: form('staff.managed-payment-action', markRequest) });
-    assert.equal((sqlite.prepare('SELECT amount_paisa AS amount,status FROM managed_supplier_payments WHERE id=?').get(paymentId) as { amount: number; status: string }).amount, 100_000);
-    assert.equal(count(sqlite, 'form_answer_sets'), 4);
-    assert.equal((sqlite.prepare("SELECT COUNT(*) AS n FROM form_answer_sets WHERE subject_type='managed_supplier_payment' AND subject_id=?").get(paymentId) as { n: number }).n, 3);
+    await assert.rejects(transitionFixedSupplierPayment(database, { ...approval, action: 'mark_paid', requestId: markRequest,
+      form: form('staff.managed-payment-action', markRequest) }),/original verified execution packet/);
+    const execution=await cataloguePayoutPacket({sqlite,db:database},{actorId:'reviewer',model:'fixed',payoutId:paymentId,
+      accountVersionId:sources.accountVersionId,amountPaisa:100_000,environment});
+    assert.equal(sqlite.prepare('SELECT status FROM managed_supplier_payments WHERE id=?').get(paymentId)?.status,'approved');
+    const paid=await execution.complete();
+    const retained=sqlite.prepare('SELECT * FROM payout_transfer_packets WHERE id=?').get(execution.packetId);
+    assert.deepEqual(await execution.complete(),paid);
+    assert.deepEqual(sqlite.prepare('SELECT * FROM payout_transfer_packets WHERE id=?').get(execution.packetId),retained);
+    await assert.rejects(recordPayoutTransferOutcome(database,execution.completion,{...execution.outcome,transactionIdentity:'CHANGED-REFERENCE'}),/different command content/);
+    assert.deepEqual({...sqlite.prepare('SELECT amount_paisa AS amount,status FROM managed_supplier_payments WHERE id=?').get(paymentId) as object},{amount:100_000,status:'paid'});
+    assert.equal(count(sqlite,'company_outgoing_bank_identities'),1);
+    // Native execution is a protected system form; configurable answers belong only to the three actual catalog decisions.
+    assert.equal(count(sqlite, 'form_answer_sets'), 3);
+    assert.equal((sqlite.prepare("SELECT COUNT(*) AS n FROM form_answer_sets WHERE subject_type='managed_supplier_payment' AND subject_id=?").get(paymentId) as { n: number }).n, 2);
+    assert.deepEqual(sqlite.prepare('PRAGMA foreign_key_check').all(),[]);
   } finally { sqlite.close(); }
 });
 
@@ -291,7 +309,9 @@ void test('payment preparation rechecks the unpaid amount when an adjustment arr
     const id = await proposed(database);
     await decideFixedSupplyRecord(database, decision(id));
     const batch = db.batch.bind(db);
+    let raceReached=false;
     db.batch = async (statements: readonly Statement[]) => {
+      raceReached=true;
       sqlite.prepare(`INSERT INTO managed_supplier_adjustments(id,obligation_id,kind,amount_paisa,reason,request_id,created_by,created_at)
         VALUES ('concurrent-adjust',?,'defect',10000,'SIMULATED concurrent adjustment','concurrent-adjust','reviewer',250)`).run(id);
       return batch(statements);
@@ -299,6 +319,7 @@ void test('payment preparation rechecks the unpaid amount when an adjustment arr
     await assert.rejects(prepareFixedSupplierPayment(database, { recordId: id, actorId: 'reviewer',
       destinationReference: 'SIM-MAKER-ACCOUNT', requestId: 'stale-balance', now: 300, environment,
       form: form('staff.managed-payment-preparation', 'stale-balance') }));
+    assert.equal(raceReached,true,'unpaid balance race reached the actual batch');
     assert.equal(count(sqlite, 'managed_supplier_payments'), 0);
     assert.equal(count(sqlite, 'form_answer_sets'), 1);
   } finally { sqlite.close(); }
@@ -342,7 +363,9 @@ void test('all five managed decisions roll back if current Super Admin authority
       const before=Object.fromEntries(['audit_logs','form_answer_sets','managed_supplier_adjustments',
         'managed_supplier_payments'].map(table=>[table,count(sqlite,table)]));
       db.beforeBatch=()=>sqlite.prepare('DELETE FROM user_roles WHERE user_id=?').run(actorId);
+      const batchCalls=db.batchCalls;
       await assert.rejects(run!,`${managedFormIds[branch]} current grant`);
+      assert.equal(db.batchCalls,batchCalls+1,'authority race reached the actual batch');
       for(const [table,n] of Object.entries(before))assert.equal(count(sqlite,table),n,`${managedFormIds[branch]}:${table}`);
     } finally {sqlite.close();}
   }
@@ -357,8 +380,10 @@ void test('a payment status race cannot commit an audit or answer for a failed t
     sqlite.prepare("UPDATE managed_supplier_payments SET status='prepared',approved_by=NULL WHERE id=?").run(paymentId);
     const answers=count(sqlite,'form_answer_sets'),audits=count(sqlite,'audit_logs');
     db.beforeBatch=()=>sqlite.prepare("UPDATE managed_supplier_payments SET status='approved' WHERE id=?").run(paymentId);
+    const batchCalls=db.batchCalls;
     await assert.rejects(transitionFixedSupplierPayment(database,{paymentId,actorId:'finance',action:'approve',
       requestId:'state-race',now:400,environment,form:form('staff.managed-payment-action','state-race')}));
+    assert.equal(db.batchCalls,batchCalls+1,'payment status race reached the actual batch');
     assert.equal(count(sqlite,'form_answer_sets'),answers);
     assert.equal(count(sqlite,'audit_logs'),audits);
   } finally {sqlite.close();}
@@ -370,7 +395,9 @@ void test('supply acceptance cannot use a unit amount changed after preflight', 
     const recordId=await proposed(database);
     const auditCount=count(sqlite,'audit_logs');
     db.beforeBatch=()=>sqlite.prepare('UPDATE managed_supply_records SET agreed_unit_paisa=60000 WHERE id=?').run(recordId);
+    const batchCalls=db.batchCalls;
     await assert.rejects(decideFixedSupplyRecord(database,decision(recordId,'unit-race')));
+    assert.equal(db.batchCalls,batchCalls+1,'unit amount race reached the actual batch');
     assert.equal((sqlite.prepare('SELECT status FROM managed_supply_records WHERE id=?').get(recordId) as {status:string}).status,'proposed');
     assert.equal(count(sqlite,'managed_supplier_obligations'),0);
     assert.equal(count(sqlite,'form_answer_sets'),0);
@@ -417,11 +444,13 @@ void test('all five managed routes classify a publication racing commit as stale
         FROM form_config_versions WHERE id=?`).run(`${formId}-v3`,`new-${formId}`,`${formId}-v2`);
       const before=Object.fromEntries(['audit_logs','form_answer_sets','managed_supplier_adjustments',
         'managed_supplier_payments'].map(table=>[table,count(sqlite,table)]));
+      const batchCalls=db.batchCalls;
       const response=await POST(new Request('http://localhost:3000/api/admin/managed-program/seller',{
         method:'POST',headers:{origin:'http://localhost:3000','content-type':'application/json'},
         body:JSON.stringify({...body,requestId,formVersion:2,
           customAnswers:[{fieldId:'context_note',value:'Reviewed fictional managed-program evidence'}]}),
       }),{params:Promise.resolve({id:'seller'})});
+      assert.equal(db.batchCalls,batchCalls+1,'publication race reached the actual batch');
       assert.equal(response.status,409,formId);
       assert.equal((await response.json() as {code?:string}).code,'stale_version',formId);
       for(const [table,n] of Object.entries(before))assert.equal(count(sqlite,table),n,`${formId}:${table}`);
@@ -472,7 +501,10 @@ void test('managed-program route validates each branch and persists answers only
     assert.ok(paymentId);
     assert.equal((sqlite.prepare('SELECT status FROM managed_supplier_payments WHERE id=?').get(paymentId) as {status:string}).status,'approved');
     assert.equal((await send({ action: 'approve_payment', paymentId, requestId: 'route-approve' })).status, 409);
-    assert.equal((await send({ action: 'mark_payment_paid', paymentId, requestId: 'route-paid' })).status, 200);
+    // Existing pre-amendment prepared records still have a lawful catalog approval action.
+    sqlite.prepare("UPDATE managed_supplier_payments SET status='prepared',approved_by=NULL WHERE id=?").run(paymentId);
+    assert.equal((await send({ action: 'approve_payment', paymentId, requestId: 'route-approve-historical' })).status, 200);
+    assert.equal((await send({ action: 'mark_payment_paid', paymentId, requestId: 'route-paid' })).status, 409);
     const transition = await submitRegisteredSellerTransition(database, { sellerId: 'seller', actorId: 'maker',
       legalName: 'Registered Craft Firm', registrationAuthority: 'Cottage Office', registrationNumber: 'REG-002',
       taxMode: 'PAN', taxRegistrationNumber: 'PAN-002', evidenceReferences: ['private-doc-2'],
@@ -646,7 +678,9 @@ void test('supplier direct preparation rolls back on current authority races wit
       const recordId=await proposed(database);await decideFixedSupplyRecord(database,decision(recordId));
       const prior=count(sqlite,'audit_logs'),priorAnswers=count(sqlite,'form_answer_sets');const requestId=`supplier-authority-${configured}`;
       db.beforeBatch=()=>sqlite.exec("DELETE FROM user_roles WHERE user_id='reviewer'");
+      const batchCalls=db.batchCalls;
       await assert.rejects(prepareFixedSupplierPayment(database,{recordId,actorId:'reviewer',destinationReference:'SIM-MAKER-ACCOUNT',requestId,now:300,environment,...(configured?{form:form('staff.managed-payment-preparation',requestId)}:{})}));
+      assert.equal(db.batchCalls,batchCalls+1,'direct authority race reached the actual batch');
       assert.equal(count(sqlite,'managed_supplier_payments'),0);assert.equal(count(sqlite,'audit_logs'),prior);assert.equal(count(sqlite,'form_answer_sets'),priorAnswers);
     }finally{sqlite.close();}
   }

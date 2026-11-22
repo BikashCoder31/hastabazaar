@@ -63,7 +63,7 @@ async function fixture() {
       contents: `
       import React from 'react'; import {createRoot} from 'react-dom/client';
       import {PromoCodeManager} from './components/admin/promo-code-manager';
-      createRoot(document.getElementById('root')).render(<PromoCodeManager role="super_admin"
+      createRoot(document.getElementById('root')).render(<PromoCodeManager actorId={'reviewer'} role="super_admin"
         initialPage={{campaigns:[${JSON.stringify(original)}],nextCursor:'fictional-next'}} defaultCommissionBps={900}/>);
     `,
     },

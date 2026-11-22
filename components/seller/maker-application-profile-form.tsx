@@ -10,15 +10,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { SellerParticipationProfile } from '@/lib/db/repositories/seller-applications';
-import { sendJson } from '@/lib/http/client-request';
 import { ConfiguredFields, fieldDisplay } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { readConfiguredSubmission } from '@/lib/forms/client-submission';
 import { clearVersionedSessionAttempt, getOrCreateVersionedSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
+import { MANAGED_SUPPLIER_AGREEMENT_VERSION } from '@/lib/sellers/managed-identity';
+import { SellerOnboardingFields } from './seller-onboarding-fields';
 
-const catalogBaseKeys = ['publicName', 'publicCity', 'sellerId', 'expectedVersion', 'experienceCraft',
+const catalogBaseKeys = ['publicName', 'publicCity', 'profileImage', 'makerVideo', 'sellerId', 'expectedVersion', 'experienceCraft',
   'experienceBand', 'facebookUrl', 'instagramUrl', 'linkedinUrl', 'tiktokUrl', 'xUrl', 'youtubeUrl',
-  'legalName', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'representativeIdentity', 'personalPanCertificate', 'requestId', 'formVersion', 'customAnswers'];
+  'legalName', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'representativeIdentity', 'personalPanCertificate', 'bankVerification', 'payoutBeneficiary', 'bankName', 'bankBranch', 'bankAccountNumber', 'pickupAddress', 'returnAddress', 'requestId', 'formVersion', 'customAnswers'];
 
 const networks = [
   ['facebook', 'Facebook'],
@@ -29,7 +30,7 @@ const networks = [
   ['youtube', 'YouTube'],
 ] as const;
 
-export function MakerApplicationProfileForm({ profile, managedTerms }: { profile: SellerParticipationProfile; managedTerms?: ManagedMakerApplicationTerms }) {
+export function MakerApplicationProfileForm({ profile, managedTerms, editableAt = 0, deferBank = false }: { profile: SellerParticipationProfile; managedTerms?: ManagedMakerApplicationTerms; editableAt?: number; deferBank?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -38,6 +39,13 @@ export function MakerApplicationProfileForm({ profile, managedTerms }: { profile
   const catalog = usePublishedFormConfig('seller.maker-profile');
   const correcting = profile.participationRoute === 'managed_maker' && profile.applicationStage === 'changes_requested';
   const experience = profile.craftExperience[0];
+  const [observedAt, setObservedAt] = useState(() => Date.now());
+  const locked = observedAt < editableAt;
+  useEffect(() => {
+    if (editableAt <= Date.now()) return;
+    const timer = window.setTimeout(() => setObservedAt(Date.now()), editableAt - Date.now() + 20);
+    return () => window.clearTimeout(timer);
+  }, [editableAt]);
   useEffect(() => {
     const timeout = window.setTimeout(() => setHasPendingAttempt(hasSessionAttempt(attemptKey)), 0);
     return () => window.clearTimeout(timeout);
@@ -56,10 +64,15 @@ export function MakerApplicationProfileForm({ profile, managedTerms }: { profile
     setMessage('');
     const form = new FormData(event.currentTarget);
     try {
-      const configured = readConfiguredSubmission(event.currentTarget, catalog.config, catalogBaseKeys);
+      readConfiguredSubmission(event.currentTarget, catalog.config, catalogBaseKeys);
       const attempt = getOrCreateVersionedSessionAttempt(attemptKey, profile.version);
       setHasPendingAttempt(true);
       if (correcting) {
+        if (locked) {
+          form.set('publicName', profile.publicName); form.set('publicCity', profile.publicCity);
+          form.set('experienceCraft', experience?.craft ?? ''); form.set('experienceBand', experience?.band ?? '');
+          for (const [network] of networks) form.set(`${network}Url`, profile.socialLinks[network] ?? '');
+        }
         if (!managedTerms) throw new Error('Reload before accepting the Managed Maker agreement.');
         form.set('expectedVersion',String(attempt.expectedVersion)); form.set('requestId',attempt.requestId);
         const response=await fetch('/api/seller-applications/profile',{method:'POST',body:form});
@@ -67,12 +80,11 @@ export function MakerApplicationProfileForm({ profile, managedTerms }: { profile
         if (result?.code==='stale_version') catalog.handleSubmissionResponse(response,result.code);
         if (!response.ok || result?.ok!==true) throw new Error(result?.error ?? 'Correction status is uncertain. Retry the same details to recover its outcome.');
       } else {
-      await sendJson('/api/seller-applications/profile', 'PATCH', {
-        ...Object.fromEntries([...form.entries()].filter(([key]) => key !== 'formVersion' && !key.startsWith('custom.'))),
-        expectedVersion: attempt.expectedVersion,
-        requestId: attempt.requestId,
-        ...configuredJsonPayload(catalog.config, configured.answers, catalogBaseKeys),
-      }, 'Maker profile could not be saved.');
+      form.set('expectedVersion', String(attempt.expectedVersion)); form.set('requestId', attempt.requestId);
+      const response = await fetch('/api/seller/public-profile', { method: 'POST', body: form });
+      const body = await response.json() as { error?: string; code?: string };
+      catalog.handleSubmissionResponse(response, body.code);
+      if (!response.ok) throw new Error(body.error ?? 'Maker profile could not be saved.');
       }
       clearVersionedSessionAttempt(attemptKey);
       setHasPendingAttempt(false);
@@ -86,6 +98,8 @@ export function MakerApplicationProfileForm({ profile, managedTerms }: { profile
   }
   return <form data-form-id="seller.maker-profile" onSubmit={(event) => void submit(event)} className="mt-5 grid gap-4 rounded-2xl border bg-card p-6 sm:grid-cols-2">
       <FormGuide formId="seller.maker-profile" />
+    <p className="text-sm sm:col-span-2">{locked ? `Next editable: ${new Date(editableAt).toLocaleString('en-NP', { timeZone: 'Asia/Kathmandu' })} (Nepal time).` : 'After you save, this profile shows when you can edit it again. Optional fields can be left empty.'}</p>
+    <fieldset disabled={locked} className="contents">
 
     <Field name="publicName" label={fieldDisplay(catalog.config, 'publicName')?.label ?? 'Public maker/shop name'}
       help={fieldDisplay(catalog.config, 'publicName')?.helpText} placeholder={fieldDisplay(catalog.config, 'publicName')?.placeholder}
@@ -106,12 +120,14 @@ export function MakerApplicationProfileForm({ profile, managedTerms }: { profile
       </select>
     </div>
     {networks.map(([network, label]) => <Field key={network} name={`${network}Url`} label={`${label} link (optional)`} type="url" defaultValue={profile.socialLinks[network] ?? ''} />)}
-    {correcting && managedTerms ? <div className="space-y-4 sm:col-span-2"><p className="text-sm">Supply government identity evidence and explicitly accept the current terms to resubmit requested corrections.</p><CompanySellingIdentity terms={managedTerms}/><ManagedMakerIdentityFields includeUploads/><ManagedMakerAgreementFields terms={managedTerms}/></div> : null}
+    {!correcting ? <><label htmlFor="maker-profileImage" className="space-y-2 text-sm">Shop logo or maker photo (optional)<Input type="file" id="maker-profileImage" name="profileImage" accept="image/jpeg,image/png,image/webp" /><span>Leave empty to keep your current photo.</span></label><label htmlFor="maker-makerVideo" className="space-y-2 text-sm">Video about you or your workshop (optional)<Input type="file" id="maker-makerVideo" name="makerVideo" accept="video/mp4" /><span>MP4, up to 20 MB and 60 seconds. Leave empty to keep your current video. New media requires review.</span></label></> : null}
+    </fieldset>
+    {correcting && managedTerms ? <div className="space-y-4 sm:col-span-2"><p className="text-sm">Supply government identity evidence and explicitly accept the current terms to resubmit requested corrections. Prior evidence and acceptances remain recorded.</p><CompanySellingIdentity terms={managedTerms}/><ManagedMakerIdentityFields includeUploads requirePersonalPan={managedTerms.version===MANAGED_SUPPLIER_AGREEMENT_VERSION} deferBank={deferBank}/>{managedTerms.version===MANAGED_SUPPLIER_AGREEMENT_VERSION ? <SellerOnboardingFields deferBank={deferBank}/> : null}<ManagedMakerAgreementFields terms={managedTerms}/></div> : null}
     <p className="text-sm leading-6 text-muted-foreground sm:col-span-2">Your private verification, pickup, return, and invoice addresses are not shown here. Empty optional public sections stay hidden.</p>
     {catalog.config ? <div className="sm:col-span-2"><ConfiguredFields config={catalog.config} baseKeys={catalogBaseKeys} /></div> : null}
     {catalog.status !== 'ready' ? <p role="alert" className="text-sm text-destructive sm:col-span-2">{catalog.message || 'Form configuration is unavailable. Please try again.'}</p> : null}
     <div className="flex items-center gap-3 sm:col-span-2">
-      <Button type="submit" disabled={busy || !catalog.canSubmit || (correcting && !managedTerms)}>{busy ? 'Saving…' : correcting ? 'Resubmit application with evidence' : 'Save maker profile'}</Button>
+      <Button type="submit" disabled={busy || !catalog.canSubmit || (locked && !correcting) || (correcting && !managedTerms)}>{busy ? 'Saving…' : correcting ? 'Resubmit application with evidence' : 'Save maker profile'}</Button>
       <output className="text-sm text-muted-foreground" aria-live="polite">{message}</output>
     </div>
     {hasPendingAttempt ? <div className="space-y-2 sm:col-span-2">

@@ -1,0 +1,5 @@
+/** Signed, source-linked settlements of existing supplier debt; original paid and defect facts stay intact. */
+export function fixedRecoveryCreditsSql(obligation:string){
+ if(!/^[a-z_]+\.[a-z_]+$/.test(obligation))throw new Error('Invalid original supplier source.');
+ return `(COALESCE((SELECT SUM(unpaid.amount_paisa) FROM seller_recovery_unpaid_corrections unpaid WHERE unpaid.fixed_obligation_id=${obligation}),0)+COALESCE((SELECT SUM(recovery_credit.amount_paisa) FROM managed_supplier_recovery_credits recovery_credit WHERE recovery_credit.obligation_id=${obligation}),0)+COALESCE((SELECT SUM(correction.native_credit_paisa) FROM seller_recovery_liability_corrections correction WHERE correction.fixed_obligation_id=${obligation}),0)-COALESCE((SELECT SUM(part.amount_paisa-part.company_loss_paisa) FROM seller_recovery_receipt_reversal_parts part JOIN seller_recovery_receipt_reversal_reviews review ON review.id=part.review_id WHERE part.fixed_obligation_id=${obligation} AND review.state='completed'),0))`;
+}

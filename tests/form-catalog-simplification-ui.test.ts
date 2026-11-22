@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
 import test from 'node:test';
 import React from 'react';
+import {commissionDatabase} from './helpers/commission-database';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 declare global { var catalogSimplificationDb: D1Database }
 (globalThis as unknown as { React: typeof React }).React = React;
 registerHooks({ resolve(specifier, context, nextResolve) {
   const boundary = specifier === 'cloudflare:workers' ? 'export const env={get DB(){return globalThis.catalogSimplificationDb}}'
-    : specifier === '@/lib/auth/staff' ? 'export async function requireStaffPage(){return {id:"sa",role:"super_admin"}}'
+    : specifier === '@/lib/auth/staff' ? 'export async function requireStaffPage(){return {id:"owner",role:"super_admin"}}'
     : specifier === 'next/navigation' ? 'export function redirect(){throw Error("Unexpected redirect")};export function notFound(){throw Error("Not found")}'
     : specifier === 'next/link' ? 'export default function Link({children,...props}){return globalThis.React.createElement("a",props,children)}'
     : null;
@@ -16,7 +17,9 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 } });
 
 void test('catalog renders business categories and friendly links without universal form editor links', async () => {
-  globalThis.catalogSimplificationDb = { prepare() { return { async all() { return { results: [] }; } }; } } as unknown as D1Database;
+  const fixture=await commissionDatabase({seedSellers:false});
+  globalThis.catalogSimplificationDb=fixture.database;
+  try {
   const Page = (await import('../app/admin/forms/page')).default;
   const html = renderToStaticMarkup(await Page());
   for (const id of ['identity.register', 'account.profile', 'catalog.header-search', 'staff.staff-permission-1',
@@ -32,6 +35,9 @@ void test('catalog renders business categories and friendly links without univer
   assert.match(html, /href="\/admin\/forms\/seller.application"[^>]*>Apply to sell<\/a>/);
   assert.match(html, /href="\/admin\/form-submissions"/);
   assert.match(html, /href="\/admin\/staff-form-history"/);
+  fixture.sqlite.exec("UPDATE users SET status='disabled' WHERE id='owner'");
+  await assert.rejects(Page(),/Current staff permission/);
+  } finally {await fixture.dispose();}
 });
 
 void test('universal form direct page offers read-only version history without editor actions', async () => {

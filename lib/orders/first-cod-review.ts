@@ -1,3 +1,5 @@
+import {prepareInitialResponseNotices} from './response-notifications';
+import {prepareOrderResponseRelease} from './response-workflow';
 import { staffMutationGuard } from '../db/repositories/staff-mutation-guard';
 
 export const FIRST_COD_THRESHOLD_PAISA = 500000;
@@ -12,16 +14,49 @@ export interface FirstCodReview {
   confirmedAt: number | null;
   reason: string | null;
   requestId: string | null;
+  holdSource?: 'first_order' | 'customer_flag';
 }
+
+export async function customerCodSchemaAvailable(db: D1Database): Promise<boolean> {
+  if ((db as D1Database & { dialect?: string }).dialect === 'mariadb') {
+    const row = await db.prepare(`SELECT COUNT(*) AS found FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA=DATABASE() AND ((TABLE_NAME='users' AND COLUMN_NAME='cod_confirmation_required')
+        OR (TABLE_NAME='first_cod_reviews' AND COLUMN_NAME='hold_source'))`).first<{ found: number }>();
+    return Number(row?.found) === 2;
+  }
+  const [users, reviews] = await Promise.all([
+    db.prepare('PRAGMA table_info(users)').all<{ name: string }>(),
+    db.prepare('PRAGMA table_info(first_cod_reviews)').all<{ name: string }>(),
+  ]);
+  return users.results.some(column => column.name === 'cod_confirmation_required') &&
+    reviews.results.some(column => column.name === 'hold_source');
+}
+
+export async function customerMustConfirmCod(db: D1Database, customerId: string): Promise<boolean> {
+  if (!await customerCodSchemaAvailable(db)) return false;
+  return Boolean(await db.prepare(`SELECT 1 FROM users WHERE id=? AND HEX(id)=HEX(?)
+    AND status='active' AND cod_confirmation_required=1`).bind(customerId, customerId).first());
+}
+
 /** Prepared after the order INSERT, with purchase history evaluated in the same commit. Total includes delivery and discounts, before wallet credit. */
 export function prepareFirstCodReview(
   db: D1Database,
-  o: { customerId: string; orderId: string; totalPaisa: number; now: number },
+  o: { customerId: string; orderId: string; totalPaisa: number; now: number; customerFlagAvailable?: boolean },
 ): D1PreparedStatement[] {
   if (!o.customerId || !Number.isSafeInteger(o.totalPaisa) || o.totalPaisa < 0)
     throw new FirstCodReviewConflictError(
       'A verified buyer and valid order total are required.',
     );
+  if (o.customerFlagAvailable) {
+    return [db.prepare(`INSERT INTO first_cod_reviews(order_id,customer_id,total_paisa,status,created_at,hold_source)
+      SELECT o.id,o.customer_id,?,'pending',?,CASE WHEN buyer.cod_confirmation_required=1 THEN 'customer_flag' ELSE 'first_order' END
+      FROM orders o JOIN users buyer ON buyer.id=o.customer_id
+      WHERE o.id=? AND o.customer_id=? AND o.payment_mode='cod' AND o.status='confirmed'
+        AND o.grand_total_paisa+o.wallet_credit_paisa=?
+        AND (buyer.cod_confirmation_required=1 OR (? >= ? AND NOT EXISTS(
+          SELECT 1 FROM orders history WHERE history.customer_id=o.customer_id AND history.status='delivered'
+        )))`).bind(o.totalPaisa, o.now, o.orderId, o.customerId, o.totalPaisa, o.totalPaisa, FIRST_COD_THRESHOLD_PAISA)];
+  }
   return [
     db
       .prepare(
@@ -42,10 +77,13 @@ export function prepareFirstCodReview(
 export async function getFirstCodReview(
   db: D1Database,
   orderId: string,
+  includeHoldSource = false,
 ): Promise<FirstCodReview | null> {
   return db
     .prepare(
-      'SELECT order_id AS orderId,customer_id AS customerId,total_paisa AS totalPaisa,status,created_at AS createdAt,confirmed_by AS confirmedBy,confirmed_at AS confirmedAt,reason,request_id AS requestId FROM first_cod_reviews WHERE order_id=?',
+      `SELECT order_id AS orderId,customer_id AS customerId,total_paisa AS totalPaisa,status,created_at AS createdAt,
+        confirmed_by AS confirmedBy,confirmed_at AS confirmedAt,reason,request_id AS requestId${includeHoldSource ? ',hold_source AS holdSource' : ''}
+        FROM first_cod_reviews WHERE order_id=?`,
     )
     .bind(orderId)
     .first<FirstCodReview>();
@@ -57,7 +95,7 @@ export async function assertFirstCodFulfillmentAllowed(
 ) {
   if ((await getFirstCodReview(db, orderId))?.status === 'pending')
     throw new Conflict(
-      'This first-time COD order is awaiting staff confirmation before fulfillment.',
+      'This cash-on-delivery order is awaiting staff confirmation before fulfillment.',
     );
 }
 export async function confirmFirstCodReview(
@@ -165,6 +203,7 @@ export async function confirmFirstCodReview(
           o.requestId,
           o.now,
         ),
+      ...prepareOrderResponseRelease(db,o.orderId),...await prepareInitialResponseNotices(db,o.orderId),
       db
         .prepare('DELETE FROM operation_transaction_guards WHERE id=?')
         .bind(guardId),

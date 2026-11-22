@@ -105,6 +105,42 @@ export async function recordTrafficEvent(
   return { recorded: true, expiresAt };
 }
 
+function trafficScope(policy: FirstPartyAnalyticsPolicy, now: number, from?: number) {
+  const retainedSince = now - policy.retentionDays * 86_400_000;
+  // Historical beacons may have stored literal receipt/document paths. Keep
+  // those out of every traffic aggregate without copying their identifiers.
+  const exclusions = [...new Set([...privateTrafficPathPrefixes, ...policy.excludedPathPrefixes])];
+  const predicate = `created_at>=? AND instr(path,'%')=0 AND instr(path,'//')=0 AND instr(path,'/.')=0 AND instr(path,char(92))=0 ${exclusions.map(() => 'AND NOT(path=? OR substr(path,1,?)=?)').join(' ')}`;
+  const bindings = exclusions.flatMap(prefix => [prefix, prefix.length + 1, `${prefix}/`]);
+  return from === undefined
+    ? { predicate, bindings: [retainedSince, ...bindings], retainedSince }
+    : { predicate: `${predicate} AND created_at<=?`, bindings: [Math.max(retainedSince, from), ...bindings, now], retainedSince };
+}
+
+const funnelColumns = `SUM(CASE WHEN event_type='product_view' THEN 1 ELSE 0 END) AS productViews,
+  SUM(CASE WHEN event_type='add_to_cart' THEN 1 ELSE 0 END) AS addToCarts,
+  SUM(CASE WHEN event_type='checkout_started' THEN 1 ELSE 0 END) AS checkoutStarts,
+  SUM(CASE WHEN event_type='order_completed' THEN 1 ELSE 0 END) AS completedOrders`;
+
+type FunnelCounts = { productViews: number; addToCarts: number; checkoutStarts: number; completedOrders: number };
+
+export async function getStorefrontFunnel(database: D1Database, now: number, from: number) {
+  const { value: policy } = await getEffectiveBusinessSetting(
+    database, 'first_party_analytics_policy', safeTimestamp(now),
+  );
+  const { predicate, bindings, retainedSince } = trafficScope(policy, now, safeTimestamp(from));
+  const result = await database.prepare(`SELECT ${funnelColumns} FROM traffic_events WHERE ${predicate}`)
+    .bind(...bindings).first<FunnelCounts>();
+  return {
+    productViews: Number(result?.productViews ?? 0),
+    addToCarts: Number(result?.addToCarts ?? 0),
+    checkoutStarts: Number(result?.checkoutStarts ?? 0),
+    completedOrders: Number(result?.completedOrders ?? 0),
+    collectionEnabled: policy.enabled,
+    retainedSince,
+  };
+}
+
 export async function getCustomerAndTrafficAnalytics(
   database: D1Database,
   now: number,
@@ -125,13 +161,8 @@ export async function getCustomerAndTrafficAnalytics(
   const accountPredicate = `EXISTS(
     SELECT 1 FROM user_roles r WHERE r.user_id=u.id AND r.role='customer'
   ) ${domainClause}`;
-  const cutoff = now - policy.retentionDays * 86_400_000;
   const recentCutoff = now - 30 * 86_400_000;
-  // Historical beacons may have stored literal receipt/document paths. Keep
-  // those out of every traffic aggregate without copying their identifiers.
-  const exclusions = [...new Set([...privateTrafficPathPrefixes, ...policy.excludedPathPrefixes])];
-  const trafficPredicate = `created_at>=? AND instr(path,'%')=0 AND instr(path,'//')=0 AND instr(path,'/.')=0 AND instr(path,char(92))=0 ${exclusions.map(() => 'AND NOT(path=? OR substr(path,1,?)=?)').join(' ')}`;
-  const trafficBindings = exclusions.flatMap(prefix => [prefix, prefix.length + 1, `${prefix}/`]);
+  const { predicate: trafficPredicate, bindings: trafficBindings } = trafficScope(policy, now);
   const [customers, directory, traffic, topPaths] = await Promise.all([
     database
       .prepare(
@@ -170,14 +201,11 @@ export async function getCustomerAndTrafficAnalytics(
           COUNT(*) AS events,
           COUNT(DISTINCT session_id) AS estimatedBrowserSessions,
           SUM(CASE WHEN event_type='page_view' THEN 1 ELSE 0 END) AS pageViews,
-          SUM(CASE WHEN event_type='product_view' THEN 1 ELSE 0 END) AS productViews,
-          SUM(CASE WHEN event_type='add_to_cart' THEN 1 ELSE 0 END) AS addToCarts,
-          SUM(CASE WHEN event_type='checkout_started' THEN 1 ELSE 0 END) AS checkoutStarts,
-          SUM(CASE WHEN event_type='order_completed' THEN 1 ELSE 0 END) AS completedOrders,
+          ${funnelColumns},
           MAX(created_at) AS lastUpdatedAt
          FROM traffic_events WHERE ${trafficPredicate}`,
       )
-      .bind(cutoff, ...trafficBindings)
+      .bind(...trafficBindings)
       .first<{
         events: number;
         estimatedBrowserSessions: number;
@@ -194,7 +222,7 @@ export async function getCustomerAndTrafficAnalytics(
          FROM traffic_events WHERE ${trafficPredicate} AND event_type IN ('page_view','product_view')
          GROUP BY path ORDER BY views DESC,path ASC LIMIT 10`,
       )
-      .bind(cutoff, ...trafficBindings)
+      .bind(...trafficBindings)
       .all<{ path: string; views: number; estimatedSessions: number }>(),
   ]);
   return {

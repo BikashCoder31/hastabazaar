@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { DISTRICTS_BY_PROVINCE } from '@/lib/checkout/nepal-address';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 const applicationKeys = ['legalName', 'phone', 'identityNumber', 'district', 'identityType', 'identityPhoto', 'requestId', 'formVersion'];
 const reportKeys = ['jobId', 'version', 'requestId', 'kind', 'note', 'cash', 'cashPaisa', 'proof', 'photo', 'video', 'openBoxOutcome', 'formVersion'];
 const remittanceKeys = ['jobId', 'amount', 'amountPaisa', 'reference', 'requestId', 'formVersion', 'customAnswers'];

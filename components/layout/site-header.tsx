@@ -18,15 +18,18 @@ import { BrandWordmark } from '@/components/layout/brand-wordmark';
 import { RewardsShortcut } from '@/components/layout/rewards-shortcut';
 import { MobileNavigation } from '@/components/layout/mobile-navigation';
 import { MobileProductSearch } from '@/components/layout/mobile-product-search';
-import { Input } from '@/components/ui/input';
+import { CustomerPhoneTabs } from '@/components/storefront/customer-phone-tabs';
+import { SearchSuggestionField } from '@/components/catalog/search-suggestion-field';
 import { storefrontNavigation } from '@/lib/catalog/storefront-navigation';
-import { mediaObjectClass, mediaSizes } from '@/lib/media/responsive-media';
+import { mediaObjectClass } from '@/lib/media/responsive-media';
 import { loadQueryPresentationConfig, queryFieldPresentation } from '@/lib/catalog/shop-query';
 import type { PublishedFormConfig } from '@/lib/forms/types';
 
 export async function SiteHeader() {
   const [identity, searchPresentation] = await Promise.all([getAuthenticatedUser(),
     loadQueryPresentationConfig((env as unknown as { DB?: D1Database }).DB, 'catalog.header-search')]);
+  const savedHref = identity ? '/account/wishlist' : signInPath('/account/wishlist');
+  const accountHref = identity ? '/account' : signInPath('/account');
   return (
     <>
       <div className={styles.utility}>
@@ -45,8 +48,8 @@ export async function SiteHeader() {
             <MobileNavigation />
             <Link
               href="/"
-              aria-label="HastaBazaar home"
-              title="HastaBazaar home"
+              aria-label="Hastabazaar home"
+              title="Hastabazaar home"
               className="site-header-brand flex min-h-11 min-w-0 items-center gap-2 rounded-lg sm:gap-3"
             >
               <Image
@@ -56,7 +59,7 @@ export async function SiteHeader() {
                 height={48}
                 priority
                 data-media-mode="contain"
-                sizes={mediaSizes.brandMark}
+                sizes="(min-width: 1024px) 56px, (min-width: 640px) 32px, clamp(24px, 8vw, 32px)"
                 className={mediaObjectClass(
                   'contain',
                   'block size-8 shrink-0 sm:size-11',
@@ -96,7 +99,7 @@ export async function SiteHeader() {
               </Link>
             ) : (
               <a
-                href={signInPath('/account/wishlist')}
+                href={savedHref}
                 target="_top"
                 aria-label="Sign in to your wishlist"
                 className="header-action hidden sm:inline-flex"
@@ -122,7 +125,7 @@ export async function SiteHeader() {
               </Link>
             ) : (
               <a
-                href={signInPath('/account')}
+                href={accountHref}
                 target="_top"
                 className="header-action bg-secondary text-primary"
               >
@@ -134,7 +137,7 @@ export async function SiteHeader() {
           </div>
         </div>
         <div className="border-t border-border/60 bg-secondary/25 lg:hidden">
-          <div className="shell flex min-h-11 items-center justify-between gap-3">
+          <div className="shell flex min-h-11 items-center justify-between gap-3 max-[299px]:flex-wrap max-[299px]:gap-y-0 max-[299px]:pt-1">
             <span className="text-xs text-muted-foreground">Bring your work to Hastabazaar</span>
             <Link
               href="/sell#seller-application"
@@ -175,6 +178,7 @@ export async function SiteHeader() {
           </div>
         </div>
       </header>
+      <CustomerPhoneTabs savedHref={savedHref} accountHref={accountHref} />
     </>
   );
 }
@@ -212,22 +216,17 @@ function HeaderSearch({ id, config, unavailable }: { id: string; config: Publish
           className="hidden size-4 shrink-0 text-muted-foreground lg:block"
           aria-hidden="true"
         />
-        <label htmlFor={id} className="sr-only">
-          {search.label}
-        </label>
-        <Input
+        <SearchSuggestionField
           id={id}
-          type="search"
-          name="q"
-          maxLength={100}
+          label={search.label}
           placeholder={search.placeholder}
-          aria-describedby={search.helpText ? `${id}-help` : undefined}
-          className="h-auto min-w-0 flex-1 rounded-none border-0 bg-transparent px-0 py-1.5 text-base placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 md:text-base"
+          helpId={search.helpText ? `${id}-help` : undefined}
+          className="h-auto min-w-0 flex-1 rounded-none border-0 bg-transparent px-0 py-1.5 text-base placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 md:text-base max-md:min-h-11"
         />
         <button
           type="submit"
           aria-label="Search"
-          className="inline-flex min-h-9 w-8 shrink-0 items-center justify-center rounded-full bg-[#b5121b] text-sm font-semibold text-white transition-colors hover:bg-[#921018] max-[299px]:w-7 lg:w-auto lg:px-4"
+          className="inline-flex min-h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#b5121b] text-sm font-semibold text-white transition-colors hover:bg-[#921018] md:min-h-9 md:w-8 lg:w-auto lg:px-4"
         >
           <Search aria-hidden="true" className="size-4 lg:hidden" />
           <span className="hidden lg:inline">Search</span>

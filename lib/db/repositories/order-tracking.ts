@@ -1,5 +1,7 @@
 import { publicTrackingReferenceSql } from '../../riders/public-tracking';
 import { getFirstCodReview } from '../../orders/first-cod-review';
+import { readCustomerOrderParcels } from '../../orders/customer-parcels';
+import type { CustomerParcelCardData } from '@/components/commerce/customer-parcel-card';
 export interface OrderTracking {
   orderNumber: string;
   status: string;
@@ -11,6 +13,7 @@ export interface OrderTracking {
   estimatedMinDays: number;
   estimatedMaxDays: number;
   events: { status: string; occurredAt: number }[];
+  parcels?: Pick<CustomerParcelCardData, 'status' | 'courierName' | 'trackingReference' | 'trackingUrl' | 'stageTimes'>[];
 }
 // Deliberately excludes names, email, phone, address, item details and internal staff notes.
 export async function findOrderTracking(
@@ -25,20 +28,25 @@ export async function findOrderTracking(
  FROM orders o INNER JOIN shipments s ON s.order_id=o.id
  WHERE o.order_number=? AND lower(o.customer_email)=? LIMIT 1`)
     .bind(orderNumber.trim().toUpperCase(), email.trim().toLowerCase())
-    .first<Omit<OrderTracking, 'events'> & { id: string }>();
+    .first<Omit<OrderTracking, 'events' | 'parcels'> & { id: string }>();
   if (!order) return null;
-  const events = await db
+  const [events, codReview, parcels] = await Promise.all([db
     .prepare(`SELECT to_status AS status,MIN(created_at) AS occurredAt FROM order_status_events
  WHERE order_id=? GROUP BY to_status ORDER BY MIN(created_at) ASC`)
     .bind(order.id)
-    .all<{ status: string; occurredAt: number }>();
-  const codReview = await getFirstCodReview(db, order.id);
+    .all<{ status: string; occurredAt: number }>(), getFirstCodReview(db, order.id),
+    readCustomerOrderParcels(db, [order.id], { withItems: false, withCash: false, withNcmProgress: true }),
+  ]);
   const codPending =
     codReview?.status === 'pending' && order.status !== 'cancelled';
   const { id: _id, ...safe } = order;
   return {
     ...safe,
     status: codPending ? 'awaiting_cod_confirmation' : safe.status,
+    parcels: (parcels.get(order.id) ?? []).map(({ status, courierName, trackingReference, trackingUrl, stageTimes }) => ({
+      status: codPending && status !== 'cancelled' ? 'awaiting_cod_confirmation' : status,
+      courierName, trackingReference, trackingUrl, stageTimes,
+    })),
     events: events.results.map((event) => ({
       ...event,
       status:

@@ -1,3 +1,4 @@
+import { formAnswerSourceSql } from './answer-proof';
 import { getFormAnswerById, type StoredFormAnswer } from '../db/repositories/form-answers';
 import { authorizeFormAnswerRead } from './access';
 
@@ -35,7 +36,7 @@ export async function listCustomerCancellationAnswers(db: D1Database, input: {
     .bind(orderId, customerId).first();
   if (!owner) return { items: [], nextCursor: null };
   const cursor = decodeCursor(input.after);
-  const rows = await db.prepare(`SELECT a.id,a.created_at AS createdAt FROM form_answer_sets a
+  const rows = await db.prepare(`SELECT a.id,a.created_at AS createdAt FROM ${formAnswerSourceSql(db)} a
     WHERE a.form_id='commerce.order-cancellation' AND a.actor_id=? AND (
       (a.subject_type='order_cancellation_event' AND EXISTS(SELECT 1 FROM order_cancellation_events e
         WHERE e.id=a.subject_id AND e.order_id=?)) OR

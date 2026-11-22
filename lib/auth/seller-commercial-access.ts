@@ -19,7 +19,7 @@ export async function requireSellerTermsPage(returnTo: string) {
   return { ...viewer,identity };
 }
 export async function requireSellerTermsApi() {
-  const identity=await getAuthenticatedUser();
+  const identity=await getAuthenticatedUser({readOnly:true});
   if (!identity) throw new SellerTermsAuthorizationError('Sign in and start seller registration to read seller terms.',401);
   const viewer=await getSellerCommercialAccess(requireDatabase(env as unknown as { DB?: D1Database }),identity.userId);
   if (!viewer) throw new SellerTermsAuthorizationError('Start seller registration to read seller terms.',403);

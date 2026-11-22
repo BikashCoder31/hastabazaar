@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers';
 
-import { getCustomerUser, CustomerAuthorizationError, requireCustomerApi } from '@/lib/auth/customer';
+import { getCustomerReadContext, CustomerAuthorizationError, requireExistingCustomerApi } from '@/lib/auth/customer';
 import { getEffectiveBusinessSetting } from '@/lib/db/repositories/business-settings';
 import {
   clearRecentlyViewed,
@@ -24,7 +24,7 @@ export async function GET(): Promise<Response> {
     const database = requireDatabase(env as unknown as { DB?: D1Database });
     const now = Date.now();
     const policy = (await getEffectiveBusinessSetting(database, 'recently_viewed_policy', now)).value;
-    const customer = await getCustomerUser();
+    const { customer } = await getCustomerReadContext();
     const products = customer
       ? await listRecentlyViewedProducts(database, { userId: customer.userId, now, policy })
       : [];
@@ -49,7 +49,7 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ products, policy });
     }
     if (body?.action === 'record' && typeof body.productId === 'string' && body.productId.length <= 100) {
-      const customer = await requireCustomerApi();
+      const customer = await requireExistingCustomerApi();
       const recorded = await recordRecentlyViewedProduct(database, { userId: customer.userId, productId: body.productId, now, policy });
       return Response.json({ recorded, policy });
     }
@@ -60,7 +60,7 @@ export async function POST(request: Request): Promise<Response> {
 export async function DELETE(request: Request): Promise<Response> {
   if (!isTrustedMutationRequest(request)) return Response.json({ error: 'Cross-site requests are not allowed.' }, { status: 403 });
   try {
-    const customer = await requireCustomerApi();
+    const customer = await requireExistingCustomerApi();
     await clearRecentlyViewed(requireDatabase(env as unknown as { DB?: D1Database }), customer.userId);
     return Response.json({ cleared: true });
   } catch (error) { return responseError(error); }

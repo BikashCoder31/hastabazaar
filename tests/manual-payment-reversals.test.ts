@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {manualOrderFixture} from './helpers/manual-payment-fixture';
+import * as payments from '../lib/payments/manual-receipts';
+void test('actual partial reversal preserves original paid history, holds only linked exposure and cannot be recorded twice or exceed real credit',async()=>{
+ const loadedFixtureModule=await import('../lib/payments/receipt-corrections').catch(()=>null);assert.equal(typeof loadedFixtureModule?.recordReceiptReversal,'function','A real reversal needs a retained, capped correction and an owned review.');
+ const f=await manualOrderFixture();try{const ctx=(requestId:string,expectedRevision:string|null)=>({actorId:'reviewer',requestId,expectedRevision,now:Date.now()}),receipt=await payments.recordBankReceipt(f.db,ctx('reversal-original-credit',null),{accountVersionId:f.accountVersionId,transactionIdentity:'FICTIONAL-REVERSAL-ORIGINAL',bankAt:f.now,amountMinor:f.order.grandTotalPaisa,currency:'NPR',payerReference:'Fictional verified buyer reference',payerUserId:'customer',evidenceReference:'FICTIONAL-ORIGINAL-COMPLETED-CREDIT',completedCreditConfirmed:true,conflictUserIds:[],reason:'Independently verify the actual fictional credit before recording allocation.'});
+ await payments.allocateBankReceipt(f.db,ctx('reversal-original-allocation','0'),{receiptId:receipt.id,orderId:f.orderId,amountPaisa:f.order.grandTotalPaisa,expectedWindowRevision:0,matchingBasis:'Exact buyer and original order independently corroborated.',exceptionApproval:null});
+ const input={receiptId:receipt.id,amountMinor:1000,transactionIdentity:'FICTIONAL-PARTIAL-REVERSAL',bankAt:Date.now(),evidenceReference:'FICTIONAL-ACTUAL-BANK-REVERSAL',reason:'Actual partial bank reversal; allocation responsibility requires independent review.'},command=ctx('record-partial-bank-reversal','1');
+ await assert.rejects(loadedFixtureModule!.recordReceiptReversal(f.db,{...command,actorId:'delegate'},input));const saved=await loadedFixtureModule!.recordReceiptReversal(f.db,command,input);assert.deepEqual(await loadedFixtureModule!.recordReceiptReversal(f.db,command,input),saved);
+ assert.equal(f.sqlite.prepare('SELECT payment_status FROM orders WHERE id=?').get(f.orderId)!.payment_status,'paid');assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM manual_payment_allocations').get()!.n,1);assert.equal(f.sqlite.prepare('SELECT SUM(amount_minor) n FROM company_receipt_reversals').get()!.n,1000);
+ assert.equal((await payments.getCustomerManualPayment(f.db,'customer',f.orderId))!.state,'reconciliation_required');assert.ok(f.sqlite.prepare("SELECT 1 FROM manual_payment_exceptions WHERE order_id=? AND kind='receipt_reversal' AND owner_id='reviewer' AND state='open'").get(f.orderId));
+ assert.throws(()=>f.sqlite.prepare("UPDATE order_items SET fulfillment_status='packing' WHERE order_id=?").run(f.orderId),/held/);
+ await assert.rejects(loadedFixtureModule!.recordReceiptReversal(f.db,ctx('reverse-more-than-credit','2'),{...input,transactionIdentity:'FICTIONAL-INVALID-EXCESS-REVERSAL',amountMinor:f.order.grandTotalPaisa}));assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM company_receipt_reversals').get()!.n,1);
+ }finally{f.dispose();}
+});

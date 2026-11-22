@@ -14,15 +14,19 @@ type Actor = { userId: string } | null;
 declare global {
   var profileTestActor: Actor;
   var profileTestDb: D1Database;
+  var profileTestReact: typeof createElement;
 }
+globalThis.profileTestReact = createElement;
 
 registerHooks({
   resolve(specifier, context, nextResolve) {
     if (specifier === 'cloudflare:workers') return { url: 'data:text/javascript,export const env = {get DB(){return globalThis.profileTestDb}}', shortCircuit: true };
     if (specifier === '@/lib/auth/customer') return { url: `data:text/javascript,
       export class CustomerAuthorizationError extends Error { constructor(message,status){super(message);this.status=status} }
-      export async function requireCustomerApi(){const a=globalThis.profileTestActor;if(!a)throw new CustomerAuthorizationError('Authentication is required.',401);return a}`, shortCircuit: true };
+      export async function requireCustomerApi(){const a=globalThis.profileTestActor;if(!a)throw new CustomerAuthorizationError('Authentication is required.',401);return a}
+      export const requireExistingCustomerApi=requireCustomerApi;`, shortCircuit: true };
     if (specifier === 'next/navigation') return { url: 'data:text/javascript,export function useRouter(){return {refresh(){}}}', shortCircuit: true };
+    if (specifier === 'next/link') return { url: 'data:text/javascript,export default function Link(props){return globalThis.profileTestReact("a",props,props.children)}', shortCircuit: true };
     return nextResolve(specifier, context);
   },
 });
@@ -73,12 +77,17 @@ async function fixture() {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec(`PRAGMA foreign_keys = ON;
     CREATE TABLE users(id TEXT PRIMARY KEY, status TEXT NOT NULL, display_name TEXT NOT NULL, phone TEXT, locale TEXT, updated_at INTEGER);
+    CREATE TABLE user_roles(user_id TEXT NOT NULL,role TEXT NOT NULL);
+    INSERT INTO user_roles VALUES ('admin','admin'),('customer','customer'),('other','customer'),('inactive','customer');
     CREATE TABLE audit_logs(id TEXT PRIMARY KEY, actor_id TEXT, action TEXT, subject_type TEXT,
       subject_id TEXT, reason TEXT, previous_json TEXT, next_json TEXT, request_id TEXT UNIQUE,
       ip_hash TEXT, created_at INTEGER);
     INSERT INTO users VALUES ('admin','active','Admin',NULL,'en-NP',1),('customer','active','Old Name',NULL,'en-NP',1),('other','active','Other Name',NULL,'en-NP',1),('inactive','disabled','Inactive',NULL,'en-NP',1);`);
   const migration = await readFile(new URL('../drizzle/0056_form_catalog.sql', import.meta.url), 'utf8');
   for (const statement of migration.split('--> statement-breakpoint')) if (statement.trim()) sqlite.exec(statement);
+  // Current native account receipts include the T30 form-health source columns. This fixture is :memory: only.
+  const healthMigration=await readFile(new URL('../drizzle/0151_form_health_records.sql',import.meta.url),'utf8');
+  for(const statement of healthMigration.split('--> statement-breakpoint').slice(0,4))if(statement.trim())sqlite.exec(statement);
   const database = new Database(sqlite);
   globalThis.profileTestDb = database as unknown as D1Database;
   globalThis.profileTestActor = { userId: 'customer' };
@@ -100,7 +109,7 @@ function request(body: unknown, origin = 'http://localhost:3000') {
 
 void test('profile form marks its adapter and blocks a submission until published config loads', async () => {
   const { ProfileForm } = await import('../components/account/profile-form');
-  const html = renderToStaticMarkup(createElement(ProfileForm, { displayName: 'Asha Rai', phone: null }));
+  const html = renderToStaticMarkup(createElement(ProfileForm, {actorId:'customer', displayName: 'Asha Rai', phone: null }));
   assert.match(html, /data-form-id="account\.profile"/);
   assert.match(html, /Form configuration is loading/i);
   assert.match(html, /type="submit"[^>]*disabled/);
@@ -296,7 +305,7 @@ void test('oversized profile JSON is rejected before custom-answer parsing or an
   } finally { sqlite.close(); }
 });
 
-void test('mounted ambiguous retry never reports edited values saved under an old request ID', async () => {
+void test('mounted ambiguous response retains the original values and retries its exact native request', async () => {
   const { sqlite } = await fixture();
   const playwrightPath = process.env.PLAYWRIGHT_MODULE ??
     'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs';
@@ -307,22 +316,25 @@ void test('mounted ambiguous retry never reports edited values saved under an ol
       import React from 'react';
       import { createRoot } from 'react-dom/client';
       import { ProfileForm } from './components/account/profile-form';
-      createRoot(document.getElementById('root')!).render(<ProfileForm displayName="Old Name" phone={null} locale="en-NP" />);
+      createRoot(document.getElementById('root')!).render(<ProfileForm actorId="customer" displayName="Old Name" phone={null} locale="en-NP" />);
     `, loader: 'tsx' }, bundle: true, write: false, platform: 'browser', format: 'iife',
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'profile-navigation', setup(build) {
       build.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'navigation', namespace: 'profile-fixture' }));
-      build.onLoad({ filter: /.*/, namespace: 'profile-fixture' }, () => ({ contents: 'export function useRouter(){return {refresh(){}}}', loader: 'js' }));
+      build.onLoad({ filter: /^navigation$/, namespace: 'profile-fixture' }, () => ({ contents: 'export function useRouter(){return {refresh(){}}}', loader: 'js' }));
+      build.onResolve({ filter: /^next\/link$/ }, () => ({ path: 'link', namespace: 'profile-fixture' }));
+      build.onLoad({ filter: /^link$/, namespace: 'profile-fixture' }, () => ({ resolveDir: process.cwd(), contents: "import React from 'react';export default function Link(props){return React.createElement('a',props);}", loader: 'js' }));
     } }],
   });
   const browser = await chromium.launch({ headless: true,
     executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
   const page = await browser.newPage();
   let patches = 0;
+  const sentBodies:string[]=[];
   try {
     const { PATCH } = await import('../app/api/account/profile/route');
     await page.route('https://profile.test/**', async (route: {
-      request(): { url(): string; method(): string; postData(): string | null };
+      request(): { url(): string; method(): string; postData(): string | null;headers():Record<string,string> };
       fulfill(input: { status: number; contentType: string; body: string }): Promise<void>;
     }) => {
       const url = new URL(route.request().url());
@@ -332,8 +344,9 @@ void test('mounted ambiguous retry never reports edited values saved under an ol
       }) });
       if (url.pathname === '/api/account/profile') {
         patches++;
+        sentBodies.push(route.request().postData()!);
         const upstream = await PATCH(new Request('http://localhost:3000/api/account/profile', { method: 'PATCH',
-          headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' }, body: route.request().postData() }));
+          headers: { origin: 'http://localhost:3000', 'content-type': 'application/json','X-Hastabazaar-Actor':route.request().headers()['x-hastabazaar-actor']??'' }, body: route.request().postData() }));
         return route.fulfill({ status: patches === 1 ? 500 : upstream.status, contentType: 'application/json',
           body: patches === 1 ? JSON.stringify({ error: 'Connection ended after save.' }) : await upstream.text() });
       }
@@ -346,15 +359,21 @@ void test('mounted ambiguous retry never reports edited values saved under an ol
     await page.locator('input[name="custom.delivery_note"]').fill('By the blue gate');
     await page.locator('button[type="submit"]').click();
     await page.waitForFunction(() => document.body.textContent?.includes('Connection ended after save.') === true);
-    await page.locator('input[name="displayName"]').fill('Asha Changed');
-    await page.locator('button[type="submit"]').click();
-    await page.waitForFunction(() => document.body.textContent?.includes('already used') === true ||
-      document.body.textContent?.includes('Your profile is up to date.') === true);
+    assert.equal(await page.locator('input[name="displayName"]').isDisabled(),true);
+    assert.equal(await page.locator('input[name="displayName"]').inputValue(),'Asha Rai');
+    await page.getByRole('button',{name:'Retry original request',exact:true}).click();
+    await page.waitForFunction(() => document.body.textContent?.includes('Your profile is up to date.') === true);
     assert.equal(patches, 2);
-    assert.match(await page.evaluate(() => document.body.textContent ?? ''), /already used/i);
-    assert.equal(await page.locator('output').count(), 0);
+    assert.equal(sentBodies[0],sentBodies[1],'An uncertain retry retains the exact original body and request ID.');
     assert.deepEqual(user(sqlite), { name: 'Asha Rai', phone: null });
     assert.equal(count(sqlite, 'form_answer_sets'), 1);
     assert.equal(count(sqlite, 'audit_logs'), 1);
+    await page.locator('input[name="displayName"]').fill('Asha Changed');
+    const changed=page.waitForResponse((response:{url():string})=>response.url().endsWith('/api/account/profile'));
+    await page.locator('button[type="submit"]').click();
+    assert.equal((await changed).status(),200);
+    await page.waitForFunction(()=>document.body.textContent?.includes('Your profile is up to date.')===true);
+    assert.notEqual(JSON.parse(sentBodies[2]).idempotencyKey,JSON.parse(sentBodies[1]).idempotencyKey);
+    assert.deepEqual(user(sqlite),{name:'Asha Changed',phone:null});assert.equal(count(sqlite,'form_answer_sets'),2);assert.equal(count(sqlite,'audit_logs'),2);
   } finally { await page.close(); await browser.close(); sqlite.close(); }
 });

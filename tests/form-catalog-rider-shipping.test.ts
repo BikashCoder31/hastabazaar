@@ -106,6 +106,8 @@ function fixture() {
   sqlite.exec(readFileSync('drizzle/0034_exception_work.sql', 'utf8'));
   for (const statement of readFileSync('drizzle/0056_form_catalog.sql', 'utf8').split('--> statement-breakpoint'))
     if (statement.trim()) sqlite.exec(statement);
+  // Retained minimal fixture loads the actual151 answer metadata suffix used by the real writer.
+  for(const statement of readFileSync('drizzle/0151_form_health_records.sql','utf8').split('--> statement-breakpoint').slice(0,2))sqlite.exec(statement);
   sqlite.exec("INSERT INTO rider_profiles(user_id,status,application_id,updated_at) VALUES ('rider','approved','app',1)");
   sqlite.exec(`CREATE TABLE parcel_cash_records(id TEXT PRIMARY KEY,shipping_job_id TEXT,kind TEXT,
     amount_paisa INTEGER,evidence_reference TEXT,status TEXT,created_by TEXT,created_at INTEGER,rider_user_id TEXT);

@@ -1,3 +1,5 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
+import { StaffReviewAccessBoundary } from '@/components/admin/staff-review-access-boundary';
 import { env } from 'cloudflare:workers';
 import { ShippingConsole } from '@/components/shipping-console';
 import { AnswerDetails } from '@/components/forms/answer-details';
@@ -9,21 +11,84 @@ import { authorizeFormAnswerRead } from '@/lib/forms/access';
 import { readHistoryCursor } from '@/lib/forms/rider-history';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { renderParcelProblemQueue } from './parcel-problem-queue';
+import { ParcelProblemAction } from './parcel-problem-action';
+import { readParcelFailureTarget, readProblemFilter } from './parcel-problems';
+
 export const dynamic = 'force-dynamic';
+
+type ShippingQuery = {
+  kind?: string; problem?: string; page?: string; view?: string; reason?: string; recordFailure?: string;
+  historyEvent?: string; beforeAt?: string; beforeId?: string; afterAt?: string; afterId?: string;
+};
+
 export default async function AdminShippingPage({ searchParams }: {
-  searchParams?: Promise<{ historyEvent?: string; beforeAt?: string; beforeId?: string;
-    afterAt?: string; afterId?: string }>;
+  searchParams?: Promise<ShippingQuery>;
 } = {}) {
   const staff = await requireStaffPage('/admin/shipping', 'order.manage');
   const db = requireDatabase(env as unknown as { DB?: D1Database });
   const query = await searchParams;
+  const superAdmin = staff.role === 'super_admin';
+  const showShippingRecords = query?.view === 'shipping-records';
+  const showHistory = Boolean(query?.historyEvent || query?.beforeAt || query?.beforeId || query?.afterAt || query?.afterId);
+
+  if (!showShippingRecords && !showHistory) {
+    const failureJobId = query?.recordFailure;
+    const target = typeof failureJobId === 'string' ? await readParcelFailureTarget(db, failureJobId) : null;
+    if (target && failureJobId) {
+      return <div className="min-w-0 space-y-4 text-[#14213D]">
+        <AdminPageTitle><h1 className="section-title">Orders</h1></AdminPageTitle>
+        <StaffReviewAccessBoundary actorId={staff.id} sourceId={failureJobId}>
+          <section aria-labelledby="record-failed-delivery" className="min-w-0 max-w-2xl space-y-4 rounded-2xl border border-[#E4DACA] bg-white p-5 sm:p-6">
+            <h2 id="record-failed-delivery" className="font-heading text-2xl font-semibold">Record failed delivery</h2>
+            <p className="text-sm break-words text-[#46536F]">{[target.orderNumber, target.sellerName, target.courierName].filter(Boolean).join(' · ')}</p>
+            <ParcelProblemAction actorId={staff.id} orderId={target.orderId} jobId={failureJobId} version={Number(target.version)} recordFailure />
+            <div className="flex flex-wrap gap-x-4">
+              <Link className="section-link inline-flex min-h-11 items-center" href="/admin/orders/dispatch?lane=courier">Back to Dispatch</Link>
+              <Link className="section-link inline-flex min-h-11 items-center" href="/admin/shipping">Parcel problems</Link>
+            </div>
+          </section>
+        </StaffReviewAccessBoundary>
+      </div>;
+    }
+    const [queue, history] = await Promise.all([
+      renderParcelProblemQueue({ db, viewer: staff, superAdmin, kind: readProblemFilter(query?.kind), requestedPage: query?.page, selected: query?.problem, requestedReason: query?.reason }),
+      renderShippingHistory({ db, staff, query }),
+    ]);
+    return <div className="space-y-4 text-[#14213D]">
+      <AdminPageTitle><h1 className="section-title">Orders</h1></AdminPageTitle>
+      {queue}
+      <nav aria-label="Related parcel records" className="flex flex-wrap gap-x-4">
+        <Link className="section-link inline-flex min-h-11 items-center" href="/admin/exceptions">Exception follow-up records</Link>
+        <Link className="section-link inline-flex min-h-11 items-center" href="/admin/shipping?view=shipping-records">Shipping coordination and staff answers</Link>
+      </nav>
+      {history}
+    </div>;
+  }
+
+  const [jobs, history] = await Promise.all([
+    showShippingRecords ? listShippingJobs(db, undefined, superAdmin) : [],
+    renderShippingHistory({ db, staff, query }),
+  ]);
+  return <div className="space-y-5">
+    <Link className="section-link inline-flex min-h-11 items-center" href="/admin/shipping">Back to parcel problems</Link>
+    <AdminPageTitle><h1 className="section-title">Shipping coordination</h1></AdminPageTitle>
+    {showShippingRecords ? <ShippingConsole jobs={jobs} admin /> : null}
+    {history}
+  </div>;
+}
+
+async function renderShippingHistory({ db, staff, query }: {
+  db: D1Database;
+  staff: Awaited<ReturnType<typeof requireStaffPage>>;
+  query?: ShippingQuery;
+}) {
   let before;
   let after;
   try {
     before = readHistoryCursor(query?.beforeAt, query?.beforeId);
     after = readHistoryCursor(query?.afterAt, query?.afterId);
   } catch { notFound(); }
-  const jobs = await listShippingJobs(db, undefined, staff.role === 'super_admin');
   let answers = null;
   if (query?.historyEvent) {
     if (query.historyEvent.length > 191) notFound();
@@ -50,38 +115,31 @@ export default async function AdminShippingPage({ searchParams }: {
   const records = rows?.results.slice(0, 50) ?? [];
   const last = records.at(-1);
   return (
-    <div className="space-y-6">
-      <div>
-        <p className="eyebrow">Carrier operations</p>
-        <h1 className="section-title">
-          Labels, pickups, claims & reconciliation
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Each record is isolated by order and seller. References are recorded
-          manually; no carrier API behavior is assumed.
-        </p>
-      </div>
-      <ShippingConsole jobs={jobs} admin />
-      <section className="space-y-3 rounded-2xl border bg-card p-5">
-        <h2 className="font-semibold">Saved staff shipping answers</h2>
+      <details className="rounded-2xl border border-[#E4DACA] bg-card" open={showHistoryDetails(query) || undefined}>
+        <summary className="min-h-11 cursor-pointer px-5 py-3 font-semibold">Saved staff shipping answers</summary>
+        <section className="space-y-3 p-5 pt-0" aria-label="Saved staff shipping answers">
         {answers ? <>
-          <Link className="underline" href="/admin/shipping">← All staff shipping actions</Link>
+          <Link className="inline-flex min-h-11 items-center underline" href="/admin/shipping?view=shipping-records">All staff shipping actions</Link>
           <p className="break-all text-sm">Event {query?.historyEvent}</p>
           {answers.answers.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)}
-          {answers.nextCursor ? <Link className="underline" href={
+          {answers.nextCursor ? <Link className="inline-flex min-h-11 items-center underline" href={
             `/admin/shipping?historyEvent=${encodeURIComponent(query!.historyEvent!)}&afterAt=${answers.nextCursor.createdAt}&afterId=${encodeURIComponent(answers.nextCursor.id)}`
           }>Next 50 answers</Link> : null}
         </> : <>
           {records.length ? <ul className="space-y-2">{records.map((record) => <li key={record.id}>
-            <Link className="underline" href={`/admin/shipping?historyEvent=${encodeURIComponent(record.id)}`}>
+            <Link className="inline-flex min-h-11 items-center break-all underline" href={`/admin/shipping?historyEvent=${encodeURIComponent(record.id)}`}>
               Event {record.id}
             </Link>
           </li>)}</ul> : <p>No saved staff shipping answers.</p>}
-          {rows && rows.results.length > 50 && last ? <Link className="underline" href={
+          {rows && rows.results.length > 50 && last ? <Link className="inline-flex min-h-11 items-center underline" href={
             `/admin/shipping?beforeAt=${last.createdAt}&beforeId=${encodeURIComponent(last.id)}`
           }>Next older records</Link> : null}
         </>}
-      </section>
-    </div>
+        </section>
+      </details>
   );
+}
+
+function showHistoryDetails(query: ShippingQuery | undefined) {
+  return Boolean(query?.view === 'shipping-records' || query?.historyEvent || query?.beforeAt || query?.afterAt);
 }

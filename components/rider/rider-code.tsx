@@ -3,7 +3,7 @@ import { FormGuide } from '@/components/forms/form-guide';
 import { useState } from 'react';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 const verificationKeys = ['jobId', 'version', 'code', 'requestId', 'formVersion', 'customAnswers'];
 export function CustomerRiderCode({
   orderNumber,

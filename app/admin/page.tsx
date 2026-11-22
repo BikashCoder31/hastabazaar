@@ -1,10 +1,33 @@
-import { redirect } from 'next/navigation';
-import { can } from '@/lib/marketplace/permissions';
+import { AdminPageTitle } from '@/components/admin/page-help';
+import {SharedReviewQueue} from '@/components/admin/shared-review-queue';
+import {OverviewOrdersByStage,OverviewWorkSummaries,TodayWorkSummaries} from '@/components/admin/overview-work-summaries';
+import {TodayOverview} from '@/components/admin/overview-today';
+import {readTodaySources,todayDecisionHistory} from '@/components/admin/overview-today-data';
+import {OverviewHealth,OverviewHealthProvider} from '@/components/admin/overview-health';
+import {overviewHealthChecks} from '@/components/admin/overview-health-model';
+import {OverviewRecentDecisions} from '@/components/admin/overview-recent-decisions';
+import {readAdminBankTransferCount,readAdminReviewTasks} from '@/components/admin/admin-review-data';
+import {readRecentReviewDecisions} from '@/lib/admin/recent-review-decisions';
+import {readFinanceWorkItems} from '@/lib/admin/finance-work-items';
+import {financeQueueItem,reviewTaskLabels} from '@/lib/admin/review-queue-view';
+import {resolveRuntimeEnvironment} from '@/lib/staging/environment';
+import {formHealthRuntimeScope} from '@/lib/operations/form-health';
+import {readSystemHealthWorkspace} from '@/lib/operations/system-health-workspace';
+import {readEmailDeliveryOverview,readEmailHealthRuntimeConfig} from '@/lib/operations/email-delivery-overview';
+import {emailDeliveryWarning,emailSenderStatus,readAdminMessages} from '@/lib/operations/admin-message-history';
+import {EmailWarning} from '@/components/admin/email-delivery-view';
+import { NcmHealthWarningCard } from '@/components/admin/ncm-health-warning';
+import { readNcmHealthWarning } from '@/lib/delivery/ncm-health';
+import {ReviewTaskConflict} from '@/lib/workflows/review-tasks';
+import {staffMutationGuard} from '@/lib/db/repositories/staff-mutation-guard';
+import { can, isMoneyViewOnly } from '@/lib/marketplace/permissions';
 import { adminNavigation } from '@/lib/admin/navigation';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import {
   ArrowRight,
+  ChevronDown,
   ClipboardCheck,
   PackageCheck,
   Store,
@@ -28,99 +51,95 @@ const summaryObservedAt = () => Date.now();
 export default async function AdminDashboardPage({ searchParams }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 } = {}) {
-  const staff = await requireStaffPage('/admin');
-  if (!can(staff, 'audit_log.view')) redirect(adminNavigation(staff.role, staff.permissions)[0]?.href ?? '/staff-access-denied');
-  const params = staff.role === 'super_admin' ? await searchParams : undefined;
+  let staff = await requireStaffPage('/admin','account.self.manage');
+  if (isMoneyViewOnly(staff)) redirect('/admin/payments');
+  const params = await searchParams;
+  const contextParams=new URLSearchParams();for(const [key,value] of Object.entries(params??{}))if(typeof value==='string')contextParams.set(key,value);
+  const returnTo='/admin'+(contextParams.size?'?'+contextParams.toString():'');
   const period = parseMarketplaceSummaryPeriod(params?.period);
   const now = summaryObservedAt();
   const range = marketplaceSummaryRange(period, now);
   const database = requireDatabase(env as unknown as { DB?: D1Database });
+  const reader=await staffMutationGuard(database,staff.id,'account.self.manage',ReviewTaskConflict,staff.role);
+  staff={...staff,role:reader.role,permissions:reader.permissions};
+  const bindings=env as unknown as Record<string,string|undefined>,scope={...formHealthRuntimeScope(bindings),now},email=readEmailHealthRuntimeConfig(bindings,now),rawExpected=bindings.SYSTEM_HEALTH_EXPECTED_SINCE,expected=rawExpected&&/^\d+$/.test(rawExpected)?Number(rawExpected):NaN;
+  const financeAllowed=can(staff,'payout.prepare')||can(staff,'refund.approve.standard');
   const [stats, marketplace] = await Promise.all([
-    getAdminWorkSummary(database, staff.role, staff.permissions),
-    staff.role === 'super_admin' ? getSuperAdminMarketplaceSummary(database, staff.role, now, period) : null,
+    getAdminWorkSummary(database, staff.role, staff.permissions).catch(()=>null),
+    staff.role === 'super_admin' ? getSuperAdminMarketplaceSummary(database, staff.role, now, period).catch(()=>null) : null,
   ]);
+  // These source readers execute guard transactions; serialize them on the shared database connection.
+  const reviewTasks=await readAdminReviewTasks(database,staff.id);
+  const health=can(staff,'system.health.view')?await readSystemHealthWorkspace(database,staff.id,{...scope,expectedSince:email.expectedSince,systemExpectedSince:Number.isSafeInteger(expected)&&expected>0&&expected<=now?expected:null}).catch(()=>null):undefined;
+  const finance=financeAllowed?await(async()=>readFinanceWorkItems(database,staff.id,resolveRuntimeEnvironment({runtimeEnvironment:bindings.HASTABAZAAR_RUNTIME_ENV,nodeEnvironment:process.env.NODE_ENV,appOrigin:bindings.APP_ORIGIN}),{returnTo,limit:100}))().catch(()=>null):undefined;
+  const reviewDecisions=reviewTasks===null?null:await readRecentReviewDecisions(database,staff.id,reviewTasks,returnTo).catch(()=>null);
+  const workItems=[...(reviewTasks??[]),...(finance?.items??[]).map(financeQueueItem)];
+  const incompleteFinance=finance?.coverage.filter(row=>can(staff,row.family.startsWith('payout_')?'payout.prepare':'refund.approve.standard')&&row.state!=='available')??[];
+  const partialSources=[...(reviewTasks===null?['Shared review records unavailable']:[]),...(finance===null?['Finance records unavailable']:incompleteFinance.map(row=>`${reviewTaskLabels[row.family]} ${row.state}`))];
+  const recentDecisions=todayDecisionHistory(reviewDecisions,finance?.recentDecisions??[]);
+  const legacyReview = ['reviewView','reviewQ','reviewDepartment','reviewType','reviewOwner','reviewPriority','reviewFrom','reviewTo','reviewPage']
+    .some(key => contextParams.has(key));
+  const today = params?.workspace === 'reviews' || legacyReview ? null : await readTodaySources({
+    db: database, actor: staff, now, returnTo, tasks: workItems, financeDecisions: finance?.recentDecisions ?? [],
+  });
+  const ncmWarning = today ? await readNcmHealthWarning(database, staff, now).catch(() => null) : null;
   const queues = [
     {
       label: 'Seller applications',
-      value: stats.sellers,
+      value: stats?.sellers??null,
       icon: Store,
       href: '/admin/sellers',
       description: 'New applications and reviews in progress',
     },
     {
       label: 'Product moderation',
-      value: stats.products,
+      value: stats?.products??null,
       icon: ClipboardCheck,
       href: '/admin/products',
       description: 'Submitted listings and reviews in progress',
     },
     {
       label: 'Ready for dispatch',
-      value: stats.readyOrders,
+      value: stats?.readyOrders??null,
       icon: PackageCheck,
       href: '/admin/orders',
       description: 'Orders with at least one ready seller allocation',
     },
     {
       label: 'Open returns',
-      value: stats.returns,
+      value: stats?.returns??null,
       icon: Undo2,
       href: '/admin/cases',
       description: 'Requests awaiting a final outcome',
     },
     {
       label: 'Open complaints',
-      value: stats.complaints,
+      value: stats?.complaints??null,
       icon: LifeBuoy,
       href: '/admin/cases',
       description: 'Includes assigned and escalated cases',
     },
     {
       label: 'Payout requests',
-      value: stats.payoutRequests,
+      value: stats?.payoutRequests??null,
       icon: Wallet,
       href: '/admin/payouts',
       description: 'Seller requests awaiting preparation or rejection',
     },
   ];
   const tasks = adminNavigation(staff.role, staff.permissions);
-  const visibleQueues = queues.filter(queue => tasks.some(task => task.href === queue.href)).sort((a,b) => b.value-a.value);
-  const hasPendingWork = visibleQueues.some(queue => queue.value > 0);
-  return (
-    <div className="space-y-8">
-      <section className="overflow-hidden rounded-3xl border bg-card p-6 sm:p-8">
-        <div className="flex flex-wrap items-start justify-between gap-5">
-          <div>
-            <p className="eyebrow">Operations overview</p>
-            <h1 className="mt-3 font-heading text-3xl tracking-tight sm:text-4xl">
-              Welcome back, {staff.displayName}.
-            </h1>
-            <p className="mt-3 max-w-2xl leading-7 text-muted-foreground">
-              Keep the marketplace moving. Review your queues, follow up on
-              customer cases, and leave a clear record of every decision.
-            </p>
-          </div>
-          <ShieldCheck className="size-10 text-primary" aria-hidden="true" />
-        </div>
-        <div className="mt-6 flex flex-wrap gap-3">
-          {can(staff, 'order.manage') && <Link
-            href="/admin/orders"
-            className="inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground"
-          >
-            Manage orders <ArrowRight className="size-4" />
-          </Link>}
-          <Link
-            href="/admin/analytics"
-            className="inline-flex min-h-11 items-center rounded-full border px-5 text-sm font-semibold hover:bg-muted"
-          >
-            View reports
-          </Link>
-          {can(staff, 'support.manage') ? <Link
-            href="/admin/feedback"
-            className="inline-flex min-h-11 items-center rounded-full border px-5 text-sm font-semibold hover:bg-muted"
-          >Contact and feedback</Link> : null}
-        </div>
-      </section>
+  const visibleQueues = queues.filter(queue => tasks.some(task => task.href === queue.href)).sort((a,b) => (b.value??-1)-(a.value??-1));
+  const hasPendingWork = visibleQueues.some(queue => (queue.value??0) > 0);
+  // A partial source failure may show Unknown; loss of the page's original reader scope may not return old private summaries.
+  await database.batch(reader.statements);
+  const reviewQueue = <SharedReviewQueue tasks={workItems} actorId={staff.id} unavailable={reviewTasks===null&&!workItems.length} observedAt={now} partialSources={partialSources} sellerDirectoryAvailable={can(staff,'seller.application.review')}/>;
+  if (params?.workspace === 'reviews') {
+    return <div className="space-y-5"><AdminPageTitle><h1 className="section-title">Review tasks</h1></AdminPageTitle>{reviewQueue}</div>;
+  }
+  const reports = (
+      <details data-operational-summary="true" open={params?.period === period} className="space-y-5 rounded-2xl border bg-card p-5">
+      <summary className="min-h-11 cursor-pointer font-heading text-xl focus-visible:outline-2 focus-visible:outline-primary">Operational summaries and workspace links</summary>
+      {staff.role==='super_admin'&&marketplace===null?<output className="block">Marketplace reporting is unavailable. Refresh the source before drawing a reporting conclusion.</output>:null}
       {staff.role === 'super_admin' && marketplace ? (
         <section className="space-y-5" aria-labelledby="marketplace-summary-heading">
           <div>
@@ -130,15 +149,21 @@ export default async function AdminDashboardPage({ searchParams }: {
               Deleted accounts and configured test email domains are excluded.
             </p>
           </div>
-          <nav aria-label="Marketplace summary period" aria-describedby="marketplace-period-description" className="flex flex-wrap gap-2">
-            {marketplaceSummaryPeriods.map(option => (
-              <Link key={option.value} href={`/admin?period=${option.value}`} aria-current={period === option.value ? 'page' : undefined}
-                scroll={false} prefetch={false}
-                className={`inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${period === option.value ? 'border-primary bg-primary text-primary-foreground' : 'bg-card hover:bg-muted'}`}>
-                {option.label}
-              </Link>
-            ))}
-          </nav>
+          <details className="group w-fit max-w-full" key={period}>
+            <summary className="admin-button cursor-pointer">
+              Date period · {range.label}<ChevronDown aria-hidden="true" className="size-4 shrink-0 group-open:rotate-180" />
+            </summary>
+            <nav aria-label="Marketplace summary period" aria-describedby="marketplace-period-description"
+              className="mt-1 grid min-w-40 rounded-lg border bg-card p-1 text-sm">
+              {marketplaceSummaryPeriods.map(option => {
+                const query = new URLSearchParams(contextParams);
+                query.set('period', option.value);
+                return <Link key={option.value} href={'/admin?' + query.toString()}
+                  aria-current={period === option.value ? 'page' : undefined} scroll={false} prefetch={false}
+                  className="flex min-h-11 items-center rounded px-3 hover:bg-muted aria-[current=page]:bg-secondary aria-[current=page]:font-semibold">{option.label}</Link>;
+              })}
+            </nav>
+          </details>
           <div className="space-y-1 text-sm leading-6 text-muted-foreground">
             <p id="marketplace-period-description">{range.description}</p>
             <p>Approval and review counts show the current status of sellers who signed up in this period.</p>
@@ -189,6 +214,8 @@ export default async function AdminDashboardPage({ searchParams }: {
           </div>
         </section>
       ) : null}
+      <OverviewWorkSummaries tasks={workItems} observedAt={now} returnTo={returnTo} unavailableCategories={reviewTasks===null?['sellers','products','orders','system']:[]} partialCategories={reviewTasks===null||finance===null||incompleteFinance.length?['finance']:[]}/>
+      {stats===null?<output className="block">Operational queue counts are unavailable. The independent review sources above retain their own availability.</output>:null}
       <section aria-labelledby="queue-heading">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
           <h2 id="queue-heading" className="font-heading text-2xl">
@@ -202,7 +229,7 @@ export default async function AdminDashboardPage({ searchParams }: {
           {visibleQueues.map(({ label, value, icon: Icon, href, description }) => (
             <Link
               key={label}
-              href={href === '/admin/sellers' && value > 0 ? '/admin/sellers?status=awaiting_review' : href}
+              href={href === '/admin/sellers' && (value??0) > 0 ? '/admin/sellers?status=awaiting_review' : href}
               className="group rounded-2xl border bg-card p-5 transition-colors hover:border-primary/40 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
             >
               <div className="flex items-center justify-between">
@@ -211,7 +238,7 @@ export default async function AdminDashboardPage({ searchParams }: {
                 </span>
                 <ArrowRight className="size-4 text-muted-foreground group-hover:text-primary" />
               </div>
-              <div className="mt-4 flex items-center justify-between gap-3"><p className="font-heading text-3xl tabular-nums">{value}</p><Badge variant={value > 0 ? 'secondary' : 'outline'}>{value > 0 ? 'Needs review' : 'Nothing pending'}</Badge></div>
+              <div className="mt-4 flex items-center justify-between gap-3"><p className="font-heading text-3xl tabular-nums">{value??'Unavailable'}</p><Badge variant={(value??0) > 0 ? 'secondary' : 'outline'}>{value===null?'Not checked':value > 0 ? 'Needs review' : 'Nothing pending'}</Badge></div>
               <h3 className="mt-2 font-semibold">{label}</h3>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
                 {description}
@@ -220,7 +247,7 @@ export default async function AdminDashboardPage({ searchParams }: {
           ))}
         </div>
       </section>
-      {stats.approvals ? (
+      {stats?.approvals ? (
         <section
           className="rounded-3xl border border-primary/20 bg-secondary/60 p-6"
           aria-labelledby="approval-heading"
@@ -274,7 +301,7 @@ export default async function AdminDashboardPage({ searchParams }: {
       )}
       <details className="rounded-2xl border bg-card p-5">
         <summary className="min-h-7 cursor-pointer font-semibold focus-visible:outline-2 focus-visible:outline-primary">All workspace tasks</summary>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{tasks.map(task => <Link key={task.href} href={task.href} className="flex min-h-11 flex-col gap-1 rounded-xl border p-4 hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary"><span className="font-semibold">{task.label}</span><span className="text-xs leading-5 text-muted-foreground">{task.description}</span></Link>)}</div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{tasks.filter(task => task.href !== '/admin/riders').map(task => <Link key={task.href} href={task.href} className="flex min-h-11 flex-col gap-1 rounded-xl border p-4 hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary"><span className="font-semibold">{task.label}</span><span className="text-xs leading-5 text-muted-foreground">{task.description}</span></Link>)}</div>
       </details>
       <Card>
         <CardHeader>
@@ -300,6 +327,44 @@ export default async function AdminDashboardPage({ searchParams }: {
           </p>
         </CardContent>
       </Card>
-    </div>
+      </details>
   );
+  if (!today) {
+    return <div className="space-y-5"><AdminPageTitle><h1 className="section-title">Review tasks</h1></AdminPageTitle>{reviewQueue}{reports}</div>;
+  }
+  const cases = can(staff,'support.manage') ? stats ? stats.returns + stats.complaints : null : undefined;
+  const auditHref = tasks.find(task => task.href === '/admin/activity')?.href;
+  const checks = health ? overviewHealthChecks(health) : health;
+  const bankTransfers = can(staff, 'payment.receipt.verify') ? await readAdminBankTransferCount(database, staff.id) : null;
+  const emailWarning = staff.role === 'super_admin' && can(staff, 'email.delivery.manage') ? await (async () => {
+    const overview = email.environment ? await readEmailDeliveryOverview(database, {
+      actorId: staff.id, environment: email.environment, expectedSince: email.expectedSince, now,
+    }) : null;
+    const { summary, messages } = await readAdminMessages(database, staff.id, { now, view: 'needs-you', limit: 12 });
+    return emailDeliveryWarning(emailSenderStatus(overview, now), summary, messages, now);
+  })().catch(() => null) : null;
+  return <div className="space-y-8">
+    <OverviewHealthProvider key={staff.id} actorId={staff.id} initial={checks}>
+      <TodayOverview actorId={staff.id} firstName={staff.displayName.trim().split(/\s+/)[0]} observedAt={now}
+        returnTo={returnTo} tasks={today.rows} partialSources={[...partialSources, ...today.partial]}
+        metrics={<>
+          {emailWarning && <EmailWarning warning={emailWarning} />}
+          {ncmWarning && <NcmHealthWarningCard warning={ncmWarning} superAdmin={staff.role === 'super_admin'} />}
+          <TodayWorkSummaries orders={today.orders} courierCash={today.courierCash} cases={cases} checks={checks}/>
+        </>}
+        sidebar={<aside className="today-sidebar" aria-label="Operations updates">
+          {bankTransfers ? <section className="today-panel today-side-panel" aria-labelledby="today-bank-transfer-heading">
+            <div className="today-side-heading">
+              <h2 id="today-bank-transfer-heading">Bank transfers</h2>
+              <Link className="section-link inline-flex min-h-11 items-center" href="/admin/payments?view=incoming">Check bank transfers</Link>
+            </div>
+            <p className="text-sm">{count.format(bankTransfers)} {bankTransfers === 1 ? 'transfer needs' : 'transfers need'} attention.</p>
+          </section> : null}
+          <OverviewOrdersByStage orders={today.orders}/>
+          <OverviewHealth checks={checks} returnTo={returnTo}/>
+          <OverviewRecentDecisions decisions={recentDecisions} partial={reviewDecisions===null||financeAllowed} actorId={staff.id} auditHref={auditHref}/>
+        </aside>}/>
+    </OverviewHealthProvider>
+    {reports}
+  </div>;
 }

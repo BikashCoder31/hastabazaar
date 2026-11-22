@@ -88,9 +88,10 @@ async function mounted(
     import React from 'react'; import {createRoot} from 'react-dom/client';
     import {RewardsPanel} from './components/account/rewards-panel';
     import {AccountNavigation} from './components/account/account-navigation';
+    import {CustomerWallet} from './components/account/account-sections';
     const root=createRoot(document.getElementById('root'));
     window.unmountFixture=()=>root.unmount();
-    root.render(window.fixtureSurface === 'navigation' ? <AccountNavigation displayName="Fixture Buyer" email="buyer@example.test" signOutPath="/sign-out"/> : <RewardsPanel key={window.fixtureSubject} subjectId={window.fixtureSubject} initialRewards={window.fixtureView}/>);
+    root.render(window.fixtureSurface === 'navigation' ? <><AccountNavigation displayName="Fixture Buyer" email="buyer@example.test" signOutPath="/sign-out"/><CustomerWallet active="rewards"><p>Reward details</p></CustomerWallet></> : <RewardsPanel key={window.fixtureSubject} subjectId={window.fixtureSubject} initialRewards={window.fixtureView}/>);
   `,
     },
     bundle: true,
@@ -754,12 +755,14 @@ void test('duplicate clicks while a mutation is pending send one request and unm
   }
 });
 
-void test('mounted account navigation exposes Rewards as the current native account link', async () => {
+void test('the old Rewards URL selects the Rewards tab in Wallet & rewards', async () => {
   const h = await mounted(initial, 'owner-a', 'navigation');
   try {
-    const link = h.page.getByRole('link', { name: 'My Rewards', exact: true });
+    const link = h.page.getByRole('link', { name: 'Rewards', exact: true });
     assert.equal(await link.getAttribute('href'), '/account/rewards');
     assert.equal(await link.getAttribute('aria-current'), 'page');
+    const wallet = h.page.getByRole('navigation', { name: 'Customer account' }).getByRole('link', { name: 'Wallet & rewards', exact: true });
+    assert.equal(await wallet.getAttribute('href'), '/account/wallet');
     assert.equal(h.requests.length, 0);
     assert.deepEqual(h.errors, []);
   } finally {
@@ -801,6 +804,7 @@ void test('actual rewards server page authenticates existing customers and reads
       {
         name: 'rewards-page-boundaries',
         setup(b) {
+          stubFixtureLink(b);
           b.onResolve({ filter: /.*/ }, (args) =>
             Object.hasOwn(sources, args.path)
               ? { path: args.path, namespace: 'page-fixture' }
@@ -817,7 +821,7 @@ void test('actual rewards server page authenticates existing customers and reads
   const pageModule = {
     exports: {} as {
       default?: () => Promise<{
-        props: { subjectId: string; initialRewards: RewardsView };
+        props: { active: string; children: { props: { subjectId: string; initialRewards: RewardsView } } };
       }>;
     },
   };
@@ -837,8 +841,9 @@ void test('actual rewards server page authenticates existing customers and reads
     assert.equal(read[1], 'database-owner-a');
     assert.equal(typeof read[2], 'number');
     assert.equal(read[5], 'subject-owner-a');
-    assert.equal(result.props.subjectId, 'subject-owner-a');
-    assert.deepEqual(result.props.initialRewards, initial);
+    assert.equal(result.props.active, 'rewards');
+    assert.equal(result.props.children.props.subjectId, 'subject-owner-a');
+    assert.deepEqual(result.props.children.props.initialRewards, initial);
     fixture.events.length = 0;
     fixture.mode = 'guest';
     await assert.rejects(

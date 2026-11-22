@@ -1,4 +1,4 @@
-import {digestFormRequest} from '@/lib/forms/submission';
+import {digestFormRequest} from '@/lib/forms/client-submission';
 import {parsePublishedFormConfig} from '@/components/forms/form-config-client';
 import type {PublishedFormConfig} from '@/lib/forms/types';
 import type {ManagedTermsOffer} from '@/lib/managed-commerce/accepted-terms';

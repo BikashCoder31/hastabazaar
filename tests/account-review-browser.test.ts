@@ -1,0 +1,75 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {registerHooks} from 'node:module';
+import {build} from 'esbuild';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {createElement} from 'react';
+import {readFile,mkdir} from 'node:fs/promises';
+import postcss from 'postcss';
+import tailwind from '@tailwindcss/postcss';
+import sharpImport from 'sharp';
+import type {SharpConstructor} from '../node_modules/sharp/dist/index.d.mts';
+import {deliveredLiveFinancialFixture} from './helpers/live-financial-lifecycle-fixture';
+import {seedCheckoutBuyer} from './helpers/checkout-contact';
+import {saveFormDraft,publishFormDraft} from '../lib/db/repositories/form-catalog';
+import {stubFixtureLink} from './helpers/browser-fixture-link';
+
+const fixture={db:null as D1Database|null,actorId:'',media:null as R2Bucket|null};
+(globalThis as typeof globalThis&{accountReviewFixture:typeof fixture}).accountReviewFixture=fixture;
+(globalThis as typeof globalThis&{accountReviewFixtureElement:typeof createElement}).accountReviewFixtureElement=createElement;
+declare global{interface Window{renderReviewActor:(actor:string)=>void}}
+registerHooks({resolve(specifier,context,next){const modules:Record<string,string>={
+ 'cloudflare:workers':'export const env={get DB(){return globalThis.accountReviewFixture.db},get MEDIA(){return globalThis.accountReviewFixture.media}}',
+ 'next/link':'export default function Link({children,...props}){return globalThis.accountReviewFixtureElement("a",props,children)}',
+ 'next/image':'export default function Image({unoptimized,...props}){return globalThis.accountReviewFixtureElement("img",props)}',
+ 'next/navigation':'export function redirect(path){throw Error(path)}export function notFound(){throw Error("not found")}export function useRouter(){return{refresh(){}}}',
+ '@/app/auth':'export async function getAuthenticatedUser(){const id=globalThis.accountReviewFixture.actorId;return{userId:id,email:id+"@local.hastabazaar.test",fullName:"Fictional current buyer"}};export const requireAuthenticatedUser=getAuthenticatedUser;',
+ };return modules[specifier]?{url:'data:text/javascript,'+encodeURIComponent(modules[specifier]),shortCircuit:true}:next(specifier,context);}});
+type Route={request():{url():string;method():string;headers():Record<string,string>;postDataBuffer():Buffer|null};fulfill(value:{status?:number;contentType?:string;body?:string|Buffer;headers?:Record<string,string>}):Promise<void>};
+
+void test('actual review multipart preserves exact RAM retry, opaque reload recovery and old-account privacy',{timeout:180000},async()=>{
+ const f=await deliveredLiveFinancialFixture();let browser;let release=()=>{};try{assert.ok(f.sqlite.prepare('PRAGMA database_list').all().every(row=>row.file===''));fixture.db=f.db;fixture.actorId=f.buyerId;
+  await seedCheckoutBuyer(f.db,'foreign-review-buyer','foreign-review-buyer@local.hastabazaar.test','9812345678');
+  const {default: rateItems}=await import('../app/account/reviews/[orderNumber]/page');
+  const rateParams={params:Promise.resolve({orderNumber:f.order.orderNumber})};
+  const rateMarkup=renderToStaticMarkup(await rateItems(rateParams));
+  assert.match(rateMarkup,/How were your items\?/);
+  assert.match(rateMarkup,/Your rating/);
+  assert.match(rateMarkup,/Reviews and photos appear after moderation/);
+  fixture.actorId='foreign-review-buyer';
+  await assert.rejects(rateItems(rateParams),/not found/);
+  fixture.actorId=f.buyerId;
+  const draft=await saveFormDraft(f.db,{formId:'account.review',actorId:'reviewer',actorRole:'super_admin',expectedPublishedVersion:0,config:{formId:'account.review',fields:[]},reason:'Use a genuine native review form for the isolated delivered purchase.',requestId:'review-browser-form-draft',now:Date.now()});
+  await publishFormDraft(f.db,{formId:'account.review',draftId:draft.id,actorId:'reviewer',actorRole:'super_admin',expectedDraftRevision:draft.revision,expectedPublishedVersion:0,reason:'Publish the supported original review contract in this memory-only fixture.',requestId:'review-browser-form-publish',now:Date.now()});
+  const stored=new Map<string,ArrayBuffer>();let puts=0;fixture.media={async put(key:string,value:ReadableStream){puts++;stored.set(key,await new Response(value).arrayBuffer());return{};},async delete(key:string){stored.delete(key);}}as unknown as R2Bucket;
+  const review=await import('../app/api/products/[id]/reviews/route'),forms=await import('../app/api/forms/[formId]/route'),outcomes=await import('../app/api/account/command-outcomes/route');
+  const bundle=await build({stdin:{resolveDir:process.cwd(),loader:'tsx',contents:`import React,{useState}from'react';import{createRoot}from'react-dom/client';import{ReviewForm}from'./components/account/review-form';const buyer=${JSON.stringify(f.buyerId)};function Host(){const[actor,setActor]=useState(buyer);window.renderReviewActor=setActor;return <main className="mx-auto max-w-xl p-5"><h1>Original verified purchase</h1>{actor===buyer?<ReviewForm actorId={actor} productId=${JSON.stringify(f.productId)} orderItemId=${JSON.stringify(f.orderItemId)} orderNumber=${JSON.stringify(f.order.orderNumber)}/>:<p>No reviewable purchase for this current buyer.</p>}</main>}createRoot(document.getElementById('root')).render(<Host/>);`},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"production"'},plugins:[{name:'review-framework',setup(context){stubFixtureLink(context);context.onResolve({filter:/^next\/navigation$/},()=>({path:'navigation',namespace:'review-framework'}));context.onLoad({filter:/.*/,namespace:'review-framework'},()=>({loader:'js',contents:'export function useRouter(){return{refresh(){}}}'}));}}]});
+  const css=(await postcss([tailwind()]).process((await readFile('app/globals.css','utf8')).replace("@import 'tailwindcss';","@import 'tailwindcss' source(none);\n@source '../components/account';\n@source '../components/forms';\n@source '../components/ui';"),{from:'app/globals.css'})).css,runtime=await import(process.env.PLAYWRIGHT_MODULE??'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs');browser=await runtime.chromium.launch({headless:true,executablePath:process.env.CHROME_PATH??'C:/Program Files/Google/Chrome/Application/chrome.exe'});
+  const page=await browser.newPage({viewport:{width:390,height:844}}),errors:string[]=[],writes:{bytes:Buffer;contentType:string}[]=[];page.setDefaultTimeout(15000);page.on('pageerror',(error:Error)=>errors.push(error.message));let hold=true,failBefore=false,loseAfter=false,entered=()=>{};const waiting=new Promise<void>(resolve=>entered=resolve),gate=new Promise<void>(resolve=>release=resolve);
+  await page.route('**/*',async(route:Route)=>{try{const incoming=route.request(),url=new URL(incoming.url());assert.equal(url.origin,'http://localhost:3018');if(url.pathname==='/review')return route.fulfill({contentType:'text/html',body:'<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/style.css"><main id="root"></main><script src="/app.js"></script>'});if(url.pathname==='/app.js')return route.fulfill({contentType:'text/javascript',body:bundle.outputFiles[0].text});if(url.pathname==='/style.css')return route.fulfill({contentType:'text/css',body:css});
+   const bytes=incoming.postDataBuffer(),request=new Request(incoming.url(),{method:incoming.method(),headers:incoming.headers(),...(bytes?{body:new Uint8Array(bytes).buffer}:{})});let response:Response;
+   if(url.pathname.startsWith('/api/forms/'))response=await forms.GET(request,{params:Promise.resolve({formId:decodeURIComponent(url.pathname.slice('/api/forms/'.length))})});
+   else if(url.pathname==='/api/account/command-outcomes')response=await outcomes.GET(request);
+   else if(url.pathname===`/api/products/${f.productId}/reviews`){assert.ok(bytes);writes.push({bytes:Buffer.from(bytes),contentType:incoming.headers()['content-type']});if(hold){hold=false;entered();await gate;}if(failBefore){failBefore=false;return route.fulfill({status:503,contentType:'application/json',body:'{"error":"Fictional request interruption before native handling."}'});}response=await review.POST(request,{params:Promise.resolve({id:f.productId})});if(response.ok&&loseAfter){loseAfter=false;return route.fulfill({status:503,contentType:'application/json',body:'{"error":"Fictional acknowledgement lost after native review commit."}'});}}
+   else throw Error('Unintercepted review request: '+url.pathname);await route.fulfill({status:response.status,headers:Object.fromEntries(response.headers),body:await response.text()});
+  }catch(error){errors.push(String(error));await route.fulfill({status:500,body:JSON.stringify({error:String(error)})});}});
+  await page.goto('http://localhost:3018/review');
+  const fiveStars=page.getByRole('radio',{name:'5 stars · Excellent',exact:true});
+  await fiveStars.focus();
+  await page.keyboard.press('ArrowLeft');
+  assert.equal(await page.getByRole('radio',{name:'4 stars · Good',exact:true}).isChecked(),true);
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await fiveStars.isChecked(),true);
+  for(const width of [390,768,1024,1440]){
+   await page.setViewportSize({width,height:844});
+   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  }
+  await page.setViewportSize({width:390,height:844});
+  await page.getByLabel('Your review',{exact:false}).fill('PRIVATE-A first review must never be submitted as another buyer.');await page.getByRole('button',{name:'Submit review',exact:true}).click();await waiting;fixture.actorId='foreign-review-buyer';release();await page.getByText('Review access changed.',{exact:false}).waitFor();assert.equal(await page.locator('[name=body]').count(),0);assert.equal(f.sqlite.prepare('SELECT COUNT(*)n FROM product_reviews').get()?.n,0);assert.equal(puts,0);
+  await page.evaluate(()=>window.renderReviewActor('foreign-review-buyer'));assert.equal(await page.getByText('PRIVATE-A first review',{exact:false}).count(),0);fixture.actorId=f.buyerId;await page.evaluate((actor:string)=>window.renderReviewActor(actor),f.buyerId);
+  await page.getByLabel('Title (optional)',{exact:true}).fill('PRIVATE original photo review');await page.getByLabel('Your review',{exact:false}).fill('PRIVATE original body and selected photograph belong to this exact verified buyer.');const sharp=sharpImport as SharpConstructor,photo=await sharp({create:{width:40,height:40,channels:3,background:'#b6a78c'}}).png().toBuffer();await page.getByLabel('Customer photos (optional)',{exact:true}).setInputFiles({name:'private-original-photo.png',mimeType:'image/png',buffer:photo});
+  failBefore=true;loseAfter=true;await page.getByRole('button',{name:'Submit review',exact:true}).click();const retried=page.waitForResponse((response:{url():string;status():number})=>response.url().includes('/reviews')&&response.status()===503);await page.getByRole('button',{name:'Retry original request',exact:true}).click();await retried;await page.getByRole('button',{name:'Retry original request',exact:true}).waitFor();assert.equal(f.sqlite.prepare('SELECT COUNT(*)n FROM product_reviews').get()?.n,1);assert.equal(puts,1);assert.deepEqual(writes[1],writes[2],'The original multipart bytes and boundary must be identical in RAM retry.');
+  const storage=await page.evaluate(()=>Object.values(sessionStorage).join(' '));assert.doesNotMatch(storage,/PRIVATE|private-original-photo|customAnswers|multipart|body/);await page.reload();await page.getByRole('button',{name:'Check saved result',exact:true}).click();await page.getByText('Your verified-purchase review submission is recorded.',{exact:false}).waitFor();assert.equal(writes.length,3,'Reload may only GET the original receipt, never resubmit files.');assert.equal(puts,1);assert.equal(stored.size,1);assert.equal(f.sqlite.prepare('SELECT COUNT(*)n FROM review_photos').get()?.n,1);assert.equal(f.sqlite.prepare('SELECT status FROM product_reviews').get()?.status,'pending');assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await mkdir('.test-artifacts/t31',{recursive:true});await page.screenshot({path:'.test-artifacts/t31/account-review-mobile.png',fullPage:true});assert.deepEqual(errors,[]);
+ }finally{release();await browser?.close();fixture.db=null;fixture.media=null;f.dispose();}
+});

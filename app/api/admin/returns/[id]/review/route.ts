@@ -1,3 +1,4 @@
+import {hasActorIntentMismatch} from '@/lib/http/actor-intent';
 import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 import { BodyTooLargeError } from '@/lib/http/bounded-body';
@@ -28,6 +29,7 @@ export async function POST(
     return json({ error: 'Request origin was not accepted.' }, 403);
   try {
     const staff = await requireStaffApi('refund.approve.standard');
+    if(hasActorIntentMismatch(request,staff.id))throw new StaffAuthorizationError('The signed-in staff account changed. Open this original care record again.',403);
     const { id } = await context.params;
     let parsed: unknown;
     try { parsed = await readBoundedJsonObject(request); }
@@ -38,10 +40,9 @@ export async function POST(
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return json({error:'Invalid request.'},400);
     const body = parsed as Record<string, unknown>;
     const action = body.action as AdminReturnReviewAction;
-    const outcome = body.outcome as ReturnOutcome | undefined;
-    const responsibility = body.responsibility as
-      | ReturnResponsibility
-      | undefined;
+    const outcome = (body.outcome ?? undefined) as ReturnOutcome | undefined;
+    const responsibility = (body.responsibility ?? undefined) as ReturnResponsibility | undefined;
+    const { decisionEvidenceReference, correctSellerFulfillment } = body;
     const note = typeof body.note === 'string' ? body.note.trim() : '';
     const publicMessageEn =
       typeof body.publicMessageEn === 'string'
@@ -57,6 +58,15 @@ export async function POST(
     const deliveryRefundPaisa = Number(body.deliveryRefundPaisa ?? 0);
     if (!['request_changes', 'reject', 'approve'].includes(action))
       return json({ error: 'Select a valid review action.' }, 400);
+    if ((action === 'approve' || outcome !== undefined) && !['refund', 'replacement', 'return_to_origin'].includes(outcome ?? ''))
+      return json({ error: 'Select a valid outcome for this decision.' }, 400);
+    if ((action === 'approve' || responsibility !== undefined) && !['buyer', 'seller', 'carrier', 'platform'].includes(responsibility ?? ''))
+      return json({ error: 'Select the responsible party for this decision.' }, 400);
+    if (decisionEvidenceReference !== undefined && (typeof decisionEvidenceReference !== 'string' ||
+        decisionEvidenceReference.trim().length < 8 || decisionEvidenceReference.trim().length > 191))
+      return json({ error: 'Provide a verified evidence reference of 8–191 characters.' }, 400);
+    if (correctSellerFulfillment !== undefined && typeof correctSellerFulfillment !== 'boolean')
+      return json({ error: 'Record the seller fulfillment confirmation as a boolean.' }, 400);
     if (note.length < 8 || note.length > 2_000)
       return json(
         { error: 'Add an investigation note of 8–2,000 characters.' },
@@ -97,6 +107,8 @@ export async function POST(
         publicMessageNe,
         responsibility,
         outcome,
+        decisionEvidenceReference: typeof decisionEvidenceReference === 'string' ? decisionEvidenceReference.trim() : undefined,
+        correctSellerFulfillment: typeof correctSellerFulfillment === 'boolean' ? correctSellerFulfillment : undefined,
         itemRefundPaisa,
         deliveryRefundPaisa,
         requestId,

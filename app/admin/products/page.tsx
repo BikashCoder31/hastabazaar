@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { env } from 'cloudflare:workers';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -26,32 +27,33 @@ function money(paisa: number): string {
 export default async function ProductReviewQueuePage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string }>;
+  searchParams: Promise<{ view?: string;seller?:string }>;
 }) {
-  const publishedOnly = (await searchParams).view === 'published';
+  const params=await searchParams,publishedOnly=params.view==='published',sellerId=params.seller?.slice(0,100);
   await requireStaffPage('/admin/products', 'product.review');
   const products = await listProductsForReview(
     requireDatabase(env as unknown as { DB?: D1Database }),
     100,
     publishedOnly,
+    sellerId,
   );
   return (
     <div className="space-y-7">
       <div>
-        <p className="eyebrow">Catalogue controls</p>
-        <h1 className="mt-2 font-heading text-4xl tracking-tight">
-          {publishedOnly ? 'Published products' : 'Product review queue'}
-        </h1>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          Review product facts and photos before approval. Approved products
-          require a separate publish action.
-        </p>
+        <AdminPageTitle>
+          <h1 className="font-heading text-3xl tracking-tight">
+            {publishedOnly ? 'Published products' : 'Catalog'}
+          </h1>
+        </AdminPageTitle>
       </div>
-      <nav className="flex gap-4">
-        <Link href="/admin/products" className="section-link">
-          Review queue
+      <nav aria-label="Product listings" className="flex flex-wrap gap-2">
+        <Link href={sellerId?`/admin/products?seller=${encodeURIComponent(sellerId)}`:'/admin/products'} className="inline-flex min-h-11 items-center rounded-full border bg-card px-3 text-sm font-semibold hover:border-[#14213D]">
+          Product review
         </Link>
-        <Link href="/admin/products?view=published" className="section-link">
+        <Link href="/admin/products/intakes" className="inline-flex min-h-11 items-center rounded-full border bg-card px-3 text-sm font-semibold hover:border-[#14213D]">
+          Help requests and first reviews
+        </Link>
+        <Link href={`/admin/products?view=published${sellerId?'&seller='+encodeURIComponent(sellerId):''}`} className="inline-flex min-h-11 items-center rounded-full border bg-card px-3 text-sm font-semibold hover:border-[#14213D]">
           Published products
         </Link>
       </nav>
@@ -112,7 +114,7 @@ export default async function ProductReviewQueuePage({
                   </p>
                   <Link
                     href={`/admin/products/${product.id}`}
-                    className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline"
+                    className="mt-1 inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-primary hover:underline"
                   >
                     Review listing <ArrowRight className="size-4" />
                   </Link>

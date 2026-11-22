@@ -24,49 +24,26 @@ foreach ($target in @($archive, $fileManifestPath, $verificationPath, $shaPath, 
   }
 }
 
-$releaseManifestSource = Join-Path $workspace 'deployment\babal\release-manifest.json'
+$releaseManifestSource = Join-Path $standalone 'deployment\babal\release-manifest.json'
 $releaseManifest = Get-Content -Raw -LiteralPath $releaseManifestSource | ConvertFrom-Json
 if ($releaseManifest.release -ne $ReleaseId) {
   throw "Release manifest identifies '$($releaseManifest.release)', not '$ReleaseId'."
 }
 
-foreach ($migration in $releaseManifest.migrations) {
-  $source = Join-Path $workspace ($migration.path -replace '/', '\')
-  $destination = Join-Path $standalone ($migration.path -replace '/', '\')
-  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
-  Copy-Item -LiteralPath $source -Destination $destination
-}
-
-$releaseManifestDestination = Join-Path $standalone 'deployment\babal\release-manifest.json'
-Copy-Item -LiteralPath $releaseManifestSource -Destination $releaseManifestDestination
-
 function Get-ReleaseFiles([string]$Root) {
-  $resolvedRoot = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $Root).Path)
-  $rootPrefix = $resolvedRoot.TrimEnd([char[]]@('\', '/')) + [IO.Path]::DirectorySeparatorChar
-  $hasRelativePath = [IO.Path].GetMethods().Name -contains 'GetRelativePath'
-  return Get-ChildItem -LiteralPath $Root -Recurse -File -Force |
-    ForEach-Object {
-      $filePath = [IO.Path]::GetFullPath($_.FullName)
-      if (-not $filePath.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "Release file is outside its resolved root: $filePath"
-      }
-      $relative = if ($hasRelativePath) {
-        [IO.Path]::GetRelativePath($resolvedRoot, $filePath)
-      } else {
-        $filePath.Substring($rootPrefix.Length)
-      }
-      $relative = $relative.Replace('\', '/')
-      [pscustomobject][ordered]@{
-        path = $relative
-        bytes = $_.Length
-        sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant()
-      }
-    } |
-    Sort-Object path
+  # Share the Linux packager's SQL digest, path, symlink and inventory guards.
+  # Only the built bundle is read; repository SQL cannot overwrite its selection.
+  $inventory = & node (Join-Path $PSScriptRoot 'release-schema-assets.mjs') verify $Root $ReleaseId
+  if ($LASTEXITCODE -ne 0) { throw 'Release schema and inventory verification failed.' }
+  # Windows PowerShell 5.1 otherwise emits the JSON array as one nested item.
+  foreach ($file in ($inventory | ConvertFrom-Json)) { $file }
 }
 
 $files = @(Get-ReleaseFiles $standalone)
 $paths = @($files.path)
+if ($paths -notcontains 'hosted-security.mjs') {
+  throw 'Release is missing the bundled hosted-security operator. Rebuild the approved application before packaging.'
+}
 $forbidden = @(
   $paths | Where-Object {
     $_ -match '(^|/)\.env($|\.)' -or

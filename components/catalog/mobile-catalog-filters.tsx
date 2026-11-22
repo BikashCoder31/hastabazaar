@@ -13,23 +13,27 @@ import {
 export function MobileCatalogFilters({
   children,
   activeCount,
+  chip = false,
 }: {
   children: React.ReactNode;
   activeCount: number;
+  chip?: boolean;
 }) {
   return (
-    <div className="lg:hidden">
+    <div className={chip ? undefined : 'lg:hidden'}>
       <Sheet>
-        <SheetTrigger className="flex min-h-12 w-full items-center justify-between gap-3 rounded-2xl border bg-card px-5 py-3 text-base font-semibold shadow-sm">
+        <SheetTrigger className={chip
+          ? 'inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d9c8ae] bg-[#fffdf9] px-3.5 text-sm text-[#14213d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary'
+          : 'flex min-h-12 w-full items-center justify-between gap-3 rounded-2xl border bg-card px-5 py-3 text-base font-semibold shadow-sm'}>
           <span className="flex items-center gap-2">
-            <SlidersHorizontal className="size-5 text-primary" />
-            Filter & sort
+            <SlidersHorizontal className={chip ? 'size-4' : 'size-5 text-primary'} aria-hidden="true" />
+            {chip ? 'More filters' : 'Filter & sort'}
           </span>
           {activeCount > 0 ? (
             <span className="rounded-full bg-secondary px-3 py-1 text-sm text-primary">
               {activeCount} active
             </span>
-          ) : (
+          ) : chip ? null : (
             <span className="text-sm font-normal text-muted-foreground">
               Find your gift
             </span>

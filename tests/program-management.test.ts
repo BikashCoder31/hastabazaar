@@ -35,6 +35,9 @@ async function fixture(empty = false) {
     CREATE TABLE seller_route_transition_applications(id TEXT PRIMARY KEY,seller_id TEXT,status TEXT);
     CREATE TABLE managed_entitlements(id TEXT PRIMARY KEY,seller_id TEXT,status TEXT);
     CREATE TABLE managed_payouts(id TEXT PRIMARY KEY,seller_id TEXT,status TEXT);`);
+  // This is a read-only projection fixture, not native financial enforcement coverage.
+  const recoveryCreditTable=(await readFile(new URL('../drizzle/0119_recovery_model_settlements.sql',import.meta.url),'utf8')).match(/CREATE TABLE managed_supplier_recovery_credits\s*\([\s\S]*?\);/);
+  assert.ok(recoveryCreditTable);sqlite.exec(recoveryCreditTable[0]);
   sqlite.exec(await readFile(new URL('../drizzle/0044_business_configuration.sql', import.meta.url), 'utf8'));
   let reads = 0;
   globalThis.programHubDb = { prepare(sql: string) {
@@ -161,7 +164,7 @@ void test('retained supplier records render for registered sellers even without 
     products: [], transitions: [], supplies: [{ id: 'legacy-supply', productName: 'Legacy supply',
       quantityProposed: 1, quantityAccepted: 1, agreedUnitPaisa: 1000, acceptedTotalPaisa: 1000,
       status: 'accepted', possessionStatus: 'received', qualityStatus: 'accepted', evidenceReference: 'evidence',
-      paymentId: null, paymentStatus: null, originalOwedPaisa: 1000, adjustedPaisa: 0, paidPaisa: 0, createdAt: 1 }],
+      paymentId: null, paymentStatus: null, originalOwedPaisa: 1000, adjustedPaisa: 0, paidPaisa: 0, recoveryCreditsPaisa: 0, createdAt: 1 }],
   } }));
   assert.match(html, /Managed program records/);
   assert.match(html, /Legacy supply/);

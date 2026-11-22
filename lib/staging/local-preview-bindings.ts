@@ -8,5 +8,6 @@ export function localPreviewBindings(environment: Record<string, string | undefi
   }
   resolveRuntimeEnvironment({ runtimeEnvironment: 'local_staging', nodeEnvironment: environment.NODE_ENV, appOrigin: environment.APP_ORIGIN });
   return { HASTABAZAAR_RUNTIME_ENV: 'local_staging', APP_ORIGIN: environment.APP_ORIGIN!,
+    ...(environment.HASTABAZAAR_LOCAL_SKIP_STAFF_MFA === '1' ? { HASTABAZAAR_LOCAL_SKIP_STAFF_MFA: '1' } : {}),
     ...(environment.CHECKOUT_CONTACT_POLICY === 'email_only' ? { CHECKOUT_CONTACT_POLICY: 'email_only' } : {}) };
 }

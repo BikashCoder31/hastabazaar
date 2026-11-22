@@ -1,0 +1,155 @@
+.band {
+  position: relative;
+  isolation: isolate;
+  scroll-margin-top: 10rem;
+  padding-block: clamp(3rem, 6vw, 5.5rem);
+  background-color: #14213d;
+  background-image:
+    repeating-linear-gradient(45deg, #ffffff14 0 3px, transparent 3px 24px),
+    repeating-linear-gradient(-45deg, #ffffff14 0 3px, transparent 3px 24px);
+  color: white;
+}
+
+.container { width: min(calc(100% - 2rem), 79rem); margin-inline: auto; }
+
+.layout {
+  --card-minimum: 11.25rem;
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+}
+
+.copy { min-width: 0; padding-bottom: 3.6rem; }
+.copy .eyebrow { margin-top: 0; color: #edc469; font-size: .875rem; font-weight: 750; letter-spacing: .095em; text-transform: uppercase; }
+
+.copy h2 {
+  margin-top: 1.1rem;
+  font-family: var(--font-heading);
+  font-size: clamp(2.3rem, 4.1vw, 3.6rem);
+  font-weight: 600;
+  line-height: .99;
+  letter-spacing: -.035em;
+}
+
+.copy h2 em { color: #edc469; }
+.copy h2 em { display: inline-block; max-width: 100%; }
+.copy p { max-width: 32rem; margin-top: 1.2rem; color: #d0d8e8; line-height: 1.55; }
+.copy small { display: block; margin-top: 1rem; color: #a4b3cc; font-size: .875rem; }
+.cards { display: grid; gap: 1rem; }
+
+.card {
+  --card-bg: #25365b;
+  --card-text: white;
+  --card-icon: #f2e7cb;
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  min-height: var(--card-minimum);
+  min-width: 0;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  gap: 2rem;
+  border: 1px solid #ffffff23;
+  border-radius: 1.25rem;
+  padding: clamp(1rem, 3vw, 1.5rem);
+  background: var(--card-bg);
+  color: var(--card-text);
+}
+
+.card[data-theme='warm'] { --card-bg: #f2e7cb; --card-text: #14213d; --card-icon: #14213d; }
+.card[data-theme='crimson'] { --card-bg: #a8232e; }
+.card[data-theme='sage'] { --card-bg: #315448; }
+
+.photo {
+  position: absolute;
+  z-index: -1;
+  inset: -.15rem -.65rem auto auto;
+  width: min(50%, 11rem);
+  overflow: hidden;
+  border: .5rem solid #ffffff55;
+  border-radius: 50%;
+  background: var(--card-bg);
+  pointer-events: none;
+}
+
+.icon {
+  display: grid;
+  width: 3rem;
+  height: 3rem;
+  place-items: center;
+  border-radius: .85rem;
+  background: var(--card-icon);
+  color: #14213d;
+}
+
+.icon svg { width: 1.15rem; height: 1.15rem; }
+.card[data-theme='warm'] .icon { color: #f2e7cb; }
+
+.cardCopy {
+  display: grid;
+  gap: .4rem;
+  justify-items: start;
+  padding-inline-end: 1.75rem;
+}
+
+.cardCopy > * { border-radius: .25rem; background: var(--card-bg); }
+.cardCopy span { font-size: .75rem; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
+.cardCopy strong { font-family: var(--font-heading); font-size: clamp(1.5rem, 3vw, 2rem); line-height: 1.05; }
+.card:hover .cardCopy strong { text-decoration: underline; }
+.action { position: absolute; inset: auto 1.3rem 1.3rem auto; border-radius: .25rem; background: var(--card-bg); }
+.action svg { width: 1.15rem; height: 1.15rem; }
+.card:focus-visible { outline: 2px solid currentColor; outline-offset: -5px; }
+
+.band .controls {
+  position: absolute;
+  left: 0;
+  bottom: calc(23.5rem + .5rem);
+  width: auto;
+  justify-content: start;
+  gap: .5rem;
+}
+
+.controls :global(button) { width: 2.75rem; border-radius: .25rem; }
+.controls :global(button span) { width: 100%; height: .22rem; border-radius: 999px; background: #ffffff40; }
+.controls :global(button[aria-current='true'] span) { background: #edc469; box-shadow: none; }
+
+.band :global(nav[aria-label='Gift occasions']) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin-top: 2rem;
+  border-top: 1px solid #ffffff29;
+  padding-top: 1.4rem;
+}
+
+.band :global(nav[aria-label='Gift occasions'] a) {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: .45rem;
+  border: 1px solid #ffffff42;
+  border-radius: 999px;
+  padding: .4rem 1rem;
+  color: #edc469;
+  font-size: .875rem;
+}
+
+.band :global(nav[aria-label='Gift occasions'] a:last-child) { border-color: #edc469; }
+.band :global(nav[aria-label='Gift occasions'] a:hover) { background: #ffffff16; }
+
+@media (width >= 640px) {
+  .layout { --card-minimum: 18.75rem; }
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .band .controls { bottom: 19.3rem; }
+}
+
+@media (width >= 768px) {
+  .container { width: min(calc(100% - 6rem), 79rem); }
+}
+
+@media (width >= 1024px) {
+  .layout { grid-template-columns: minmax(0, .89fr) minmax(0, 1fr); gap: clamp(2rem, 5vw, 4.25rem); }
+  .band .controls { bottom: 0; }
+}

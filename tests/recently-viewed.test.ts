@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
 import test from 'node:test';
-import { addProductEvidenceSchema } from './helpers/product-evidence-schema';
+import { incentiveReportDatabase } from './helpers/incentive-report-database';
 
 import type { RecentlyViewedPolicy } from '../lib/configuration/types';
 import {
@@ -15,63 +13,24 @@ import {
   recordGuestProductView,
 } from '../lib/recently-viewed/history';
 
-class PreparedStatement {
-  private values: SQLInputValue[] = [];
-  constructor(private readonly statement: StatementSync) {}
-  bind(...values: SQLInputValue[]) { this.values = values; return this; }
-  async first<T>() { return (this.statement.get(...this.values) as T | undefined) ?? null; }
-  async all<T>() { return { results: this.statement.all(...this.values) as T[] }; }
-  async run() {
-    const result = this.statement.run(...this.values);
-    return { success: true, meta: { changes: Number(result.changes) }, results: [] };
-  }
-}
-
-class TestDatabase {
-  constructor(private readonly sqlite: DatabaseSync) {}
-  prepare(sql: string) { return new PreparedStatement(this.sqlite.prepare(sql)); }
-  async batch(statements: readonly PreparedStatement[]) {
-    this.sqlite.exec('BEGIN');
-    try {
-      const results = [];
-      for (const statement of statements) results.push(await statement.run());
-      this.sqlite.exec('COMMIT');
-      return results;
-    } catch (error) {
-      this.sqlite.exec('ROLLBACK');
-      throw error;
-    }
-  }
-}
-
 const day = 86_400_000;
 const policy: RecentlyViewedPolicy = { maxItems: 12, retentionDays: 90 };
 
 async function fixture() {
-  const sqlite = new DatabaseSync(':memory:');
+  const {sqlite,db}=await incentiveReportDatabase();
   sqlite.exec(`
-    PRAGMA foreign_keys=ON;
-    CREATE TABLE users (id TEXT PRIMARY KEY, status TEXT NOT NULL);
-    CREATE TABLE categories (id TEXT PRIMARY KEY, name_en TEXT NOT NULL, is_active INTEGER NOT NULL);
-    CREATE TABLE seller_profiles (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, trading_name TEXT NOT NULL, status TEXT NOT NULL);
-    CREATE TABLE seller_participation_profiles (seller_id TEXT PRIMARY KEY, participation_route TEXT, application_stage TEXT, commercial_model TEXT, legal_seller_reference TEXT, invoice_issuer_reference TEXT, payout_beneficiary_reference TEXT, managed_agreement_version TEXT, managed_agreement_accepted_at INTEGER);
-    CREATE TABLE seller_restrictions (seller_id TEXT, mode TEXT, suspended_until INTEGER);
-    CREATE TABLE products (id TEXT PRIMARY KEY, seller_id TEXT NOT NULL, category_id TEXT NOT NULL, slug TEXT NOT NULL, name_en TEXT NOT NULL, price_paisa INTEGER NOT NULL, compare_at_price_paisa INTEGER, inventory_quantity INTEGER NOT NULL, status TEXT NOT NULL);
-    CREATE TABLE product_media (id TEXT PRIMARY KEY, product_id TEXT NOT NULL, mime_type TEXT NOT NULL, sort_order INTEGER NOT NULL);
-    CREATE TABLE product_deletions (product_id TEXT PRIMARY KEY);
-    INSERT INTO users VALUES ('owner','active'),('u1','active'),('u2','active');
-    INSERT INTO categories VALUES ('cat','Pottery',1);
-    INSERT INTO seller_profiles VALUES ('seller','owner','Clay Studio','approved');
-    INSERT INTO seller_participation_profiles VALUES ('seller','registered_seller','active',NULL,NULL,NULL,NULL,NULL,NULL);
-    INSERT INTO products VALUES
-      ('p1','seller','cat','cup','Cup',100000,120000,4,'published'),
-      ('p2','seller','cat','bowl','Bowl',80000,NULL,0,'published'),
-      ('p3','seller','cat','draft','Draft',50000,NULL,3,'draft');
-    INSERT INTO product_media VALUES ('m1','p1','image/jpeg',0),('m2','p2','image/jpeg',0),('m3','p3','image/jpeg',0);
+    INSERT INTO users(id,email,display_name,status,created_at,updated_at) VALUES ('owner','owner@local.hastabazaar.test','Fictional owner','active',1,1),('u1','u1@local.hastabazaar.test','Fictional buyer one','active',1,1),('u2','u2@local.hastabazaar.test','Fictional buyer two','active',1,1);
+    INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('owner','seller',1),('u1','customer',1),('u2','customer',1);
+    INSERT INTO categories(id,slug,name_en,is_active,sort_order,created_at,updated_at) VALUES ('cat','pottery','Pottery',1,0,1,1);
+    INSERT INTO seller_profiles(id,user_id,legal_name,trading_name,registration_authority,registration_number,tax_mode,tax_registration_number,representative_name,support_phone,support_email,province,district,municipality,locality,status,created_at,updated_at) VALUES ('seller','owner','Fictional Clay Studio','Clay Studio','Fixture','FIX-REG','PAN','FIX-PAN','Fictional owner','9800000000','owner@local.hastabazaar.test','Bagmati','Kathmandu','Kathmandu','Fictional workshop','approved',1,1);
+    INSERT INTO seller_participation_profiles(seller_id,participation_route,application_stage,public_name,public_city,created_at,updated_at) VALUES ('seller','registered_seller','active','Clay Studio','Kathmandu',1,1);
+    INSERT INTO products(id,seller_id,category_id,slug,sku,name_en,description_en,price_paisa,compare_at_price_paisa,inventory_quantity,status,producer,materials,created_at,updated_at) VALUES
+      ('p1','seller','cat','cup','FIX-CUP','Cup','Fictional cup.',100000,120000,4,'published','Fictional maker','Clay',1,1),
+      ('p2','seller','cat','bowl','FIX-BOWL','Bowl','Fictional bowl.',80000,NULL,0,'published','Fictional maker','Clay',1,1),
+      ('p3','seller','cat','draft','FIX-DRAFT','Draft','Fictional draft.',50000,NULL,3,'draft','Fictional maker','Clay',1,1);
+    INSERT INTO product_media(id,product_id,object_key,alt_en,mime_type,sort_order,created_at) VALUES ('m1','p1','fictional/cup.jpg','Fictional cup','image/jpeg',0,1),('m2','p2','fictional/bowl.jpg','Fictional bowl','image/jpeg',0,1),('m3','p3','fictional/draft.jpg','Fictional draft','image/jpeg',0,1);
   `);
-  sqlite.exec((await readFile(new URL('../drizzle/0053_recently_viewed.sql', import.meta.url), 'utf8')).replaceAll('--> statement-breakpoint', ''));
-  addProductEvidenceSchema(sqlite);
-  return { sqlite, database: new TestDatabase(sqlite) as unknown as D1Database };
+  return { sqlite, database:db };
 }
 
 void test('guest history is recent-first, deduplicated, individually expired and bounded', () => {
@@ -112,7 +71,7 @@ void test('expired, unpublished and deleted account entries never appear', async
     const now = 200 * day;
     await recordRecentlyViewedProduct(database, { userId: 'u1', productId: 'p1', now: now - 91 * day, policy });
     await recordRecentlyViewedProduct(database, { userId: 'u1', productId: 'p3', now, policy });
-    sqlite.prepare("INSERT INTO product_deletions VALUES ('p1')").run();
+    sqlite.prepare("INSERT INTO product_deletions(product_id,deleted_by,deleted_at,request_id) VALUES ('p1','owner',1,'fictional-history-removal')").run();
     assert.deepEqual(await listRecentlyViewedProducts(database, { userId: 'u1', now, policy }), []);
   } finally { sqlite.close(); }
 });

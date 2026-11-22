@@ -58,6 +58,9 @@ async function fixture() {
   `);
   const migration = await readFile(new URL('../drizzle/0056_form_catalog.sql', import.meta.url), 'utf8');
   for (const statement of migration.split('--> statement-breakpoint')) if (statement.trim()) sqlite.exec(statement);
+  const health=await readFile(new URL('../drizzle/0151_form_health_records.sql',import.meta.url),'utf8');
+  const receiptColumns=health.split('--> statement-breakpoint').filter(statement=>statement.includes('ALTER TABLE form_answer_sets ADD COLUMN'));
+  assert.equal(receiptColumns.length,2);for(const statement of receiptColumns)sqlite.exec(statement);
   const database = new Database(sqlite);
   return { sqlite, db: database as unknown as D1Database, database };
 }

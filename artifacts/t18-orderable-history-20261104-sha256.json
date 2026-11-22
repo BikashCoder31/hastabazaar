@@ -1,0 +1,92 @@
+{
+  "capturedAt": "2026-11-04T15:54:40.285Z",
+  "sources": [
+    {
+      "path": "drizzle/0155_product_orderable_price_history.sql",
+      "bytes": 5395,
+      "sha256": "7525e8a881ee739c440e2ef41630fcd00081b7c9f9908bac19d303caa570dabf"
+    },
+    {
+      "path": "lib/products/orderable-price-history.ts",
+      "bytes": 6225,
+      "sha256": "4c2d8c661c9c780d2730629a49298958a5f273d4650d7cdc0de1a261d4bcb6bc"
+    },
+    {
+      "path": "lib/products/price-references.ts",
+      "bytes": 8562,
+      "sha256": "2dccb82ee8b532bf65ff3cb6e18a0015e02889006c55d210b94d73f9f6b29b32"
+    },
+    {
+      "path": "lib/products/publication.ts",
+      "bytes": 27850,
+      "sha256": "3dd28ea69ed073d84c9e54625ec7c6ab99f401d99bd692cef28157cea9edd503"
+    },
+    {
+      "path": "lib/products/command-outcomes.ts",
+      "bytes": 13610,
+      "sha256": "b2eb84427368a97006f6c18bc412d22e19156fa09401f51495bf68d30f4d687f"
+    },
+    {
+      "path": "lib/products/command-result.ts",
+      "bytes": 2864,
+      "sha256": "a1804832f643403741866b23d2e1697b78a73c384bc5c69d25ebbb78410c5bb4"
+    },
+    {
+      "path": "app/api/admin/product-publications/route.ts",
+      "bytes": 8551,
+      "sha256": "99f68425ffc65213b21b7406cdf8585a6ed1be451b4639f80956171c95507f42"
+    },
+    {
+      "path": "components/admin/product-publication-review.tsx",
+      "bytes": 19791,
+      "sha256": "7832d35c9ae4e63da0ab3ee75954a727b399abb6be05b3337de47558acf2bef2"
+    },
+    {
+      "path": "components/admin/product-orderable-price-history.tsx",
+      "bytes": 3360,
+      "sha256": "ec19b950a65b8139545564dcb26e881ad23a7d8569addf26472fb4a3d671c403"
+    },
+    {
+      "path": "tests/product-orderable-price-history.test.ts",
+      "bytes": 12391,
+      "sha256": "ea4042cbe84faefbda907de70a313af11a672c2d12fbc438fc70e3562c31bd99"
+    },
+    {
+      "path": "tests/product-orderable-price-history-http.test.ts",
+      "bytes": 3300,
+      "sha256": "b9f19ae12e599581fea0c20576db065c4ffdccdc896bba890ab243530cd76475"
+    },
+    {
+      "path": "tests/product-orderable-price-history-migration.test.ts",
+      "bytes": 3853,
+      "sha256": "2e286b7d01e22aedd36c983ecbcb67d65c54426eeb7c74218953137b8de88194"
+    }
+  ],
+  "logs": [
+    {
+      "path": "artifacts/t18-orderable-history-20261104-green.log",
+      "bytes": 7386,
+      "sha256": "4c9c8ac58bea93228fd1c703976300098497009409f9811b38e889df6708743d"
+    },
+    {
+      "path": "artifacts/t18-orderable-history-20261104-final.log",
+      "bytes": 2815,
+      "sha256": "232509f769bed9e2a69979fc645e19f210915984a49dcb371fbf2e9220082865"
+    },
+    {
+      "path": "artifacts/t18-orderable-history-20261104-review-race.log",
+      "bytes": 599,
+      "sha256": "a8dd4545d9e39bd2c6966e8a2c95c7c917bea9c0c40e5bd4ef2e3566bea0f355"
+    },
+    {
+      "path": "artifacts/t18-orderable-history-20261104-lint.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "artifacts/t18-orderable-history-20261104-final-ui-lint.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

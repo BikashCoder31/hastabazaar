@@ -21,6 +21,17 @@ void test('notification links require matching audience and safe related records
  assert.equal(notificationDestination('seller','seller','external','https://evil.test'),null);
 });
 
+void test('receipt return notices retain audience and source boundaries',()=>{
+ for(const type of ['receipt_return_bank_loss','receipt_return_bank_satisfaction']){
+  assert.equal(notificationDestination('staff','staff',type,null),null);
+  assert.equal(notificationDestination('staff','customer',type,'return-1'),null);
+  assert.equal(notificationDestination('customer','staff',type,'return-1'),null);
+  assert.equal(notificationDestination('staff','staff',type,'../return'),null);
+  assert.equal(notificationDestination('customer','customer',type,'return-1'),'/account/refunds');
+  assert.equal(notificationDestination('staff','staff',type,'return-1'),'/admin/payments/refunds?'+(type==='receipt_return_bank_loss'?'returnLoss=':'returnSatisfaction=')+'return-1');
+ }
+});
+
 void test('staff notification destinations and visibility follow current effective permissions',()=>{
  assert.equal(notificationDestination('staff','staff','product','p-1'),'/admin/products/p-1');
  assert.equal(notificationDestination('customer','customer','seller_application','s-1'),'/sell/application');

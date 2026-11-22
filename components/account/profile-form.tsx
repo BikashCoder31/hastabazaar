@@ -1,36 +1,52 @@
 'use client';
+import {canonicalKey} from '@/lib/forms/field-keys';
+import {useAccountCommand} from './use-account-command';
+import {AccountCommandRecovery} from './account-command-recovery';
 
 import { FormGuide } from '@/components/forms/form-guide';
 import { useRouter } from 'next/navigation';
-import { useRef, useState } from 'react';
+import { useEffect,useRef, useState } from 'react';
 import { Check } from 'lucide-react';
 import { ConfiguredFields, fieldDisplay, focusConfiguredField } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { configuredJsonPayload, canonicalKey, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 
 const FORM_ID = 'account.profile';
 const BASE_KEYS = ['displayName', 'phone', 'locale', 'idempotencyKey'] as const;
 
-export function ProfileForm(props: {
+type ProfileFormProps={
+  actorId:string;
   displayName: string;
   phone: string | null;
   locale?: 'en-NP' | 'ne-NP';
-}) {
+};
+export function ProfileForm(props:ProfileFormProps) {
+  return <CurrentProfileForm key={JSON.stringify([props.actorId,props.displayName,props.phone,props.locale])} {...props}/>;
+}
+function CurrentProfileForm(props:ProfileFormProps) {
   const router = useRouter();
   const { config, status, message: configMessage, canSubmit, refresh, handleSubmissionResponse } = usePublishedFormConfig(FORM_ID);
   const requestId = useRef<string | null>(null);
+  const formRef=useRef<HTMLFormElement>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const command=useAccountCommand({actorId:props.actorId,scopeKey:'profile',onRecorded:(result)=>{
+    const recovered=!!result&&typeof result==='object'&&'status' in result&&result.status==='recorded';
+    requestId.current=null;setError('');setMessage(recovered?'The original profile change was recorded. Refresh to see your current details.':'Your profile is up to date.');command.setMessage('');router.refresh();
+  },onDenied:()=>router.refresh()});
+  useEffect(()=>{const fieldId=Object.keys(fieldErrors)[0],form=formRef.current;if(!fieldId||!form||command.blocked)return;
+    if(fieldId==='displayName')form.querySelector<HTMLInputElement>('input[name="displayName"]')?.focus();else focusConfiguredField(form,fieldId);
+  },[fieldErrors,command.blocked]);
 
   async function submit(event: { preventDefault(): void; currentTarget: HTMLFormElement }) {
     event.preventDefault();
-    if (saving || !canSubmit || !config) return;
-    const form = event.currentTarget;
+    if (saving || command.blocked || !canSubmit || !config) return;
+    const isCurrent=command.capture();
     let payload: ReturnType<typeof configuredJsonPayload>;
     try {
       const { answers } = readConfiguredSubmission(event.currentTarget, config, BASE_KEYS);
@@ -46,38 +62,32 @@ export function ProfileForm(props: {
     setError('');
     setFieldErrors({});
     try {
-      const response = await fetch('/api/account/profile', {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
+      const response = await command.run({action:'profile.update',sourceId:props.actorId,requestId:requestId.current,endpoint:'/api/account/profile',
+        method: 'PATCH',body:{
           displayName: data.get('displayName'),
           phone: data.get('phone'),
           locale: props.locale ?? 'en-NP',
           idempotencyKey: requestId.current,
           ...payload,
-        }),
+        },
       });
-      const result = await response.json().catch(() => null) as { error?: unknown; fieldId?: unknown; code?: unknown } | null;
+      if(!response||!isCurrent())return;
+      const result = response.data as { error?: unknown; fieldId?: unknown; code?: unknown } | null;
       if (!response.ok) {
-        if (response.status === 409 && result?.code === 'stale_version') handleSubmissionResponse(response);
+        if (response.status === 409 && result?.code === 'stale_version') handleSubmissionResponse(response, 'stale_version');
         else if (response.status === 400 || response.status === 409) requestId.current = null;
         const explanation = typeof result?.error === 'string' ? result.error : 'Profile could not be saved.';
         if (typeof result?.fieldId === 'string') {
           const errors = Object.create(null) as Record<string, string>;
           errors[result.fieldId] = explanation;
           setFieldErrors(errors);
-          if (result.fieldId === 'displayName') form.querySelector<HTMLInputElement>('input[name="displayName"]')?.focus();
-          else focusConfiguredField(form, result.fieldId);
         }
         throw new Error(explanation);
       }
-      requestId.current = null;
-      setMessage('Your profile is up to date.');
-      router.refresh();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Profile could not be saved.');
+      if(isCurrent())setError(reason instanceof Error ? reason.message : 'Profile could not be saved.');
     } finally {
-      setSaving(false);
+      if(isCurrent())setSaving(false);
     }
   }
 
@@ -104,7 +114,9 @@ export function ProfileForm(props: {
           includeVersion={false} errors={fieldErrors} /> })),
   ].sort((left, right) => left.order - right.order) : [];
 
-  return <form data-form-id="account.profile" onSubmit={submit} className="customer-form mt-6 grid min-w-0 gap-5 sm:grid-cols-2">
+  if(command.accessDenied)return <p role="alert">Account access changed. Reopen your account to load the current profile.</p>;
+  return <><form ref={formRef} data-form-id="account.profile" onSubmit={submit} className="customer-form mt-6 grid min-w-0 gap-5 sm:grid-cols-2">
+    <fieldset disabled={command.blocked} className="contents">
       <FormGuide formId="account.profile" />
 
     <p className="text-xs text-muted-foreground sm:col-span-2">* Required field</p>
@@ -117,11 +129,12 @@ export function ProfileForm(props: {
       {status !== 'loading' ? <Button type="button" variant="outline" onClick={refresh} className="mt-3">Refresh form</Button> : null}
     </div> : null}
     <div className="flex flex-wrap items-center gap-4 border-t pt-5 sm:col-span-2">
-      <Button type="submit" disabled={saving || !canSubmit} className="min-h-11 rounded-full px-6">
+      <Button type="submit" disabled={saving || command.blocked || !canSubmit} className="min-h-11 rounded-full px-6">
         {saving ? 'Saving…' : 'Save changes'}
       </Button>
       {message ? <output className="flex items-center gap-2 text-sm text-primary"><Check className="size-4" />{message}</output> : null}
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
     </div>
-  </form>;
+    </fieldset>
+  </form><div className="mt-4"><AccountCommandRecovery command={command}/></div></>;
 }

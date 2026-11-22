@@ -1,3 +1,4 @@
+import { formAnswerSourceSql } from '../forms/answer-proof';
 import { FormRequestConflictError } from '@/lib/forms/submission';
 
 /** Decision actions use their audit row and answer snapshot as one replay identity. */
@@ -13,13 +14,13 @@ export async function decisionFormReplay(database: D1Database, input: {
       a.subject_id AS subjectId,a.next_json AS nextJson,f.form_id AS formId,
       f.config_version_id AS versionId,f.actor_id AS answerActorId,f.subject_type AS answerSubjectType,
       f.subject_id AS answerSubjectId
-    FROM audit_logs a LEFT JOIN form_answer_sets f ON f.form_id=? AND f.request_id=?
+    FROM audit_logs a LEFT JOIN ${formAnswerSourceSql(database)} f ON f.form_id=? AND f.request_id=?
     WHERE a.request_id=? LIMIT 1`).bind(input.formId, input.requestId, input.auditRequestId ?? input.requestId)
     .first<{ actorId: string | null; action: string; subjectType: string; subjectId: string;
       nextJson: string | null; formId: string | null; versionId: string | null;
       answerActorId: string | null; answerSubjectType: string | null; answerSubjectId: string | null }>();
   if (!row) {
-    if (await database.prepare('SELECT 1 FROM form_answer_sets WHERE form_id=? AND request_id=? LIMIT 1')
+    if (await database.prepare(`SELECT 1 FROM ${formAnswerSourceSql(database)} original_answers WHERE form_id=? AND request_id=? LIMIT 1`)
       .bind(input.formId, input.requestId).first()) throw new FormRequestConflictError('Request reference is already used.');
     return false;
   }

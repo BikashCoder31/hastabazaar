@@ -1,3 +1,4 @@
+import {assertCustomerIntent} from '@/lib/auth/customer-intent';
 import { env } from 'cloudflare:workers';
 import {
   requireExistingCustomerApi,
@@ -54,6 +55,7 @@ function failure(error: unknown) {
 export async function GET(request: Request): Promise<Response> {
   try {
     const actor = await requireExistingCustomerApi();
+    assertCustomerIntent(request,actor.userId);
     const db = requireDatabase(environment);
     const status = await getContactVerificationStatus(db, actor);
     return json({
@@ -73,6 +75,7 @@ export async function POST(request: Request): Promise<Response> {
     return json({ error: 'Request origin was not accepted.' }, 403);
   try {
     const customer = await requireExistingCustomerApi();
+    assertCustomerIntent(request,customer.userId);
     const fixture = getLocalTestIdentity(request.headers);
     const actor = { ...customer, sessionHash: hostedSessionHash(request.headers),
       localFixture: fixture?.userId === customer.authSubject };

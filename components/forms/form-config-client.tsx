@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ConfiguredField, CustomFieldType, PublishedFormConfig } from '@/lib/forms/types';
-import { canonicalKey } from '@/lib/forms/submission';
+import {ACTOR_INTENT_HEADER} from '@/lib/http/actor-intent';
+import { canonicalKey } from '@/lib/forms/field-keys';
 
 type FormConfigStatus = 'loading' | 'ready' | 'unavailable' | 'stale' | 'inactive';
 interface FormConfigState { config: PublishedFormConfig | null; status: FormConfigStatus; message: string; formId: string; enabled: boolean }
@@ -103,45 +104,55 @@ export function parsePublishedFormConfig(formId: string, payload: unknown): Publ
   return value as unknown as PublishedFormConfig;
 }
 
-export function submissionFeedback(status: number): { stale: boolean; message: string } {
-  return status === 409
+export function submissionFeedback(status: number, code?: string): { stale: boolean; message: string } {
+  return status === 409 && code === 'stale_version'
     ? { stale: true, message: 'This form changed while you were filling it out. Refresh the form and review your answers before submitting again.' }
     : { stale: false, message: 'The form could not be submitted. Please try again.' };
 }
 
-export function usePublishedFormConfig(formId: string, { enabled = true }: { enabled?: boolean } = {}) {
+export function usePublishedFormConfig(formId: string, { enabled = true, onAccessDenied, actorId }: { enabled?: boolean; onAccessDenied?: () => void; actorId?: string } = {}) {
+  const denialLease = useRef<{ callback: (() => void) | undefined } | null>(null);
   const [state, setState] = useState<FormConfigState>({ formId, enabled, config: null, status: enabled ? 'loading' : 'inactive', message: '' });
   const [refreshIndex, setRefreshIndex] = useState(0);
+  useLayoutEffect(() => {
+    const lease = { callback: onAccessDenied };
+    denialLease.current = lease;
+    return () => { if (denialLease.current === lease) denialLease.current = null; };
+  }, [formId, enabled, refreshIndex, onAccessDenied, actorId]);
   if (state.enabled !== enabled) {
     setState({ formId, enabled, config: null, status: enabled ? 'loading' : 'inactive', message: '' });
   }
   useEffect(() => {
     if (!enabled) return;
-    const controller = new AbortController();
-    fetch(`/api/forms/${encodeURIComponent(formId)}`, { cache: 'no-store', credentials: 'same-origin', signal: controller.signal })
-      .then(async (response) => response.ok ? parsePublishedFormConfig(formId, await response.json()) : null)
+    const controller = new AbortController(), lease = denialLease.current;
+    fetch(`/api/forms/${encodeURIComponent(formId)}`, { cache: 'no-store', credentials: 'same-origin', signal: controller.signal, ...(actorId!==undefined?{headers:{[ACTOR_INTENT_HEADER]:actorId}}:{}) })
+      .then(async (response) => {
+        if ((response.status === 401 || response.status === 403) && !controller.signal.aborted && denialLease.current === lease) lease?.callback?.();
+        return response.ok ? parsePublishedFormConfig(formId, await response.json()) : null;
+      })
       .then((config) => {
-        if (!controller.signal.aborted) setState((current) => config
+        if (!controller.signal.aborted && denialLease.current === lease) setState((current) => config
           ? { formId, enabled: true, config, status: 'ready', message: '' }
           : { formId, enabled: true, config: current.formId === formId ? current.config : null,
             status: 'unavailable', message: 'Form configuration is unavailable. Please try again.' });
       })
       .catch(() => {
-        if (!controller.signal.aborted) setState((current) => ({ formId, enabled: true,
+        if (!controller.signal.aborted && denialLease.current === lease) setState((current) => ({ formId, enabled: true,
           config: current.formId === formId ? current.config : null,
           status: 'unavailable', message: 'Form configuration is unavailable. Please try again.' }));
       });
     return () => controller.abort();
-  }, [formId, refreshIndex, enabled]);
+  }, [formId, refreshIndex, enabled, onAccessDenied, actorId]);
   const refresh = useCallback(() => {
     if (!enabled) return;
     setState((current) => ({ formId, enabled: true, config: current.enabled && current.formId === formId ? current.config : null,
       status: 'loading', message: '' }));
     setRefreshIndex((index) => index + 1);
   }, [formId, enabled]);
-  const handleSubmissionResponse = useCallback((response: Response, code?: string) => {
-    if (enabled && response.status === 409 && code !== 'request_id_conflict') setState((current) => current.enabled && current.formId === formId
-      ? { ...current, status: 'stale', message: submissionFeedback(409).message } : current);
+  const handleSubmissionResponse = useCallback((response: Pick<Response,'status'|'ok'>, code?: string) => {
+    const feedback = submissionFeedback(response.status, code);
+    if (enabled && feedback.stale) setState((current) => current.enabled && current.formId === formId
+      ? { ...current, status: 'stale', message: feedback.message } : current);
     return response.ok;
   }, [formId, enabled]);
   const current = !enabled ? { formId, enabled: false, config: null, status: 'inactive' as const, message: '' }

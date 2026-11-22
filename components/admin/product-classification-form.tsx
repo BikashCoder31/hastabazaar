@@ -8,7 +8,7 @@ import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sess
 import type { CategoryRow, OccasionRow } from '@/lib/db/repositories/products';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 
 const classificationBaseKeys = ['categoryId', 'occasionIds', 'idempotencyKey'];
 
@@ -134,7 +134,7 @@ export function ProductClassificationForm({
           </div>
         </fieldset>
         {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={classificationBaseKeys} /> : null}
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" className="max-md:min-h-11" disabled={pending}>
           {pending ? 'Saving…' : 'Save classification'}
         </Button>
       </fieldset>

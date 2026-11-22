@@ -35,9 +35,11 @@ export function HomepageHeroCopy({
   slide: storedSlide,
   preview = false,
   LinkComponent = 'a',
+  showBenefits = true,
 }: {
   slide: HomepageHeroSlide;
   preview?: boolean;
+  showBenefits?: boolean;
   LinkComponent?: ElementType<{
     href: string;
     className: string;
@@ -111,7 +113,7 @@ export function HomepageHeroCopy({
             )
           ) : null}
         </div>
-        <div
+        {showBenefits ? <div
           className="homepage-hero-benefits text-[#344255]"
           aria-label={
             sellerSlide ? 'Getting started as a seller' : 'Why shop with us'
@@ -126,7 +128,7 @@ export function HomepageHeroCopy({
               <span>{label}</span>
             </div>
           ))}
-        </div>
+        </div> : null}
       </div>
     </div>
   );

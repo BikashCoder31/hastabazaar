@@ -20,28 +20,6 @@ As with SMTP outboxes generally, a process crash after SMTP acceptance but befor
 4. Check `/health`, `/track`, password/Google login and Super Admin access. Place an authorized test COD order with an inbox you control; confirm the email and tracking result. Move it through packing, ready, dispatch and delivery only if it is genuinely a test order under your operational procedure. Check cancellation with a separate test order. Avoid marking real orders delivered for testing.
 5. Confirm Admin → Order emails records sent/failed states. A mismatched email on tracking must reveal no order. Check the inbox and spam folder; only a real mailbox check verifies end-to-end delivery.
 
-## Optional automatic retries with cPanel Cron Jobs
+## Schedule automatic delivery
 
-No paid service is required for this feature. Use the hosting account’s Cron Jobs facility if available.
-
-1. Generate a random secret of at least 32 characters privately. Enter it directly into the Node app environment as `ORDER_EMAIL_JOB_SECRET`. Do not paste it into chat or put it in a URL. Restart the app.
-2. Create a private curl configuration file outside public directories, for example `/home2/hastabaz/order-email-cron.conf`, with owner-only permissions (0600). In the provider editor, enter these lines, replacing the placeholder directly there:
-
-```text
-url = "https://hastabazaar.com/api/jobs/order-emails"
-request = "POST"
-header = "Authorization: Bearer ENTER_THE_SAME_SECRET_HERE"
-silent
-show-error
-fail
-max-time = 180
-output = "/dev/null"
-```
-
-3. Run this command every five minutes in cPanel Cron Jobs:
-
-```sh
-curl --config /home2/hastabaz/order-email-cron.conf
-```
-
-The command does not contain the secret. Each run processes at most six eligible jobs. An absent or incorrect credential returns 401. Failed/unconfigured delivery returns 503. Monitor the admin queue and adjust scheduling to traffic and hosting limits. Do not make the configuration file public or include it in deployment ZIPs.
+Use the [Babal.Host sender setup](../babal-host-setup.md#schedule-the-email-sender) for the once-a-minute cPanel job. It uses the existing email automation script and the authenticated order-email job endpoint for the order and business queues.

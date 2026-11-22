@@ -1,5 +1,7 @@
 'use client';
 import { FormGuide } from '@/components/forms/form-guide';
+import {useCommercialScope,CommercialRecovery} from '@/components/admin/commercial-recovery';
+import {FinanceAccessNotice} from '@/components/admin/finance-access-notice';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -10,7 +12,7 @@ import { usePublishedFormConfig } from '@/components/forms/form-config-client';
 import {
   configuredJsonPayload,
   readConfiguredSubmission,
-} from '@/lib/forms/submission';
+} from '@/lib/forms/client-submission';
 import {
   clearSessionAttempt,
   getOrCreateSessionAttempt,
@@ -27,15 +29,20 @@ const baseKeys = [
   'days',
   'reason',
   'requestId',
+  'expectedUpdatedAt',
   'formVersion',
   'customAnswers',
 ];
-type ReviewedOffer = Omit<ReferralCampaign, 'enabled'> & {
+type ReviewedOffer = Omit<ReferralCampaign, 'enabled'|'updatedAt'> & {
+  expectedUpdatedAt:number;
   enabled: boolean;
   reason: string;
 } & ReturnType<typeof configuredJsonPayload>;
 
-export function ReferralSettings({ campaign }: { campaign: ReferralCampaign }) {
+export function ReferralSettings(props:{actorId:string;campaign:ReferralCampaign}){return <ReferralSettingsScope key={props.actorId} {...props}/>;}
+function ReferralSettingsScope({actorId,campaign}:{actorId:string;campaign:ReferralCampaign}) {
+  const commercial=useCommercialScope(actorId);
+  const[sourceAt,setSourceAt]=useState(campaign.updatedAt);
   const [message, setMessage] = useState('');
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -44,7 +51,7 @@ export function ReferralSettings({ campaign }: { campaign: ReferralCampaign }) {
   const [review, setReview] = useState<ReviewedOffer | null>(null);
   const reviewPanel = useRef<HTMLElement>(null);
   const reviewButton = useRef<HTMLButtonElement>(null);
-  const attemptKey = sessionAttemptKey('staff.referral-settings', 'current');
+  const attemptKey = sessionAttemptKey('staff.referral-settings', actorId+':current');
   useEffect(() => {
     const timer = window.setTimeout(
       () => setRetry(hasSessionAttempt(attemptKey)),
@@ -66,7 +73,7 @@ export function ReferralSettings({ campaign }: { campaign: ReferralCampaign }) {
       const requestId = getOrCreateSessionAttempt(attemptKey);
       const response = await fetch('/api/admin/referrals', {
         method: 'PUT',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json',...commercial.headers },
         body: JSON.stringify({ ...review, requestId }),
       });
       const result = (await response.json().catch(() => null)) as {
@@ -74,6 +81,7 @@ export function ReferralSettings({ campaign }: { campaign: ReferralCampaign }) {
         error?: string;
         code?: string;
       } | null;
+      if(!commercial.current())return;commercial.observe(response);
       if (result?.code === 'stale_version')
         catalog.handleSubmissionResponse(response, result.code);
       if (!response.ok)
@@ -91,13 +99,16 @@ export function ReferralSettings({ campaign }: { campaign: ReferralCampaign }) {
       setMessage('Offer saved. Existing orders keep their original offer.');
       router.refresh();
     } catch (error) {
+      if(!commercial.current())return;
       setError(
         error instanceof Error ? error.message : 'Could not save settings.',
       );
     } finally {
-      setPending(false);
+      if(commercial.current())setPending(false);
     }
   }
+  const recovery=<CommercialRecovery actorId={actorId} kind="referral" attemptKey={attemptKey} onDenied={commercial.deny} onReauthorized={commercial.reauthorize} onRecovered={()=>{clearSessionAttempt(attemptKey);setRetry(false);setReview(null);setMessage('Original committed offer confirmed. Review its current source before another action.');router.refresh();}}/>;
+  if(commercial.accessDenied)return <div className="space-y-3"><FinanceAccessNotice message={error}/>{recovery}</div>;
   return (
     <form
       data-form-id="staff.referral-settings"
@@ -105,6 +116,7 @@ export function ReferralSettings({ campaign }: { campaign: ReferralCampaign }) {
       onSubmit={(e) => {
         e.preventDefault();
         if (!catalog.config || !catalog.canSubmit || pending || review) return;
+        if(!Number.isSafeInteger(sourceAt)||Number(sourceAt)<0){setError('The original offer version is unavailable. Refresh this source; your draft is retained.');return;}
         setMessage('');
         setError('');
         let configured: ReturnType<typeof configuredJsonPayload>;
@@ -122,6 +134,7 @@ export function ReferralSettings({ campaign }: { campaign: ReferralCampaign }) {
           const f = new FormData(e.currentTarget);
           const reason = f.get('reason');
           const body = {
+            expectedUpdatedAt:sourceAt!,
             enabled: f.get('enabled') === 'on',
             friendDiscountPaisa: Math.round(Number(f.get('discount')) * 100),
             rewardPaisa: Math.round(Number(f.get('reward')) * 100),
@@ -131,6 +144,7 @@ export function ReferralSettings({ campaign }: { campaign: ReferralCampaign }) {
             ...configured,
           };
           if (
+            !Number.isSafeInteger(body.expectedUpdatedAt)||body.expectedUpdatedAt<0||
             ![
               body.friendDiscountPaisa,
               body.rewardPaisa,
@@ -160,10 +174,12 @@ export function ReferralSettings({ campaign }: { campaign: ReferralCampaign }) {
       }}
     >
       <details className="rounded-xl border p-3 text-sm">
-        <summary className="cursor-pointer font-medium">
+        <summary className="min-h-11 content-center cursor-pointer font-medium">
           Help with this offer
         </summary>
-        <FormGuide formId="staff.referral-settings" />
+      {retry?recovery:null}
+      {campaign.updatedAt!==sourceAt?<section className="space-y-2 rounded border p-3"><output className="block" aria-live="polite">The current offer changed. Your proposed draft is retained; it has not overwritten the saved source.</output><p>Current friend discount {incentiveMoney(campaign.friendDiscountPaisa)} · referrer reward {incentiveMoney(campaign.rewardPaisa)} · minimum {incentiveMoney(campaign.minimumSubtotalPaisa)} · release window {campaign.returnWindowDays} days.</p><Button variant="workspace-outline" size="workspace" type="button" disabled={pending||retry||!Number.isSafeInteger(campaign.updatedAt)} onClick={()=>{setSourceAt(campaign.updatedAt);setReview(null);setMessage('Current source acknowledged. Review the retained proposed values before saving.');}}>Use this current source for a reviewed draft</Button></section>:null}
+      <FormGuide formId="staff.referral-settings" />
       </details>
 
       <p className="text-xs text-muted-foreground">* Required field</p>
@@ -179,7 +195,7 @@ export function ReferralSettings({ campaign }: { campaign: ReferralCampaign }) {
         </label>
         <Link
           href="/admin/staff-form-history?kind=referral-settings&id=default"
-          className="block text-sm underline"
+          className="section-link underline"
         >
           View referral form history
         </Link>
@@ -255,6 +271,8 @@ export function ReferralSettings({ campaign }: { campaign: ReferralCampaign }) {
         the offer here when you want to stop accepting new referral costs.
       </p>
       <Button
+        variant="workspace-primary"
+        size="workspace"
         ref={reviewButton}
         type="submit"
         disabled={pending || !!review || !catalog.canSubmit}
@@ -337,6 +355,8 @@ export function ReferralSettings({ campaign }: { campaign: ReferralCampaign }) {
           </p>
           <div className="flex flex-wrap gap-3">
             <Button
+              variant="workspace-decision"
+              size="workspace"
               type="button"
               disabled={pending || !catalog.canSubmit}
               onClick={() => void saveReviewedOffer()}
@@ -344,8 +364,9 @@ export function ReferralSettings({ campaign }: { campaign: ReferralCampaign }) {
               {pending ? 'Saving…' : 'Confirm and save offer'}
             </Button>
             <Button
+              size="workspace"
               type="button"
-              variant="outline"
+              variant="workspace-outline"
               disabled={pending}
               onClick={() => {
                 setReview(null);
@@ -370,8 +391,9 @@ export function ReferralSettings({ campaign }: { campaign: ReferralCampaign }) {
             reference and may conflict.
           </p>
           <Button
+            size="workspace"
             type="button"
-            variant="outline"
+            variant="workspace-outline"
             disabled={pending}
             onClick={() => {
               if (
@@ -386,6 +408,7 @@ export function ReferralSettings({ campaign }: { campaign: ReferralCampaign }) {
               setMessage('');
               setError('');
               if (catalog.status === 'stale') catalog.refresh();
+              router.refresh();
             }}
           >
             Start a new attempt

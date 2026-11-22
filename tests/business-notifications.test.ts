@@ -1,6 +1,22 @@
+import { MailDeliveryError } from '../lib/email/delivery-attempts';
+import { fakeProviderMail } from './helpers/fake-provider-mail';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildBusinessEmail } from '../lib/operations/business-notifications';
+void test('business email subjects encode the middle dot as UTF-8', () => {
+  const message = buildBusinessEmail({
+    email: 'test@example.test',
+    subject: 'Review needed',
+    body: 'Open the authorized record.',
+    audience: 'staff',
+    relatedType: 'product',
+    relatedId: 'product-1',
+  }, 'https://example.test');
+  assert.deepEqual(Buffer.from(message.subject, 'utf8'), Buffer.concat([
+    Buffer.from('Hastabazaar '), Buffer.from([0xc2, 0xb7]), Buffer.from(' Review needed'),
+  ]));
+});
+
 void test('business email rejects untrusted link origins and header injection', () => {
   const message = {
     email: 'test@example.test',
@@ -32,13 +48,13 @@ import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import {
   businessNotificationStatements,
-  deliverBusinessEmails,
+  deliverBusinessEmails as actualDeliverBusinessEmails,
 } from '../lib/operations/business-notifications';
 import { emailRetryDelayMs } from '../lib/email/retry-policy';
 
 void test('email retry backoff grows and remains bounded', () => {
   assert.deepEqual(
-    [1, 2, 3, 4, 5, 99].map(emailRetryDelayMs),
+    [1, 2, 3, 4, 5, 99].map(attempt=>emailRetryDelayMs(attempt)),
     [300_000, 600_000, 1_200_000, 2_400_000, 3_600_000, 3_600_000],
   );
 });
@@ -47,6 +63,7 @@ function fixture() {
   sqlite.exec(
     'CREATE TABLE users(id TEXT PRIMARY KEY,auth_subject TEXT,email TEXT,status TEXT);CREATE TABLE user_roles(user_id TEXT,role TEXT);CREATE TABLE seller_profiles(id TEXT PRIMARY KEY,user_id TEXT,status TEXT,review_request_id TEXT);CREATE TABLE products(id TEXT PRIMARY KEY,seller_id TEXT,status TEXT,review_request_id TEXT);CREATE TABLE audit_logs(id TEXT)',
   );
+  sqlite.exec('CREATE TABLE seller_participation_profiles(seller_id TEXT,application_stage TEXT)');
   sqlite.exec(
     'CREATE TABLE notification_messages(id TEXT PRIMARY KEY,recipient_user_id TEXT,audience_role TEXT,channel TEXT,template_key TEXT,subject_en TEXT,subject_ne TEXT,body_en TEXT,body_ne TEXT,related_type TEXT,related_id TEXT,status TEXT,provider_reference TEXT,failure_reason TEXT,request_id TEXT UNIQUE,created_at INTEGER,sent_at INTEGER,read_at INTEGER)',
   );
@@ -55,6 +72,9 @@ function fixture() {
   sqlite.exec(
     readFileSync('drizzle/0035_guest_business_notifications.sql', 'utf8'),
   );
+  sqlite.exec('ALTER TABLE notification_messages ADD COLUMN delivery_transport TEXT');
+  sqlite.exec(readFileSync('drizzle/0077_seller_registration_intakes.sql', 'utf8'));
+  sqlite.exec(readFileSync('drizzle/0147_durable_email_delivery.sql','utf8'));
   for (const [id, role] of [
     ['sa', 'super_admin'],
     ['admin', 'admin'],
@@ -122,6 +142,39 @@ const event = {
   now: 100,
   kind: 'submitted',
 } as const;
+void test('modern approval sends one owner notice per channel with live checklist directions', async () => {
+  const { sqlite, db } = fixture();
+  try {
+    const approval = {
+      ...event, sourceType: 'seller_application', sourceId: 'seller-1',
+      status: 'approved', kind: 'result', actorId: 'sa', registrationIntake: true,
+    } as const;
+    for (const status of ['approved', 'approved_for_activation'] as const) {
+      sqlite.exec('DELETE FROM notification_messages; DELETE FROM seller_participation_profiles');
+      sqlite.prepare('UPDATE seller_profiles SET review_request_id=?').run(approval.eventId);
+      if (status === 'approved_for_activation') sqlite.prepare('INSERT INTO seller_participation_profiles VALUES (?,?)').run(approval.sourceId, status);
+      const decision = { ...approval, status };
+      await db.batch(await businessNotificationStatements(db, decision));
+      await db.batch(await businessNotificationStatements(db, decision));
+      const owner = sqlite.prepare("SELECT channel, audience_role AS audience, body_en AS body FROM notification_messages WHERE recipient_user_id='owner' ORDER BY channel").all();
+      assert.deepEqual(owner.map(row => [row.channel, row.audience]), [['email', 'customer'], ['in_app', 'customer']]);
+      for (const row of owner) {
+        assert.match(String(row.body), /submit products for review/i);
+        assert.match(String(row.body), /Registration & documents/i);
+        assert.match(String(row.body), /Finance/i);
+        assert.match(buildBusinessEmail({
+          email: 'owner@example.test', subject: 'Application update', body: String(row.body),
+          audience: String(row.audience), relatedType: 'seller_application', relatedId: approval.sourceId,
+        }, 'https://example.test').text, /https:\/\/example.test\/sell\/application/);
+      }
+      const staff = sqlite.prepare("SELECT body_en AS body FROM notification_messages WHERE recipient_user_id='sa'").all();
+      assert.equal(staff.length, 2);
+      for (const row of staff) assert.doesNotMatch(String(row.body), /Registration & documents/);
+    }
+  } finally {
+    sqlite.close();
+  }
+});
 void test('transactional event reaches only owner and effective reviewers, once per channel', async () => {
   const { sqlite, db } = fixture();
   try {
@@ -238,7 +291,7 @@ void test('concurrent fake consumers claim once and never process legacy order r
     sqlite.close();
   }
 });
-void test('fake delivery retries with redacted failure, bounded attempts, and revokes staff before email', async () => {
+void test('fake delivery continues transient retries with redacted failure and revokes staff before email', async () => {
   const { sqlite, db } = fixture();
   try {
     await db.batch(await businessNotificationStatements(db, event));
@@ -249,7 +302,7 @@ void test('fake delivery retries with redacted failure, bounded attempts, and re
     const broken = {
       send: async () => {
         attempts++;
-        throw new Error('password=secret smtp detailed response');
+        throw new MailDeliveryError('temporary','delivery_failed',{},'password=secret smtp detailed response');
       },
     };
     const first = await deliverBusinessEmails(
@@ -276,14 +329,14 @@ void test('fake delivery retries with redacted failure, bounded attempts, and re
       await deliverBusinessEmails(db, broken, 'https://example.test', {
         now: 1000 + i * 4_000_000,
       });
-    assert.equal(attempts, 10);
+    assert.equal(attempts, 12);
     assert.equal(
       sqlite
         .prepare(
           'SELECT MAX(delivery_attempts) AS n FROM notification_messages',
         )
         .get()?.n,
-      5,
+      6,
     );
   } finally {
     sqlite.close();
@@ -403,7 +456,7 @@ void test('effective permission change informs its subject even after all operat
       .all();
     assert.deepEqual(
       recipients.map((r) => r.id),
-      ['restricted'],
+      ['restricted', 'sa'],
     );
     assert.equal(
       (
@@ -414,7 +467,7 @@ void test('effective permission change informs its subject even after all operat
           { now: 1000 },
         )
       ).accepted,
-      1,
+      2,
     );
   } finally {
     sqlite.close();
@@ -436,8 +489,8 @@ void test('review-needed email is cancelled if the source no longer needs review
       'https://example.test',
       { now: 1000 },
     );
-    assert.equal(result.cancelled, 2);
-    assert.deepEqual(sent, ['owner@example.test']);
+    assert.equal(result.cancelled, 3, 'completed work suppresses stale submission messages for the owner as well as staff');
+    assert.deepEqual(sent, []);
   } finally {
     sqlite.close();
   }
@@ -536,16 +589,32 @@ void test('case events are idempotent, guest email only, assigned staff scoped, 
       'https://example.test',
       { now: 200 },
     );
-    assert.equal(outcome.accepted, 3);
-    assert.equal(outcome.cancelled, 1);
+    assert.equal(outcome.accepted, 4);
+    assert.equal(outcome.cancelled, 0);
     assert.deepEqual(sent.sort(), [
       'admin@example.test',
       'guest@example.test',
       'owner@example.test',
+      'sa@example.test',
     ]);
   } finally {
     sqlite.close();
   }
+});
+
+void test('resolved assigned cases still send one current actor-self Super Admin oversight outcome', async () => {
+  const { sqlite, db } = caseFixture();
+  try {
+    sqlite.exec("UPDATE complaints SET status='resolved',assigned_to='admin',operation_request_id='case-resolved' WHERE id='case-1'");
+    const event = { sourceType: 'complaint' as const, sourceId: 'case-1', eventId: 'case-resolved', actorId: 'sa', action: 'resolved', now: 100 };
+    await db.batch(await caseBusinessNotificationStatements(db, event));
+    await db.batch(await caseBusinessNotificationStatements(db, event));
+    assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM notification_messages WHERE recipient_user_id='sa'").get()?.n, 2);
+    const sent: string[] = [];
+    assert.equal((await deliverBusinessEmails(db, { send: async message => { sent.push(message.to); } }, 'https://example.test', { now: 200 })).accepted, 3);
+    assert.ok(sent.includes('sa@example.test'));
+    assert.ok(!sent.includes('admin@example.test'), 'completed cases do not ask ordinary assignees to review again');
+  } finally { sqlite.close(); }
 });
 void test('guest identity changes and resolved/reassigned cases suppress delivery; high value approval reaches an independent Super Admin', async () => {
   const { sqlite, db } = caseFixture();
@@ -560,7 +629,7 @@ void test('guest identity changes and resolved/reassigned cases suppress deliver
       }),
     );
     sqlite.exec(
-      "UPDATE orders SET customer_email='new@example.test';UPDATE complaints SET status='resolved'",
+      "UPDATE orders SET customer_email='new@example.test';UPDATE complaints SET status='resolved',operation_request_id='case-resolved-later'",
     );
     let sends = 0;
     const r = await deliverBusinessEmails(
@@ -573,8 +642,8 @@ void test('guest identity changes and resolved/reassigned cases suppress deliver
       'https://example.test',
       { now: 200 },
     );
-    assert.deepEqual(r, { accepted: 1, failed: 0, cancelled: 3 });
-    assert.equal(sends, 1);
+    assert.deepEqual(r, { accepted: 0, failed: 0, cancelled: 4 });
+    assert.equal(sends, 0);
     sqlite.exec('DELETE FROM notification_messages');
     await db.batch(
       await caseBusinessNotificationStatements(db, {
@@ -693,9 +762,9 @@ void test('permission rejection notifies the proposer, while pending approval no
         'https://example.test',
         { now: 200 },
       ),
-      { accepted: 1, failed: 0, cancelled: 2 },
+      { accepted: 2, failed: 0, cancelled: 2 },
     );
-    assert.deepEqual(sent, ['sa@example.test']);
+    assert.deepEqual(sent.sort(), ['sa2@example.test', 'sa@example.test'].sort());
   } finally {
     sqlite.close();
   }
@@ -725,7 +794,7 @@ void test('disabled accounts receive only their explicit factual account-status 
   try {
     await db.batch(await businessNotificationStatements(db, event));
     sqlite.exec(
-      "ALTER TABLE audit_logs ADD COLUMN subject_id TEXT;ALTER TABLE audit_logs ADD COLUMN request_id TEXT;ALTER TABLE audit_logs ADD COLUMN action TEXT;UPDATE users SET status='disabled' WHERE id='owner';INSERT INTO audit_logs VALUES ('a','owner','disable-1','user.status')",
+      "ALTER TABLE audit_logs ADD COLUMN subject_id TEXT;ALTER TABLE audit_logs ADD COLUMN request_id TEXT;ALTER TABLE audit_logs ADD COLUMN action TEXT;ALTER TABLE audit_logs ADD COLUMN created_at INTEGER;ALTER TABLE users ADD COLUMN updated_at INTEGER;UPDATE users SET status='disabled',updated_at=100 WHERE id='owner';INSERT INTO audit_logs VALUES ('a','owner','disable-1','user.status',100)",
     );
     await db.batch(
       await operationalBusinessNotificationStatements(db, {
@@ -740,7 +809,7 @@ void test('disabled accounts receive only their explicit factual account-status 
     assert.equal(
       sqlite
         .prepare(
-          "SELECT COUNT(*) AS n FROM notification_messages WHERE template_key='business.account.status' AND channel='in_app'",
+          "SELECT COUNT(*) AS n FROM notification_messages WHERE recipient_user_id='owner' AND template_key='business.account.status' AND channel='in_app'",
         )
         .get()?.n,
       0,
@@ -763,7 +832,7 @@ void test('disabled accounts receive only their explicit factual account-status 
     assert.match(owner[0].text, /account is now disabled/);
     assert.match(owner[0].text, /\/help/);
     sqlite.exec(
-      "INSERT INTO audit_logs VALUES ('b','owner','disable-2','user.status')",
+      "INSERT INTO audit_logs VALUES ('b','owner','disable-2','user.status',300);UPDATE users SET updated_at=300 WHERE id='owner'",
     );
     await db.batch(
       await operationalBusinessNotificationStatements(db, {
@@ -789,7 +858,7 @@ void test('disabled accounts receive only their explicit factual account-status 
           { now: 400 },
         )
       ).cancelled,
-      1,
+      2,
     );
   } finally {
     sqlite.close();
@@ -843,9 +912,9 @@ void test('promotion decisions notify their actual maker and pending requests ex
         'https://example.test',
         { now: 200 },
       ),
-      { accepted: 1, failed: 0, cancelled: 1 },
+      { accepted: 2, failed: 0, cancelled: 1 },
     );
-    assert.deepEqual(sent, ['admin@example.test']);
+    assert.deepEqual(sent.sort(), ['admin@example.test', 'sa@example.test']);
   } finally {
     sqlite.close();
   }
@@ -1038,4 +1107,98 @@ void test('rider owner and ordinary Admin notifications stay private, including 
   } finally {
     sqlite.close();
   }
+});
+
+// This test suite models an explicitly accepting fake provider.
+const deliverBusinessEmails: typeof actualDeliverBusinessEmails = (db,mail,origin,options) => actualDeliverBusinessEmails(db,fakeProviderMail(mail),origin,options);
+
+void test('provider acceptance survives a lost business queue completion write and a restarted sender',async()=>{
+  const f=fixture();let sends=0,loseCompletion=true;
+  try{
+    await f.db.batch(await businessNotificationStatements(f.db,event));
+    const observed={prepare(sql:string){
+      const statement=f.db.prepare(sql);
+      if(!sql.includes("UPDATE notification_messages SET status='sent'"))return statement;
+      return {bind(...values:unknown[]){statement.bind(...values);return this;},async run(){if(loseCompletion){loseCompletion=false;throw new Error('fake queue completion loss');}return statement.run();}};
+    }} as unknown as D1Database;
+    const mail={send:async()=>{sends++;return {outcome:'accepted' as const,transport:'provider' as const,receipt:'fake-accepted'};}};
+    await actualDeliverBusinessEmails(observed,mail,'https://example.test',{now:1000});
+    assert.equal(sends,3);
+    await actualDeliverBusinessEmails(f.db,mail,'https://example.test',{now:10_000_000});
+    assert.equal(sends,3);
+    assert.equal(f.sqlite.prepare("SELECT COUNT(*) n FROM email_delivery_attempts WHERE phase='accepted'").get()?.n,3);
+  }finally{f.sqlite.close();}
+});
+
+void test('business source resolution during SMTP connection is rechecked before body handoff',async()=>{
+  const f=fixture();let submissions=0;
+  try{
+    await f.db.batch(await businessNotificationStatements(f.db,event));
+    const result=await actualDeliverBusinessEmails(f.db,{handoffAware:true,send:async(_message,context)=>{
+      f.sqlite.prepare("UPDATE products SET status='approved' WHERE id='product-1'").run();
+      await context?.beforeHandoff();submissions++;
+      return {outcome:'accepted',transport:'provider'};
+    }},'https://example.test',{now:1000});
+    assert.equal(submissions,0);assert.equal(result.accepted,0);assert.equal(result.cancelled,3);
+  }finally{f.sqlite.close();}
+});
+void test('business deadline leaves unstarted work untouched and first-attempt health excludes matching provider backoff',async()=>{
+  const f=fixture();let sends=0;
+  try{
+    await f.db.batch(await businessNotificationStatements(f.db,event));
+    const {businessEmailQueueSummary,businessEmailQueue}=await import('../lib/operations/business-notifications');
+    const mail={transportKey:'fake-provider',configurationFingerprint:'configuration-one',send:async()=>{sends++;return {outcome:'accepted' as const,transport:'provider' as const};}};
+    assert.deepEqual(await actualDeliverBusinessEmails(f.db,mail,'https://example.test',{now:1_000_000,deadlineMs:0}),{accepted:0,failed:0,cancelled:0});assert.equal(sends,0);
+    const before=await businessEmailQueueSummary(f.db,1_000_000,mail);assert.equal(before.due,3);assert.equal(before.overdueFirstAttempts,3);assert.equal(before.oldestEligibleAt,100);
+    f.sqlite.prepare("INSERT INTO email_transport_backoff(transport_key,config_fingerprint,blocked_until,updated_at) VALUES('fake-provider','configuration-one',2000000,1000000)").run();
+    const blocked=await businessEmailQueueSummary(f.db,1_000_000,mail);assert.equal(blocked.due,0);assert.equal(blocked.oldestEligibleAt,null);
+    const changed=await businessEmailQueueSummary(f.db,1_000_000,{...mail,configurationFingerprint:'corrected'});assert.equal(changed.due,3);
+    const rows=await businessEmailQueue(f.db,1_000_000);assert.ok(rows.every(row=>!('recipientEmail' in row)&&row.maskedRecipient?.includes('***@')));
+  }finally{f.sqlite.close();}
+});
+void test('legacy failed business rows with no attempt ledger are held without claim or cancellation',async()=>{
+ const f=fixture();let sends=0;
+ try{
+  await f.db.batch(await businessNotificationStatements(f.db,event));
+  f.sqlite.exec("UPDATE notification_messages SET status='failed',delivery_attempts=2,failure_reason='delivery_failed' WHERE channel='email';UPDATE products SET status='approved' WHERE id='product-1'");
+  const before=f.sqlite.prepare("SELECT * FROM notification_messages WHERE channel='email' ORDER BY id").all();
+  await actualDeliverBusinessEmails(f.db,{send:async()=>{sends++;return {outcome:'accepted',transport:'provider'};}},'https://example.test',{now:1000});
+  assert.equal(sends,0);assert.deepEqual(f.sqlite.prepare("SELECT * FROM notification_messages WHERE channel='email' ORDER BY id").all(),before);
+  assert.equal(f.sqlite.prepare("SELECT COUNT(*) n FROM email_delivery_attempts WHERE phase='uncertain' AND failure_code='legacy_outcome_unverified'").get()?.n,3);
+ }finally{f.sqlite.close();}
+});
+void test('a current known-unstarted business cancellation retains matching attempt evidence',async()=>{
+ const f=fixture();
+ try{
+  await f.db.batch(await businessNotificationStatements(f.db,event));f.sqlite.exec("UPDATE products SET status='approved' WHERE id='product-1'");
+  await actualDeliverBusinessEmails(f.db,{send:async()=>assert.fail('obsolete source must not send')},'https://example.test',{now:1000});
+  const rows=f.sqlite.prepare("SELECT n.delivery_attempts AS attempts,(SELECT COUNT(*) FROM email_delivery_attempts a WHERE a.queue_kind='business' AND a.queue_id=n.id AND a.phase='cancelled') AS recorded FROM notification_messages n WHERE n.channel='email'").all();
+  assert.ok(rows.every(row=>row.attempts===1&&row.recorded===1));
+ }finally{f.sqlite.close();}
+});
+void test('a currently valid legacy business retry is visibly uncertain before the worker and never handed off',async()=>{
+ const f=fixture();let sends=0;
+ try{
+  await f.db.batch(await businessNotificationStatements(f.db,event));f.sqlite.exec("UPDATE notification_messages SET status='failed',delivery_attempts=2 WHERE channel='email'");
+  const {businessEmailQueue,businessEmailQueueSummary}=await import('../lib/operations/business-notifications');
+  assert.ok((await businessEmailQueue(f.db,1000)).every(row=>row.deliveryState==='uncertain'));
+  const summary=await businessEmailQueueSummary(f.db,1000);assert.equal(summary.due,0);assert.equal(summary.uncertain,3);
+  await actualDeliverBusinessEmails(f.db,{send:async()=>{sends++;return{outcome:'accepted',transport:'provider'};}},'https://example.test',{now:1000});
+  assert.equal(sends,0);assert.ok(f.sqlite.prepare("SELECT status,delivery_attempts AS attempts FROM notification_messages WHERE channel='email'").all().every(row=>row.status==='failed'&&row.attempts===2));
+  assert.ok((await businessEmailQueue(f.db,1000)).every(row=>row.lastAttemptAt===null&&row.legacyObservationAt===1000&&row.failureCategory==='unknown'));
+ }finally{f.sqlite.close();}
+});
+void test('more than 100 unaccounted legacy business rows cannot crowd one fresh candidate out of its first run',async()=>{
+ const f=fixture();let sends=0;
+ try{
+  await f.db.batch(await businessNotificationStatements(f.db,event));f.sqlite.exec("DELETE FROM notification_messages WHERE channel='email' AND recipient_user_id<>'owner'");
+  const fresh=String(f.sqlite.prepare("SELECT id FROM notification_messages WHERE channel='email'").get()!.id);
+  const names=f.sqlite.prepare('PRAGMA table_info(notification_messages)').all().map(row=>String(row.name));
+  const expressions=names.map(name=>name==='id'||name==='request_id'?'?':name==='delivery_attempts'?'2':name==='created_at'?'1':name==='status'?"'failed'":name);
+  const copy=f.sqlite.prepare(`INSERT INTO notification_messages(${names.join(',')}) SELECT ${expressions.join(',')} FROM notification_messages WHERE id=?`);
+  for(let n=0;n<125;n++)copy.run(`legacy-${n}`,`legacy-request-${n}`,fresh);
+  const result=await actualDeliverBusinessEmails(f.db,{send:async()=>{sends++;return{outcome:'accepted',transport:'provider'};}},'https://example.test',{now:2000,limit:1});
+  assert.equal(result.accepted,1);assert.equal(sends,1);assert.equal(f.sqlite.prepare('SELECT status FROM notification_messages WHERE id=?').get(fresh)?.status,'sent');
+  assert.equal(f.sqlite.prepare("SELECT COUNT(*) n FROM notification_messages WHERE id LIKE 'legacy-%' AND status='failed' AND delivery_attempts=2").get()?.n,125);
+ }finally{f.sqlite.close();}
 });

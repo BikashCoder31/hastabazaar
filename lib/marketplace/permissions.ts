@@ -16,8 +16,11 @@ export const permissions = [
   'catalog.manage',
   'order.manage',
   'support.manage',
+  'refund.view',
   'refund.approve.standard',
   'refund.approve.high_value',
+  'payout.view',
+  'cod.view',
   'payout.prepare',
   'payout.approve',
   'payout.mark_paid',
@@ -25,7 +28,11 @@ export const permissions = [
   'tax_policy.manage',
   'shipping_credentials.manage',
   'payment_credentials.manage',
+  'payment.receipt.verify',
   'admin.invite',
+  'email.delivery.manage',
+  'system.health.view',
+  'system.incidents.manage',
   'admin.permissions.manage',
   'legal_content.publish',
   'audit_log.view',
@@ -79,9 +86,22 @@ export interface PermissionSubject {
   permissions?: readonly Permission[];
 }
 
-export const configurableAdminPermissions = adminPermissions.filter(
+export const defaultAdminPermissions = adminPermissions.filter(
   (permission) => !customerPermissions.includes(permission),
 );
+
+/** Special finance and technical grants are explicit; legacy Admin access is unchanged. */
+export const moneyViewPermissions = ['payout.view', 'cod.view', 'refund.view'] as const satisfies readonly Permission[];
+
+export function isMoneyViewOnly({ role, permissions: granted }: PermissionSubject): boolean {
+  return role === 'admin' && granted?.length === moneyViewPermissions.length &&
+    moneyViewPermissions.every(permission => granted.includes(permission));
+}
+
+export const configurableAdminPermissions: readonly Permission[] = [
+  ...defaultAdminPermissions, 'payment.receipt.verify', 'system.health.view', 'system.incidents.manage',
+  ...moneyViewPermissions,
+];
 
 export function validateAdminPermissions(value: unknown): Permission[] {
   if (!Array.isArray(value) || value.some((item) => !configurableAdminPermissions.includes(item))) {

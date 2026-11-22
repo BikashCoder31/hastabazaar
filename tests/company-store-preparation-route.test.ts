@@ -27,6 +27,10 @@ void test('actual admin fulfillment handler restricts company preparation and sa
   assert.equal((await send({...body,sellerId:''})).status,400);
   assert.equal((await send({...body,action:'dispatch'})).status,400,'Ordinary order actions cannot accept a maker selector');
   assert.equal((await send({...body,sellerId:'foreign'})).status,409);
+  assert.equal((await send()).status,409,'A placed order still needs confirmation');
+  assert.equal(context.companyPrepSends,0);
+  assert.equal(f.sqlite.prepare("SELECT count(*) n FROM form_answer_sets WHERE form_id='staff.order-fulfillment'").get()?.n,0);
+  f.sqlite.prepare("UPDATE orders SET status='confirmed' WHERE id=?").run(f.orderId);
   assert.equal((await send()).status,200);
   assert.equal(f.sqlite.prepare('SELECT fulfillment_status FROM order_items').get()?.fulfillment_status,'packing');
   assert.equal(context.companyPrepSends,1,'Committed company preparation must flush queued order updates');

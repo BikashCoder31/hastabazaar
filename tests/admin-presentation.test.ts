@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { registerHooks } from 'node:module';
 import test from 'node:test';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { adminNavigation } from '../lib/admin/navigation';
 import { availablePayoutActions } from '../lib/admin/payout-actions';
 import {
@@ -11,20 +14,36 @@ import {
 } from '../lib/homepage/hero-editor';
 import { INITIAL_HOMEPAGE_HERO_SLIDES } from '../lib/homepage/hero-slides';
 import { sendJson } from '../lib/http/client-request';
+import { permissions, type Permission } from '../lib/marketplace/permissions';
 
-void test('staff navigation denies unknown roles and limits staff access to Super Admin', () => {
-  for (const role of ['customer', 'seller', 'guest', 'unknown', ''])
+void test('staff navigation denies unknown roles, exposes own responsibilities and preserves reserved access', () => {
+  for (const role of ['customer', 'seller', 'guest', 'unknown', '']) {
     assert.deepEqual(adminNavigation(role), []);
+    assert.deepEqual(adminNavigation(role, permissions), []);
+  }
   for (const href of [
-    '/admin/team',
     '/admin/referrals',
+    '/admin/fees',
+    '/admin/fee-waivers',
+    '/admin/promo-codes',
+    '/admin/loyalty',
     '/admin/delivery-rates',
     '/admin/activity',
+    '/admin/forms',
+    '/admin/accounting',
+    '/admin/backup-transfer',
+    '/admin/staff-form-history',
+    '/admin/form-submissions',
+    '/admin/riders',
+    '/admin/homepage',
+    '/admin/business-emails',
+    '/admin/order-emails',
   ]) {
     assert.equal(
       adminNavigation('admin').some((item) => item.href === href),
       false,
     );
+    assert.equal(adminNavigation('admin', permissions).some((item) => item.href === href), false, href);
     assert.equal(
       adminNavigation('super_admin').some((item) => item.href === href),
       true,
@@ -32,11 +51,23 @@ void test('staff navigation denies unknown roles and limits staff access to Supe
   }
   assert.deepEqual(
     adminNavigation('admin', []).map((item) => item.href),
-    ['/admin/notifications'],
+    ['/admin', '/admin/notifications', '/admin/team', '/security'],
   );
+  assert.equal(adminNavigation('admin', []).find((item) => item.href === '/admin/team')?.label, 'My responsibilities');
+  assert.equal(adminNavigation('super_admin').find((item) => item.href === '/admin/team')?.label, 'Team & access');
+  for (const [href, permission] of [
+    ['/admin/products/publications', 'product.publish'],
+    ['/admin/payments', 'payment.receipt.verify'],
+    ['/admin/system-health', 'system.health.view'],
+    ['/admin/legal-policies/active', 'support.manage'],
+  ] as const satisfies readonly (readonly [string, Permission])[]) {
+    assert.equal(adminNavigation('admin', []).some((item) => item.href === href), false, href);
+    assert.equal(adminNavigation('admin', [permission]).some((item) => item.href === href), true, href);
+    assert.equal(adminNavigation('admin', ['order.manage']).some((item) => item.href === href), false, href);
+  }
   const orderDesk = adminNavigation('admin', ['order.manage']);
   assert.ok(orderDesk.some((item) => item.href === '/admin/orders'));
-  assert.ok(orderDesk.some((item) => item.href === '/admin/order-emails'));
+  assert.equal(orderDesk.some((item) => item.href === '/admin/order-emails'), false);
   assert.equal(
     orderDesk.some((item) => item.href === '/admin/cases'),
     false,
@@ -45,18 +76,9 @@ void test('staff navigation denies unknown roles and limits staff access to Supe
     orderDesk.some((item) => item.href === '/admin/products'),
     false,
   );
-  assert.ok(
-    adminNavigation('admin').some(
-      (item) => item.href === '/admin/order-emails',
-    ),
-  );
-  assert.equal(
-    adminNavigation('admin').some((item) => item.href === '/admin/referrals'),
-    false,
-  );
   assert.equal(
     adminNavigation('admin').some((item) => item.href === '/admin/team'),
-    false,
+    true,
   );
   assert.equal(
     adminNavigation('super_admin').some((item) => item.href === '/admin/team'),
@@ -141,7 +163,7 @@ void test('mutation client preserves a rejected response status for retry decisi
 });
 
 void test('homepage controls present Hero slides first with every approved editable field', async () => {
-  const [page, manager] = await Promise.all([
+  const [page, manager, upload] = await Promise.all([
     readFile(
       new URL('../app/admin/homepage/page.tsx', import.meta.url),
       'utf8',
@@ -150,6 +172,7 @@ void test('homepage controls present Hero slides first with every approved edita
       new URL('../components/admin/homepage-hero-manager.tsx', import.meta.url),
       'utf8',
     ),
+    readFile(new URL('../components/admin/use-homepage-upload.tsx', import.meta.url), 'utf8'),
   ]);
   assert.match(
     page,
@@ -159,19 +182,21 @@ void test('homepage controls present Hero slides first with every approved edita
   const searchPosition = page.indexOf('data-form-id="staff.homepage-filter"');
   assert.ok(heroPosition >= 0 && searchPosition >= 0, 'Both hero editor and registered product search must exist.');
   assert.ok(heroPosition < searchPosition, 'Hero editor stays before product search regardless of configured label.');
-  const helperFields = new Set([
-    'eyebrow',
-    'headingLead',
-    'highlightedPhrase',
-    'headingTail',
-    'primaryActionLabel',
-    'primaryActionHref',
-    'secondaryActionLabel',
-    'secondaryActionHref',
-    'imageAlt',
-    'videoDescription',
-    'imageNote',
-  ]);
+  // Render the actual manager and preview; only the Next router is unavailable in node.
+  const hooks = registerHooks({ resolve(specifier, context, nextResolve) {
+    if (specifier === 'next/navigation') return { url: 'data:text/javascript,export const useRouter=()=>({refresh(){}})', shortCircuit: true };
+    return nextResolve(specifier, context);
+  } });
+  let markup: string;
+  try {
+    const { HomepageHeroManager } = await import('../components/admin/homepage-hero-manager');
+    const image = INITIAL_HOMEPAGE_HERO_SLIDES[0]!;
+    markup = renderToStaticMarkup(createElement(HomepageHeroManager, {
+      actorId: 'presentation-reviewer', initialSlides: [image, { ...image, id: 'video-controls', mediaType: 'video' }],
+      initialMedia: [], history: [], asOf: 1,
+    }));
+  } finally { hooks.deregister(); }
+  assert.match(markup, /<form[^>]*data-form-id="staff\.homepage-hero-manager"/);
   for (const field of [
     'eyebrow',
     'headingLead',
@@ -189,16 +214,15 @@ void test('homepage controls present Hero slides first with every approved edita
     'videoDescription',
     'imageNote',
   ]) {
-    assert.match(
-      manager,
-      helperFields.has(field)
-        ? new RegExp(`text\\('${field}'`)
-        : new RegExp(`name=\\"${field}\\"`),
-    );
+    assert.match(markup, new RegExp(`<(?:input|textarea|select)\\b[^>]*name="${field}"`), field);
   }
-  assert.match(manager, /Desktop preview/);
-  assert.match(manager, /Mobile preview/);
-  assert.match(manager, /\/api\/admin\/homepage\/hero-media/);
+  assert.match(markup, /Desktop preview/);
+  assert.match(markup, /Mobile preview/);
+  assert.match(markup, /type="file"/);
+  assert.match(manager, /import\s*\{\s*useHomepageUpload\s*\}\s*from\s*'\.\/use-homepage-upload'/);
+  assert.match(manager, /upload\s*=\s*useHomepageUpload\(actorId,/);
+  assert.match(upload, /const endpoint\s*=\s*'\/api\/admin\/homepage\/hero-media'/);
+  assert.match(upload, /fetch\(endpoint,\{method:'POST'/);
   assert.match(manager, /key:\s*'homepage_hero_slides'/);
   assert.doesNotMatch(manager, /slide 1.*locked|first slide.*locked/i);
 });

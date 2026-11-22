@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {historicalCommissionDatabase} from './helpers/commission-database';
+import {listReviewTasks} from '../lib/workflows/review-tasks';
+import {getCommonFeeState,publishCommonFeePolicy} from '../lib/commission/coordinated-policy';
+import {getFeeTermsWorkspace,reconcileSellerFeeCases,recordFeeTermsContact} from '../lib/commission/terms-followup';
+
+async function fixture(){const f=await historicalCommissionDatabase(true),now=Date.now();try{const state=await getCommonFeeState(f.database,now);await publishCommonFeePolicy(f.database,{actorId:'owner',requestId:'terms-read-authority-policy',expectedRevision:null,now},{expectedContext:state.context,basisPoints:1200,effectiveAt:now+16*86400000,reason:'Publish the fictional original source for native reader authority proof.',replacesId:null});await reconcileSellerFeeCases(f.database,'seller-a',now);const row=f.sqlite.prepare("SELECT id,revision FROM commission_terms_cases WHERE seller_id='seller-a'").get()!;await recordFeeTermsContact(f.database,{actorId:'owner',requestId:'terms-private-native-note',expectedRevision:String(row.revision),now},{caseId:String(row.id),action:'contact',outcome:'reached',note:'PRIVATE-TERMS-READER-CANARY: internal staff outreach assessment.',nextAction:'Review this exact source with the appropriate responsible party.',nextUpdateAt:now+3600000});return{...f,now,caseId:String(row.id)};}catch(error){await f.dispose();throw error;}}
+
+void test('fee follow-up reader does not expose private staff case history to the same seller acting as Super Admin',async()=>{
+ const f=await fixture();try{f.sqlite.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES('user-a','super_admin',?)").run(f.now);const independent=await getFeeTermsWorkspace(f.database,'owner',f.now);assert.ok(JSON.stringify(independent).includes('PRIVATE-TERMS-READER-CANARY'));const shared=await listReviewTasks(f.database,'user-a');assert.equal(shared.some(task=>task.sourceType==='commission_terms'&&task.sourceId===f.caseId),false,'Actual shared source authority rejects the personal case');const own=await getFeeTermsWorkspace(f.database,'user-a',f.now);assert.equal(own.some(row=>row.id===f.caseId),false,'The native shared queue excludes this personal case; standalone reader must not bypass it');assert.doesNotMatch(JSON.stringify(own),/PRIVATE-TERMS-READER-CANARY/);
+ }finally{await f.dispose();}
+});
+
+void test('fee follow-up reader rechecks actor authority after async private history reads',async()=>{
+ const f=await fixture();try{let raced=false;const db=new Proxy(f.database,{get(target,key){if(key==='prepare')return(sql:string)=>{const statement=target.prepare(sql);if(!sql.includes('FROM commission_terms_events WHERE case_id='))return statement;const proxy:D1PreparedStatement=new Proxy(statement,{get(s,k){if(k==='bind')return(...values:unknown[])=>{s.bind(...values);return proxy;};if(k==='all')return async()=>{const rows=await s.all();raced=true;f.sqlite.prepare("DELETE FROM user_roles WHERE user_id='owner' AND role='super_admin'").run();return rows;};const value=Reflect.get(s,k);return typeof value==='function'?value.bind(s):value;}});return proxy;};const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;}});let denied=false;try{await getFeeTermsWorkspace(db,'owner',f.now);}catch{denied=true;}assert.equal(raced,true,'Actual private read returned before the current-role race');assert.equal(denied,true,'A revoked staff actor must not receive private case history');
+ }finally{await f.dispose();}
+});
+
+void test('former owner does not regain retained private history and permitted support reads still work for an unavailable seller',async()=>{
+ const f=await fixture();try{
+  const support=await getFeeTermsWorkspace(f.database,'staff',f.now);assert.ok(JSON.stringify(support).includes('PRIVATE-TERMS-READER-CANARY'),'Native permitted ordinary support retains its allowed independent read');
+  f.sqlite.prepare("UPDATE users SET status='disabled' WHERE id='user-a'").run();const unavailable=await getFeeTermsWorkspace(f.database,'owner',f.now);assert.ok(unavailable.some(row=>row.id===f.caseId&&row.state==='unavailable'));assert.ok(JSON.stringify(unavailable).includes('PRIVATE-TERMS-READER-CANARY'));
+  f.sqlite.prepare("UPDATE users SET status='active' WHERE id='user-a'").run();f.sqlite.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES('user-a','super_admin',?)").run(f.now);f.sqlite.prepare("INSERT INTO users(id,auth_subject,email,display_name,status,created_at,updated_at) VALUES('terms-next-owner','terms-next-owner','terms-next-owner@local.hastabazaar.test','Fictional next owner','active',1,1)").run();f.sqlite.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES('terms-next-owner','customer',1)").run();f.sqlite.prepare("UPDATE seller_profiles SET user_id='terms-next-owner',updated_at=updated_at+1 WHERE id='seller-a'").run();
+  // Hostile ownership-pointer probe only: immutable original offer key is retained.
+  const former=await getFeeTermsWorkspace(f.database,'user-a',f.now);assert.equal(former.some(row=>row.id===f.caseId),false);assert.doesNotMatch(JSON.stringify(former),/PRIVATE-TERMS-READER-CANARY/);assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM commission_terms_events WHERE case_id=? AND kind=?').get(f.caseId,'contact')!.n,1);
+ }finally{await f.dispose();}
+});
+
+void test('a personal source change during native private read fails closed without rewriting history',async()=>{
+ const f=await fixture();try{let raced=false;const db=new Proxy(f.database,{get(target,key){if(key==='prepare')return(sql:string)=>{const statement=target.prepare(sql);if(!sql.includes('FROM commission_terms_events WHERE case_id='))return statement;const proxy:D1PreparedStatement=new Proxy(statement,{get(s,k){if(k==='bind')return(...values:unknown[])=>{s.bind(...values);return proxy;};if(k==='all')return async()=>{const rows=await s.all();if(!raced){raced=true;f.sqlite.prepare("UPDATE seller_profiles SET user_id='owner',updated_at=updated_at+1 WHERE id='seller-a'").run();}return rows;};const value=Reflect.get(s,k);return typeof value==='function'?value.bind(s):value;}});return proxy;};const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;}});let error:unknown;try{await getFeeTermsWorkspace(db,'owner',f.now);}catch(value){error=value;}assert.equal(raced,true);assert.ok(error instanceof Error&&'status' in error&&error.status===403);assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM commission_terms_events WHERE case_id=? AND kind=?').get(f.caseId,'contact')!.n,1);
+ }finally{await f.dispose();}
+});

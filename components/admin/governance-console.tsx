@@ -12,7 +12,7 @@ import { ConfirmOperation } from '@/components/admin/confirm-operation';
 import { useAdminMutation } from '@/components/admin/use-admin-mutation';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 import type { GovernanceOverview } from '@/lib/db/repositories/operations';
 
@@ -297,7 +297,7 @@ export function GovernanceConsole({
                   {ruleCatalog.config ? <ConfiguredFields config={ruleCatalog.config} baseKeys={governanceBaseKeys} /> : null}
                   {!ruleCatalog.canSubmit ? <p role="alert">{ruleCatalog.message || 'Form configuration is unavailable.'}</p> : null}
                   {retryControl('rule.create')}
-                  <Button type="submit" disabled={!ruleCatalog.canSubmit}>Add rule</Button>
+                  <Button type="submit" className="max-md:min-h-11" disabled={!ruleCatalog.canSubmit}>Add rule</Button>
                 </div>
               </form>
               <div className="mt-6 divide-y">
@@ -409,7 +409,7 @@ export function GovernanceConsole({
                   {promotionCatalog.config ? <ConfiguredFields config={promotionCatalog.config} baseKeys={governanceBaseKeys} /> : null}
                   {!promotionCatalog.canSubmit ? <p role="alert">{promotionCatalog.message || 'Form configuration is unavailable.'}</p> : null}
                   {retryControl('promotion.create')}
-                  <Button type="submit" disabled={!promotionCatalog.canSubmit}>{superAdmin ? 'Create placement' : 'Submit for Super Admin approval'}</Button>
+                  <Button type="submit" className="max-md:min-h-11" disabled={!promotionCatalog.canSubmit}>{superAdmin ? 'Create placement' : 'Submit for Super Admin approval'}</Button>
                 </div>
               </form>
               <div className="mt-6 divide-y">
@@ -581,7 +581,7 @@ export function GovernanceConsole({
                       {incidentCreateCatalog.config ? <ConfiguredFields config={incidentCreateCatalog.config} baseKeys={governanceBaseKeys} /> : null}
                       {!incidentCreateCatalog.canSubmit ? <p role="alert">{incidentCreateCatalog.message || 'Form configuration is unavailable.'}</p> : null}
                       {retryControl('incident.create')}
-                      <Button type="submit" disabled={!incidentCreateCatalog.canSubmit}>Open incident</Button>
+                      <Button type="submit" className="max-md:min-h-11" disabled={!incidentCreateCatalog.canSubmit}>Open incident</Button>
                     </div>
                   </form>
                   <div className="mt-6 divide-y">
@@ -691,7 +691,7 @@ export function GovernanceConsole({
                       {backupCatalog.config ? <ConfiguredFields config={backupCatalog.config} baseKeys={governanceBaseKeys} /> : null}
                       {!backupCatalog.canSubmit ? <p role="alert">{backupCatalog.message || 'Form configuration is unavailable.'}</p> : null}
                       {retryControl('backup.verify')}
-                      <Button type="submit" disabled={!backupCatalog.canSubmit}>Record verification</Button>
+                      <Button type="submit" className="max-md:min-h-11" disabled={!backupCatalog.canSubmit}>Record verification</Button>
                     </div>
                   </form>
                   <div className="mt-6 divide-y">

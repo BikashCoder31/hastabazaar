@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { SellerCaseResponseForm } from '@/components/seller/case-response-form';
+import { WhoseTurn } from '@/components/ui/whose-turn';
 import { AnswerDetails } from '@/components/forms/answer-details';
 import { requireSellerPage } from '@/lib/auth/seller';
 import { requireDatabase } from '@/lib/db/d1';
@@ -43,11 +44,13 @@ export default async function SellerComplaintCasePage({
   const allowed = await Promise.all(history.answers.map((answer) =>
     authorizeFormAnswerRead(db, { id: seller.userId, role: 'seller' }, answer)));
   const answers = history.answers.filter((_, index) => allowed[index]);
+  const done = ['closed', 'resolved'].includes(item.status);
+  const canReply = !item.sellerResponse && !done;
   return (
     <div>
       <Link
         href="/seller/cases"
-        className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"
+        className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
         Back to cases
@@ -60,9 +63,10 @@ export default async function SellerComplaintCasePage({
             {item.productName || 'Shop-related case'} · {item.category}
           </p>
         </div>
-        <span className="h-fit rounded-full bg-secondary px-3 py-1.5 text-sm font-semibold capitalize">
-          {item.status.replaceAll('_', ' ')}
-        </span>
+        <div className="space-y-1">
+          <WhoseTurn status={done ? 'done' : canReply ? 'your-turn' : 'with-hastabazaar'} />
+          <p className="text-xs capitalize text-muted-foreground">{item.status.replaceAll('_', ' ')}</p>
+        </div>
       </div>
       <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <section className="rounded-2xl border bg-card p-6">

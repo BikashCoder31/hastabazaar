@@ -31,7 +31,7 @@ export function MobileNavigation() {
       </SheetTrigger>
       <SheetContent
         side="left"
-        className="w-[min(24rem,calc(100%-1.5rem))]! overflow-y-auto overscroll-contain pb-6"
+        className="w-[min(24rem,calc(100%-1.5rem))]! overflow-y-auto overscroll-contain pb-6 [&_[data-slot=sheet-close]]:size-11"
       >
         <SheetHeader className="border-b px-6 py-7">
           <SheetTitle>
@@ -83,14 +83,14 @@ export function MobileNavigation() {
             <Link
               href="/sell"
               onClick={() => setOpen(false)}
-              className="mt-3 block rounded-md py-2 text-sm font-semibold text-primary"
+              className="mt-3 flex min-h-11 items-center rounded-md py-2 text-sm font-semibold text-primary"
             >
               Become a seller →
             </Link>
             <Link
               href="/seller"
               onClick={() => setOpen(false)}
-              className="block rounded-md py-2 text-sm font-semibold text-primary"
+              className="flex min-h-11 items-center rounded-md py-2 text-sm font-semibold text-primary"
             >
               Seller dashboard →
             </Link>

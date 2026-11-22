@@ -28,8 +28,7 @@ export function nextHeroIndex(
 }
 
 export function heroAdvanceDelayMs(mediaType: HomepageHeroMediaType): number {
-  if (mediaType === 'image') return 6_000;
-  if (mediaType === 'video') return 6_000;
+  if (mediaType === 'image' || mediaType === 'video') return 6_500;
   throw new RangeError('Unsupported homepage hero media type.');
 }
 

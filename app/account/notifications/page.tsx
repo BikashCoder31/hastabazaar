@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { AccountHeading } from '@/components/account/account-ui';
+import { CustomerSettings } from '@/components/account/account-sections';
 import { NotificationList } from '@/components/account/notification-list';
 import { requireCustomerPage } from '@/lib/auth/customer';
 import { requireDatabase } from '@/lib/db/d1';
@@ -11,20 +11,17 @@ export default async function CustomerNotificationsPage() {
   const items = await listNotifications(
     requireDatabase(env as unknown as { DB?: D1Database }),
     customer.userId,
-    100,
+    Number.MAX_SAFE_INTEGER,
     'customer',
   );
   return (
-    <div>
-      <AccountHeading
-        eyebrow="Your latest updates"
-        title="Keep in the know."
-        description="Updates from HastaBazaar, ready when you are."
-      />
+    <CustomerSettings active="notifications">
       <NotificationList
+        accountId={customer.userId}
         workspace="customer"
-        initial={items.filter((item) => item.channel === 'in_app')}
+        initial={items.slice(0, 100)}
+        unreadCount={items.filter(item => !item.readAt).length}
       />
-    </div>
+    </CustomerSettings>
   );
 }

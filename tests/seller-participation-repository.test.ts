@@ -12,6 +12,7 @@ import {
 } from '../lib/db/repositories/seller-applications';
 import { parseSellerApplication } from '../lib/sellers/application';
 import { createProductSubmission } from '../lib/db/repositories/products';
+import {getPublicProfileWorkspace,savePublicProfileDraft} from '../lib/sellers/public-profile';
 
 class TestStatement {
   private values: SQLInputValue[] = [];
@@ -127,6 +128,9 @@ void test('managed application persists absent tax data, private address, and ed
   const sqlite = new DatabaseSync(':memory:');
   try {
     await applyMigrations(sqlite);
+    sqlite.exec("INSERT INTO users(id,email,display_name,status,created_at,updated_at) VALUES('fixture-config-author','config@example.test','Fixture configuration author','active',1,1)");
+    const {historicalCommissionFixture}=await import('./helpers/historical-commission-fixture');
+    historicalCommissionFixture(sqlite,'fixture-config-author');
     const database = new TestDatabase(sqlite) as unknown as D1Database;
     const parsed = parseSellerApplication(managedMakerForm());
     assert.ok(parsed.input, parsed.errors.join('\n'));
@@ -158,7 +162,7 @@ void test('managed application persists absent tax data, private address, and ed
     ]);
     assert.equal(participation?.legalSellerReference, null);
     assert.equal(participation?.invoiceIssuerReference, null);
-    await updateSellerParticipationPublicProfile(database, {
+    await assert.rejects(updateSellerParticipationPublicProfile(database, {
       sellerId: 'managed-seller',
       actorId: 'managed-user',
       expectedVersion: 1,
@@ -168,10 +172,13 @@ void test('managed application persists absent tax data, private address, and ed
       socialLinks: { instagram: 'https://instagram.com/updated-fictional-maker' },
       now: 1_800_000_000_050,
       requestId: 'profile-update-1',
-    });
+    }),/draft|review/i);
     const updatedParticipation = await getSellerParticipationProfile(database, 'managed-seller');
-    assert.equal(updatedParticipation?.publicName, 'Updated Fictional Studio');
-    assert.equal(updatedParticipation?.version, 2);
+    assert.equal(updatedParticipation?.publicName, 'Fictional Mithila Studio');
+    assert.equal(updatedParticipation?.version, 1);
+    const workspace=await getPublicProfileWorkspace(database,'managed-seller','managed-user','owner',1_800_000_000_051);
+    await savePublicProfileDraft(database,{sellerId:'managed-seller',actorId:'managed-user',expectedDraftRevision:null,baseVersion:0,values:{...workspace.state.current,publicName:'Updated Fictional Studio'},requestId:'private-profile-update',now:1_800_000_000_051});
+    assert.equal((await getPublicProfileWorkspace(database,'managed-seller','managed-user','owner',1_800_000_000_052)).draft?.values.publicName,'Updated Fictional Studio');
     await assert.rejects(
       () => updateSellerParticipationPublicProfile(database, {
         sellerId: 'managed-seller',
@@ -184,7 +191,7 @@ void test('managed application persists absent tax data, private address, and ed
         now: 1_800_000_000_060,
         requestId: 'profile-update-2',
       }),
-      /owner|changed/i,
+      /owner|changed|review/i,
     );
     const address = sqlite.prepare(`SELECT purpose, locality, is_public FROM seller_operational_addresses
       WHERE seller_id = ?`).get('managed-seller');

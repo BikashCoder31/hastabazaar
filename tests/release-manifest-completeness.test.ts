@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { copyReleaseManifestInputs } from './helpers/copy-release-manifest-inputs';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -18,19 +19,52 @@ import { promisify } from 'node:util';
 interface Manifest {
   release: string;
   migrations: { path: string; usage: string; sha256: string }[];
+  ownerAppliedMigrations: {
+    path: string; usage: string; sha256: string;
+    d1: { path: string; sha256: string };
+    requiresWriterPause: boolean;
+    requiredChecks: Record<string, string>;
+    requiredExactTriggerDefinitions: Record<string, string>;
+    requiredTables: Record<string, string[]>;
+    requiredTriggerShapes: Record<string, { timing: string; event: string; table: string }>;
+    requiredUniqueIndexes?: Record<string, string[]>;
+  }[];
   requiredTables: Record<string, string[]>;
   requiredTriggers: Record<string, string[]>;
 }
 
+// The prospective bundle has its own exact inventory assertions in
+// order-refund-migration-registration.test.mjs. Keep this historical oracle
+// independent of either generator so an orphaned SQL file still fails.
+const orderRefundOptIn = new Set([
+  'mariadb-order-item-pricing-snapshots.sql',
+  'mariadb-seller-shipment-delivery-allocations.sql',
+  'mariadb-priced-return-effects.sql',
+  'mariadb-seller-dispatch-evidence.sql',
+  'mariadb-refund-route-reservations.sql',
+  'mariadb-priced-order-acceptance-lock.sql',
+]);
+const ownerAppliedMigrations = [
+  'mariadb-customer-cod-confirmation.sql',
+  'mariadb-delivery-failure-reasons.sql',
+  'mariadb-seller-staff-notes.sql',
+  'mariadb-cancellation-cause.sql',
+  'mariadb-packed-parcel-weight.sql',
+  'mariadb-occasion-discovery.sql',
+  'mariadb-occasion-images.sql',
+  'mariadb-delivery-partners.sql',
+  'mariadb-ncm-api.sql',
+];
+
 // Omitting a maintained companion must fail even if the checked-in manifest
 // and the generator omit the same file. Expectations come from the SQL inventory.
-void test('release generator covers the maintained non-reset SQL inventory', async (t) => {
+void test('historical release generation covers its maintained non-reset SQL inventory', async (t) => {
   const sqlRoot = fileURLToPath(
     new URL('../deployment/babal/', import.meta.url),
   );
   const sqlNames = (await readdir(sqlRoot, { recursive: true }))
     .map((name) => name.split(sep).join('/'))
-    .filter((name) => name.endsWith('.sql'))
+    .filter((name) => name.endsWith('.sql') && name !== 'check-production-schema.sql')
     .sort();
   const root = await mkdtemp(join(tmpdir(), 'hb-manifest-completeness-'));
   const release = 'fixture-manifest-completeness';
@@ -46,6 +80,7 @@ void test('release generator covers the maintained non-reset SQL inventory', asy
       { cwd: root, env: { ...process.env, HASTABAZAAR_RELEASE_ID: release } },
     );
   try {
+    await copyReleaseManifestInputs(root);
     for (const name of sqlNames) {
       const destination = join(root, 'deployment/babal', name);
       await mkdir(dirname(destination), { recursive: true });
@@ -56,7 +91,7 @@ void test('release generator covers the maintained non-reset SQL inventory', asy
     const manifest = JSON.parse(first) as Manifest;
     const names = manifest.migrations.map(({ path }) => path);
     const expectedPaths = sqlNames
-      .filter((name) => name !== 'mariadb-reset-empty-import.sql')
+      .filter((name) => name !== 'mariadb-reset-empty-import.sql' && !orderRefundOptIn.has(name) && !ownerAppliedMigrations.includes(name))
       .map((name) => 'deployment/babal/' + name);
 
     await t.test(
@@ -65,7 +100,7 @@ void test('release generator covers the maintained non-reset SQL inventory', asy
         assert.deepEqual(
           [...names].sort(),
           expectedPaths,
-          'Every maintained non-reset SQL file must be discoverable for release preparation',
+          'Every historical non-reset SQL file must be discoverable for release preparation',
         );
         assert.equal(
           new Set(names).size,
@@ -80,7 +115,8 @@ void test('release generator covers the maintained non-reset SQL inventory', asy
         for (const migration of manifest.migrations) {
           assert.equal(
             migration.usage,
-            migration.path === 'deployment/babal/mariadb-schema.sql'
+            // Defaults activate only a fresh database, never a populated upgrade.
+            ['deployment/babal/mariadb-schema.sql', 'deployment/babal/mariadb-fresh-bootstrap-defaults.sql'].includes(migration.path)
               ? 'empty-database-only'
               : 'additive-maintenance',
             migration.path,
@@ -94,6 +130,80 @@ void test('release generator covers the maintained non-reset SQL inventory', asy
         }
       },
     );
+
+    await t.test('owner-applied SQL is retained without adding it to automated release maintenance', async () => {
+      for (const name of ownerAppliedMigrations) {
+        assert.ok(sqlNames.includes(name), `${name} must be available for the owner`);
+        assert.ok(!names.includes('deployment/babal/' + name), `${name} requires owner application`);
+      }
+      const entries = manifest.ownerAppliedMigrations;
+      assert.deepEqual(entries.map(entry => entry.path), ownerAppliedMigrations.map(name => 'deployment/babal/' + name));
+      const tracked = JSON.parse(await readFile(new URL('../deployment/babal/release-manifest.json', import.meta.url), 'utf8'));
+      assert.deepEqual(tracked.ownerAppliedMigrations, entries);
+      const required = [
+        { first_cod_reviews: ['hold_source'], users: ['cod_confirmation_required'] },
+        { shipping_jobs: ['delivery_failure_reason'] },
+        { seller_staff_notes: ['id', 'seller_id', 'author_user_id', 'body', 'created_at', 'pinned'] },
+        { order_cancellation_events: ['cause'], order_cancellation_reviews: ['cause'] },
+        { products: ['packed_weight_grams'], seller_parcel_weights: ['order_id', 'seller_id', 'weight_grams', 'item_count', 'recorded_by', 'request_id', 'recorded_at'] },
+        { occasion_discovery: ['occasion_id', 'group_name', 'group_sort_order', 'season_starts_at', 'season_ends_at'] },
+        { occasion_media: ['id', 'occasion_id', 'object_key', 'original_name', 'mime_type', 'size_bytes', 'width', 'height', 'content_hash', 'created_by', 'request_id', 'created_at'],
+          occasion_image_assignments: ['occasion_id', 'media_id', 'updated_by', 'updated_at'] },
+        { delivery_partners: ['id', 'name', 'status', 'booking_mode', 'collects_cod', 'tracking_pattern', 'default_slot', 'revision', 'created_at', 'updated_at'],
+          shipping_parcels: ['delivery_partner_id'] },
+        {
+          ncm_partner_settings: ['partner_id', 'connection_fingerprint', 'assigned_branches_json', 'branches_json', 'branches_checked_at', 'refresh_started_at', 'connected_at', 'delivery_type', 'package_name', 'revision', 'updated_at', 'last_check_at', 'check_started_at'],
+          ncm_pickup_branches: ['pickup_address_id', 'partner_id', 'address_updated_at', 'branch', 'updated_at'],
+          ncm_bookings: ['job_id', 'partner_id', 'actor_id', 'vendor_reference', 'ncm_order_id', 'state', 'request_id', 'started_at', 'updated_at', 'response_json', 'label_json', 'cod_reported_paisa', 'delivery_charge_paisa', 'return_charge_paisa', 'last_status'],
+          ncm_api_daily_usage: ['usage_day', 'bucket', 'used'],
+          ncm_webhook_events: ['id', 'kind', 'event', 'payload_json', 'received_at', 'processed_at', 'attempts', 'next_attempt_at', 'claimed_at'],
+          ncm_courier_notes: ['ncm_order_id', 'comment_id', 'job_id', 'kind', 'comment', 'created_at'],
+        },
+      ];
+      for (const [index, entry] of entries.entries()) {
+        assert.equal(entry.usage, 'owner-applied');
+        assert.equal(entry.requiresWriterPause, index === 0);
+        const slug = ownerAppliedMigrations[index].slice('mariadb-'.length).replaceAll('-', '_');
+        assert.equal(entry.d1.path, 'drizzle/0' + (164 + index) + '_' + slug);
+        for (const { path, sha256 } of [entry, entry.d1]) {
+          const bytes = await readFile(join(root, path));
+          assert.equal(sha256, createHash('sha256').update(bytes).digest('hex'), path);
+        }
+        assert.equal(Object.keys(entry.requiredChecks).length, [2, 1, 0, 2, 1, 1, 4, 6, 15][index]);
+        assert.deepEqual(Object.keys(entry.requiredExactTriggerDefinitions), Object.keys(entry.requiredTriggerShapes));
+        if (index === 0) {
+          assert.deepEqual(entry.requiredChecks, {
+            'first_cod_reviews.chk_first_cod_hold_source': "HEX(hold_source) IN (HEX('first_order'), HEX('customer_flag'))",
+            'first_cod_reviews.chk_first_cod_hold_total': "total_paisa BETWEEN 0 AND 9007199254740991 AND (hold_source='customer_flag' OR total_paisa>=500000)",
+          });
+          const sql = await readFile(join(root, entry.path), 'utf8');
+          const body = sql.slice(sql.indexOf('FOR EACH ROW ') + 'FOR EACH ROW '.length, sql.indexOf('END$$') + 3);
+          assert.equal(entry.requiredExactTriggerDefinitions.first_cod_review_immutable, body);
+        }
+        if (entry.path === 'deployment/babal/mariadb-ncm-api.sql') {
+          assert.deepEqual(entry.requiredUniqueIndexes, {
+            'ncm_partner_settings.PRIMARY': ['partner_id'],
+            'ncm_pickup_branches.PRIMARY': ['pickup_address_id'],
+            'ncm_bookings.PRIMARY': ['job_id'],
+            'ncm_bookings.idx_ncm_booking_reference': ['vendor_reference'],
+            'ncm_bookings.idx_ncm_booking_order': ['ncm_order_id'],
+            'ncm_bookings.idx_ncm_booking_request': ['request_id'],
+            'ncm_api_daily_usage.PRIMARY': ['usage_day', 'bucket'],
+            'ncm_webhook_events.PRIMARY': ['id'],
+            'ncm_courier_notes.PRIMARY': ['ncm_order_id', 'comment_id'],
+          });
+          assert.equal(entry.requiredChecks['ncm_bookings.ncm_booking_state'], "state IN ('booking','needs_review','rejected','booked')");
+          assert.equal(entry.requiredChecks['ncm_api_daily_usage.ncm_usage_bucket'], "bucket IN ('create','view')");
+          assert.equal(entry.requiredChecks['ncm_api_daily_usage.ncm_usage_nonnegative'], 'used>=0');
+          assert.equal(entry.requiredChecks['ncm_webhook_events.ncm_webhook_kind'], "kind IN ('delivery','comments')");
+          assert.equal(entry.requiredChecks['ncm_courier_notes.ncm_note_kind'], "kind IN ('Info','Action')");
+        }
+        assert.deepEqual(entry.requiredTables, required[index]);
+        assert.deepEqual(entry.requiredTriggerShapes, index === 0 ? {
+          first_cod_review_immutable: { timing: 'BEFORE', event: 'UPDATE', table: 'first_cod_reviews' },
+        } : {});
+      }
+    });
 
     await t.test('prerequisites precede their companions', () => {
       for (const [before, after] of [
@@ -118,6 +228,11 @@ void test('release generator covers the maintained non-reset SQL inventory', asy
       'form, privacy, contact, and COD readiness objects are discoverable',
       () => {
         const columns: Record<string, string[]> = {
+          marketplace_fee_waiver_control: ['id', 'revision'],
+          marketplace_fee_waiver_campaigns: ['id', 'revision', 'created_at', 'updated_at'],
+          marketplace_fee_waiver_revisions: ['campaign_id', 'revision', 'state', 'name', 'description', 'starts_at', 'ends_at', 'created_by', 'request_id', 'created_at'],
+          marketplace_fee_waiver_requests: ['request_id', 'actor_id', 'auth_subject', 'command_json', 'response_json', 'created_at'],
+          order_item_marketplace_fees: ['order_item_id', 'standard_bps', 'base_paisa', 'standard_paisa', 'waived_paisa', 'net_paisa', 'campaign_id', 'campaign_revision', 'created_at'],
           loyalty_config: ['scheduled_revision', 'scheduled_for', 'scheduled_unpause'],
           loyalty_revisions: ['weekly_points_json', 'grace_enabled'],
           loyalty_daily_claims: ['cycle_day', 'cycle_number', 'grace_used', 'grace_applied', 'cycle_reset_reason'],

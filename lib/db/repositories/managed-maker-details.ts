@@ -2,6 +2,8 @@ import { getEffectiveBusinessSetting } from './business-settings';
 import { staffMutationGuard } from './staff-mutation-guard';
 import {
   managedMakerAgreementContext,
+  MANAGED_MAKER_AGREEMENT_VERSION,
+  MANAGED_SUPPLIER_AGREEMENT_VERSION,
   managedMakerAgreementSnapshot,
   validateManagedMakerIdentity,
   type ManagedMakerIdentity,
@@ -53,6 +55,7 @@ export async function buildManagedMakerDetailStatements(
   const snapshot = managedMakerAgreementSnapshot(
     account.value,
     retention.value,
+    identity.managedAgreementVersion,
   );
   if (
     identity.managedAgreementContext !==
@@ -86,8 +89,8 @@ export async function buildManagedMakerDetailStatements(
     database
       .prepare(`INSERT INTO managed_maker_application_details
     (id,seller_id,government_id_type,government_id_description,personal_pan,identity_document_id,
-      agreement_version,agreement_accepted_at,agreement_accepted_by,agreement_snapshot_json,created_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+      agreement_version,agreement_accepted_at,agreement_accepted_by,agreement_snapshot_json,created_at,agreement_language)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,'en')`)
       .bind(
         crypto.randomUUID(),
         options.sellerId,
@@ -130,6 +133,7 @@ export async function getManagedMakerDetailsForReview(
 export async function getManagedMakerApplicationTerms(
   database: D1Database,
   now = Date.now(),
+  version: ManagedMakerIdentity['managedAgreementVersion'] = MANAGED_MAKER_AGREEMENT_VERSION,
 ) {
   const [account, retention] = await Promise.all([
     getEffectiveBusinessSetting(database, 'managed_maker_company_account', now),
@@ -142,8 +146,10 @@ export async function getManagedMakerApplicationTerms(
   const snapshot = managedMakerAgreementSnapshot(
     account.value,
     retention.value,
+    version,
   );
   return {
+    version,
     account: account.value,
     platformRetentionBps: retention.value,
     context: await managedMakerAgreementContext(snapshot),
@@ -152,3 +158,14 @@ export async function getManagedMakerApplicationTerms(
 export type ManagedMakerApplicationTerms = Awaited<
   ReturnType<typeof getManagedMakerApplicationTerms>
 >;
+
+/** Code-owned SQL references only; public queries and command reads select the same applicable agreement. */
+export function managedAgreementVersionSql(sellerReference:string){
+  if(sellerReference!=='?'&&!/^[a-z_]+\.[a-z_]+$/.test(sellerReference))throw new Error('Invalid managed agreement source.');
+  return `CASE WHEN EXISTS(SELECT 1 FROM managed_maker_application_details applicable_detail WHERE applicable_detail.seller_id=${sellerReference} AND applicable_detail.agreement_version='${MANAGED_SUPPLIER_AGREEMENT_VERSION}') OR EXISTS(SELECT 1 FROM audit_logs applicable_intake WHERE applicable_intake.subject_id=${sellerReference} AND applicable_intake.subject_type='seller' AND applicable_intake.action='seller.application.submitted' AND json_extract(applicable_intake.next_json,'$.registrationIntake')=true) THEN '${MANAGED_SUPPLIER_AGREEMENT_VERSION}' ELSE '${MANAGED_MAKER_AGREEMENT_VERSION}' END`;
+}
+export async function managedAgreementVersionForSeller(database: D1Database, sellerId: string) {
+  const row=await database.prepare(`SELECT ${managedAgreementVersionSql('?')} AS version`).bind(sellerId,sellerId).first<{version:typeof MANAGED_SUPPLIER_AGREEMENT_VERSION|typeof MANAGED_MAKER_AGREEMENT_VERSION}>();
+  if(!row)throw new Error('The applicable managed agreement source is unavailable.');
+  return row.version;
+}

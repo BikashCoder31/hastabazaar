@@ -1,0 +1,8 @@
+import {checkoutCommitClock} from '../checkout/commit-policy-guards';
+import {operationalBusinessNotificationStatements} from '../operations/business-notifications';
+
+/** Composes into the source transaction. Unassigned coverage is visible; it is never invented as a named on-duty person. */
+export async function preparePaymentException(db:D1Database,input:{sourceKey:string;orderId:string|null;receiptId:string|null;kind:string;reason:string;ownerId:string|null;now:number;predicate?:string;values?:unknown[]}){
+ const prior=await db.prepare('SELECT id FROM manual_payment_exceptions WHERE source_key=?').bind(input.sourceKey).first<{id:string}>(),id=prior?.id??crypto.randomUUID(),eventId=crypto.randomUUID(),clock=checkoutCommitClock(db);
+ return [db.prepare(`INSERT OR IGNORE INTO manual_payment_exceptions(id,source_key,order_id,receipt_id,kind,state,revision,reason,owner_id,backup_id,created_at,next_update_at,updated_at,last_event_id) SELECT ?,?,?,?,?,'open',0,?,?,NULL,${clock},${clock}+86400000,${clock},? WHERE ${input.predicate??'1=1'}`).bind(id,input.sourceKey,input.orderId,input.receiptId,input.kind,input.reason,input.ownerId,eventId,...input.values??[]),...(prior?[db.prepare(`UPDATE manual_payment_exceptions SET state='open',revision=revision+1,reason=?,owner_id=COALESCE(owner_id,?),next_update_at=CASE WHEN next_update_at>${clock}+86400000 THEN ${clock}+86400000 ELSE next_update_at END,updated_at=${clock},last_event_id=? WHERE id=? AND (${input.predicate??'1=1'})`).bind(input.reason,input.ownerId,eventId,id,...input.values??[])]:[]),...await operationalBusinessNotificationStatements(db,{kind:'payment.exception',sourceId:id,eventId,actorId:input.ownerId??'system',now:input.now,status:input.kind})];
+}

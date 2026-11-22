@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { env } from 'cloudflare:workers';
 import { redirect } from 'next/navigation';
 import { requireStaffPage } from '@/lib/auth/staff';
@@ -20,7 +21,7 @@ export default async function LoyaltyPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 } = {}) {
-  const actor = await requireStaffPage('/admin/loyalty', 'admin.invite');
+  const actor = await requireStaffPage('/admin/loyalty', 'commercial_policy.manage');
   if (actor.role !== 'super_admin') redirect('/staff-access-denied');
   const database = requireDatabase(env as unknown as { DB?: D1Database });
   const filters = filtersFromParams((await searchParams) ?? {});
@@ -49,8 +50,7 @@ export default async function LoyaltyPage({
   return (
     <div className="grid min-w-0 grid-cols-1 gap-6">
       <div>
-        <p className="eyebrow">Super Admin · Controls</p>
-        <h1 className="section-title">Daily loyalty points</h1>
+        <AdminPageTitle><h1 className="section-title">Daily loyalty points</h1></AdminPageTitle>
         <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">
           Review daily earning, customer balances and reward costs. Manage
           rules, inspect transactions and follow changes from this page.

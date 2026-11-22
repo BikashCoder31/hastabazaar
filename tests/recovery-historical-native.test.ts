@@ -1,0 +1,28 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {historicalManagedRecoveryFixture} from './helpers/historical-managed-recovery-fixture';
+import {nativeFinanceClone} from './helpers/native-finance-clone';
+import * as recovery from '../lib/payments/seller-recovery';
+import {readHistoricalRecoveryCandidates} from '../lib/payments/recovery-historical';
+
+void test('native concurrent reviews retain the shared historical capacity and require a refreshed other-case review',async()=>{
+ const f=await historicalManagedRecoveryFixture({twoRefunds:true});let native:Awaited<ReturnType<typeof nativeFinanceClone>>|undefined;try{
+ assert.ok(f.sqlite.prepare('PRAGMA database_list').all().every(row=>row.file===''));assert.ok(f.secondRefundId);
+ const first=await recovery.openSellerRecovery(f.db,f.ctx('native-history-open-a'),{kind:'refund',id:f.refundId,reason:'Review the first actual refunded unit in its shared original historical deduction.'});
+ const second=await recovery.openSellerRecovery(f.db,f.ctx('native-history-open-b'),{kind:'refund',id:f.secondRefundId,reason:'Review the second actual refunded unit in its shared original historical deduction.'});
+ native=await nativeFinanceClone(f.sqlite);const db=native.db;
+ async function attempt(id:string,name:string){const current=await recovery.getSellerRecoveryReview(db,'reviewer',id);return {ctx:f.ctx(name,String(current.case.revision)),input:{caseId:id,reviewDigest:current.reviewDigest,candidate:(await readHistoricalRecoveryCandidates(db,current.source))[0],amountPaisa:f.originalPaidPaisa/2,evidenceReference:'FICTIONAL-NATIVE-HISTORICAL-ATTRIBUTION',reason:'Attribute only this original refund share against the actual one native paid deduction.',publicMessage:'The original deduction attributable to this refund is confirmed.',environment:f.context.environment}};}
+ const attempts=await Promise.all([attempt(first.id,'native-history-a'),attempt(second.id,'native-history-b')]);
+ const results=await Promise.allSettled(attempts.map(a=>recovery.reviewSellerRecoveryHistory(db,a.ctx,a.input)));
+ assert.equal(results.filter(r=>r.status==='fulfilled').length,1,JSON.stringify(results));
+ const winner=results.findIndex(r=>r.status==='fulfilled'),loser=1-winner;
+ assert.deepEqual(await recovery.reviewSellerRecoveryHistory(db,attempts[winner].ctx,attempts[winner].input),(results[winner] as PromiseFulfilledResult<unknown>).value);
+ const refreshed=await attempt(attempts[loser].input.caseId,'native-history-refreshed');await recovery.reviewSellerRecoveryHistory(db,refreshed.ctx,refreshed.input);
+ assert.equal((await db.prepare('SELECT SUM(amount_paisa) n FROM seller_recovery_historical_attributions').first<{n:number}>())!.n,f.originalPaidPaisa);
+ const journal=await db.prepare('SELECT * FROM seller_recovery_historical_attributions LIMIT 1').first();assert.ok(journal);
+ await assert.rejects(db.prepare('UPDATE seller_recovery_historical_attributions SET amount_paisa=1 WHERE id=?').bind(journal.id).run(),/retained/i);
+ await assert.rejects(db.prepare('DELETE FROM seller_recovery_historical_attributions WHERE id=?').bind(journal.id).run(),/retained/i);
+ await assert.rejects(db.prepare(`INSERT INTO seller_recovery_historical_attributions SELECT 'native-over-cap',case_id,case_revision+1,seller_id,refund_id,kind,payout_id,scope_id,native_deduction_paisa,1,actor_id,'native-over-cap',created_at,evidence_reference,reason,public_message FROM seller_recovery_historical_attributions WHERE id=?`).bind(journal.id).run(),/capacity/i);
+ assert.equal((await db.prepare('SELECT COUNT(*) n FROM seller_recovery_allocations').first<{n:number}>())!.n,0);
+ }finally{await native?.dispose();f.dispose();}
+});

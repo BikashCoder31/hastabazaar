@@ -36,7 +36,7 @@ registerHooks({
       };
     if (specifier === '@/lib/auth/staff')
       return {
-        url: "data:text/javascript,export class StaffAuthorizationError extends Error{};export async function requireStaffApi(permission){if(permission!=='admin.invite')throw new Error('Wrong staff permission');return {id:'super',authSubject:'super',role:'super_admin'}}",
+        url: "data:text/javascript,export class StaffAuthorizationError extends Error{};export async function requireStaffApi(permission){if(permission!=='commercial_policy.manage')throw new Error('Wrong staff permission');return {id:'super',authSubject:'super',role:'super_admin'}}",
         shortCircuit: true,
       };
     return nextResolve(specifier, context);

@@ -1,0 +1,24 @@
+# T31 native business-setting response phase — 4 November 2026
+
+Root assigned this bounded producer repair after its actual homepage browser reproduced a real SQLite commit followed by lost acknowledgement: the repository conservatively wrapped the transport failure as409, and the consumer treated a first409 as definitely unsaved. Root owns the mounted browser; Product owns the shared homepage hook/phase consumer and visibility producer. This slice owns only the two business-setting POST handlers and new native phase tests.
+
+## Contract and source change
+
+Every error response from `/api/admin/business-settings` POST and `/api/admin/business-settings/changes/[id]` POST now adds request-local `phase`:
+
+- `rejected_before_write`: request trust, native initial authorization/actor intent, body/form/source/action checks and argument validation rejected before any domain mutator was invoked.
+- `outcome_unconfirmed`: a domain mutator has been invoked. This remains true even when its authority/SQL/receipt/readback failure is returned as409/400 or `stale_version`; error/status alone is not rollback proof.
+
+The flag changes immediately before each original mutation call. Inline revision/effective-time argument validation was moved before that boundary. Initial authorization retains `code: access_denied_before_write` only before invocation; any later authorization error is unconfirmed. Existing error status/message/form `stale_version`/field IDs and native success shapes are retained. Cross-site/paired-fee early refusals also explicitly prove no business-setting mutation invocation. No receipt, repository, SQL, constraint, transaction, source/party, rate, publication, authority or business-rule change. There is no fake success, blind replacement or inferred rollback. Root/Product were sent the exact phase contract; the consumer must prioritize the phase over an otherwise ordinary4xx.
+
+## Actual isolated evidence
+
+Fixtures are actual allocated `:memory:` schemas; native staff permission and published form/source validation run. External runtime/staff identity are fixture seams, with real `staffMutationGuard` underneath. No form-validation or business mutation is stubbed. Initial fixture issues were repaired by supplying the actual helper's required author row and current explicit `sourceFormId`, not by relaxing native checks.
+
+- Intended RED: `node --import tsx --test --test-concurrency=1 tests/business-settings-response-phase.test.ts`, `.test-artifacts/t31/business-settings-phase-red.tap`: actual commit path reached and the response lacked `outcome_unconfirmed`; native stale-form response also lacked `rejected_before_write`.
+- Initial GREEN: same command, **2/2 PASS**, exit0,13.667s; `.test-artifacts/t31/business-settings-phase-green.tap`. Each draft fault uses real SQLite COMMIT: one wrapper throws only after `db.batch` returns, another permits commit then rejects the actual native version readback. Both fail without claiming success, retain one original row, and exact original request subsequently returns that same source once. Changes submit likewise commits to `pending_approval` then loses ACK, returns409/unconfirmed and exact native receipt replay succeeds. Original receipt/constraints are unchanged.
+- Final scoped command: `node --import tsx --test --test-concurrency=1 tests/business-settings-response-phase.test.ts tests/commercial-actor-intent.test.ts tests/homepage-hero-routes.test.ts`, `.test-artifacts/t31/business-settings-phase-final-memory.tap`: **all six native phase/commercial cases PASS**. Added initial wrong-actor403 before consuming the private body (`reads=0`), original access-denial code+phase, stale-form409 preserving `stale_version`, and invalid revision400 before mutation. Existing original-actor source publication, waiver/referral identity and same-millisecond token regressions pass.
+- That mixed command is **9/10 overall**, exit1,28.221s: sole failure is the separate legacy static `homepage-hero-routes.test.ts:27` regex expecting literal `requireStaffApi('business_settings.view')` in the current media route, which now uses its source-authorized `actor(request,'business_settings.view')` helper. Root/media owner notified; no change to that owner’s route/test here. This is not reported as a clean aggregate.
+- Root’s separate real homepage ACK browser RED and ensuing consumer GREEN are root-owned evidence, not rerun/claimed here. No browser/native-server/global typecheck process launched by this slice.
+
+Source diff-check0. Exact three-path hashes: `.test-artifacts/t31/business-settings-phase-source-freeze.json`. Fixtures closed in `finally`; no canonical data, environment, launcher, network, email, payment, deployment, index or HEAD changes. Source frozen for root’s integration rehearsal; global typecheck remains root-owned.

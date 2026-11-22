@@ -1,8 +1,9 @@
+import {hasActorIntentMismatch} from '@/lib/http/actor-intent';
 import { env } from 'cloudflare:workers';
 import { requireStaffApi, StaffAuthorizationError } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
 import { isTrustedMutationRequest } from '@/lib/http/request-security';
-import { getReferralCampaign } from '@/lib/db/repositories/wallet';
+import { getReferralCampaignForManagement as getReferralCampaign } from '@/lib/db/repositories/wallet';
 import { buildFormAnswerInsert } from '@/lib/db/repositories/form-answers';
 import { isValidatedFormVersionStale, validateSellerFormSubmission } from '@/lib/forms/submission';
 import { FormRuntimeError } from '@/lib/forms/runtime';
@@ -17,7 +18,8 @@ export async function PUT(request: Request) {
       { status: 403 },
     );
   try {
-    const staff = await requireStaffApi('admin.invite');
+    const staff = await requireStaffApi('commercial_policy.manage');
+    if(hasActorIntentMismatch(request,staff.id))throw new StaffAuthorizationError('The signed-in account changed. Refresh this commercial view before using its retained fields.',403);
     if (staff.role !== 'super_admin')
       return Response.json(
         { error: 'Only the Super Admin can change this offer.' },
@@ -60,6 +62,7 @@ export async function PUT(request: Request) {
         },
         { status: 400 },
       );
+    if(!Number.isSafeInteger(b.expectedUpdatedAt)||Number(b.expectedUpdatedAt)<0)return Response.json({error:'Review the original current offer before saving.',code:'source_changed'},{status:409});
     const db = requireDatabase(env as unknown as { DB?: D1Database });
     const configured = await validateSellerFormSubmission(db, 'staff.referral-settings',
       b.formVersion, b.customAnswers, b.requestId);
@@ -70,26 +73,27 @@ export async function PUT(request: Request) {
       minimumSubtotalPaisa: m, returnWindowDays: w };
     const replay = await db.prepare(`SELECT a.actor_id AS actorId,a.subject_type AS subjectType,
       a.subject_id AS subjectId,a.config_version_id AS versionId,a.answers_json AS answersJson,
-      l.reason,l.next_json AS nextJson FROM form_answer_sets a JOIN audit_logs l
+      l.reason,l.next_json AS nextJson,l.previous_json AS previousJson FROM form_answer_sets a JOIN audit_logs l
       ON l.request_id=a.request_id AND l.action='referral.offer.updated'
       WHERE a.form_id='staff.referral-settings' AND a.request_id=? LIMIT 1`)
       .bind(b.requestId).first<{ actorId: string; subjectType: string; subjectId: string;
-        versionId: string; answersJson: string; reason: string; nextJson: string }>();
+        versionId: string; answersJson: string; reason: string; nextJson: string;previousJson:string }>();
     if (replay) {
       if (replay.actorId !== staff.id || replay.subjectType !== 'referral_campaign' ||
         replay.subjectId !== 'default' || replay.versionId !== configured.versionId ||
         replay.answersJson !== JSON.stringify(configured.answers) ||
-        replay.reason !== b.reason.trim() || replay.nextJson !== JSON.stringify(next))
+        replay.reason !== b.reason.trim() || replay.nextJson !== JSON.stringify(next)||JSON.parse(replay.previousJson)?.updatedAt!==b.expectedUpdatedAt)
         return Response.json({ error: 'Referral request reference was already used for different work.' }, { status: 409 });
       return Response.json({ saved: true }, { headers: { 'Cache-Control': 'no-store' } });
     }
     const previous = await getReferralCampaign(db);
     const now = Date.now();
-    const current = await db.prepare("SELECT updated_at AS updatedAt FROM referral_campaign WHERE id='default'")
-      .first<{ updatedAt: number }>();
-    if (!current) return Response.json({ error: 'The referral offer is unavailable.' }, { status: 409 });
+    if(!Number.isSafeInteger(previous.updatedAt)||previous.updatedAt!==b.expectedUpdatedAt)return Response.json({error:'The current offer changed. Your draft is retained; review the original source before a new attempt.',code:'source_changed'},{status:409});
+    const current={updatedAt:previous.updatedAt!};
     const updatedAt = Math.max(now, current.updatedAt + 1);
+    if(!Number.isSafeInteger(updatedAt))return Response.json({error:'The source version requires reconciliation.'},{status:409});
     const guardId = crypto.randomUUID();
+    const nativeEventId=crypto.randomUUID();
     await db.batch([
       db.prepare(`INSERT INTO staff_permission_guards(id,valid) SELECT ?,CASE WHEN
         EXISTS(SELECT 1 FROM referral_campaign WHERE id='default' AND updated_at=?)
@@ -110,7 +114,7 @@ export async function PUT(request: Request) {
         .prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,ip_hash,created_at)
      VALUES (?,?,'referral.offer.updated','referral_campaign','default',?,?,?,?,NULL,?)`)
         .bind(
-          crypto.randomUUID(),
+          nativeEventId,
           staff.id,
           b.reason.trim(),
           JSON.stringify(previous),
@@ -121,6 +125,7 @@ export async function PUT(request: Request) {
       buildFormAnswerInsert(db, { formId: 'staff.referral-settings', requestId: b.requestId,
         versionId: configured.versionId, subjectType: 'referral_campaign', subjectId: 'default',
         actorId: staff.id, answers: configured.answers, now }),
+      ...await(await import('@/lib/operations/programme-notice-sources')).programmeNoticeStatements(db,{actorId:staff.id,requestId:b.requestId,now},{type:'referral',sourceId:'default',eventId:nativeEventId,status:'referral_updated'}),
     ]);
     return Response.json(
       { saved: true },

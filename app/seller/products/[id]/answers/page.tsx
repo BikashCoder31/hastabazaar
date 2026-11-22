@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { AnswerDetails } from '@/components/forms/answer-details';
-import { requireSellerPage } from '@/lib/auth/seller';
+import { requireSellerCenterPage } from '@/lib/auth/seller-center';
 import { requireDatabase } from '@/lib/db/d1';
 import { listFormAnswersForSubjectPage } from '@/lib/db/repositories/form-answers';
 import { authorizeFormAnswerRead } from '@/lib/forms/access';
@@ -20,7 +20,7 @@ export default async function SellerProductAnswerHistoryPage({ params, searchPar
   searchParams?: Promise<{ submissionAt?: string; submissionId?: string; inventoryAt?: string; inventoryId?: string }>;
 }) {
   const { id } = await params;
-  const seller = await requireSellerPage(`/seller/products/${id}/answers`);
+  const seller = await requireSellerCenterPage(`/seller/products/${id}/answers`);
   const db = requireDatabase(env as unknown as { DB?: D1Database });
   const owned = await db.prepare('SELECT name_en AS nameEn FROM products WHERE id=? AND seller_id=? LIMIT 1')
     .bind(id, seller.sellerId).first<{ nameEn: string }>();
@@ -51,7 +51,7 @@ export default async function SellerProductAnswerHistoryPage({ params, searchPar
     <header><p className="eyebrow">Seller records</p>
       <h1 className="mt-2 font-heading text-4xl">Answer history for {owned.nameEn}</h1>
       <p className="mt-3 text-sm text-muted-foreground">Saved answers retain their original labels and values, including archived fields.</p>
-      <Link className="section-link mt-3 inline-block" href="/seller/products">Back to products</Link>
+      <Link className="section-link mt-3 inline-block" href={`/seller/products/${encodeURIComponent(id)}/edit`}>Back to this product</Link>
     </header>
     <section aria-label="Product submission answer history" className="space-y-4">
       <h2 className="font-heading text-2xl">Product submissions</h2>

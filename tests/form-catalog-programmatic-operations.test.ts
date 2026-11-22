@@ -275,7 +275,7 @@ void test('fulfillment rolls back the order when answer insert fails', async () 
   } finally { sqlite.close(); }
 });
 
-void test('delivery keeps COD receipt and staff context in the same successful order transition', async () => {
+void test('delivery retains staff context without inventing COD collection or a payment receipt', async () => {
   const { sqlite, database } = fixture();
   try {
     await transitionAdminFulfillment(database, { orderId: 'order-one', actorId: 'admin', action: 'dispatch',
@@ -284,12 +284,14 @@ void test('delivery keeps COD receipt and staff context in the same successful o
     const input = { orderId: 'order-one', actorId: 'admin', action: 'deliver' as const,
       note: 'Fictional COD receipt checked', requestId: 'delivery-complete', now: 20,
       form: form('staff.order-fulfillment', 'delivery-complete') };
+    const originalPayment=sqlite.prepare("SELECT payment_status FROM orders WHERE id='order-one'").get()!.payment_status;
     await transitionAdminFulfillment(database, input);
+    assert.equal(sqlite.prepare("SELECT payment_status FROM orders WHERE id='order-one'").get()!.payment_status,originalPayment);
     assert.equal((sqlite.prepare("SELECT status FROM orders WHERE id='order-one'").get() as { status: string }).status, 'delivered');
-    assert.equal(count(sqlite, 'order_documents', "order_id='order-one' AND kind='payment_receipt'"), 1);
+    assert.equal(count(sqlite, 'order_documents', "order_id='order-one' AND kind='payment_receipt'"), 0);
     assert.equal(count(sqlite, 'form_answer_sets', "form_id='staff.order-fulfillment' AND subject_id='order-one'"), 2);
     await transitionAdminFulfillment(database, input);
-    assert.equal(count(sqlite, 'order_documents', "order_id='order-one' AND kind='payment_receipt'"), 1);
+    assert.equal(count(sqlite, 'order_documents', "order_id='order-one' AND kind='payment_receipt'"), 0);
   } finally { sqlite.close(); }
 });
 
@@ -511,7 +513,7 @@ void test('fulfilment confirms trigger-bearing dispatch and delivery without a p
       form:form('staff.order-fulfillment','trigger-deliver')});
     assert.ok(wrapper.observedChanges[0]>1);
     assert.equal(sqlite.prepare("SELECT status FROM orders WHERE id='order-one'").get()?.status,'delivered');
-    assert.equal(count(sqlite,'order_documents',"order_id='order-one' AND kind='payment_receipt'"),1);
+    assert.equal(count(sqlite,'order_documents',"order_id='order-one' AND kind='payment_receipt'"),0);
     assert.equal(count(sqlite,'form_answer_sets',"request_id='trigger-deliver'"),1);
   } finally {sqlite.close();}
 });
@@ -597,6 +599,11 @@ void test('configured native fulfillment dispatch retains cancelled parcel and d
     const cancelled = await f.db.prepare("SELECT * FROM order_items WHERE id='item-cancelled'").first();
     const finance = () => f.db.prepare("SELECT item_subtotal_paisa,grand_total_paisa,current_subtotal_paisa,current_delivery_paisa,current_wallet_paisa,current_discount_paisa,current_promo_discount_paisa,current_total_paisa,cancellation_version FROM orders WHERE id='order-one'").first();
     const beforeFinance = await finance();
+    const paymentProof = async () => ({
+      order: await f.db.prepare("SELECT payment_mode,payment_status FROM orders WHERE id='order-one'").first(),
+      payments: (await f.db.prepare("SELECT * FROM payments WHERE order_id='order-one' ORDER BY id").all()).results,
+    });
+    const originalPayment = await paymentProof();
     assert.equal((await send(retainedFulfillmentBody)).status, 200);
     assert.equal((await f.db.prepare("SELECT status FROM orders WHERE id='order-one'").first<{status:string}>())!.status, 'dispatched');
     assert.equal((await f.db.prepare("SELECT fulfillment_status FROM order_items WHERE id='item-one'").first<{fulfillment_status:string}>())!.fulfillment_status, 'dispatched');
@@ -610,9 +617,11 @@ void test('configured native fulfillment dispatch retains cancelled parcel and d
     assert.equal((await f.db.prepare("SELECT status FROM orders WHERE id='order-one'").first<{status:string}>())!.status, 'delivered');
     assert.deepEqual(await f.db.prepare("SELECT * FROM order_items WHERE id='item-cancelled'").first(), cancelled);
     assert.deepEqual(await finance(), beforeFinance);
-    const receipt = await f.db.prepare("SELECT snapshot_json FROM order_documents WHERE order_id='order-one' AND kind='payment_receipt'").first<{snapshot_json:string}>();
-    assert.ok(receipt);const document = JSON.parse(receipt.snapshot_json);
-    assert.equal(document.items.length, 1);assert.equal(document.itemSubtotalPaisa, 1000);assert.equal(document.grandTotalPaisa, 1000);
+    assert.deepEqual(await paymentProof(), originalPayment, 'delivery alone cannot invent COD collection');
+    assert.equal((await f.db.prepare("SELECT COUNT(*) n FROM order_documents WHERE order_id='order-one' AND kind='payment_receipt'").first<{n:number}>())!.n, 0);
+    assert.deepEqual(await f.db.prepare("SELECT item_subtotal_paisa,grand_total_paisa,current_subtotal_paisa,current_total_paisa FROM orders WHERE id='order-one'").first(),
+      { item_subtotal_paisa: 2000, grand_total_paisa: 2000, current_subtotal_paisa: 1000, current_total_paisa: 1000 });
+    assert.equal((await f.db.prepare("SELECT COUNT(*) n FROM order_items WHERE order_id='order-one' AND fulfillment_status='delivered'").first<{n:number}>())!.n, 1);
     assert.equal((await f.db.prepare("SELECT COUNT(*) n FROM seller_ledger_entries WHERE order_item_id='item-cancelled'").first<{n:number}>())!.n, 0);
     assert.equal((await f.db.prepare("SELECT COUNT(*) n FROM form_answer_sets WHERE form_id='staff.order-fulfillment' AND subject_id='order-one'").first<{n:number}>())!.n, 2);
     assert.equal((await f.db.prepare("SELECT COUNT(*) n FROM audit_logs WHERE subject_id='order-one' AND action IN ('order.dispatch','order.deliver')").first<{n:number}>())!.n, 2);

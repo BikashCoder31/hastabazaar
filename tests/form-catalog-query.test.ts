@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {addProductEvidenceSchema} from './helpers/product-evidence-schema';
+import { incentiveReportDatabase } from './helpers/incentive-report-database';
 import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
 import test from 'node:test';
 import { resolve } from 'node:path';
@@ -92,41 +92,44 @@ void test('shop price criterion rejects invalid bounds, duplicates and unsupport
 });
 
 void test('minimum price changes both published product results and count', async () => {
-  const sqlite = new DatabaseSync(':memory:');
+  const { sqlite, db, dispose } = await incentiveReportDatabase();
   try {
+    // Retained legacy public rows have no workspace offer mapping. Browsing their
+    // recorded prices must not imply current commercial readiness or order access.
+    assert.ok(sqlite.prepare('PRAGMA database_list').all().every((row) => row.file === ''));
     sqlite.exec(`
-      CREATE TABLE users(id TEXT PRIMARY KEY,status TEXT);
-      CREATE TABLE seller_profiles(id TEXT PRIMARY KEY,user_id TEXT,status TEXT,trading_name TEXT);
-      CREATE TABLE seller_participation_profiles(seller_id TEXT,participation_route TEXT,application_stage TEXT,
-        commercial_model TEXT,legal_seller_reference TEXT,invoice_issuer_reference TEXT,
-        payout_beneficiary_reference TEXT,managed_agreement_version TEXT,managed_agreement_accepted_at INTEGER);
-      CREATE TABLE seller_restrictions(seller_id TEXT,mode TEXT,suspended_until INTEGER);
-      CREATE TABLE product_deletions(product_id TEXT);
-      CREATE TABLE categories(id TEXT PRIMARY KEY,slug TEXT,is_active INTEGER,name_en TEXT);
-      CREATE TABLE products(id TEXT PRIMARY KEY,slug TEXT,name_en TEXT,name_ne TEXT,description_en TEXT,
-        description_ne TEXT,price_paisa INTEGER,compare_at_price_paisa INTEGER,inventory_quantity INTEGER,
-        country_of_origin TEXT NOT NULL DEFAULT '',origin_evidence_status TEXT NOT NULL DEFAULT 'unverified',
-        origin_evidence_reference TEXT,
-        producer TEXT,materials TEXT,origin_story TEXT,dimensions TEXT,size TEXT,colour TEXT,variations TEXT,
-        specifications TEXT,care_instructions TEXT,safety_information TEXT,return_conditions TEXT,
-        return_eligible INTEGER,warranty TEXT,made_to_order INTEGER,preparation_days INTEGER,
-        manufactured_at INTEGER,expires_at INTEGER,licence_reference TEXT,seller_id TEXT,category_id TEXT,status TEXT);
-      CREATE TABLE product_media(id TEXT,product_id TEXT,sort_order INTEGER);
-      INSERT INTO users VALUES ('owner','active');
-      INSERT INTO seller_profiles VALUES ('seller','owner','approved','Maker');
-      INSERT INTO categories VALUES ('category','gifts',1,'Gifts');
-      INSERT INTO products(id,slug,name_en,price_paisa,seller_id,category_id,status) VALUES
-        ('low','low','Low',25074,'seller','category','published'),
-        ('equal','equal','Equal',25075,'seller','category','published'),
-        ('high','high','High',31000,'seller','category','published');
+      INSERT INTO users(id,email,display_name,status,created_at,updated_at)
+        VALUES ('owner','owner@local.hastabazaar.test','Fictional owner','active',1,1);
+      INSERT INTO user_roles(user_id,role,assigned_at) VALUES ('owner','seller',1);
+      INSERT INTO seller_profiles(id,user_id,legal_name,trading_name,registration_authority,
+        registration_number,tax_mode,tax_registration_number,representative_name,support_phone,
+        support_email,province,district,municipality,locality,status,created_at,updated_at)
+        VALUES ('seller','owner','Fictional Maker','Maker','Local','FIX-CATALOG','PAN','FIX-PAN',
+          'Fictional owner','9800000000','owner@local.hastabazaar.test','Bagmati','Kathmandu',
+          'Kathmandu','Fictional workshop','approved',1,1);
+      INSERT INTO categories(id,slug,is_active,name_en,created_at,updated_at)
+        VALUES ('category','gifts',1,'Gifts',1,1);
     `);
-    const db = { prepare(sql: string) { return new Statement(sqlite.prepare(sql)); } } as unknown as D1Database;
-    addProductEvidenceSchema(sqlite);
+    for (const [id, name, price] of [['low', 'Low', 25074], ['equal', 'Equal', 25075], ['high', 'High', 31000]] as const) {
+      sqlite.prepare(`INSERT INTO products(id,slug,sku,name_en,description_en,price_paisa,
+        seller_id,category_id,producer,materials,inventory_quantity,status,published_at,created_at,updated_at)
+        VALUES (?,?,?,?,?,?,'seller','category','Fictional maker','Clay',1,'published',1,1,1)`)
+        .run(id, id, 'FIX-CATALOG-' + id, name, 'One fictional legacy gift.', price);
+    }
     assert.equal(await countPublishedProducts(db, {}), 3);
     assert.equal(await countPublishedProducts(db, { minimumPricePaisa: 25075 }), 2);
+    const rows = await listPublishedProducts(db, { minimumPricePaisa: 25075, sort: 'price-low' });
+    assert.deepEqual(rows.map((row) => row.id), ['equal', 'high']);
+    assert.deepEqual(rows.map((row) => row.pricePaisa), [25075, 31000]);
+    assert.ok(rows.every((row) => row.purchasable === false && row.offerSet === null));
     assert.deepEqual((await listPublishedProducts(db,
-      { minimumPricePaisa: 25075, sort: 'price-low' })).map((row) => row.id), ['equal', 'high']);
-  } finally { sqlite.close(); }
+      { minimumPricePaisa: 25075, sort: 'price-low', limit: 1, page: 2 })).map((row) => row.id), ['high']);
+    assert.equal(await countPublishedProducts(db, { minimumPricePaisa: 31001 }), 0);
+    sqlite.exec("UPDATE users SET status='suspended' WHERE id='owner'");
+    assert.equal(await countPublishedProducts(db, { minimumPricePaisa: 25075 }), 0);
+    assert.deepEqual(await listPublishedProducts(db, { minimumPricePaisa: 25075, sort: 'price-low' }), []);
+    assert.deepEqual(sqlite.prepare('PRAGMA foreign_key_check').all(), []);
+  } finally { dispose(); }
 });
 
 void test('shop form renders the configured price threshold and preserves its GET value', async () => {
@@ -145,21 +148,23 @@ void test('tracking lookup denies an order when the checkout email does not matc
   const sqlite = new DatabaseSync(':memory:');
   try {
     sqlite.exec(`CREATE TABLE orders(id TEXT,order_number TEXT,status TEXT,payment_status TEXT,
-      placed_at INTEGER,delivered_at INTEGER,updated_at INTEGER,customer_email TEXT);
+      placed_at INTEGER,delivered_at INTEGER,updated_at INTEGER,customer_email TEXT,payment_mode TEXT,created_at INTEGER);
       CREATE TABLE shipments(order_id TEXT,tracking_code TEXT,estimated_min_days INTEGER,estimated_max_days INTEGER);
-      CREATE TABLE delivery_assignments(order_id TEXT,method TEXT,rider_user_id TEXT);
-      CREATE TABLE shipping_jobs(id TEXT,order_id TEXT);
-      CREATE TABLE shipping_parcels(shipping_job_id TEXT,method TEXT,rider_user_id TEXT);
+      CREATE TABLE delivery_assignments(order_id TEXT,method TEXT,rider_user_id TEXT,courier_name TEXT,tracking_reference TEXT,tracking_url TEXT);
+      CREATE TABLE order_items(id TEXT,order_id TEXT,seller_id TEXT,seller_name_snapshot TEXT,product_id TEXT,product_name_snapshot TEXT,quantity INTEGER,fulfillment_status TEXT,created_at INTEGER);
+      CREATE TABLE order_item_status_events(order_item_id TEXT,created_at INTEGER,to_status TEXT);
+      CREATE TABLE shipping_jobs(id TEXT,order_id TEXT,seller_id TEXT,direction TEXT,status TEXT,tracking_code TEXT);
+      CREATE TABLE shipping_parcels(shipping_job_id TEXT,method TEXT,rider_user_id TEXT,cod_due_paisa INTEGER,delivered_at INTEGER,courier_name TEXT,tracking_url TEXT);
       CREATE TABLE order_status_events(order_id TEXT,to_status TEXT,created_at INTEGER);
       CREATE TABLE first_cod_reviews(order_id TEXT PRIMARY KEY,customer_id TEXT,total_paisa INTEGER,status TEXT,
         created_at INTEGER,confirmed_by TEXT,confirmed_at INTEGER,reason TEXT,request_id TEXT);
-      INSERT INTO orders VALUES ('private','HK-PRIVATE','placed','pending',1,NULL,1,'owner@example.test');
+      INSERT INTO orders VALUES ('private','HK-PRIVATE','placed','pending',1,NULL,1,'owner@example.test','cod',1);
       INSERT INTO shipments VALUES ('private','SECRET-TRACKING',2,5);`);
     const db = { prepare(sql: string) { return new Statement(sqlite.prepare(sql)); } } as unknown as D1Database;
     assert.equal(await findOrderTracking(db, 'HK-PRIVATE', 'stranger@example.test'), null);
     assert.equal((await findOrderTracking(db, 'HK-PRIVATE', 'owner@example.test'))?.trackingCode,
       'SECRET-TRACKING');
-    sqlite.exec("INSERT INTO delivery_assignments VALUES ('private','own_rider','private-rider')");
+    sqlite.exec("INSERT INTO delivery_assignments(order_id,method,rider_user_id) VALUES ('private','own_rider','private-rider')");
     assert.equal((await findOrderTracking(db, 'HK-PRIVATE', 'owner@example.test'))?.trackingCode, null);
     assert.equal(await findOrderTracking(db, 'HK-PRIVATE', 'stranger@example.test'), null);
   } finally { sqlite.close(); }

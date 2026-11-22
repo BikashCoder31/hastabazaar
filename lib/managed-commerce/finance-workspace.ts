@@ -1,3 +1,4 @@
+import {readLiveManagedFinance,type LiveManagedFinanceSnapshot} from './live-finance-api';
 import { staffMutationGuard } from '../db/repositories/staff-mutation-guard';
 import { getManagedFinanceSummary, getManagedPayoutPreview, getManagedBlockedEarnings } from './payout-operations';
 import { ManagedSettlementError } from './settlement-errors';
@@ -13,19 +14,20 @@ export interface ManagedFinanceMaker {
   summary: Awaited<ReturnType<typeof getManagedFinanceSummary>>;
   preview: Awaited<ReturnType<typeof getManagedPayoutPreview>>;
   payments: readonly ManagedPaymentRow[]; paymentCount: number;
+  live?:LiveManagedFinanceSnapshot;liveError?:string;
   blockers: readonly (ManagedSettlementBlocker & { entitlementId: string })[]; moreBlockers: boolean;
 }
 export interface ManagedFinanceWorkspace { makers: readonly ManagedFinanceMaker[]; nextCursor: string | null; error?: string }
 
 /** Private, read-only data. Historical managed money remains visible after a PAN transition. */
-export async function getManagedFinanceWorkspace(db: D1Database, context: { actorId: string; now: number; after?: string }): Promise<ManagedFinanceWorkspace> {
+export async function getManagedFinanceWorkspace(db: D1Database, context: { actorId: string; now: number; after?: string;sellerId?:string }): Promise<ManagedFinanceWorkspace> {
   await staffMutationGuard(db, context.actorId, 'payout.prepare', ManagedSettlementError, 'super_admin');
   if (context.after !== undefined && (!context.after || context.after.length > 191)) throw new RangeError('Invalid maker payment cursor.');
   const rows = await db.prepare(`SELECT s.id AS sellerId,s.trading_name AS name,p.application_stage AS stage,p.participation_route AS route,
-    (SELECT COUNT(*) FROM managed_payouts WHERE seller_id=s.id) AS paymentCount
+    (SELECT COUNT(*) FROM managed_payouts WHERE seller_id=s.id AND record_kind='simulation') AS paymentCount
     FROM seller_profiles s LEFT JOIN seller_participation_profiles p ON p.seller_id=s.id
     WHERE (p.participation_route='managed_maker' OR EXISTS(SELECT 1 FROM managed_entitlements WHERE seller_id=s.id))
-      AND s.id>? ORDER BY s.id LIMIT 21`).bind(context.after ?? '')
+      AND s.id>? ${context.sellerId?'AND s.id=?':''} ORDER BY s.id LIMIT 21`).bind(context.after ?? '',...(context.sellerId?[context.sellerId]:[]))
     .all<{ sellerId: string; name: string; stage: string | null; route: string | null; paymentCount: number }>();
   const makers = await Promise.all(rows.results.slice(0,20).map(async row => {
     const [summary, preview, accepted, payments, blocked] = await Promise.all([
@@ -33,13 +35,14 @@ export async function getManagedFinanceWorkspace(db: D1Database, context: { acto
       getAcceptedManagedTerms(db, row.sellerId, context.now),
       db.prepare(`SELECT id,payout_number AS number,amount_paisa AS amountPaisa,status,scheduled_for AS scheduledFor,
         updated_at AS updatedAt,destination_reference AS destination,provider_reference AS providerReference
-        FROM managed_payouts WHERE seller_id=? ORDER BY created_at DESC,id DESC LIMIT 50`).bind(row.sellerId).all<ManagedPaymentRow>(),
+        FROM managed_payouts WHERE seller_id=? AND record_kind='simulation' ORDER BY created_at DESC,id DESC LIMIT 50`).bind(row.sellerId).all<ManagedPaymentRow>(),
       getManagedBlockedEarnings(db,row.sellerId,context.now),
     ]);
     const blockers = (await Promise.all(blocked.slice(0,50).map(async entitlement =>
       (await getManagedSettlementBlockers(db, { sellerId: row.sellerId, entitlementId: entitlement.id, now: context.now }))
         .map(blocker => ({ ...blocker, entitlementId: entitlement.id }))))).flat();
-    return { ...row, acceptedTermsReady: Boolean(accepted), summary, preview, payments: payments.results,
+    let live:LiveManagedFinanceSnapshot|undefined,liveError:string|undefined;try{live=await readLiveManagedFinance(db,context.actorId,row.sellerId,context.now);}catch(error){liveError=error instanceof Error&&'status' in error&&error.status===403?'Actual original earnings need an independent authorized review.':'Actual original earnings could not be loaded. Refresh this finance record before taking action.';}
+    return { ...row,live,liveError, acceptedTermsReady: Boolean(accepted), summary, preview, payments: payments.results,
       blockers, moreBlockers: blocked.length > 50 };
   }));
   return { makers, nextCursor: rows.results.length > 20 ? makers[19].sellerId : null };

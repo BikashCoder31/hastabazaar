@@ -1,24 +1,30 @@
 'use client';
+import {ACTOR_INTENT_HEADER} from '@/lib/http/actor-intent';
 
 import { FormGuide } from '@/components/forms/form-guide';
+import {useOwnedFormScope} from '@/components/forms/use-owned-form-scope';
 import { useRouter } from 'next/navigation';
-import { useRef, useState } from 'react';
+import {cloneElement,useId,useRef,useState} from 'react';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 
-export function ComplaintCaseActions({
+type Props={actorId:string;id:string;status:string};
+export function ComplaintCaseActions(props:Props){
+  const scope=useOwnedFormScope(JSON.stringify([props.actorId,props.id]));
+  return <ScopedComplaintCaseActions key={scope.key} {...props} isCurrent={scope.isCurrent}/>;
+}
+function ScopedComplaintCaseActions({
+  actorId,isCurrent,
   id,
   status,
-}: {
-  id: string;
-  status: string;
-}) {
+}:Props&{isCurrent:()=>boolean}) {
   const router = useRouter();
+  const actionId=useId();
   const catalog = usePublishedFormConfig('staff.complaint-case-action');
   const formRef = useRef<HTMLFormElement>(null);
   const actions =
@@ -44,11 +50,14 @@ export function ComplaintCaseActions({
   const [failedAttemptKey, setFailedAttemptKey] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
+  const [accessDenied,setAccessDenied]=useState(false);
+  if(accessDenied)return <section role="alert" className="space-y-3 rounded border p-4"><p>The current account or case access changed. Private complaint fields are hidden.</p><Button type="button" onClick={()=>window.location.reload()}>Reload current case</Button></section>;
   if (!actions.length)
     return (
       <p className="text-sm text-muted-foreground">This complaint is closed.</p>
     );
   async function submit() {
+    if(!isCurrent())return;
     if (!catalog.canSubmit || !catalog.config || !formRef.current) {
       setError(catalog.message || 'Complaint form configuration is unavailable.');
       return;
@@ -61,13 +70,13 @@ export function ComplaintCaseActions({
       const builtIns = ['action', 'note', 'publicMessageEn', 'publicMessageNe',
         'resolutionEn', 'resolutionNe', 'idempotencyKey', 'formVersion'];
       const configured = readConfiguredSubmission(formRef.current, catalog.config, builtIns);
-      attemptKey = sessionAttemptKey('staff.complaint-case-action', `${id}:${action}`);
+      attemptKey = sessionAttemptKey('staff.complaint-case-action', JSON.stringify([actorId,id,action]));
       const requestId = getOrCreateSessionAttempt(attemptKey);
       const response = await fetch(
         `/api/admin/complaints/${encodeURIComponent(id)}`,
         {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: { 'content-type': 'application/json', [ACTOR_INTENT_HEADER]: actorId },
           body: JSON.stringify({
             action,
             note,
@@ -82,6 +91,8 @@ export function ComplaintCaseActions({
         },
       );
       const result = (await response.json().catch(() => null)) as { ok?: boolean; error?: string; code?: string } | null;
+      if(!isCurrent())return;
+      if(response.status===401||response.status===403){setNote('');setMessageEn('');formRef.current?.reset();setAccessDenied(true);router.refresh();throw new Error('The current account or case access changed. Reopen this original record.');}
       if (result?.code === 'stale_version') catalog.handleSubmissionResponse(response, result.code);
       if (!response.ok)
         throw new Error(result?.error || 'Complaint could not be updated.');
@@ -89,6 +100,7 @@ export function ComplaintCaseActions({
       clearSessionAttempt(attemptKey);
       router.refresh();
     } catch (cause) {
+      if(!isCurrent())return;
       setFailedAttemptKey(attemptKey);
       setError(
         cause instanceof Error
@@ -96,7 +108,7 @@ export function ComplaintCaseActions({
           : 'Complaint could not be updated.',
       );
     } finally {
-      setPending(false);
+      if(isCurrent())setPending(false);
     }
   }
   return (
@@ -105,8 +117,8 @@ export function ComplaintCaseActions({
       <FormGuide formId="staff.complaint-case-action" />
 
       <div className="space-y-2">
-        <Label>Action</Label>
-        <select
+        <Label htmlFor={actionId}>Action</Label>
+        <select id={actionId}
           value={action}
           onChange={(event) => setAction(event.target.value)}
           className="h-10 w-full rounded-lg border bg-background px-3 text-sm"
@@ -180,12 +192,13 @@ function Field({
   children,
 }: {
   label: string;
-  children: React.ReactNode;
+  children: React.ReactElement<{id?:string}>;
 }) {
+  const generatedId=useId(),controlId=children.props.id??generatedId;
   return (
     <div className="space-y-2">
-      <Label>{label}</Label>
-      {children}
+      <Label htmlFor={controlId}>{label}</Label>
+      {cloneElement(children,{id:controlId})}
     </div>
   );
 }

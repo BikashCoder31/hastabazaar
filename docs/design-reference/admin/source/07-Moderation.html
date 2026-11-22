@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operations · Product review</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/39ae600ed082352c03509106609818ff">
+<link rel="stylesheet" href="/_blob/d1603bdfcb29428264731bbedb89e050">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&amp;family=Instrument+Sans:wght@400..700&amp;family=JetBrains+Mono:wght@500&amp;display=swap">
+<style>
+body{margin:0;background:#F7F3EC}
+a{color:#14213D}a:hover{color:#A8232E}
+.helpbtn{all:unset;cursor:pointer;width:28px;height:28px;border-radius:50%;border:1px solid #D3C5AD;display:inline-flex;align-items:center;justify-content:center;color:#46536F;transition:background-color 160ms ease,color 160ms ease,transform 160ms ease}
+.helpbtn:hover{background:#fff;color:#14213D}.helpbtn:active{transform:scale(.95)}
+.helpbtn:focus-visible{outline:2px solid #A8232E;outline-offset:2px}
+.pop{position:absolute;z-index:20;background:#fff;color:#2C3B5C;border:1px solid #E4DACA;border-radius:14px;box-shadow:0 18px 40px -18px rgba(20,33,61,.35);animation:popin 180ms cubic-bezier(.23,1,.32,1)}
+@keyframes popin{from{opacity:0;transform:translateY(-4px) scale(.98)}}
+@media (prefers-reduced-motion:reduce){.pop{animation:none}}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*RESP-START*/
+.mbar,.mtab{display:none}
+.mbar{position:sticky;top:0;z-index:1000;height:56px;align-items:center;gap:10px;padding:0 12px 0 16px;border-bottom:1px solid #E4DACA;background:#FFFCF7}
+.mbar.dark{background:#14213D;color:#fff;border-bottom:0}
+.mbar .mlogo{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
+.mbar .mlogo img{width:30px;height:30px;border-radius:7px;background:#FFFCF7}
+.mbar .mlogo b{font-size:15px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mbar .mlogo span{display:block;font-size:11.5px;font-weight:600;color:#A8232E}
+.mbar.dark .mlogo span{color:#E2B65C}
+.mbar .mbtn{all:unset;cursor:pointer;width:44px;height:44px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;position:relative}
+.mbar .mbtn:focus-visible{outline:2px solid #A8232E;outline-offset:2px}
+.mmenu{position:relative}
+.mmenu summary{list-style:none}.mmenu summary::-webkit-details-marker{display:none}
+.mmenu[open] summary{background:rgba(20,33,61,.08)}
+.mbar.dark .mmenu[open] summary{background:rgba(255,255,255,.12)}
+.mmenu .mpanel{position:fixed;z-index:1001;left:0;right:0;top:56px;bottom:0;overflow:auto;padding:12px 12px 100px;background:#FFFCF7;border-top:1px solid #E4DACA;animation:mdrop 200ms cubic-bezier(.23,1,.32,1)}
+.mbar.dark .mmenu .mpanel{background:#14213D;border-top-color:rgba(255,255,255,.1)}
+.mmenu .mpanel a{min-height:48px}
+@keyframes mdrop{from{opacity:0;transform:translateY(-6px)}}
+.mtab{position:fixed;left:0;right:0;bottom:0;z-index:999;height:72px;padding:0 4px 8px;background:#FFFCF7;border-top:1px solid #E4DACA;grid-template-columns:repeat(5,minmax(0,1fr));align-items:center;font-size:11.5px;font-weight:600}
+.mtab a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:52px;color:#46536F;position:relative}
+.mtab a.on{color:#A8232E}
+.mtab a.add{justify-self:center;width:52px;height:52px;min-height:0;border-radius:16px;background:#A8232E;color:#fff;margin-top:-16px;box-shadow:0 10px 20px -10px rgba(168,35,46,.7)}
+.mtab .count{position:absolute;top:2px;right:calc(50% - 22px)}
+
+.mtab.admin{background:#14213D;border-top-color:rgba(255,255,255,.08)}
+.mtab.admin a,.mtab.admin summary{color:#C9D0DD}
+.mtab.admin a.on,.mtab.admin .mmore.on summary{color:#E2B65C}
+.mtab .mmore summary{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:52px;cursor:pointer;list-style:none}
+.mtab .mmore .mpanel{top:56px;bottom:72px}
+.mpanel.dark{background:#14213D!important}
+@media (max-width:1023px){
+  .hb.shell{flex-direction:column;flex-wrap:nowrap}
+  .hb.shell>aside.side{display:none!important}
+  .mbar{display:flex}
+  .hb.shell>.main{flex:1 1 auto;width:100%}
+  .cmdk{display:none!important}
+  .hb.shell>.main [style*="grid-template-columns: minmax(0, 1."],.hb.shell>.main [style*="minmax(0, 1fr) minmax(0, 1."],.hb.shell>.main [style*="minmax(0, 1fr) 360px"]{grid-template-columns:minmax(0,1fr)!important}
+  .hb.shell>.main [style*="grid-template-columns"][style*="repeat(5"]{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  .hb.shell>.main [style*="flex-wrap: wrap"],.hb.shell>.main [style*="display: grid"]{align-content:flex-start}
+  .hb.shell>.main .sheet{grid-template-columns:minmax(0,1fr)!important}
+  .hb.shell>.main .sheet>aside[style*="sticky"]{position:static!important}
+  .hb.shell>.main [style*="position: sticky; bottom: 0"]{bottom:var(--mtab-pad,0px)!important}
+  .hb.shell>.main>div:first-of-type:not(.mbar){height:auto!important;min-height:60px;flex-wrap:wrap;row-gap:8px;padding-top:10px!important;padding-bottom:10px!important}
+}
+@media (max-width:1023px){
+  .hb.shell{padding-bottom:var(--mtab-pad,0px)}
+  .mtab.on-phone{display:grid}
+  .hide-m,.hide-phone{display:none!important}
+  .hb.shell>.main>div:first-of-type:not(.mbar){padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main main,.hb.shell>.main>div>main,.hb.shell>.main section,.hb.shell>.main aside{max-width:100%!important}
+  .hb.shell>.main main{padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main>div[style*="32px"]:not(:first-of-type):not(.mbar){padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main>div[style*="32px"]>main,.hb.shell>.main>div[style*="32px"]>aside{padding-left:0!important;padding-right:0!important}
+  .hb.shell>.main .sheet{align-content:start;flex:none}
+  .row{flex-wrap:wrap;row-gap:8px}
+  .row>span[style*="flex: 1"]{flex:1 1 55%!important}
+  .hb.shell>.main [style*="padding: 0 32px"],.hb.shell>.main [style*="padding: 0 32px;"]{padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main [style*="grid-template-columns"]:not(dl):not(.keep2):not(.steps):not(.stepper):not([style*="1fr auto"]):not([style*="repeat(5"]){grid-template-columns:minmax(0,1fr)!important}
+  .hb.shell>.main [style*="grid-template-columns"][style*="repeat(5"]{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  .hb.shell>.main [style*="grid-template-columns"]:not([style*="gap"]){row-gap:16px}
+  .hb.shell>.main ol.steps[style],.hb.shell>.main .steps{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .hb.shell>.main .keep2{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .hb.shell>.main dl dd{min-width:0;overflow-wrap:anywhere}
+  .hb.shell>.main [style*="flex: 999 1"],.hb.shell>.main [style*="flex: 1 1 4"],.hb.shell>.main [style*="flex: 1 1 3"],.hb.shell>.main [style*="flex: 1 1 6"],.hb.shell>.main [style*="flex: 0 0 3"]{flex:1 1 100%!important;max-width:100%!important;border-left:0!important;border-right:0!important;padding-left:16px!important;padding-right:16px!important}
+  .hb.shell>.main [style*="border-left: 1px solid #E4DACA"]:not(td):not(th){border-left:0!important}
+  .hb.shell>.main ol.num>li,.hb.shell>.main .num>div{padding-left:0!important;padding-right:0!important}
+  .tbl-box{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  [role=tablist],.subtabs,nav.subtabs{flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none}
+  [role=tablist]::-webkit-scrollbar,.subtabs::-webkit-scrollbar{display:none}
+  [role=tablist]>*,.subtabs>*{flex-shrink:0}
+  h1.serif{font-size:26px!important}
+  h2.serif{font-size:24px!important}
+  .btn{min-height:44px}
+  .hb.shell>.main .btn{flex-wrap:nowrap;max-width:100%;height:auto;padding-top:8px;padding-bottom:8px;text-align:center;white-space:normal}
+  .btn-xs{min-height:36px}
+  .pop{position:fixed!important;left:16px!important;right:16px!important;width:auto!important;top:70px!important}
+  .toast{left:16px;right:16px;transform:none;max-width:none;bottom:calc(var(--mtab-pad,0px) + 16px)}
+  @keyframes toastin{from{opacity:0;transform:translateY(10px)}}
+
+  .task{display:grid!important;grid-template-columns:40px minmax(0,1fr) auto;gap:6px 14px;align-items:center;padding:14px 16px!important}
+  .task>:nth-child(2){grid-column:2/4}
+  .task.t4>:nth-child(1){grid-row:1/3;align-self:start}
+  .task.t4>:nth-child(3){grid-column:2;justify-self:start}
+  .task.t4>:nth-child(4){grid-column:3;grid-row:2}
+  .task:not(.t4)>:nth-child(2){grid-column:2}
+  .hb.shell>.main [style*="gap: 0"]{row-gap:18px!important}
+
+  .hb.shell>.main [style*="flex-wrap: wrap"],.hb.shell>.main [style*="display: grid"]{align-content:flex-start}
+  .hb.shell>.main [style*="justify-content: space-between"]{flex-wrap:wrap;row-gap:8px}
+  .hb.shell>.main>div:first-of-type:not(.mbar)>div{flex-wrap:wrap}
+  [role=alert]{flex-wrap:wrap}
+  [role=alert]>span[style*="flex: 1"]{flex:1 1 220px!important}
+  .stages{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .stg::after{display:none!important}
+  .parked{grid-template-columns:1fr!important;gap:2px!important}
+  .feat-h{flex-wrap:wrap}
+  .feat-h>span:nth-child(2){flex:1 1 calc(100% - 64px)!important}
+  .seg{flex-wrap:nowrap!important;overflow-x:auto;max-width:100%}
+  .seg button{white-space:nowrap;flex-shrink:0}
+  .qrow{grid-template-columns:22px 40px minmax(0,1fr)!important;gap:8px 12px!important;padding:14px 16px!important}
+  .qrow>a.btn{grid-column:3;justify-self:start}
+  .qrow b{white-space:normal!important}
+  ol.stepper{grid-template-columns:1fr!important}
+  ol.stepper li{flex-direction:row!important;flex-wrap:wrap;align-items:baseline;gap:4px 10px!important;padding:0 0 16px 30px!important}
+  ol.stepper li::before{top:16px!important;bottom:0;left:6px!important;right:auto!important;width:3px!important;height:auto!important}
+  ol.stepper li:last-child::before{display:none}
+  ol.stepper .dot{top:1px!important}
+  .hb.shell>.main [style*="position: absolute"][style*="bottom: 24px"]{position:sticky!important;left:auto!important;right:auto!important;bottom:12px!important;flex-wrap:wrap;margin:16px 0 0}
+  .hb.shell>.main [style*="position: absolute"][style*="bottom: 24px"]>span{flex:1 1 100%!important}
+  .hb.shell>.main div:has(>div>h2.serif){flex-wrap:wrap}
+  .hb.shell>.main div:has(>h2.serif){flex:1 1 200px!important;min-width:0}
+  .hb.shell>.main [style*="grid-template-columns"]:has(>.kpi){grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .kpi{padding:12px 14px!important}.kpi b{font-size:22px!important}
+  .tbl.cards thead{display:none}
+  .tbl.cards,.tbl.cards tbody{display:block}
+  .tbl.cards tr{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px 12px;align-items:center;padding:14px 16px;border-top:1px solid #E4DACA}
+  .tbl.cards tr:first-child{border-top:0}
+  .tbl.cards td{display:block;padding:0!important;border:0!important;max-width:none!important;text-align:left}
+  .tbl.cards td.full{grid-column:1/-1}
+  .tbl.cards td.r{text-align:right}
+  .tbl.cards td.hide{display:none}
+  .tbl.cards td.pr{grid-column:3;grid-row:1}
+}
+
+@media (max-width:767px){
+  .hb>div[style*="height: 64px"]{height:auto!important;flex-wrap:wrap;row-gap:8px;padding:10px 16px!important}
+  .hb>div[style*="height: 64px"] [role=tablist]{display:none!important}
+  .hb>div[style*="height: 64px"]>span[style*="width: 1px"]{display:none}
+  .hb aside[aria-label="Sections"]{max-width:none!important;flex:1 1 100%!important;border-right:0!important}
+  .hb main[aria-label="Preview"]{padding:16px!important}
+  .hb main[aria-label="Preview"] [style*="grid-template-columns: 1fr 1fr"]{grid-template-columns:1fr!important}
+  .hb [style*="flex-wrap: wrap"]{align-content:flex-start}
+}
+
+@media (min-width:768px) and (max-width:1023px){
+  .hb.shell{padding-bottom:0!important}
+  .mtab.on-phone{display:none!important}
+  .hide-phone{display:revert!important}
+  .hb.shell>.main [style*="grid-template-columns"][style*="repeat(4"],.hb.shell>.main [style*="grid-template-columns"][style*="repeat(3"]:not([style*="repeat(3, minmax(0, 1fr)) "]){grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .hb.shell>.main [style*="grid-template-columns: 1fr 1fr"]{grid-template-columns:1fr 1fr!important}
+  .hb.shell>.main ol.steps[style],.hb.shell>.main .steps{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+  .stages{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+  .toast{bottom:16px}
+  h1.serif{font-size:30px!important}
+  .tbl.cards thead{display:table-header-group}
+  .tbl.cards{display:table}.tbl.cards tbody{display:table-row-group}
+  .tbl.cards tr{display:table-row}
+  .tbl.cards td{display:table-cell;padding:12px 14px!important;border-top:1px solid #E4DACA!important}
+  .tbl.cards td.hide{display:table-cell}
+  .tbl.cards td.pr{grid-column:auto;grid-row:auto}
+}
+@media (prefers-reduced-motion:reduce){.mmenu .mpanel{animation:none}}
+/*RESP-END*/
+</style>
+</helmet>
+<div class="hb shell" style="--mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; --mtab-pad: 84px; background: #F7F3EC; min-height: 100vh">
+<!--RESP-START--><nav class="mtab admin on-phone" aria-label="Main sections"><a href="Admin-Overview.dc.html"><span class="ic i-home"></span>Today</a><a href="Admin-Orders.dc.html"><span class="ic i-receipt"></span>Orders</a><a href="Admin-Sellers.dc.html"><span class="ic i-store"></span>Sellers</a><a href="Admin-Payouts.dc.html"><span class="ic i-wallet"></span>Money</a><details class="mmenu mmore on"><summary aria-label="More sections"><span class="ic i-menu"></span>More</summary><div class="mpanel dark"><nav class="navd" aria-label="Operations">
+      <a href="Admin-Overview.dc.html"><span class="ic s18 i-home"></span>Today<span class="cnt">7</span></a>
+      <a href="Admin-Orders.dc.html"><span class="ic s18 i-receipt"></span>Orders<span class="cnt q">3</span></a>
+      <a href="Admin-Care.dc.html"><span class="ic s18 i-message"></span>Care<span class="cnt q">2</span></a>
+      <a href="Admin-Sellers.dc.html"><span class="ic s18 i-store"></span>Sellers<span class="cnt q">9</span></a>
+      <a href="Admin-Moderation.dc.html" class="on"><span class="ic s18 i-package"></span>Catalog</a>
+      <a href="Admin-Payouts.dc.html"><span class="ic s18 i-wallet"></span>Money<span class="cnt q">2</span></a>
+      <a href="Admin-Offers.dc.html"><span class="ic s18 i-percent"></span>Growth</a>
+      <a href="Admin-Reports.dc.html"><span class="ic s18 i-chart"></span>Reports</a>
+      <a href="#"><span class="ic s18 i-sliders"></span>Settings</a>
+    </nav></div></details></nav><header class="mbar dark"><a href="Admin-Overview.dc.html" class="mlogo" style="color: #fff"><img src="/_blob/65b39bff773bb375aa5d23ab420967a3" alt=""><span style="display: flex; flex-direction: column; color: inherit"><b>Catalog</b><span>Operations</span></span></a><button class="mbtn" aria-label="Search, Cmd K" style="color: #fff"><span class="ic i-search"></span></button><details class="mmenu"><summary class="mbtn" aria-label="Menu" style="color: #fff"><span class="ic i-menu"></span></summary><div class="mpanel"><nav class="navd" aria-label="Operations">
+      <a href="Admin-Overview.dc.html"><span class="ic s18 i-home"></span>Today<span class="cnt">7</span></a>
+      <a href="Admin-Orders.dc.html"><span class="ic s18 i-receipt"></span>Orders<span class="cnt q">3</span></a>
+      <a href="Admin-Care.dc.html"><span class="ic s18 i-message"></span>Care<span class="cnt q">2</span></a>
+      <a href="Admin-Sellers.dc.html"><span class="ic s18 i-store"></span>Sellers<span class="cnt q">9</span></a>
+      <a href="Admin-Moderation.dc.html" class="on"><span class="ic s18 i-package"></span>Catalog</a>
+      <a href="Admin-Payouts.dc.html"><span class="ic s18 i-wallet"></span>Money<span class="cnt q">2</span></a>
+      <a href="Admin-Offers.dc.html"><span class="ic s18 i-percent"></span>Growth</a>
+      <a href="Admin-Reports.dc.html"><span class="ic s18 i-chart"></span>Reports</a>
+      <a href="#"><span class="ic s18 i-sliders"></span>Settings</a>
+    </nav></div></details></header><!--RESP-END-->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  <aside class="side" style="background: #14213D; color: #C9D0DD; padding: 18px 12px; display: flex; flex-direction: column; gap: 18px; max-width: 236px; flex-basis: 220px">
+    <a href="#" style="display: flex; align-items: center; gap: 10px; padding: 0 6px; color: #fff"><img src="/_blob/65b39bff773bb375aa5d23ab420967a3" alt="" style="width: 34px; height: 34px; background: #FFFCF7; border-radius: 8px; padding: 2px"><span style="display: flex; flex-direction: column; line-height: 1.1"><span class="serif" style="font-size: 19px; font-weight: 600; color: #fff">Hastabazaar</span><span style="font-size: 12px; font-weight: 600; color: #E2B65C">Operations</span></span></a>
+    <nav class="navd" aria-label="Operations">
+      <a href="Admin-Overview.dc.html"><span class="ic s18 i-home"></span>Today<span class="cnt">7</span></a>
+      <a href="Admin-Orders.dc.html"><span class="ic s18 i-receipt"></span>Orders<span class="cnt q">3</span></a>
+      <a href="Admin-Care.dc.html"><span class="ic s18 i-message"></span>Care<span class="cnt q">2</span></a>
+      <a href="Admin-Sellers.dc.html"><span class="ic s18 i-store"></span>Sellers<span class="cnt q">9</span></a>
+      <a href="Admin-Moderation.dc.html" class="on"><span class="ic s18 i-package"></span>Catalog</a>
+      <a href="Admin-Payouts.dc.html"><span class="ic s18 i-wallet"></span>Money<span class="cnt q">2</span></a>
+      <a href="Admin-Offers.dc.html"><span class="ic s18 i-percent"></span>Growth</a>
+      <a href="Admin-Reports.dc.html"><span class="ic s18 i-chart"></span>Reports</a>
+      <a href="#"><span class="ic s18 i-sliders"></span>Settings</a>
+    </nav>
+    <div style="margin-top: auto; display: flex; flex-direction: column; gap: 10px">
+      <a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; font-size: 14px; color: #C9D0DD"><span class="ic s18 i-arrow-ur"></span>Open marketplace</a>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; background: rgba(255,252,247,.07)">
+        <span class="avatar" style="width: 34px; height: 34px; background: #E2B65C; color: #14213D; font-size: 13px">NS</span>
+        <span style="flex: 1; line-height: 1.25"><b style="color: #fff; font-size: 14px; display: block">Nisha S.</b><span style="font-size: 12.5px">Super Admin</span></span>
+        <button class="btn btn-sm btn-icon" aria-label="Sign out" style="color: #C9D0DD; width: 32px; height: 32px"><span class="ic s18 i-logout"></span></button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main" style="display: flex; flex-direction: column">
+    <div style="height: 68px; display: flex; align-items: center; gap: 12px; padding: 0 32px; position: relative">
+      <h1 class="serif" style="font-size: 28px">Catalog</h1>
+      <button class="helpbtn" aria-label="How product review works" aria-expanded="{{helpOpen}}" onClick="{{toggleHelp}}"><span class="ic s16 i-help"></span></button>
+      <sc-if value="{{helpOpen}}" hint-placeholder-val="{{ false }}">
+        <div class="pop" role="dialog" aria-label="How product review works" style="top: 58px; left: 32px; width: 420px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; font-size: 14px">
+          <b style="font-size: 15px; color: #14213D">How product review works</b>
+          <p>Check the photos, price and details against the list on the right. Use J and K to move between products.</p><p>Approve &amp; publish puts it live straight away. Ask for changes sends your note to the seller; the product stays hidden until they resubmit.</p><p>Reject is for products we can’t sell at all. It always asks you to confirm.</p>
+          <a href="#" class="tlink" style="font-size: 13.5px">Full staff procedure</a>
+        </div>
+      </sc-if>
+      <div class="cmdk hide-m" style="margin-left: auto; width: 380px"><span class="ic s18 i-search"></span><span style="flex: 1">Jump to anything…</span><span class="kbd">⌘K</span></div>
+    </div>
+    <nav class="subtabs" aria-label="Catalog sections">
+      <a href="Admin-Moderation.dc.html" class="on">Product review <span class="n">11</span></a><a href="Admin-ProductHelp.dc.html">Help requests <span class="n">3</span></a><a href="Admin-ProductHelp.dc.html">Publishing <span class="n">2</span></a><a href="#">Categories & occasions</a><a href="Admin-Homepage.dc.html">Homepage</a>
+    </nav>
+
+    <main style="padding: 20px 32px 40px; display: flex; flex-direction: column; gap: 18px">
+      <!-- queue strip -->
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span class="num" style="font-size: 14px; color: #46536F; white-space: nowrap"><b style="color: #14213D">3</b> of 11</span>
+        <div style="display: flex; gap: 8px; overflow: hidden; flex: 1">
+          <span style="width: 52px; height: 52px; border-radius: 10px; overflow: hidden; border: 1px solid #E4DACA; opacity: .45; flex: none; position: relative; background: #fff"><img src="/_blob/8d379ae75119015bb8c365c85629ef73" alt="" style="width: 100%; height: 100%; object-fit: cover"><span style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #2C6A4A"><span class="ic s22 i-check"></span></span></span>
+          <span style="width: 52px; height: 52px; border-radius: 10px; overflow: hidden; border: 1px solid #E4DACA; opacity: .45; flex: none; background: #fff"><img src="/_blob/a9f6923fffa84dc81e931d255c6bbd11" alt="" style="width: 100%; height: 100%; object-fit: cover"></span>
+          <span style="width: 52px; height: 52px; border-radius: 10px; overflow: hidden; box-shadow: 0 0 0 2px #14213D; flex: none; background: #fff"><img src="/_blob/a30bfa40266743c426c4533415ff9a1b" alt="" style="width: 100%; height: 100%; object-fit: contain"></span>
+          <span style="width: 52px; height: 52px; border-radius: 10px; overflow: hidden; border: 1px solid #E4DACA; flex: none; background: #fff"><img src="/_blob/dcb1ea04796929f7673abe8a37ed1fe4" alt="" style="width: 100%; height: 100%; object-fit: contain"></span>
+          <span style="width: 52px; height: 52px; border-radius: 10px; overflow: hidden; border: 1px solid #E4DACA; flex: none; background: #fff"><img src="/_blob/b143837d69463c62288a1c0ac663884d" alt="" style="width: 100%; height: 100%; object-fit: cover"></span>
+          <span style="width: 52px; height: 52px; border-radius: 10px; overflow: hidden; border: 1px solid #E4DACA; flex: none; background: #fff"><img src="/_blob/f54d6585cf2cb42ca7881e4ab64122b0" alt="" style="width: 100%; height: 100%; object-fit: cover"></span>
+          <span style="width: 52px; height: 52px; border-radius: 10px; overflow: hidden; border: 1px solid #E4DACA; flex: none; background: #fff"><img src="/_blob/bd742dc34fd9a539efd543a6b3bbe157" alt="" style="width: 100%; height: 100%; object-fit: cover"></span>
+          <span style="width: 52px; height: 52px; border-radius: 10px; overflow: hidden; border: 1px solid #E4DACA; flex: none; background: #fff"><img src="/_blob/7f04929ce482cbc65dd5763a037517e8" alt="" style="width: 100%; height: 100%; object-fit: cover"></span>
+          <span style="width: 52px; height: 52px; border-radius: 10px; border: 1px dashed #D3C5AD; flex: none; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; color: #46536F" class="num">+3</span>
+        </div>
+        <span style="display: flex; gap: 6px; align-items: center; font-size: 13px; color: #46536F" class="hide-t"><span class="kbd">J</span><span class="kbd">K</span>to move</span>
+      </div>
+
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 24px; align-items: start">
+        <!-- photos -->
+        <section class="panel" style="padding: 16px; display: flex; flex-direction: column; gap: 12px" aria-label="Photos">
+          <div style="aspect-ratio: 1; border-radius: 10px; background: #fff; border: 1px solid #EDE4D3; overflow: hidden"><img src="/_blob/a30bfa40266743c426c4533415ff9a1b" alt="Beaded butterfly danglers, cover photo" style="width: 100%; height: 100%; object-fit: contain"></div>
+          <div style="display: flex; gap: 8px; align-items: center; font-size: 13.5px; color: #46536F"><span class="ic s16 i-image"></span>1 photo · 1200 × 1200 · not used by any other listing</div>
+        </section>
+
+        <!-- listing -->
+        <section style="display: flex; flex-direction: column; gap: 16px" aria-label="Listing">
+          <div class="panel" style="padding: 22px; display: flex; flex-direction: column; gap: 14px">
+            <div style="display: flex; gap: 10px; align-items: center; font-size: 13.5px; color: #46536F"><span class="ic s16 i-store"></span>Hand Creation · submitted 19 Nov, 9:14 am · first time reviewed</div>
+            <h2 class="serif" style="font-size: 32px; line-height: 1.08">Beaded butterfly danglers</h2>
+            <div class="num" style="display: flex; gap: 20px; flex-wrap: wrap; font-size: 14.5px"><span><span style="color: #46536F">Price</span> <b>NPR 450</b></span><span><span style="color: #46536F">Stock</span> <b>12</b></span><span><span style="color: #46536F">Category</span> <b>Jewellery › Earrings</b></span><span><span style="color: #46536F">Origin</span> <b>India</b></span></div>
+            <p style="font-size: 15px; color: #2C3B5C; line-height: 1.6">Blue glass-bead butterfly danglers on a gold-tone hook. Lightweight, about 6 cm long.</p>
+          </div>
+
+          <div class="panel" style="padding: 22px; display: flex; flex-direction: column; gap: 4px">
+            <h3 style="font-size: 16px; font-weight: 650; margin-bottom: 8px">Checks</h3>
+            <label style="display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid #E4DACA; font-size: 14.5px"><span class="check on"><span class="ic s16 i-check"></span></span><span style="flex: 1">Photos show the actual product</span><span class="badge ok">Pass</span></label>
+            <label style="display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid #E4DACA; font-size: 14.5px"><span class="check on"><span class="ic s16 i-check"></span></span><span style="flex: 1">Allowed to sell on Hastabazaar</span><span class="badge ok">Pass</span></label>
+            <label style="display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid #E4DACA; font-size: 14.5px"><span class="check on"><span class="ic s16 i-check"></span></span><span style="flex: 1">Price in line with similar listings</span><span class="badge ok">NPR 390–720</span></label>
+            <label style="display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid #E4DACA; font-size: 14.5px"><span class="check"></span><span style="flex: 1">Proof that it’s handmade</span><span class="badge warn">Check</span></label>
+            <label style="display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid #E4DACA; font-size: 14.5px"><span class="check on"><span class="ic s16 i-check"></span></span><span style="flex: 1">Origin, materials and size filled in</span><span class="badge ok">Pass</span></label>
+          </div>
+
+          <div class="field">
+            <label class="label" for="msg">Message to seller <span style="font-weight: 400; color: #675B4E">(sent only if you ask for changes)</span></label>
+            <textarea id="msg" class="input" rows="2" placeholder="e.g. Add a photo being worn and confirm how the beads are strung."></textarea>
+          </div>
+
+          <div style="display: flex; gap: 10px; flex-wrap: wrap">
+            <button class="btn btn-primary" style="flex: 1"><span class="ic s18 i-check"></span>Approve &amp; publish<span class="kbd" style="margin-left: 6px; background: rgba(255,255,255,.15); border-color: rgba(255,255,255,.3); color: #fff">A</span></button>
+            <button class="btn btn-ghost" style="flex: 1">Ask for changes<span class="kbd" style="margin-left: 6px">C</span></button>
+            <button class="btn btn-quiet" style="color: #A8232E">Reject…</button>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1200}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { helpOpen: false }; }
+  renderVals() { return { helpOpen: this.state.helpOpen, toggleHelp: () => this.setState({ helpOpen: !this.state.helpOpen }) }; }
+}
+</script>
+</body>
+</html>

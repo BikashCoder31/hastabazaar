@@ -7,6 +7,14 @@ import { Button } from '@/components/ui/button';
 import type { CommissionRateChange } from '@/lib/commission/rates';
 import { commissionDate } from '@/lib/commission/reporting';
 
+export function SellerMarketplaceFeeNotice({basisPoints}:{basisPoints:number}) {
+  return <section className="mb-7 space-y-2 rounded-2xl border bg-card p-5 text-sm" aria-label="Current marketplace fees">
+    <h2 className="font-heading text-2xl">Marketplace fees for new orders</h2>
+    <p>Selling fee: {basisPoints/100}%. Current consent is required for new orders.</p>
+    <p>Customer service fee campaigns do not change the seller fee. Original orders keep their recorded amounts.</p>
+  </section>;
+}
+
 type Notice = Pick<
   CommissionRateChange,
   'id' | 'basisPoints' | 'effectiveAt' | 'termsText' | 'agreementVersion'
@@ -55,8 +63,8 @@ export function CommissionFeeNotice({
       <p className="text-sm leading-6">
         A {notice.basisPoints / 100}% commission rate is published for new
         orders from {commissionDate(notice.effectiveAt)} (Nepal time). Your
-        previous accepted rate applies until the effective date and your
-        acceptance.
+        new orders require acceptance of these terms from that date. Existing
+        orders keep their recorded rates.
       </p>
       <details>
         <summary className="cursor-pointer text-sm font-semibold underline">

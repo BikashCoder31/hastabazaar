@@ -40,7 +40,7 @@ const guides: Readonly<Record<string, readonly [string, string, string]>> = {
   'seller.managed-supply-proposal': ['Offer products through Managed Maker', 'Tell us which products you can supply through the Managed Maker program.', 'Have the product, quantity, price, and preparation details ready.'],
   'seller.managed-transition-request': ['Request a seller program change', 'Ask to change how you sell through the Managed Maker program.', 'Explain the change you want and why it suits your business.'],
   'rider.report': ['Record a delivery result', 'Tell us what happened during this delivery.', 'Have the delivery details, cash collected, and required delivery proof ready.'],
-  'staff.delivery-assignment': ['Assign a delivery', 'Choose how an order will be delivered.', 'Check the delivery address and choose the rider or delivery method.'],
+  'staff.delivery-assignment': ['Assign a delivery', 'Choose how an order will be delivered.', 'Check the delivery address and choose the delivery method.'],
   'staff.managed-supply-decision': ['Review a product supply offer', 'Record a decision about products offered by a Managed Maker.', 'Check the product, quantity, price, and preparation details.'],
   'staff.managed-transition-decision': ['Review a seller program change', 'Record a decision about changing a maker’s selling program.', 'Read the request and check the requirements before deciding.'],
   'staff.parcel-control': ['Manage a parcel', 'Record parcel details and the next delivery step.', 'Check the order, parcel contents, and delivery information.'],
@@ -49,7 +49,7 @@ const guides: Readonly<Record<string, readonly [string, string, string]>> = {
   'shipping.console-request': ['Request a delivery', 'Create a pickup or delivery request.', 'Have the addresses, contact numbers, and parcel details ready.'],
   'shipping.console-action-seller': ['Update a carrier delivery request', 'Add information to your delivery request with a carrier.', 'Check the current request and explain the update.'],
   'shipping.console-action-staff': ['Manage a delivery request', 'Record the next step for a delivery request.', 'Check the request, carrier details, and any supporting evidence.'],
-  'seller.payout-request': ['Request a payment', 'Ask us to pay your available seller earnings.', 'Add a note explaining your request. Sending the request does not transfer money.'],
+  'seller.payout-request': ['Request available payout', 'Purpose: Seller earnings payout.', 'A note is optional, up to 500 characters. Submitting a request does not transfer money.'],
   'rider.remittance': ['Record cash handed over', 'Record delivery cash you handed over to the business.', 'Have the amount and receipt or reference ready.'],
   'commerce.gift-card-issue': ['Create a gift card', 'Record a gift card for a customer.', 'Have the recipient details, amount, and any message ready.'],
   'staff.invoice-adjustment': ['Correct an invoice', 'Record a correction to an invoice.', 'Check the invoice and explain the amount and reason for the correction.'],
@@ -67,7 +67,7 @@ const guides: Readonly<Record<string, readonly [string, string, string]>> = {
   'staff.governance-incident-update': ['Update a business problem report', 'Record progress on an existing problem.', 'Read the previous report and explain what changed or what happens next.'],
   'staff.governance-backup-verify': ['Record a backup check', 'Record evidence that a backup was checked.', 'Have the backup reference, check result, and supporting evidence ready.'],
   'account.profile': ['Your account details', 'Keep your name and contact information up to date.', 'Check your details before saving.'],
-  'account.address': ['Your delivery address', 'Save an address for future deliveries.', 'Enter the full address and a nearby landmark to help the rider find you.'],
+  'account.address': ['Your delivery address', 'Save an address for future deliveries.', 'Enter the full address and a nearby landmark to help with delivery.'],
   'identity.register': ['Create an account', 'Create an account to shop and track your orders.', 'Use an email address you can access and choose a password.'],
   'identity.login-password': ['Sign in', 'Sign in to your account.', 'Use the email address and password for your account.'],
   'identity.email-code-request': ['Get a sign-in code', 'Request a code to sign in by email.', 'Use the email address for your account.'],
@@ -176,7 +176,7 @@ export function baseFieldCopy(formId: string, key: string): { label: string; hel
     ...(key === 'invoiceId' ? { label: 'Invoice to correct' } : {}),
     ...(key === 'categoryId' ? { label: 'Product category' } : {}),
     ...(key === 'occasionIds' ? { label: 'Gift occasions' } : {}),
-    ...(formId === 'seller.payout-request' && key === 'note' ? { label: 'What is this payment request for?', helpText: 'Explain your request in 8 to 500 characters. For example, payment for your completed orders.' } : {}) };
+    ...(formId === 'seller.payout-request' && key === 'note' ? { label: 'Note (optional)', helpText: 'Add context up to 500 characters if useful. No reason is required for a normal seller earnings payout.' } : {}) };
 }
 
 /** These values are filled by the application, rather than questions for a person. */

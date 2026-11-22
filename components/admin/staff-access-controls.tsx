@@ -106,6 +106,7 @@ export function StaffAccessControls({
           <Input
             id={`${id}-search`}
             type="search"
+            className="min-h-11"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Find a work area"
@@ -179,7 +180,7 @@ export function StaffAccessControls({
                       <div className="min-w-0">
                         <label
                           htmlFor={`${id}-${right.permission}`}
-                          className="cursor-pointer text-sm font-medium"
+                          className="flex min-h-11 cursor-pointer items-center text-sm font-medium"
                         >
                           {right.label}
                         </label>
@@ -226,7 +227,7 @@ export function StaffAccessControls({
         </p>
         <ul className="mt-2 grid list-disc gap-x-8 gap-y-1 pl-5 text-muted-foreground sm:grid-cols-2">
           <li>Invite staff and change staff access</li>
-          <li>Suspend sellers and manage rider controls</li>
+          <li>Suspend sellers</li>
           <li>Approve high-value refunds and seller payouts</li>
           <li>Record payout payments</li>
           <li>Change business settings, fees and tax settings</li>

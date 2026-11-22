@@ -1,4 +1,5 @@
 import { ProductDiscount } from '@/components/catalog/product-discount';
+import { SellerDisclosure } from '@/components/commerce/seller-disclosure';
 import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowUpRight } from 'lucide-react';
@@ -49,15 +50,16 @@ export function ProductCard({
         </h3>
         {product.tradingName ? (
           <p className="mt-1 truncate text-sm text-muted-foreground">
-            {product.participationRoute === 'managed_maker' ? 'Made by' : 'By'} {product.tradingName}
+            {product.makerName ?? product.tradingName}
           </p>
         ) : null}
-        {product.participationRoute === 'managed_maker' ? <p className="mt-1 text-xs text-muted-foreground">Sold by {product.storeName ?? 'company store — terms review pending'}</p> : null}
+        {product.tradingName ? <SellerDisclosure managed={product.participationRoute==='managed_maker'} supplierName={product.makerName??product.tradingName} legalSellerName={product.legalSellerName}/> : null}
         <p className="mt-2 flex items-center justify-between gap-2 text-sm font-semibold text-primary">
-          NPR {product.price}
+          {product.price?`${product.priceFrom?'From ':''}NPR ${product.price}`:'Price unavailable'}
           <ArrowUpRight className="size-4 shrink-0" />
         </p>
         {product.pricePaisa ? <ProductDiscount pricePaisa={product.pricePaisa} originalPaisa={product.compareAtPricePaisa} /> : null}
+        {product.purchasable === false ? <p className="mt-1 text-sm text-muted-foreground">Not available to order yet</p> : null}
       </div>
     </Link>
   );

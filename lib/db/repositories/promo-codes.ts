@@ -1,3 +1,4 @@
+import {programmeNoticeStatements} from '../../operations/programme-notice-sources';
 import {
   IncentiveError,
   type PromoMutationContext,
@@ -310,6 +311,7 @@ async function mutation(
     throw new IncentiveError('invalid');
   const id = campaignId ?? crypto.randomUUID();
   const version = (before?.version ?? 0) + 1;
+  const programmeEventId=crypto.randomUUID();
   integer(version, 1);
   const max =
     action === 'draft' && before
@@ -438,7 +440,7 @@ async function mutation(
         `INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,ip_hash,created_at) VALUES (?,?,?,'promo_campaign',?,?,?,?,?,NULL,?)`,
       )
       .bind(
-        crypto.randomUUID(),
+        programmeEventId,
         c.actorId,
         `promo.${action}`,
         id,
@@ -465,6 +467,7 @@ async function mutation(
   } catch {
     throw new IncentiveError('invalid');
   }
+  if(action!=='draft')statements.push(...await programmeNoticeStatements(db,c,{type:'promo',sourceId:id,eventId:programmeEventId,status:action==='publish'?'promo_published':'promo_paused'}));
   try {
     await db.batch(statements);
   } catch {
@@ -508,6 +511,10 @@ export async function quotePromo(
 ): Promise<PromoQuote> {
   integer(input.now, 0, MAX_TIME);
   integer(input.subtotalPaisa);
+  const discountCapPaisa = input.discountCapPaisa === undefined
+    ? input.subtotalPaisa
+    : input.discountCapPaisa;
+  integer(discountCapPaisa, 0, input.subtotalPaisa);
   await authority(db, input.userId, 'customer');
   const code = normalizePromoCode(input.code);
   const row = await db
@@ -525,9 +532,9 @@ export async function quotePromo(
     input.subtotalPaisa < row.minimum_subtotal_paisa
   )
     throw new IncentiveError('unavailable');
-  const discount = calculatePromoDiscount(
-    decode(row).terms,
-    input.subtotalPaisa,
+  const discount = Math.min(
+    calculatePromoDiscount(decode(row).terms, input.subtotalPaisa),
+    discountCapPaisa,
   );
   if (discount < 1) throw new IncentiveError('unavailable');
   if (
@@ -578,6 +585,7 @@ export async function preparePromoConsumption(
     userId: input.userId,
     code: input.quote.code,
     subtotalPaisa: input.quote.subtotalPaisa,
+    discountCapPaisa: input.discountCapPaisa,
     now: input.now,
   });
   if (

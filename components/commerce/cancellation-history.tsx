@@ -17,10 +17,10 @@ export async function CancellationHistory({
   const reviews = (
     await db
       .prepare(
-        'SELECT r.status,r.note,r.review_note AS reviewNote FROM order_cancellation_reviews r JOIN orders o ON o.id=r.order_id WHERE o.order_number=? ORDER BY r.created_at DESC',
+        "SELECT r.id,r.status,r.note,r.review_note AS reviewNote,r.next_update_at AS nextUpdateAt,(SELECT COUNT(*) FROM order_fulfillment_holds h WHERE h.source_type='cancellation_review' AND h.source_id=r.id AND h.ended_at IS NULL) AS activeHolds FROM order_cancellation_reviews r JOIN orders o ON o.id=r.order_id WHERE o.order_number=? ORDER BY r.created_at DESC",
       )
       .bind(orderNumber)
-      .all<{ status: string; note: string; reviewNote: string | null }>()
+      .all<{id:string; status: string; note: string; reviewNote: string | null;nextUpdateAt:number|null;activeHolds:number }>()
   ).results;
   if (!rows.length && !reviews.length) return null;
   return (
@@ -50,12 +50,14 @@ export async function CancellationHistory({
       })}
       {reviews.map((r, i) => (
         <div key={i}>
-          <p>Production review: {r.status}</p>
+          <p>Cancellation / delivery concern {r.id}: {r.status}</p>
+          {r.activeHolds>0?<p>Preparation and dispatch on hold for {r.activeHolds} affected item lines.</p>:r.status==='pending'?<p>No cancellation hold is active. Staff must confirm actual custody and the available delivery or return remedy.</p>:null}
           <p>
             {r.status === 'pending'
-              ? 'Responsible team: operations. Next action: staff reviews production and current cancellation eligibility.'
+              ? 'Responsible team: operations. Next action: review actual custody, original terms and payment. A cash refund requires its separate verified outcome.'
               : r.reviewNote}
           </p>
+          {r.status==='pending'?<p>{r.nextUpdateAt?`Next recorded update: ${new Date(r.nextUpdateAt).toLocaleString('en-NP',{timeZone:'Asia/Kathmandu'})}`:'A time for the next update has not yet been confirmed. Order support remains available.'}</p>:null}
         </div>
       ))}
     </section>

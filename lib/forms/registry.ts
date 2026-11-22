@@ -1,6 +1,25 @@
+import {GOVERNANCE_FORM_CONTRACTS} from '../operations/governance-form-contracts';
+import {NATIVE_SOURCE_FORM_CONTRACTS} from './native-source-contracts';
+import { CUSTOMER_EXPERIENCE_FORM_CONTRACTS } from './customer-experience-contracts';
+import {LIVE_MANAGED_FINANCE_FORM} from '../managed-commerce/live-finance-form-contract';
+import {LIVE_INVOICE_ADJUSTMENT_FORM} from '../managed-commerce/live-invoice-adjustment-form-contract';
+import {PAYOUT_FINANCE_FORM} from '../payments/payout-form-contract';
+import {MANAGED_LIVE_FORM,MANAGED_LIVE_EVIDENCE_FORM} from '../managed-commerce/live-form-contract';
+import {RECOVERY_FORM_CONTRACTS} from '../payments/recovery-form-contract';
+import {REFUND_FORM_CONTRACTS} from '../payments/refund-form-contract';
 import { sellerQueueStatuses, orderQueueStatuses, emailQueueStatuses, emailQueueStatusLabels } from '../admin/queue-filters';
 import { INCENTIVE_FORM_CONTRACTS } from '../incentives/forms';
 import { INCENTIVE_WORKSPACE_FORM_CONTRACTS } from './incentive-workspace-contracts';
+import { ACCOUNTING_FILTER_FORM } from '../accounting/form-contract';
+import { SERVICE_FEE_REFUND_FORM } from '../checkout/platform-service-fee-form-contract';
+import { COMPANY_BANK_ACCOUNT_FORM } from '../payments/company-account-form-contract';
+import { CATEGORY_POLICY_FORM } from '../products/category-policy-form-contract';
+import { FEE_FORM_CONTRACTS } from '../commission/form-contracts';
+import { FEE_WAIVER_FORM } from '../marketplace/fee-waiver-form-contract';
+import { SECURITY_FORM_CONTRACTS } from '../security/form-contracts';
+import { NCM_FORM_CONTRACTS } from '../delivery/ncm-form-contracts';
+import { SUPPORT_ASSISTANT_FORM } from '../support/form-contract';
+import { SELLER_DASHBOARD_FORM_CONTRACTS } from '../sellers/dashboard-form-contracts';
 import type { BaseFieldCapability, FormAudience, FormCapabilities, FormDefinition, FormId, FormMode } from './types';
 import { feedbackTopics } from '../feedback/customer-feedback';
 import { baseFieldCopy } from './plain-language';
@@ -13,6 +32,21 @@ export interface ImplementedFormAdapter {
 
 // Integrations add an entry here only when their server adapter exists and is tested.
 export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormAdapter>> = Object.freeze({
+  ...Object.fromEntries(CUSTOMER_EXPERIENCE_FORM_CONTRACTS.map(({ id, route, mode }) => [id, { formId: id, route, mode }])),
+  ...Object.fromEntries(Object.values(NATIVE_SOURCE_FORM_CONTRACTS).map(definition=>[definition.id,{formId:definition.id,route:definition.route,mode:definition.mode}])),
+  ...Object.fromEntries(Object.values(GOVERNANCE_FORM_CONTRACTS).map(definition=>[definition.id,{formId:definition.id,route:definition.route,mode:definition.mode}])),
+  ...Object.fromEntries([MANAGED_LIVE_FORM,MANAGED_LIVE_EVIDENCE_FORM,LIVE_MANAGED_FINANCE_FORM,LIVE_INVOICE_ADJUSTMENT_FORM].map(definition=>[definition.id,{formId:definition.id,route:definition.route,mode:definition.mode}])),
+  ...Object.fromEntries(Object.values(RECOVERY_FORM_CONTRACTS).map(definition=>[definition.id,{formId:definition.id,route:definition.route,mode:definition.mode}])),
+  ...Object.fromEntries(Object.values({...REFUND_FORM_CONTRACTS,[PAYOUT_FINANCE_FORM.id]:PAYOUT_FINANCE_FORM}).map(definition=>[definition.id,{formId:definition.id,route:definition.route,mode:definition.mode}])),
+  ...Object.fromEntries(Object.values(FEE_FORM_CONTRACTS).map(definition=>[definition.id,{formId:definition.id,route:definition.route,mode:definition.mode}])),
+  [FEE_WAIVER_FORM.id]: { formId: FEE_WAIVER_FORM.id, route: FEE_WAIVER_FORM.route, mode: FEE_WAIVER_FORM.mode },
+  ...Object.fromEntries([...Object.values(SECURITY_FORM_CONTRACTS), ...Object.values(NCM_FORM_CONTRACTS), ...Object.values(SELLER_DASHBOARD_FORM_CONTRACTS), SUPPORT_ASSISTANT_FORM].map((definition) => [definition.id, {
+    formId: definition.id, route: definition.route, mode: definition.mode,
+  }])),
+  [SERVICE_FEE_REFUND_FORM.id]: { formId:SERVICE_FEE_REFUND_FORM.id,route:SERVICE_FEE_REFUND_FORM.route,mode:SERVICE_FEE_REFUND_FORM.mode },
+  [COMPANY_BANK_ACCOUNT_FORM.id]:{formId:COMPANY_BANK_ACCOUNT_FORM.id,route:COMPANY_BANK_ACCOUNT_FORM.route,mode:COMPANY_BANK_ACCOUNT_FORM.mode},
+  [CATEGORY_POLICY_FORM.id]:{formId:CATEGORY_POLICY_FORM.id,route:CATEGORY_POLICY_FORM.route,mode:CATEGORY_POLICY_FORM.mode},
+  [ACCOUNTING_FILTER_FORM.id]: { formId: ACCOUNTING_FILTER_FORM.id, route: ACCOUNTING_FILTER_FORM.route, mode: ACCOUNTING_FILTER_FORM.mode },
   ...Object.fromEntries(Object.values(INCENTIVE_WORKSPACE_FORM_CONTRACTS).map(definition=>[definition.id,{formId:definition.id,route:definition.route,mode:definition.mode}])),
   'staff.loyalty-settings': { formId: 'staff.loyalty-settings', route: '/api/admin/loyalty', mode: 'operation' },
   'account.points-redemption': { formId: 'account.points-redemption', route: '/api/account/rewards/redeem', mode: 'transaction' },
@@ -39,6 +73,7 @@ export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormA
   'commerce.order-tracking': { formId: 'commerce.order-tracking', route: '/api/orders/track', mode: 'query' },
   'seller.product-filter': { formId: 'seller.product-filter', route: '/seller/products', mode: 'query' },
   'staff.seller-registry-filter': { formId: 'staff.seller-registry-filter', route: '/admin/sellers', mode: 'query' },
+  'staff.case-intake-order': { formId: 'staff.case-intake-order', route: '/admin/cases/intake', mode: 'query' },
   'staff.order-queue-filter': { formId: 'staff.order-queue-filter', route: '/admin/orders', mode: 'query' },
   'staff.order-email-filter': { formId: 'staff.order-email-filter', route: '/admin/order-emails', mode: 'query' },
   'staff.homepage-filter': { formId: 'staff.homepage-filter', route: '/admin/homepage', mode: 'query' },
@@ -66,8 +101,8 @@ export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormA
   'public.contact': { formId: 'public.contact', route: '/api/feedback', mode: 'collection' },
   'public.feedback': { formId: 'public.feedback', route: '/api/feedback', mode: 'collection' },
   'public.footer-feedback': { formId: 'public.footer-feedback', route: '/api/feedback', mode: 'collection' },
-  'seller.application': { formId: 'seller.application', route: '/api/seller-applications', mode: 'collection' },
-  'seller.maker-profile': { formId: 'seller.maker-profile', route: '/api/seller-applications/profile', mode: 'collection' },
+  'seller.application': { formId: 'seller.application', route: '/api/seller-registrations', mode: 'collection' },
+  'seller.maker-profile': { formId: 'seller.maker-profile', route: '/api/seller/public-profile', mode: 'collection' },
   'seller.profile': { formId: 'seller.profile', route: '/api/seller/profile', mode: 'collection' },
   'seller.product-submission': { formId: 'seller.product-submission', route: '/api/seller/products', mode: 'collection' },
   'seller.inventory': { formId: 'seller.inventory', route: '/api/seller/products/:id/inventory', mode: 'operation' },
@@ -123,6 +158,7 @@ export const IMPLEMENTED_FORM_ADAPTERS: Readonly<Record<string, ImplementedFormA
 const SOURCE_ROWS = `
 staff.activity-filter|staff|query|/admin/activity|action
 staff.seller-registry-filter|staff|query|/admin/sellers|query
+staff.case-intake-order|staff|query|/admin/cases/intake|order
 staff.order-queue-filter|staff|query|/admin/orders|query
 staff.order-email-filter|staff|query|/admin/order-emails|query
 staff.homepage-filter|staff|query|/admin/homepage|query
@@ -185,14 +221,14 @@ rider.application|rider|collection|/api/rider/application|identity
 rider.report|rider|operation|/api/rider/reports|evidence
 rider.remittance|rider|operation|/api/rider/remittances|amount
 seller.inventory|seller|operation|/api/seller/products/:id/inventory|quantity
-seller.maker-profile|seller|collection|/api/seller-applications/profile|legalName
+seller.maker-profile|seller|collection|/api/seller/public-profile|legalName
 seller.managed-supply-proposal|seller|operation|/api/seller/managed-program|quantity
 seller.managed-transition-request|seller|operation|/api/seller-applications/transition|reason
 seller.managed-terms-acceptance|seller|operation|/api/seller-applications/managed-terms|offerId
 seller.payout-request|seller|transaction|/api/seller/payout-requests|amount
 seller.product-submission|seller|collection|/api/seller/products|title
 seller.review-reply|seller|collection|/api/seller/reviews/:id/reply|reply
-seller.application|seller|collection|/api/seller-applications|legalName
+seller.application|seller|collection|/api/seller-registrations|legalName
 seller.profile|seller|collection|/api/seller/profile|displayName
 seller.shipping-request|seller|operation|/api/seller/shipping|action
 seller.shipping-action|seller|operation|/api/seller/shipping/:id|action
@@ -246,7 +282,7 @@ staff.product-review|staff|operation|/api/admin/products/:id/review|reason
 function definition(row: string): FormDefinition {
   const [id, audience, mode, route, key] = row.split('|') as [FormId, FormAudience, FormMode, string, string];
   const explanation = id === 'staff.return-case-action'
-    ? 'The primary decision uses /api/admin/returns/:id/review; conditional high-value and operations actions use /api/admin/returns/:id/high-value and /api/admin/returns/:id/operations. Existing validation and authorization stay protected.'
+    ? 'The primary decision uses /api/admin/returns/:id/review; conditional high-value and operations actions use /api/admin/returns/:id/high-value and /api/admin/returns/:id/operations. Physical facts use /api/admin/returns/:id/handling and owned case updates use /api/admin/cases/followup. Existing validation and authorization stay protected.'
     : mode === 'identity'
       ? 'Identity keys and access checks stay protected; custom answers require an explicit server adapter.'
       : mode === 'query'
@@ -266,15 +302,15 @@ const ACCOUNT_CUSTOM_TYPES = Object.freeze(['short_text', 'long_text', 'number',
 const PROGRAMMATIC_KEYS = {
   'commerce.order-cancellation': ['action', 'sellerIds', 'fingerprint', 'reason', 'orderNumber', 'orderId', 'customerId', 'receiptTokenHash', 'receiptToken'],
   'commerce.add-to-cart': ['productId', 'quantity', 'returnTo', 'redirect'],
-  'staff.return-case-action': ['action', 'decision', 'outcome', 'responsibility', 'itemRefundPaisa', 'deliveryRefundPaisa', 'reference', 'restockQuantity', 'note', 'publicMessageEn', 'publicMessageNe', 'returnRequestId', 'refundId', 'amountPaisa'],
-  'staff.complaint-case-action': ['action', 'note', 'publicMessageEn', 'publicMessageNe', 'resolutionEn', 'resolutionNe', 'complaintId'],
-  'staff.cancellation-review': ['action', 'sellerIds', 'fingerprint', 'reviewId', 'note', 'clientAttemptId', 'orderId', 'orderNumber'],
+  'staff.return-case-action': ['sourceType','sourceId','ownerId','backupId','waitingFor','nextUpdateAt','nextAction','publicMessage','privateNote','newClarification','expectedRevision','occurredAt','publicMessage','privateNote','evidenceReference','quantity','disposition','instructions','destination','method','packaging','safeHandlingConfirmed','shipmentId','carrierReference','customerAgreementReference','promisedAt','availabilityAt','amendInstructions','action', 'decision', 'outcome', 'responsibility', 'itemRefundPaisa', 'deliveryRefundPaisa', 'reference', 'restockQuantity', 'note', 'publicMessageEn', 'publicMessageNe', 'returnRequestId', 'refundId', 'amountPaisa'],
+  'staff.complaint-case-action': ['sourceType','sourceId','ownerId','backupId','waitingFor','nextUpdateAt','nextAction','publicMessage','privateNote','newClarification','expectedRevision','action', 'note', 'publicMessageEn', 'publicMessageNe', 'resolutionEn', 'resolutionNe', 'complaintId'],
+  'staff.cancellation-review': ['action', 'sellerIds', 'fingerprint', 'reviewId', 'note', 'cause', 'clientAttemptId', 'orderId', 'orderNumber'],
   'staff.seller-review-action': ['action', 'decision', 'reason', 'sellerId', 'payoutAccountReference', 'settlementTermsReference'],
   'staff.homepage-hero-manager': ['key', 'value', 'slides', 'reason', 'action', 'revision', 'expectedRevision', 'effectiveFrom', 'supersedesId', 'sourceVersionId', 'position', 'eyebrow', 'headingLead', 'highlightedPhrase', 'headingTail', 'body', 'primaryActionLabel', 'primaryActionHref', 'secondaryActionLabel', 'secondaryActionHref', 'mediaType', 'mediaId', 'imageAlt', 'posterMediaId', 'videoDescription', 'imageNote', 'file', 'desktopMediaId', 'mobileMediaId', 'imageUrl', 'videoUrl', 'altTextEn', 'altTextNe', 'titleEn', 'titleNe', 'subtitleEn', 'subtitleNe', 'href', 'enabled', 'sortOrder'],
   'staff.homepage-occasion-manager': ['key', 'value', 'occasions', 'reason', 'action', 'revision', 'expectedRevision', 'effectiveFrom', 'supersedesId', 'sourceVersionId', 'position', 'eyebrow', 'headingLead', 'highlightedPhrase', 'headingTail', 'body', 'supportingNote', 'cards', 'kicker', 'title', 'destination', 'icon', 'theme', 'occasionId', 'slug', 'titleEn', 'titleNe', 'imageUrl', 'altTextEn', 'altTextNe', 'href', 'enabled', 'sortOrder'],
   'staff.business-settings-manager': ['key', 'value', 'setting', 'reason', 'action', 'revision', 'expectedRevision', 'effectiveFrom', 'supersedesId', 'sourceVersionId', 'expectedVersion'],
   'staff.homepage-visibility': ['action', 'reason', 'hidden', 'expectedVersion', 'productId'],
-  'staff.order-fulfillment': ['action', 'note', 'trackingCode', 'orderId', 'orderNumber', 'sellerIds', 'fingerprint'],
+  'staff.order-fulfillment': ['action', 'note', 'trackingCode', 'orderId', 'orderNumber', 'sellerIds', 'fingerprint', 'cause'],
   'staff.review-moderation': ['action', 'note', 'version', 'reviewId', 'replyId', 'productId'],
   'staff.seller-governance': ['action', 'mode', 'suspendedUntil', 'obligationMode', 'reasonCode', 'reason', 'expectedVersion', 'sellerId'],
   'staff.product-review': ['action', 'reason', 'productId'],
@@ -292,7 +328,7 @@ function programmaticDefinition(id: ProgrammaticFormId): FormDefinition {
     capabilities: Object.freeze({ explanation: id === 'commerce.add-to-cart'
       ? 'Cart accepts only its existing product and quantity contract; custom form envelopes and answer recording are unavailable.'
       : id === 'staff.return-case-action'
-        ? 'Custom context is recorded with the successful case decision. /api/admin/returns/:id/review, /api/admin/returns/:id/high-value and /api/admin/returns/:id/operations keep their current distinct grants, role-aware Super Admin confirmation for Admin high-value refund decisions and atomic state/financial rules.'
+        ? 'Physical handling and owned follow-up context is also retained atomically by /api/admin/returns/:id/handling and /api/admin/cases/followup. Custom context is recorded with the successful case decision. /api/admin/returns/:id/review, /api/admin/returns/:id/high-value and /api/admin/returns/:id/operations keep their current distinct grants, role-aware Super Admin confirmation for Admin high-value refund decisions and atomic state/financial rules.'
         : 'Safe custom context is linked atomically to the committed record and immutable request provenance. Built-in controls and their order, current grants, conditional actions, money, evidence, parent identity and exact replay stay protected.',
       customFieldTypes: id === 'commerce.add-to-cart' ? Object.freeze([]) : ACCOUNT_CUSTOM_TYPES,
       answerBehavior: id === 'commerce.add-to-cart' ? 'none' : 'record' }),
@@ -304,6 +340,7 @@ const QUERY_FIELDS = {
   'commerce.order-tracking': [['orderNumber', 'short_text'], ['email', 'email']],
   'seller.product-filter': [['q', 'short_text']],
   'staff.seller-registry-filter': [['q', 'short_text'], ['status', 'single_choice']],
+  'staff.case-intake-order': [['order','short_text']],
   'staff.order-queue-filter': [['q', 'short_text'], ['status', 'single_choice']],
   'staff.order-email-filter': [['q', 'short_text'], ['status', 'single_choice']],
   'staff.homepage-filter': [['q', 'short_text'], ['visibility', 'single_choice']],
@@ -347,7 +384,7 @@ const GOVERNANCE_KEYS = Object.freeze(['action', 'requestId', 'formVersion', 'cu
   'productIds', 'title', 'detail', 'status', 'resolution', 'scope', 'evidenceReference']);
 
 const STAFF_OPERATION_KEYS = Object.freeze({
-  'staff.catalog': ['kind', 'id', 'slug', 'nameEn', 'nameNe', 'sortOrder', 'isActive', 'imageId', 'expectedImageId', 'idempotencyKey', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.catalog': ['kind', 'id', 'slug', 'nameEn', 'nameNe', 'sortOrder', 'isActive', 'imageId', 'expectedImageId','parentId','expectedParentId', 'idempotencyKey', 'requestId', 'formVersion', 'customAnswers'],
   'staff.product-classification': ['productId', 'categoryId', 'occasionIds', 'idempotencyKey', 'requestId', 'formVersion', 'customAnswers'],
   'staff.exception-work': ['action', 'id', 'version', 'job', 'jobId', 'kind', 'cash', 'cashRecordId', 'owner', 'ownerId', 'next', 'nextAction', 'note', 'resolve', 'evidence', 'sourceReviewed', 'obligationsReviewed', 'followupComplete', 'requestId', 'formVersion', 'customAnswers'],
   'staff.invoice-adjustment': ['invoiceId', 'kind', 'amount', 'amountPaisa', 'reasonCode', 'note', 'requestId', 'formVersion', 'customAnswers'],
@@ -360,7 +397,7 @@ const STAFF_OPERATION_KEYS = Object.freeze({
   'staff.managed-payout-preparation': ['action', 'sellerId', 'actorId', 'reason', 'destinationReference', 'scheduledFor', 'expectedAmountPaisa', 'expectedSnapshot', 'amountPaisa', 'balancePaisa', 'requestId', 'formVersion', 'customAnswers'],
   'staff.managed-payout-action': ['action', 'sellerId', 'actorId', 'payoutId', 'expectedStatus', 'providerReference', 'amountPaisa', 'reason', 'requestId', 'formVersion', 'customAnswers'],
   'staff.managed-transition-decision': ['action', 'applicationId', 'decision', 'effectiveLocal', 'effectiveAt', 'reason', 'requestId', 'formVersion', 'customAnswers'],
-  'staff.parcel-control': ['orderId', 'jobId', 'version', 'action', 'note', 'method', 'riderEmail', 'courierName', 'trackingCode', 'trackingUrl', 'reference', 'amount', 'amountPaisa', 'cashRecordId', 'riderReportId', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.parcel-control': ['orderId', 'jobId', 'version', 'action', 'note', 'method', 'riderEmail', 'courierName', 'trackingCode', 'trackingUrl', 'reference', 'amount', 'amountPaisa', 'cashRecordId', 'riderReportId', 'failureReason', 'cause', 'requestId', 'formVersion', 'customAnswers'],
   'staff.payout-request-action': ['payoutRequestId', 'action', 'note', 'requestId', 'formVersion', 'customAnswers'],
   'staff.privacy-action': ['privacyRequestId', 'action', 'status', 'note', 'requestId', 'formVersion', 'customAnswers'],
   'staff.rider-control-1': ['action', 'status', 'note', 'userId', 'reportId', 'version', 'eligible', 'requestId', 'formVersion', 'customAnswers'],
@@ -373,8 +410,8 @@ const STAFF_OPERATION_KEYS = Object.freeze({
   'staff.delivery-rate': ['rates', 'valley', 'terai', 'nationwide', 'districts', 'expectedVersion', 'reason', 'requestId', 'formVersion', 'customAnswers'],
   'staff.payout-1': ['sellerId', 'note', 'amount', 'amountPaisa', 'destinationReference', 'idempotencyKey', 'requestId', 'formVersion', 'customAnswers'],
   'staff.payout-2': ['payoutId', 'action', 'note', 'providerReference', 'amount', 'amountPaisa', 'idempotencyKey', 'requestId', 'formVersion', 'customAnswers'],
-  'staff.referral-settings': ['enabled', 'discount', 'reward', 'minimum', 'days', 'friendDiscountPaisa', 'rewardPaisa', 'minimumSubtotalPaisa', 'returnWindowDays', 'reason', 'requestId', 'formVersion', 'customAnswers'],
-  'staff.staff-invitation': ['email', 'role', 'requestId', 'formVersion', 'customAnswers'],
+  'staff.referral-settings': ['enabled', 'discount', 'reward', 'minimum', 'days', 'friendDiscountPaisa', 'rewardPaisa', 'minimumSubtotalPaisa', 'returnWindowDays', 'reason', 'requestId', 'expectedUpdatedAt', 'formVersion', 'customAnswers'],
+  'staff.staff-invitation': ['email', 'role', 'permissions', 'requestId', 'formVersion', 'customAnswers'],
   'staff.staff-permission-1': ['action', 'userId', 'permissions', 'version', 'reason', 'presetName', 'requestId', 'formVersion', 'customAnswers'],
   'staff.staff-permission-2': ['action', 'requestId', 'formRequestId', 'reason', 'formVersion', 'customAnswers'],
 } as const);
@@ -494,22 +531,22 @@ function sellerDefinition(id: 'seller.application' | 'seller.maker-profile' | 's
   let route;
   let mode: FormMode = 'collection';
   if (id === 'seller.application') {
-    route = '/api/seller-applications';
+    route = '/api/seller-registrations';
     fields = [displayField('tradingName', 'short_text', true), displayField('businessDescription', 'long_text', true),
-      ...['legalName', 'representativeName', 'email', 'phone', 'applicantType', 'taxMode', 'taxRegistrationNumber',
+      ...['legalName', 'representativeName', 'email', 'phone', 'phoneCountry', 'applicantType', 'taxMode', 'taxRegistrationNumber',
         'registrationNumber', 'registrationAuthority', 'document', 'profileImage', 'makerVideo', 'applicationAcknowledgement', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'personalPanCertificate',
         'participationRoute', 'website', 'hasBusinessTaxRegistration', 'taxStatus', 'sellerAgreementContext', 'acceptedTerms',
         'province', 'district', 'municipality', 'ward', 'locality', 'publicCity', 'productCategories',
         'experienceCraft', 'experienceBand', 'facebookUrl', 'instagramUrl', 'linkedinUrl', 'tiktokUrl',
         'xUrl', 'youtubeUrl', 'representativeIdentity', 'bankVerification', 'businessRegistration',
-        'panCertificate', 'vatCertificate'].map((key) => protectedField(key,
+          'panCertificate', 'vatCertificate', 'payoutBeneficiary', 'bankName', 'bankBranch', 'bankAccountNumber', 'pickupAddress', 'returnAddress'].map((key) => protectedField(key,
           'Legal identity, consent, anti-abuse and private upload rules are not configurable.')),
       ...common];
   } else if (id === 'seller.maker-profile') {
-    route = '/api/seller-applications/profile';
+    route = '/api/seller/public-profile';
     fields = [displayField('publicName', 'short_text', true), displayField('publicCity', 'short_text', true),
-      ...['sellerId', 'expectedVersion', 'experienceCraft', 'experienceBand', 'facebookUrl', 'instagramUrl',
-        'linkedinUrl', 'tiktokUrl', 'xUrl', 'youtubeUrl', 'legalName', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'representativeIdentity', 'personalPanCertificate'].map((key) =>
+      ...['sellerId','ownerId','action','baseVersion','draftRevision','expectedDraftRevision','candidateId','correctionId','about','specialties','craftExperience','socialLinks','media', 'expectedVersion', 'profileImage', 'makerVideo', 'experienceCraft', 'experienceBand', 'facebookUrl', 'instagramUrl',
+        'linkedinUrl', 'tiktokUrl', 'xUrl', 'youtubeUrl', 'legalName', 'governmentIdType', 'governmentIdDescription', 'personalPan', 'managedAgreementAccepted', 'managedAgreementVersion', 'managedAgreementContext', 'representativeIdentity', 'personalPanCertificate', 'bankVerification', 'payoutBeneficiary', 'bankName', 'bankBranch', 'bankAccountNumber', 'pickupAddress', 'returnAddress'].map((key) =>
         protectedField(key, 'Ownership, version, legal identity, social-link and craft validation stay server enforced.')),
       ...common];
   } else if (id === 'seller.profile') {
@@ -522,7 +559,7 @@ function sellerDefinition(id: 'seller.application' | 'seller.maker-profile' | 's
   } else if (id === 'seller.product-submission') {
     route = '/api/seller/products';
     fields = [displayField('nameEn', 'short_text', true), displayField('descriptionEn', 'long_text', true),
-      ...['sku', 'price', 'pricePaisa', 'inventoryQuantity', 'image', 'video', 'reviewRequestId', 'categoryId',
+      ...['sku', 'sellerSku', 'price', 'pricePaisa', 'inventoryQuantity', 'image', 'video', 'reviewRequestId', 'categoryId',
         'occasionIds', 'sellerId', 'producer', 'materials', 'nameNe', 'descriptionNe', 'compareAtPrice',
         'discountPercentage', 'returnEligible', 'madeToOrder', 'preparationDays', 'originStory',
         'countryOfOrigin', 'originEvidenceReference', 'originEvidenceStatus',
@@ -665,7 +702,8 @@ const FIRST_COD_CONFIRMATION_DEFINITION = Object.freeze({
 } satisfies FormDefinition);
 
 export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.freeze(
-  Object.assign({ ...INCENTIVE_WORKSPACE_FORM_CONTRACTS, 'staff.first-cod-confirmation': FIRST_COD_CONFIRMATION_DEFINITION, 'account.points-redemption': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['account.points-redemption'], adapterId: 'account.points-redemption' }), 'staff.loyalty-settings': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.loyalty-settings'], adapterId: 'staff.loyalty-settings' }), 'account.daily-reward': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['account.daily-reward'], adapterId: 'account.daily-reward' }), 'commerce.promo-quote': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['commerce.promo-quote'], adapterId: 'commerce.promo-quote' }), 'staff.promo-code': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.promo-code'], adapterId: 'staff.promo-code' }) }, Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
+  Object.assign(Object.fromEntries(CUSTOMER_EXPERIENCE_FORM_CONTRACTS.map(definition => [definition.id, definition])), NATIVE_SOURCE_FORM_CONTRACTS, GOVERNANCE_FORM_CONTRACTS, RECOVERY_FORM_CONTRACTS, {[MANAGED_LIVE_FORM.id]:MANAGED_LIVE_FORM,[MANAGED_LIVE_EVIDENCE_FORM.id]:MANAGED_LIVE_EVIDENCE_FORM,[LIVE_MANAGED_FINANCE_FORM.id]:LIVE_MANAGED_FINANCE_FORM,[LIVE_INVOICE_ADJUSTMENT_FORM.id]:LIVE_INVOICE_ADJUSTMENT_FORM},
+  Object.assign({ [PAYOUT_FINANCE_FORM.id]:PAYOUT_FINANCE_FORM, ...REFUND_FORM_CONTRACTS, ...FEE_FORM_CONTRACTS, [CATEGORY_POLICY_FORM.id]:CATEGORY_POLICY_FORM, [COMPANY_BANK_ACCOUNT_FORM.id]:COMPANY_BANK_ACCOUNT_FORM, ...SELLER_DASHBOARD_FORM_CONTRACTS, [FEE_WAIVER_FORM.id]: FEE_WAIVER_FORM, ...SECURITY_FORM_CONTRACTS, ...NCM_FORM_CONTRACTS, [SUPPORT_ASSISTANT_FORM.id]: SUPPORT_ASSISTANT_FORM, [SERVICE_FEE_REFUND_FORM.id]:SERVICE_FEE_REFUND_FORM, [ACCOUNTING_FILTER_FORM.id]: ACCOUNTING_FILTER_FORM, ...INCENTIVE_WORKSPACE_FORM_CONTRACTS, 'staff.first-cod-confirmation': FIRST_COD_CONFIRMATION_DEFINITION, 'account.points-redemption': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['account.points-redemption'], adapterId: 'account.points-redemption' }), 'staff.loyalty-settings': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.loyalty-settings'], adapterId: 'staff.loyalty-settings' }), 'account.daily-reward': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['account.daily-reward'], adapterId: 'account.daily-reward' }), 'commerce.promo-quote': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['commerce.promo-quote'], adapterId: 'commerce.promo-quote' }), 'staff.promo-code': Object.freeze({ ...INCENTIVE_FORM_CONTRACTS['staff.promo-code'], adapterId: 'staff.promo-code' }) }, Object.fromEntries([SOURCE_ROWS, CONDITIONAL_SOURCE_ROWS, PROGRAMMATIC_ROWS].flatMap((rows) => rows.split('\n')).map((row) => {
     const item = Object.hasOwn(PROGRAMMATIC_KEYS, row.split('|')[0])
       ? programmaticDefinition(row.split('|')[0] as ProgrammaticFormId)
       : Object.hasOwn(QUERY_FIELDS, row.split('|')[0]) || row.startsWith('system.local-testing-role|')
@@ -725,4 +763,4 @@ export const FORM_REGISTRY: Readonly<Record<FormId, FormDefinition>> = Object.fr
       ...field, label: field.label === field.key ? baseFieldCopy(item.id, field.key).label : field.label,
     }))) })];
   }))),
-);
+));

@@ -12,6 +12,7 @@ import { INITIAL_HOMEPAGE_HERO_SLIDES, isNativeSellerRegistrationSlide, type Hom
 void test('native seller panel replaces artwork without fetching seller media and preserves all three original images', async () => {
   const compiled = await build({
     entryPoints: ['components/homepage/homepage-hero-carousel.tsx'], bundle: true,
+    loader: { '.module.css': 'empty' },
     write: false, platform: 'node', format: 'cjs',
     external: ['react', 'react/*', 'react-dom', 'react-dom/*', 'next/router'],
     alias: { 'next/link': path.resolve('node_modules/vinext/dist/shims/link.js') },

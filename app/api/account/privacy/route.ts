@@ -1,8 +1,9 @@
+import {CustomerScopeError} from '@/lib/auth/customer-scope';
+import {requireCustomerIntentApi} from '@/lib/auth/customer-intent';
 import { readBoundedJsonObject } from '@/lib/http/form-json-body';
 import { env } from 'cloudflare:workers';
 import {
   CustomerAuthorizationError,
-  requireCustomerApi,
 } from '@/lib/auth/customer';
 import { requireDatabase } from '@/lib/db/d1';
 import {
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
       { status: 403 },
     );
   try {
-    const customer = await requireCustomerApi();
+    const customer = await requireCustomerIntentApi(request);
     const database = requireDatabase(env as unknown as { DB?: D1Database });
     const rateLimit = await consumeRequestRateLimit(database, request, {
       scope: `privacy-request:${customer.userId}`,
@@ -60,8 +61,8 @@ export async function POST(request: Request) {
     });
     return Response.json({ id }, { status: 201 });
   } catch (error) {
-    if (error instanceof CustomerAuthorizationError)
-      return Response.json({ error: error.message }, { status: error.status });
+    if ((error instanceof CustomerAuthorizationError || error instanceof CustomerScopeError))
+      return Response.json({ error: error.message,code:error instanceof CustomerAuthorizationError?'access_denied_before_write':'outcome_unconfirmed' }, { status: error.status });
     if (error instanceof BodyTooLargeError) return Response.json({ error: 'Privacy request is too large.' }, { status: 413 });
     if (error instanceof SyntaxError) return Response.json({ error: 'Invalid privacy request.' }, { status: 400 });
     if (error instanceof FormRuntimeError) return Response.json({ error: error.code === 'stale_version' ? error.message : 'Form configuration is unavailable.', code: error.code }, { status: error.code === 'stale_version' ? 409 : 503 });

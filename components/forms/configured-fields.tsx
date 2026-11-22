@@ -1,6 +1,6 @@
 import type { ConfiguredField, PublishedFormConfig } from '@/lib/forms/types';
 import { useId } from 'react';
-import { canonicalKey } from '@/lib/forms/submission';
+import { canonicalKey } from '@/lib/forms/field-keys';
 import { builtInDisplayDefault } from '@/lib/forms/plain-language';
 
 export interface FieldDisplay {
@@ -24,7 +24,7 @@ export function fieldDisplay(config: PublishedFormConfig | null, baseKey: string
   return defaults ? { ...defaults, helpText: defaults.helpText, placeholder: defaults.placeholder } : null;
 }
 
-function ConfiguredFieldControl({ field, error, idPrefix }: { field: ConfiguredField; error?: string; idPrefix: string }) {
+function ConfiguredFieldControl({ field, error, idPrefix, values, showOptionalLabel }: { field: ConfiguredField; error?: string; idPrefix: string; values?: readonly string[]; showOptionalLabel: boolean }) {
   const id = `${idPrefix}custom-${field.id}`;
   const name = `custom.${field.key}`;
   const helpId = field.helpText ? `${id}-help` : undefined;
@@ -36,41 +36,43 @@ function ConfiguredFieldControl({ field, error, idPrefix }: { field: ConfiguredF
   let control;
   switch (field.type) {
     case 'long_text':
-      control = <textarea {...common} placeholder={field.placeholder} rows={4} />;
+      control = <textarea {...common} defaultValue={values?.[0]} placeholder={field.placeholder} rows={4} />;
       break;
     case 'single_choice':
-      control = <select {...common} defaultValue="">
-        <option value="" disabled>Choose an option</option>
+      control = <select {...common} defaultValue={values?.[0] ?? ''}>
+        <option value="" disabled={field.required}>Choose an option</option>
         {field.choices?.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
       </select>;
       break;
     case 'multiple_choice':
-      control = <select {...common} multiple size={Math.min(field.choices?.length ?? 2, 6)}>
+      control = <select {...common} multiple defaultValue={values ? [...values] : undefined} size={Math.min(field.choices?.length ?? 2, 6)}>
         {field.choices?.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
       </select>;
       break;
     case 'checkbox':
-      control = <input id={id} name={name} type="checkbox" value="on" required={field.required} aria-required={field.required}
+      control = <input id={id} name={name} type="checkbox" value="on" defaultChecked={values?.includes('on')} required={field.required} aria-required={field.required}
         aria-describedby={describedBy} aria-invalid={error ? true : undefined} />;
       break;
     default:
-      control = <input {...common} type={field.type === 'short_text' ? 'text' : field.type === 'phone' ? 'tel' : field.type}
+      control = <input {...common} defaultValue={values?.[0]} type={field.type === 'short_text' ? 'text' : field.type === 'phone' ? 'tel' : field.type}
         placeholder={field.placeholder}
         min={field.integerOnly && field.min !== undefined ? Math.ceil(field.min) : field.min}
         max={field.integerOnly && field.max !== undefined ? Math.floor(field.max) : field.max}
         step={field.integerOnly ? 1 : 'any'} />;
   }
   return <div className="min-w-0 space-y-2 break-words" data-configured-field={field.id}>
-    <label htmlFor={id} className="block min-w-0 break-words font-medium">{field.label}{field.required ? <span aria-hidden="true"> *</span> : <span className="font-normal text-muted-foreground"> (optional)</span>}</label>
+    <label htmlFor={id} className="block min-w-0 break-words font-medium">{field.label}{field.required ? <span aria-hidden="true"> *</span> : showOptionalLabel ? <span className="font-normal text-muted-foreground"> (optional)</span> : null}</label>
     {control}
     {field.helpText ? <p id={helpId} className="min-w-0 break-words text-sm text-muted-foreground">{field.helpText}</p> : null}
     {error ? <p id={errorId} role="alert" className="min-w-0 break-words text-sm text-destructive">{error}</p> : null}
   </div>;
 }
 
-export function ConfiguredFields({ config, baseKeys, errors = {}, fieldIds, includeVersion = true }: {
+export function ConfiguredFields({ config, baseKeys, errors = {}, fieldIds, includeVersion = true, defaultAnswers, showOptionalLabel = true }: {
   config: PublishedFormConfig; baseKeys: readonly string[]; errors?: Readonly<Record<string, string>>;
   fieldIds?: readonly string[]; includeVersion?: boolean;
+  defaultAnswers?: Readonly<Record<string, readonly string[]>>;
+  showOptionalLabel?: boolean;
 }) {
   const idPrefix = `${useId()}-`;
   const builtIns = new Set(baseKeys.map(canonicalKey));
@@ -80,7 +82,8 @@ export function ConfiguredFields({ config, baseKeys, errors = {}, fieldIds, incl
   return <>
     {includeVersion ? <input type="hidden" name="formVersion" value={config.version} /> : null}
     <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-      {fields.map((field) => <ConfiguredFieldControl key={field.id} field={field} idPrefix={idPrefix}
+      {fields.map((field) => <ConfiguredFieldControl key={field.id} field={field} idPrefix={idPrefix} showOptionalLabel={showOptionalLabel}
+        values={defaultAnswers?.[`custom.${field.key}`]}
         error={Object.hasOwn(errors, field.id) && typeof errors[field.id] === 'string' ? errors[field.id] : undefined} />)}
     </div>
   </>;

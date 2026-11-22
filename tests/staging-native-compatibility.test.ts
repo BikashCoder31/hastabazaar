@@ -13,6 +13,19 @@ void test('native maker document prefixes concatenate without depending on SQL m
       `SELECT CONCAT(BINARY 'private/seller-documents/', ${column}, '/') AS prefix`);
 });
 
+void test('native clearance evidence keys retain binary concatenation and NULL propagation', () => {
+  assert.equal(translateSqliteSql("i.object_key='private/managed-clearance-evidence/'||i.id"),
+    "i.object_key=CONCAT(BINARY 'private/managed-clearance-evidence/', i.id)");
+  for (const sql of [
+    "SELECT 'private/managed-clearance-evidence/''||i.id'",
+    'SELECT "\'private/managed-clearance-evidence/\'||i.id"',
+    'SELECT `\'private/managed-clearance-evidence/\'||i.id`',
+    "SELECT 1 -- 'private/managed-clearance-evidence/'||i.id\n",
+    "SELECT 1 /* 'private/managed-clearance-evidence/'||i.id */",
+    "SELECT 'PRIVATE/managed-clearance-evidence/'||i.id",
+  ]) assert.equal(translateSqliteSql(sql), sql);
+});
+
 void test('native managed history requires a JSON string digest', () => {
   assert.equal(translateSqliteSql("SELECT 1 WHERE json_type(audit.next_json,'$.catalogDigest')='text'"),
     "SELECT 1 WHERE JSON_TYPE(JSON_EXTRACT(audit.next_json,'$.catalogDigest'))='STRING'");

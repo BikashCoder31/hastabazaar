@@ -14,6 +14,12 @@ registerHooks({
     const stubs: Record<string, string> = {
       'cloudflare:workers':
         'export const env={DB:{prepare(){return {async first(){return {now:1000}}}}}}',
+      '@/app/account/account-overview-data': 'export async function readAccountYourTurn(){return null}',
+      '@/app/auth': 'export const signInPath=(path)=>"/login?return_to="+encodeURIComponent(path)',
+      '@/lib/auth/customer': 'export async function getCustomerReadContext(){return {customer:null,authenticated:false}}',
+      '@/lib/homepage/homepage-storefront-data': 'export async function listHomepageMakers(){return []}',
+      '@/lib/db/repositories/loyalty': 'export async function getPublishedLoyaltyTerms(){return {status:"disabled"}}',
+      'next/navigation': 'export function useRouter(){return {refresh(){}}}',
       'next/link':
         'export default function Link(props){return globalThis.craftDetailsElement("a",props)}',
       'next/image':
@@ -21,17 +27,15 @@ registerHooks({
       '@/lib/db/repositories/business-settings':
         'export async function getEffectiveBusinessSetting(){throw Error("Use default presentation fixture")}',
       '@/lib/db/repositories/products':
-        'export async function listHomepagePromotedProducts(){return []};export async function listHomepageLatestProducts(){return []};export async function listHomepageTopProducts(){return []};export async function listActiveHomepagePromotions(){return []};export async function listPublicDiscoveryCategories(){return [{id:"food",slug:"food",nameEn:"Food",nameNe:null,imageId:null}]};export async function listActiveOccasions(){return [{id:"birthday",slug:"birthday",nameEn:"Birthday",nameNe:null}]}',
+        'export async function listHomepagePromotedProducts(){return []};export async function listHomepageLatestProducts(){return []};export async function listHomepageTopProducts(){return []};export async function listActiveHomepagePromotions(){return []};export async function listPublicDiscoveryCategories(){return [{id:"food",slug:"food",nameEn:"Food",nameNe:"खाना",imageId:null}]};export async function listActiveOccasions(){return [{id:"birthday",slug:"birthday",nameEn:"Birthday",nameNe:"जन्मदिन"}]}',
       '@/components/layout/site-header':
         'export function SiteHeader(){return null}',
       '@/components/layout/site-footer':
         'export function SiteFooter(){return globalThis.craftDetailsFooter}',
-      '@/components/catalog/product-slider':
-        'export function ProductSlider(){return null}',
       '@/components/homepage/homepage-hero-carousel':
         'export function HomepageHeroCarousel(){return null}',
       '@/components/homepage/homepage-occasion-carousel':
-        'export function HomepageOccasionCarousel(){return null}',
+        'export function HomepageOccasionCarousel({children}){return children}',
     };
     if (specifier.endsWith('.module.css'))
       return {
@@ -66,34 +70,26 @@ async function homepage() {
   return { html, section, footer };
 }
 
-void test('homepage craft guide replaces repeated promotional actions with three useful observations', async () => {
+void test('the homepage craft mosaic identifies and describes each pictured material', async () => {
   const { section } = await homepage();
-  assert.doesNotMatch(
-    section,
-    /<a\b|<button\b|Every craft begins|Discover their work|Share your craft/,
-  );
-  assert.match(section, /<ol\b/);
-  assert.equal((section.match(/<li\b/g) ?? []).length, 3);
-  for (const subject of [/material/i, /finish/i, /variation/i])
-    assert.match(section, subject);
-  assert.doesNotMatch(
-    section,
-    /every (piece|product).*handmade|guaranteed|certified/i,
-  );
+  for (const material of ['Dhaka weave', 'Lokta paper', 'Terracotta', 'Macramé', 'Jewellery']) {
+    assert.match(section, new RegExp('<h3>' + material + '</h3>'));
+  }
+  assert.match(section, /href="#craft-materials"/);
+  assert.match(section, /Tiny shifts where the weaver changed colour/);
+  assert.match(section, /Materials and care notes on each listing/);
+  assert.doesNotMatch(section, /every (piece|product).*handmade|guaranteed|certified/i);
 });
 
-void test('homepage craft guide has a named heading and a descriptive workshop image', async () => {
+void test('homepage craft guide has a named heading and responsive descriptive photos', async () => {
   const { section } = await homepage();
   const headingId = section.match(/aria-labelledby="([^"]+)"/)?.[1];
-  assert.ok(headingId, 'Name the guide region through its visible heading.');
+  assert.ok(headingId);
   assert.ok(section.includes(`<h2 id="${headingId}"`));
-  assert.match(section, /src="\/homepage\/nepali-maker-workshop\.webp"/);
-  assert.match(
-    section,
-    /alt="[^"]*(hands|artisan)[^"]*(vase|terracotta)[^"]*"/i,
-  );
-  assert.match(section, /data-media-frame="cover"/);
-  assert.match(section, /data-media-mode="cover"/);
+  assert.match(section, /src="\/homepage\/maker-hands-hero\.webp"/);
+  assert.match(section, /alt="[^"]*Hands[^"]*terracotta[^"]*"/i);
+  assert.equal((section.match(/data-media-frame="cover"/g) ?? []).length, 5);
+  assert.equal((section.match(/data-media-mode="cover"/g) ?? []).length, 5);
 });
 
 void test('homepage keeps the footer CTA and surrounding customer care sections intact', async () => {
@@ -107,7 +103,7 @@ void test('homepage keeps the footer CTA and surrounding customer care sections 
     1,
   );
   assert.match(html, /id="our-standard"/);
-  assert.match(html, /Good craft\. Thoughtful care\./);
+  assert.match(html, /Good craft\. <em>Thoughtful care\./);
   assert.match(html, /id="customer-care"/);
   assert.match(html, /href="\/account\/orders"/);
 });
@@ -115,7 +111,9 @@ void test('homepage keeps the footer CTA and surrounding customer care sections 
 void test('homepage exposes newly configured categories and occasions without a built-in image or carousel slide', async () => {
   const { html } = await homepage();
   assert.match(html, /href="\/shop\?category=food"/);
-  assert.match(html, /href="\/shop\?occasion=birthday"/);
+  assert.match(html, /href="\/occasions#occasion-birthday"/);
+  assert.match(html, /lang="ne">खाना</);
+  assert.match(html, /lang="ne">जन्मदिन</);
   assert.match(html, /href="\/categories"/);
   assert.match(html, /href="\/occasions"/);
 });

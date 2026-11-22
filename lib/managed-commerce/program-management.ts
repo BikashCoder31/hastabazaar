@@ -50,7 +50,8 @@ export async function getProgramManagementWorkspace(database: D1Database, contex
         SUM((SELECT COUNT(*) FROM managed_supplier_payments payment WHERE payment.obligation_id=obligation.id AND payment.status IN ('prepared','approved')))
         + SUM(CASE WHEN obligation.original_amount_paisa
           - COALESCE((SELECT SUM(amount_paisa) FROM managed_supplier_adjustments adjustment WHERE adjustment.obligation_id=obligation.id),0)
-          - COALESCE((SELECT SUM(amount_paisa) FROM managed_supplier_payments payment WHERE payment.obligation_id=obligation.id AND payment.status='paid'),0) > 0
+          - COALESCE((SELECT SUM(amount_paisa) FROM managed_supplier_payments payment WHERE payment.obligation_id=obligation.id AND payment.status='paid'),0)
+          + COALESCE((SELECT SUM(amount_paisa) FROM managed_supplier_recovery_credits recovery_credit WHERE recovery_credit.obligation_id=obligation.id),0) > 0
           AND NOT EXISTS(SELECT 1 FROM managed_supplier_payments payment WHERE payment.obligation_id=obligation.id AND payment.status IN ('prepared','approved'))
           THEN 1 ELSE 0 END) AS paymentActions
       FROM managed_supplier_obligations obligation GROUP BY obligation.seller_id

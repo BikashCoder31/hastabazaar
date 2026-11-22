@@ -6,6 +6,7 @@ export interface SellerCommissionTerms {
   basisPoints: number;
   version: string;
   acceptedAt: number | null;
+  effectiveAt?: number | null;
 }
 
 export interface CommissionRateChange {
@@ -70,5 +71,5 @@ export function commissionFeeScheduleText(
     timeStyle: 'short',
     timeZone: 'Asia/Kathmandu',
   }).format(new Date(effectiveAt));
-  return `Seller Commission Fee Schedule\n\nRate: ${basisPoints / 100}% of the product selling value after seller-funded discounts. Separately stated product taxes and delivery charges are excluded. HastaBazaar-funded discounts do not reduce the seller's agreed product value.\n\nEffective from ${date} (Nepal time), for new orders placed after both this date and your explicit acceptance. Commission is earned only on completed, paid product sales. Refunds reverse commission proportionally using the original order snapshot. No joining fee.\n\nThis versioned fee schedule supplements the Seller Marketplace Agreement and replaces only the commission rate for future orders you receive after accepting it. Existing orders, refunds, invoices and settlements retain their recorded terms. Until you accept, your previously accepted effective commission rate continues to apply.`;
+  return `Selling fee schedule\n\nRate: ${basisPoints / 100}% of the eligible product selling value after seller-funded discounts. Separately stated product taxes and delivery charges are excluded. Hastabazaar-funded discounts do not reduce the agreed merchandise value. Fixed supplier amounts remain governed by their own contract.\n\nEffective from ${date} (Nepal time) for new orders at the shared start. Accepting during notice does not apply the fee early or create a personal grace period. From that time, missing acceptance pauses new orders until the exact applicable terms are accepted. Dashboard access and permitted existing-order work remain available.\n\nExisting orders, refunds, invoices and settlements retain their recorded terms. Commission is earned only on completed, paid product sales; refunds reverse the original recorded fee proportionally. No joining fee. Acceptance resolves only this terms hold and does not bypass other readiness checks.`;
 }

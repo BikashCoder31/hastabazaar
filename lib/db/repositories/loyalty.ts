@@ -1,3 +1,4 @@
+import {programmeNoticeStatements} from '../../operations/programme-notice-sources';
 import {
   IncentiveError,
   type ClaimInput,
@@ -407,6 +408,7 @@ async function mutate(
   )
     throw new IncentiveError('invalid');
   const version = row.version + 1;
+  const programmeEventId=crypto.randomUUID();
   loyaltyInteger(version, 1);
   const revision = terms
     ? (await db
@@ -515,7 +517,7 @@ async function mutate(
         "INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,previous_json,next_json,request_id,ip_hash,created_at) VALUES (?,?,?,'loyalty_config','default',?,?,?,?,NULL,?)",
       )
       .bind(
-        crypto.randomUUID(),
+        programmeEventId,
         c.actorId,
         `loyalty.${action}`,
         c.reason.trim(),
@@ -541,6 +543,7 @@ async function mutate(
   } catch {
     throw new IncentiveError('invalid');
   }
+  if(action!=='draft')statements.push(...await programmeNoticeStatements(db,c,{type:'loyalty',sourceId:'default',eventId:programmeEventId,status:action==='publish'?'loyalty_published':action==='pause'?'loyalty_paused':'loyalty_schedule_cancelled'}));
   try {
     await db.batch(statements);
   } catch {
@@ -818,6 +821,12 @@ export async function getPublishedLoyaltyTerms(db: D1Database, now: number) {
   const row = (await effectiveRow(db,now)).row;
   const { version: _configurationVersion, ...terms } = publicState(row, now);
   return terms;
+}
+/** Internal read-only notification observer; uses the same effective rules as real rewards. */
+export async function readLoyaltyNoticeState(db:D1Database,now:number){
+ const state=await effectiveRow(db,now),latest=await db.prepare("SELECT next_json FROM audit_logs WHERE action='loyalty.schedule_activated' AND subject_type='loyalty_config' AND subject_id='default' ORDER BY created_at DESC,id DESC LIMIT 1").first<{next_json:string}>();
+ const activated=latest?JSON.parse(latest.next_json) as {revision:number;scheduledFor:number}:null;
+ return {version:state.stored.version,storedRevision:state.stored.current_revision,revision:state.row.current_revision,enabled:state.row.enabled===1,paused:state.row.paused===1,endsAt:state.row.ends_at,scheduledRevision:state.stored.scheduled_revision,scheduledFor:state.stored.scheduled_for,blocked:state.row.schedule_blocked_reason??null,promotion:state.promotion,activation:activated?.revision===state.row.current_revision?activated:null,issuedPoints:state.stored.issued_points};
 }
 
 export async function getRewards(

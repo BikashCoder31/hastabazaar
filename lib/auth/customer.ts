@@ -15,6 +15,7 @@ export interface CustomerUser {
   phone: string | null;
   displayName: string;
   locale: 'en-NP' | 'ne-NP';
+  isSuperAdmin: 0 | 1;
 }
 
 export class CustomerAuthorizationError extends Error {
@@ -39,7 +40,11 @@ async function findCustomerBySubject(
     (await database
       .prepare(
         `SELECT users.id AS userId, users.auth_subject AS authSubject, users.email,
-      users.phone, users.display_name AS displayName, users.locale
+      users.phone, users.display_name AS displayName, users.locale,
+      EXISTS (
+        SELECT 1 FROM user_roles AS staff_roles
+        WHERE staff_roles.user_id = users.id AND staff_roles.role = 'super_admin'
+      ) AS isSuperAdmin
      FROM users
      INNER JOIN user_roles ON user_roles.user_id = users.id AND user_roles.role = 'customer'
      WHERE users.auth_subject = ? AND users.status = 'active' LIMIT 1`,
@@ -177,15 +182,23 @@ export async function requireCustomerApi(): Promise<CustomerUser> {
   return resolveCustomer(databaseFromEnvironment(), identity);
 }
 
-/** Read-only eligibility lookup for incentives; never provisions a customer account. */
+/** Look up an existing customer for public browsing without writing account state. */
+export async function getCustomerReadContext(): Promise<{
+  customer: CustomerUser | null;
+  authenticated: boolean;
+}> {
+  const identity = await getAuthenticatedUser({ readOnly: true });
+  const customer = identity
+    ? await findCustomerBySubject(databaseFromEnvironment(), identity.userId)
+    : null;
+  return { customer, authenticated: Boolean(identity) };
+}
+
+/** Require an existing customer without provisioning an account. */
 export async function requireExistingCustomerApi(): Promise<CustomerUser> {
-  const identity = await getAuthenticatedUser();
-  if (!identity)
+  const { customer, authenticated } = await getCustomerReadContext();
+  if (!authenticated)
     throw new CustomerAuthorizationError('Authentication is required.', 401);
-  const customer = await findCustomerBySubject(
-    databaseFromEnvironment(),
-    identity.userId,
-  );
   if (!customer)
     throw new CustomerAuthorizationError(
       'An active customer account is required.',

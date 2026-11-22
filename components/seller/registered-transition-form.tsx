@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig,parsePublishedFormConfig } from '@/components/forms/form-config-client';
-import { digestMultipartRequest } from '@/lib/forms/submission';
+import { digestMultipartRequest } from '@/lib/forms/client-submission';
 import type { PublishedFormConfig } from '@/lib/forms/types';
 import { registeredTransitionFormId,registeredTransitionKeys } from '@/lib/managed-commerce/transition-contract';
 import type { RegisteredSellerTerms } from '@/lib/db/repositories/marketplace-settings';
@@ -79,7 +79,7 @@ export function RegisteredTransitionForm({sellerId,ownerId}:{sellerId:string;own
   }
   return <section id="registered-transition" className="min-w-0 scroll-mt-6 space-y-4 rounded-2xl border bg-card p-5">
     <h2 className="font-heading text-2xl">Become a Registered Seller</h2>
-    <p className="text-sm">When your business registration and PAN or VAT are ready, submit private certificates and accept the current seller terms. A different Super Admin reviews the request. Earlier company-store orders and payments keep their original terms.</p>
+    <p className="text-sm">When your business registration and PAN or VAT are ready, submit private certificates and accept the current seller terms. A Super Admin reviews the request. Earlier company-store orders and payments keep their original terms.</p>
     {!loaded&&!error?<output className="block">Loading transition details…</output>:null}
     {error?<p role="alert">{error} <button type="button" className="underline" onClick={()=>setReload(value=>value+1)}>Reload details</button></p>:null}
     {workspace?.route==='registered_seller'?<Link className="section-link" href="/seller">Open your seller dashboard</Link>:null}
@@ -90,7 +90,7 @@ export function RegisteredTransitionForm({sellerId,ownerId}:{sellerId:string;own
       <div className="grid gap-4 sm:grid-cols-2">{[['legalName','Registered legal name'],['registrationAuthority','Registration authority'],['registrationNumber','Registration number'],['taxRegistrationNumber','PAN or VAT identifier']].map(([name,label])=><label key={name} className="block text-sm">{label}<input name={name} required maxLength={191} readOnly={Boolean(pending)} defaultValue={original(name,correction?.[name as 'legalName']??'')} className="mt-1 w-full rounded-md border bg-background p-2"/></label>)}</div>
       <label className="block text-sm">Tax status<select name="taxMode" value={taxMode} onChange={event=>{if(!pending)setTaxMode(event.target.value);}} className="mt-1 w-full rounded-md border bg-background p-2"><option value="PAN">Business PAN</option><option value="VAT">VAT</option><option value="BOTH">PAN and VAT</option></select></label>
       <label className="block text-sm">Receiving-account reference<input name="payoutAccountReference" required minLength={4} maxLength={200} readOnly={Boolean(pending)} defaultValue={original('payoutAccountReference',correction?.payoutAccountReference??'')} className="mt-1 w-full rounded-md border bg-background p-2"/><span className="mt-1 block text-muted-foreground">It must match your private receiving-account evidence. Super Admin must verify it before the change. The accepted seller agreement is kept as your written settlement reference.</span></label>
-      <div className="grid gap-4 sm:grid-cols-2">{[['businessRegistration','business_registration','Company registration certificate'],['bankVerification','bank_verification','Receiving-account evidence'],...(taxMode!=='VAT'?[['panCertificate','pan_certificate','PAN certificate']]:[]),...(taxMode!=='PAN'?[['vatCertificate','vat_certificate','VAT certificate']]:[])].map(([field,kind,label])=><fieldset key={field} className="min-w-0 space-y-2 rounded-lg border p-3"><legend className="text-sm font-medium">{label}</legend>
+      <div className="grid gap-4 sm:grid-cols-2">{[['businessRegistration','business_registration','Business registration certificate (including sole proprietors)'],['bankVerification','bank_verification','Receiving-account evidence'],...(taxMode!=='VAT'?[['panCertificate','pan_certificate','Business PAN certificate']]:[]),...(taxMode!=='PAN'?[['vatCertificate','vat_certificate','VAT certificate']]:[])].map(([field,kind,label])=><fieldset key={field} className="min-w-0 space-y-2 rounded-lg border p-3"><legend className="text-sm font-medium">{label}</legend>
         <label className="block text-sm">Use a saved private certificate<select name={`${field}Id`} defaultValue={original(`${field}Id`)} className="mt-1 w-full rounded-md border bg-background p-2" onChange={event=>{if(pending)event.target.value=original(`${field}Id`);}}><option value="">Upload a file below</option>{workspace.documents.filter(document=>document.kind===kind&&document.status!=='rejected').map(document=><option value={document.id} key={document.id}>{document.name} · {document.status}</option>)}</select></label>
         <label className="block text-sm">Or upload a private certificate<input name={field} type="file" accept="application/pdf,image/jpeg,image/png" className="mt-1 w-full min-w-0 text-sm"/></label><p className="text-xs text-muted-foreground">PDF, JPG or PNG, up to 5 MB. Choose one saved file or one upload.</p>
       </fieldset>)}</div>

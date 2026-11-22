@@ -1,91 +1,88 @@
-import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowUpRight, ShieldCheck } from 'lucide-react';
+import { headers } from 'next/headers';
+import { ArrowUpRight } from 'lucide-react';
+import { env } from 'cloudflare:workers';
 import { signOutPath } from '@/app/auth';
+import { AdminAccountMenu, AdminBrand, AdminBrandMark, AdminMobileNavigation, AdminNavigation, AdminSearch, type AdminNavigationCounts } from '@/components/admin/admin-navigation';
+import { AdminSectionTabs } from '@/components/admin/admin-section-tabs';
+import { CommandSearch } from '@/components/admin/command-search';
+import { readAdminSidebarCounts } from '@/components/admin/admin-review-data';
 import { AdminTaskContext } from '@/components/admin/admin-task-context';
-import { AdminNavigation } from '@/components/admin/admin-navigation';
+import { NotificationBell } from '@/components/account/notification-bell';
+import { WorkspaceRefresh } from '@/components/ui/workspace-refresh';
 import { AdminWorkspaceReady } from '@/components/admin/admin-workspace-ready';
-import { BrandWordmark } from '@/components/layout/brand-wordmark';
 import { requireStaffPage } from '@/lib/auth/staff';
-import { mediaObjectClass, mediaSizes } from '@/lib/media/responsive-media';
+import { AdminSessionActivity } from '@/components/security/session-activity';
+import { adminNavigation } from '@/lib/admin/navigation';
+import { ADMIN_RETURN_TO_HEADER } from '@/lib/admin/return-context';
+import { isProductPreviewPage } from '@/lib/products/preview-path';
+import { localStaffMfaFlagEnabled } from '@/lib/security/local-simulation';
+import type { SecurityPolicyBindings } from '@/lib/security/runtime-policy';
+import AdminLoading from './loading';
+import './workspace.css';
 
 export const dynamic = 'force-dynamic';
-export default async function AdminLayout({
-  children,
-}: Readonly<{ children: React.ReactNode }>) {
+export default async function AdminLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const requestHeaders = await headers();
+  // Middleware overwrites this header with the actual path. The preview has its own
+  // read-only seller/staff authorization and uses the storefront layout.
+  if (isProductPreviewPage(requestHeaders.get(ADMIN_RETURN_TO_HEADER) ?? '')) return children;
   const staff = await requireStaffPage('/admin');
+  const access = { role: staff.role, permissions: staff.permissions };
+  const destinations = adminNavigation(staff.role, staff.permissions);
+  const procedure = destinations.find(item => item.href === '/admin/legal-policies/active')?.href;
+  const bindings = env as SecurityPolicyBindings & { DB?: D1Database };
+  const local = bindings.HASTABAZAAR_RUNTIME_ENV === 'local_staging';
+  const localMfaNotice = local && localStaffMfaFlagEnabled(bindings, requestHeaders.get('host') ?? '');
+  const counts: AdminNavigationCounts = bindings.DB ? await readAdminSidebarCounts(bindings.DB, staff).catch(() => ({})) : {};
+  const account = { name: staff.displayName, role: staff.role, signOut: signOutPath('/'), procedure };
   return (
-    <div className="min-h-screen bg-secondary/35">
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-xl focus:bg-background focus:p-4"
-      >
-        Skip to operations
-      </a>
-      <header className="border-b bg-card xl:sticky xl:top-0 xl:z-30">
-        <div className="shell flex min-h-20 flex-wrap items-center justify-between gap-4 py-3">
-          <Link href="/admin" className="flex items-center gap-3 rounded-xl">
-            <Image
-              data-media-mode="contain"
-              src="/brand/hastabazaar-mark-96.png"
-              alt=""
-              width={44}
-              height={44}
-              sizes={mediaSizes.brandMark}
-              className={mediaObjectClass('contain', 'media-shrink size-11')}
-            />
-            <span>
-              <BrandWordmark className="block text-xl" />
-              <span className="block text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Operations workspace
-              </span>
-            </span>
-          </Link>
-          <div className="flex flex-wrap items-center gap-3">
-            <span
-              className={
-                'inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold ' +
-                (staff.role === 'super_admin'
-                  ? 'bg-[#17345f] text-white'
-                  : 'bg-secondary text-primary')
-              }
-            >
-              <ShieldCheck className="size-4" />
-              {staff.role === 'super_admin' ? 'Super Admin' : 'Admin'}
-            </span>
-            <span className="hidden max-w-40 truncate text-sm text-muted-foreground 2xl:block">
-              {staff.displayName}
-            </span>
-            <Link href="/shop" className="header-action">
-              <ArrowUpRight className="size-4" />
-              <span className="sr-only sm:not-sr-only">Marketplace</span>
-            </Link>
-            <form data-form-id="identity.logout" method="POST" action={signOutPath('/')} target="_top">
-            <button
-              type="submit"
-              className="inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-semibold hover:bg-muted"
-            >
-              Sign out
-            </button>
-            </form>
-          </div>
+    <div className="admin-shell">
+      <AdminSessionActivity />
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-card focus:p-3">Skip to operations</a>
+      <AdminWorkspaceReady fallback={<>
+        <div className="admin-rail" aria-hidden="true">
+          <div className="admin-brand"><AdminBrandMark /></div>
         </div>
-      </header>
-      <div className="shell grid items-start gap-6 py-6 xl:grid-cols-[15.5rem_minmax(0,1fr)] xl:gap-8 xl:py-8">
-        <AdminWorkspaceReady>
-          <aside className="min-w-0 xl:sticky xl:top-28">
-            <AdminNavigation role={staff.role} permissions={staff.permissions} />
-          </aside>
+        <div className="min-w-0">
+          <div className="admin-toolbar" aria-hidden="true">
+            <div className="admin-brand admin-brand-mobile"><AdminBrandMark /></div>
+          </div>
+          <main tabIndex={-1} id="main-content" className="admin-workspace min-w-0">
+            <AdminLoading />
+          </main>
+        </div>
+      </>}>
+        <aside className="admin-rail">
+          <div className="hidden lg:block"><AdminBrand {...access} /></div>
+          <AdminNavigation role={staff.role} permissions={staff.permissions} counts={counts} />
+          <div className="mt-auto hidden pt-4 lg:block">
+            <Link href="/shop" className="admin-hub-link mb-2"><ArrowUpRight className="size-4 shrink-0" />Open marketplace</Link>
+            <AdminAccountMenu {...account} />
+          </div>
+        </aside>
+        <div className="min-w-0">
+          {localMfaNotice ? <p className="border-b border-amber-200 bg-amber-100 px-4 py-2 text-sm text-amber-950">Local only: 2-step check is off for test accounts. Remove HASTABAZAAR_LOCAL_SKIP_STAFF_MFA before any deploy.</p> : null}
+          <header className="admin-toolbar">
+            <AdminBrand {...access} mobile />
+            <div className="ml-auto flex min-w-0 items-center gap-1.5 sm:gap-3 lg:mr-auto lg:ml-0 lg:flex-1"><AdminSearch /></div>
+            {local ? <span className="hidden rounded-full bg-[#f7e7be] px-3 py-1 text-xs font-semibold text-[#744a0b] lg:inline">Local staging · payments simulated</span> : null}
+            <WorkspaceRefresh className="admin-toolbar-icon" excludePaths={['/admin/orders', '/admin/payouts']} />
+            <div className="admin-toolbar-notifications"><NotificationBell workspace="staff" accountId={staff.id} /></div>
+            <AdminMobileNavigation {...access} counts={counts} account={account} />
+          </header>
+          <CommandSearch key={staff.id} actorId={staff.id} />
+          <AdminSectionTabs {...access} bankTransfers={counts.bankTransfers} />
           <main
+            key={`${staff.id}:${staff.role}:${staff.permissions?.slice().sort().join(',') ?? 'default'}`}
             tabIndex={-1}
             id="main-content"
-            className="admin-workspace min-w-0 pb-10"
+            className="admin-workspace min-w-0"
           >
-            <AdminTaskContext role={staff.role} permissions={staff.permissions} />
-            {children}
+            <AdminTaskContext {...access}>{children}</AdminTaskContext>
           </main>
-        </AdminWorkspaceReady>
-      </div>
+        </div>
+      </AdminWorkspaceReady>
     </div>
   );
 }

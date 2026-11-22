@@ -1,5 +1,6 @@
 import { productSavings } from '@/lib/products/discount';
-export function ProductDiscount({ pricePaisa, originalPaisa }: { pricePaisa: number; originalPaisa: number | null | undefined }) {
+export function ProductDiscount({ pricePaisa, originalPaisa }: { pricePaisa: number | null; originalPaisa: number | null | undefined }) {
+  if(pricePaisa===null)return null;
   const savings = productSavings(pricePaisa, originalPaisa);
   if (!savings || !originalPaisa) return null;
   const money=new Intl.NumberFormat('en-NP',{minimumFractionDigits:0,maximumFractionDigits:2});

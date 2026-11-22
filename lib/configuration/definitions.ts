@@ -1,5 +1,6 @@
-import { DEFAULT_PLATFORM_SHARE_BPS } from './commission-defaults';
-import { companyDetails } from '../content/company-details';
+import { isGregorianDate } from '../dates/nepal-calendar';
+import { INITIAL_PLATFORM_SERVICE_FEE, validatePlatformServiceFee } from '../checkout/platform-service-fee';
+import { companyDetails, companyPublicContacts } from '../content/company-details';
 import { defaultProductWatermarkPolicy, validateProductWatermarkPolicy } from '../products/watermark-policy';
 import {
   businessSettingKeys,
@@ -287,8 +288,7 @@ function riderFinancePolicy(value: unknown): RiderFinancePolicy {
   const holidayDates = candidate.holidayDates.map((date) => {
     if (
       typeof date !== 'string' ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
-      Number.isNaN(Date.parse(`${date}T00:00:00Z`))
+      !isGregorianDate(date)
     ) {
       throw new RangeError('Rider holidays must use valid YYYY-MM-DD dates.');
     }
@@ -381,17 +381,23 @@ function companyAccount(value: unknown): ManagedMakerCompanyAccount {
 }
 
 const definitions = [
+  { key: 'platform_service_fee_policy', label: 'Customer Platform service fee',
+    description: 'Charged once per order, separately from delivery and seller commission. Super Admin can enable, disable or change the amount for new orders. Non-refundable except where required by law. Saved orders keep their recorded fee and terms.',
+    defaultValue: INITIAL_PLATFORM_SERVICE_FEE, sensitivity: 'financial', changeControl: 'controlled',
+    effectiveMode: 'effective_dated', snapshotOnTransaction: true,
+    affectedSurfaces: ['checkout', 'orders', 'finance', 'returns'], requiredCapability: null, validate: validatePlatformServiceFee,
+  },
   { key: 'managed_maker_company_account', label: 'Company selling account',
     description: 'Super Admin controls the operational store, contact and return destination. Individual makers keep their own identity and login. Company legal identity and PAN come from the canonical company record.',
     defaultValue: Object.freeze({ entityReference: companyDetails.entityReference, storeName: companyDetails.brandName,
-      contactEmail: companyDetails.supportEmail, contactPhone: '', returnAddress: companyDetails.registeredOffice }),
+      contactEmail: companyDetails.supportEmail, contactPhone: companyPublicContacts.supportPhoneE164, returnAddress: companyDetails.registeredOffice }),
     sensitivity: 'operational', changeControl: 'controlled', effectiveMode: 'effective_dated', snapshotOnTransaction: true,
     affectedSurfaces: ['maker_onboarding', 'admin_review', 'managed_makers'], requiredCapability: null, validate: companyAccount,
   },
   {
     key: 'product_photo_watermark',
     label: 'Product photo watermark',
-    description: 'Adds a subtle HastaBazaar wordmark to customer photo copies. Private originals are preserved. Changes also apply to existing uploaded product photos.',
+    description: 'Adds a subtle Hastabazaar wordmark to customer photo copies. Private originals are preserved. Changes also apply to existing uploaded product photos.',
     defaultValue: defaultProductWatermarkPolicy,
     sensitivity: 'public_content',
     changeControl: 'simple',
@@ -405,7 +411,7 @@ const definitions = [
     key: 'independent_seller_commission_bps',
     label: 'Independent seller commission',
     description: 'Commission retained from an independent seller transaction.',
-    defaultValue: DEFAULT_PLATFORM_SHARE_BPS,
+    defaultValue: null,
     sensitivity: 'financial',
     changeControl: 'controlled',
     effectiveMode: 'effective_dated',
@@ -420,7 +426,7 @@ const definitions = [
     label: 'Managed Maker sale-linked platform retention',
     description:
       'Platform-retained share; maker entitlement is the reconciled remainder.',
-    defaultValue: DEFAULT_PLATFORM_SHARE_BPS,
+    defaultValue: null,
     sensitivity: 'financial',
     changeControl: 'controlled',
     effectiveMode: 'effective_dated',

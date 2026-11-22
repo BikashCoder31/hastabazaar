@@ -48,7 +48,7 @@ function reportQuery(request: Request) {
 
 export async function GET(request: Request) {
   try {
-    const actor = await requireStaffApi('admin.invite');
+    const actor = await requireStaffApi('commercial_policy.manage');
     if (actor.role !== 'super_admin') throw new IncentiveError('unauthorized');
     const { filters, csv } = reportQuery(request);
     const report = await getPromoAdminReport(

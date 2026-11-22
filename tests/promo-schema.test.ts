@@ -1,12 +1,22 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import nativeFeeMetadata from './helpers/mariadb-fee-readiness-metadata.json';
 import { calculatePromoDiscount } from '../lib/incentives/promo-policy';
+import {
+  listParcels,
+  operateParcel,
+  prepareSellerParcels,
+} from '../lib/operations/parcels';
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
+import { copyMariaDbGeneratorInputs } from './helpers/copy-mariadb-generator-inputs';
+import { copyReleaseManifestInputs } from './helpers/copy-release-manifest-inputs';
+import { seedVerifiedCheckoutContact } from './helpers/checkout-contact';
+import { executeFixtureRefund } from './helpers/execute-fixture-refund';
 import {
   createIncentiveDb,
   seedIncentiveCustomer,
@@ -845,22 +855,78 @@ void test('native D1 enforces promo lifetime counters, immutable revisions, snap
     await t.test(
       'refund guards include promo offset, cumulative baseline and source conservation',
       async () => {
+        const orderId = 'refund-order';
+        const itemId = 'refund-item';
+        const caseId = 'refund-case';
+        const actorId = 'refund-reviewer';
+        const now = Date.now();
+        await seedIncentiveCustomer(db, actorId);
+        await seedVerifiedCheckoutContact(db, 'customer');
+        await db.prepare("INSERT INTO user_roles(user_id,role,assigned_at) VALUES (?,'super_admin',1)").bind(actorId).run();
+        // Collect the original COD tender before any return reservations.
+        await campaign(db, 'refund-promo', 'REFUNDPROMO', 1, 1, 1000);
+        await promoOrder(db, orderId, 'refund-promo', 'REFUNDPROMO').run();
+        await incentiveItem(db, itemId, orderId, 1000).run();
+        await redemption(db, 'refund-redemption', orderId, 'refund-promo').run();
+        await db.batch([
+          db.prepare("UPDATE orders SET status='ready_for_pickup',payment_status='pending' WHERE id=?").bind(orderId),
+          db.prepare("UPDATE order_items SET fulfillment_status='ready_for_pickup' WHERE id=?").bind(itemId),
+        ]);
+        await prepareSellerParcels(db, { orderId, actorId, requestId: 'refund-parcel-setup', now: now - 5 });
+        for (const [offset, action] of ['assign', 'dispatch', 'deliver', 'collect'].entries()) {
+          const [parcel] = await listParcels(db, orderId);
+          assert.ok(parcel);
+          await operateParcel(db, {
+            jobId: parcel.id, actorId, action, version: parcel.version,
+            note: 'Record original fictional delivery and COD tender for the refund fixture.',
+            requestId: 'refund-parcel-' + action, now: now - 4 + offset,
+            ...(action === 'assign' ? {
+              method: 'courier', courierName: 'Fictional Courier', trackingCode: 'FICTIONAL-REFUND-DELIVERY',
+            } : {}),
+            ...(action === 'collect' ? {
+              amountPaisa: 9500, reference: 'FICTIONAL-ORIGINAL-REFUND-COD',
+            } : {}),
+          });
+        }
+        // Seed the exact approved case for this schema test. Approval amount
+        // and offset are independent inputs to the native insert guards below.
+        await db.prepare(`INSERT INTO return_requests
+          (id,order_item_id,requested_by,reason,detail,status,responsibility,resolution_outcome,requested_at,reviewed_by)
+          VALUES (?,?,'customer','defective','Fictional approved merchandise return','approved','platform','refund',?,?)`)
+          .bind(caseId, itemId, now, actorId).run();
         const refund = (id: string, promo: number, wallet = 0, base = 0) =>
           db
-            .prepare(`INSERT INTO refunds(id,order_id,status,amount_paisa,item_amount_paisa,delivery_amount_paisa,
-        reason,requested_at,credit_base_paisa,promo_discount_paisa,wallet_credit_paisa) VALUES (?,'snapshot','approved',5000,5000,0,'Fixture',1,?,?,?)`)
-            .bind(id, base, promo, wallet);
-        await assert.rejects(refund('over-item', 1000, 4500).run());
-        await assert.rejects(refund('over-original', 1001).run());
+            .prepare(`INSERT INTO refunds(id,order_id,return_request_id,status,amount_paisa,item_amount_paisa,delivery_amount_paisa,
+        reason,requested_at,approved_at,approved_by,liability,credit_base_paisa,promo_discount_paisa,wallet_credit_paisa)
+        VALUES (?,?,?,'approved',5000,5000,0,'Fixture',?,?,?,'platform',?,?,?)`)
+            .bind(id, orderId, id === 'valid' ? caseId : null, now, now, actorId, base, promo, wallet);
+        const refundChanged = /wallet_refund_changed_retry/;
+        await assert.rejects(refund('over-item', 1000, 4500).run(), refundChanged);
+        await assert.rejects(refund('over-original', 1001).run(), refundChanged);
         await refund('valid', 400).run();
-        await assert.rejects(refund('stale', 1).run());
-        await assert.rejects(refund('over-cumulative', 601, 0, 5000).run());
+        await assert.rejects(refund('stale', 1).run(), refundChanged);
+        await assert.rejects(refund('over-cumulative', 601, 0, 5000).run(), refundChanged);
         await refund('second', 200, 0, 5000).run();
+        await assert.rejects(
+          db.prepare("UPDATE refunds SET status='paid',processed_by=?,processed_at=? WHERE id='valid'")
+            .bind(actorId, now).run(),
+          /refund_requires_actual_execution_packet/,
+        );
         await db
-          .prepare(
-            "UPDATE refunds SET status='paid',processed_at=10 WHERE id='valid'",
-          )
-          .run();
+          .prepare(`INSERT INTO refund_cost_allocations
+            (refund_id,component,party,amount_paisa,policy_version,created_by,created_at)
+            VALUES ('valid','merchandise','platform',5000,'approved_original_refund_costs_v1',?,?)`)
+          .bind(actorId, now).run();
+        const { packetId } = await executeFixtureRefund(db, {
+          actorId, kind: 'return_refund', sourceId: 'valid', customerId: 'customer',
+        });
+        assert.deepEqual(await db.prepare(`SELECT r.status, r.promo_discount_paisa AS promo,
+          p.state, p.amount_paisa AS cash FROM refunds r
+          JOIN refund_obligations o ON o.source_kind='return_refund' AND o.source_id=r.id
+          JOIN outgoing_payment_packets p ON p.obligation_id=o.id
+          WHERE r.id='valid' AND p.id=?`).bind(packetId).first(), {
+          status: 'paid', promo: 400, state: 'paid', cash: 4600,
+        });
         assert.equal(
           (
             await db
@@ -877,6 +943,7 @@ void test('native D1 enforces promo lifetime counters, immutable revisions, snap
               "UPDATE refunds SET promo_discount_paisa=0 WHERE id='valid'",
             )
             .run(),
+          /promo_refund_snapshot_immutable/,
         );
       },
     );
@@ -889,25 +956,13 @@ void test('MariaDB generator ships promo tables after canonical prerequisites an
   const root = await mkdtemp(join(tmpdir(), 'hastabazaar-promo-schema-'));
   const run = promisify(execFile);
   try {
-    await mkdir(join(root, 'scripts'), { recursive: true });
-    await mkdir(join(root, 'drizzle', 'meta'), { recursive: true });
     await cp(
       new URL('../deployment/babal/', import.meta.url),
       join(root, 'deployment', 'babal'),
       { recursive: true },
     );
-    await cp(
-      new URL('../drizzle/meta/0020_snapshot.json', import.meta.url),
-      join(root, 'drizzle', 'meta', '0020_snapshot.json'),
-    );
-    for (const script of [
-      'generate-mariadb-schema.mjs',
-      'generate-release-manifest.mjs',
-    ])
-      await cp(
-        new URL(`../scripts/${script}`, import.meta.url),
-        join(root, 'scripts', script),
-      );
+    await copyMariaDbGeneratorInputs(root);
+    await copyReleaseManifestInputs(root);
     await run(
       process.execPath,
       [join(root, 'scripts', 'generate-mariadb-schema.mjs')],
@@ -1057,7 +1112,7 @@ void test('MariaDB generator ships promo tables after canonical prerequisites an
     // by readiness-runtime and the required native MariaDB job.
     const suppliedChecks = new Set([...baseChecks, ...categoryChecks].map(check => `${check.tableName}.${check.name}`));
     const otherChecks = Object.entries(manifest.requiredChecks).filter(([key]) => !suppliedChecks.has(key))
-      .map(([key, fragments]) => ({tableName:key.split('.')[0],name:key.split('.')[1],definition:(fragments as string[]).join(' ')}));
+      .map(([key, fragments]) => nativeFeeMetadata.checks.find(row=>row.tableName+'.'+row.name===key)??({tableName:key.split('.')[0],name:key.split('.')[1],definition:manifest.requiredExactChecks[key]??(fragments as string[]).join(' ')}));
     const checks = [...baseChecks, ...categoryChecks, ...otherChecks];
     const columns = Object.entries(manifest.requiredTables).flatMap(([tableName, names]) =>
       (names as string[]).map((columnName) => ({ tableName, columnName,
@@ -1069,7 +1124,17 @@ void test('MariaDB generator ships promo tables after canonical prerequisites an
       (names as string[]).map((columnName,i)=>({tableName:key.split('.')[0],name:key.split('.')[1],nonUnique:0,position:i+1,columnName,prefixLength:null})));
     const migrationSql = (await Promise.all(manifest.migrations.map((m: { path: string }) => readFile(join(root, m.path), 'utf8')))).join('\n');
     const triggers = Object.keys(manifest.requiredTriggers).map((name) => {
-      const match = migrationSql.match(new RegExp('CREATE TRIGGER(?: IF NOT EXISTS)? `?' + name + '`?[\\s\\S]*?END(?:\\$\\$|;)', 'i'));
+      const fee = nativeFeeMetadata.triggers.find(row=>row.name===name);
+      if(fee)return{...fee,tableName:manifest.requiredTriggerShapes[name].table,event:manifest.requiredTriggerShapes[name].event,timing:manifest.requiredTriggerShapes[name].timing};
+      const prefix = 'CREATE(?: OR REPLACE)? TRIGGER(?: IF NOT EXISTS)? `?' + name + '`?';
+      // Shaped triggers are compared as ACTION_STATEMENT, without CREATE headers.
+      // Unshaped legacy triggers retain their existing fragment-only fixture.
+      if (name in manifest.requiredTriggerShapes) {
+        const match = migrationSql.match(new RegExp(prefix + String.raw`\s+(BEFORE|AFTER)\s+(INSERT|UPDATE|DELETE)\s+ON\s+\`?([a-z_][a-z0-9_]*)\`?\s+FOR EACH ROW\s+(BEGIN[\s\S]*?END(?:\$\$|;)|SIGNAL[^;]+;)`, 'i'));
+        assert.ok(match, `${name}: trigger body and shape`);
+        return { name, definition: match[4].replace(/(?:\$\$|;)$/, ''), timing: match[1].toUpperCase(), event: match[2].toUpperCase(), tableName: match[3] };
+      }
+      const match = migrationSql.match(new RegExp(prefix + String.raw`[\s\S]*?END(?:\$\$|;)`, 'i'));
       assert.ok(match, name);
       return { name, definition: match[0] };
     });
@@ -1085,7 +1150,11 @@ void test('MariaDB generator ships promo tables after canonical prerequisites an
     ];
     await mkdir(join(root, 'lib', 'operations'), { recursive: true });
     await cp(new URL('../lib/operations/readiness.ts', import.meta.url), join(root, 'lib', 'operations', 'readiness.ts'));
-    await writeFile(join(root, 'readiness-fixtures.json'), JSON.stringify({ columns, indexes, triggers, cases }));
+    const foreignKeys=Object.entries(manifest.requiredForeignKeys).flatMap(([key,value])=>{
+      const fk=value as {columns:string[];referencedTable:string;referencedColumns:string[]};
+      return fk.columns.map((columnName,i)=>({tableName:key.split('.')[0],name:key.split('.')[1],columnName,position:i+1,referencedTable:fk.referencedTable,referencedColumn:fk.referencedColumns[i],referencedSchema:'fixture',databaseName:'fixture',deleteRule:'RESTRICT',updateRule:'RESTRICT'}));
+    });
+    await writeFile(join(root, 'readiness-fixtures.json'), JSON.stringify({ columns, indexes, triggers, foreignKeys, cases }));
     await writeFile(join(root, 'inspect-readiness.mjs'), [
       "import { readFile } from 'node:fs/promises';",
       "import { inspectReadiness } from './lib/operations/readiness.ts';",
@@ -1098,6 +1167,8 @@ void test('MariaDB generator ships promo tables after canonical prerequisites an
       "    else if (sql.includes('FROM information_schema.TRIGGERS ')) rows = fixture.triggers;",
       "    else if (sql.includes('FROM information_schema.CHECK_CONSTRAINTS ')) rows = scenario.checks;",
       "    else if (sql.includes('FROM information_schema.STATISTICS ')) rows = fixture.indexes;",
+      "    else if (sql.includes('FROM information_schema.KEY_COLUMN_USAGE ')) rows = fixture.foreignKeys;",
+      "    else if (sql.includes('FROM marketplace_fee_waiver_control') || sql.includes('FROM customer_fee_waiver_control')) rows = [{id:'default',revision:0}];",
       "    else throw new Error('Unexpected readiness query: ' + sql);",
       '    return { async all() { return { results: rows }; } };',
       '  } };',

@@ -20,6 +20,8 @@ import {
 } from '../lib/db/repositories/business-settings';
 import { INITIAL_HOMEPAGE_HERO_SLIDES } from '../lib/homepage/hero-slides';
 import { INITIAL_HOMEPAGE_OCCASION_SLIDES } from '../lib/homepage/occasion-slides';
+import { historicalCommissionDatabase } from './helpers/commission-database';
+import { getRegisteredSellerTerms, prepareSellerCommissionAcceptance } from '../lib/db/repositories/marketplace-settings';
 
 class PreparedStatement {
   private values: SQLInputValue[] = [];
@@ -98,6 +100,36 @@ const socialLinksA = {
   facebook: 'https://www.facebook.com/hastabazaar',
   youtube: 'https://www.youtube.com/@hastabazaar',
 };
+
+void test('published registered 12% requires the full 15 days and rejects a saved 9% acceptance after effectiveness',async()=>{
+  const f=await historicalCommissionDatabase(true);
+  try {
+    const now=2_000_000_000, effective=now+15*86_400_000;
+    const before=f.sqlite.prepare('SELECT * FROM seller_agreement_acceptance_history ORDER BY id').all();
+    const shown=await getRegisteredSellerTerms(f.database,now);
+    assert.equal(shown.basisPoints,900);
+    const draft=await createBusinessSettingDraft(f.database,{key:'independent_seller_commission_bps',value:1200,actorId:'owner',
+      reason:'SIMULATED registered twelve percent terms',requestId:'registered-twelve-draft',now});
+    await assert.rejects(()=>publishBusinessSettingDraft(f.database,{id:draft.id,actorId:'owner',expectedRevision:1,effectiveFrom:effective-1,
+      reason:'SIMULATED insufficient notice attempt',requestId:'registered-twelve-short-notice',now}),/15 calendar days notice/);
+    assert.equal(f.sqlite.prepare('SELECT status FROM business_setting_versions WHERE id=?').get(draft.id)?.status,'draft');
+    await publishBusinessSettingDraft(f.database,{id:draft.id,actorId:'owner',expectedRevision:1,effectiveFrom:effective,
+      reason:'SIMULATED full fifteen day publication',requestId:'registered-twelve-publish',now});
+    const early=await getRegisteredSellerTerms(f.database,effective-1);
+    assert.equal(early.context,shown.context);assert.equal(early.basisPoints,900);
+    const current=await getRegisteredSellerTerms(f.database,effective);
+    assert.equal(current.basisPoints,1200);assert.equal(current.versionId,draft.id);
+    assert.match(current.document,/12% commission/);assert.match(current.document,/commission is NPR 120/);
+    await assert.rejects(()=>prepareSellerCommissionAcceptance(f.database,{sellerId:'seller-a',actorId:'user-a',context:shown.context,
+      requestId:'saved-nine-percent-form',now:effective}),/terms have changed/i);
+    assert.deepEqual(f.sqlite.prepare('SELECT * FROM seller_agreement_acceptance_history ORDER BY id').all(),before);
+    const acceptance=await prepareSellerCommissionAcceptance(f.database,{sellerId:'seller-a',actorId:'user-a',context:current.context,
+      requestId:'accept-twelve-percent',now:effective});
+    await f.database.batch(acceptance.statements);
+    assert.equal(f.sqlite.prepare("SELECT commission_bps FROM seller_agreement_acceptance_history WHERE acceptance_request_id='accept-twelve-percent'").get()?.commission_bps,1200);
+    for(const old of before)assert.deepEqual(f.sqlite.prepare('SELECT * FROM seller_agreement_acceptance_history WHERE id=?').get(old.id),old);
+  }finally{await f.dispose();}
+});
 
 void test('current Super Admin publishes controlled drafts directly without self approval', async () => {
   const { sqlite, database } = await fixture();
@@ -190,16 +222,7 @@ void test('controlled financial changes permit the submitted same-actor approval
       now: 1_300,
     });
 
-    assert.equal(
-      (
-        await getEffectiveBusinessSetting(
-          database,
-          'managed_sale_linked_platform_retention_bps',
-          1_999,
-        )
-      ).value,
-      900,
-    );
+    await assert.rejects(getEffectiveBusinessSetting(database, 'managed_sale_linked_platform_retention_bps', 1_999), /No effective published.*rate/i);
     const effective = await getEffectiveBusinessSetting(
       database,
       'managed_sale_linked_platform_retention_bps',
@@ -756,7 +779,7 @@ void test('same-actor rejection retains submitted revision, rejection audit and 
     assert.deepEqual({ ...audit }, { actor_id: 'admin-a', action: 'business_setting.rejected', subject_id: draft.id, reason: input.reason });
     await assert.rejects(rejectBusinessSettingChange(database, { ...input, requestId: 'reject-again' }), BusinessSettingConflictError);
     assert.equal((sqlite.prepare("SELECT count(*) AS n FROM audit_logs WHERE action='business_setting.rejected'").get())?.n, 1);
-    assert.equal((await getEffectiveBusinessSetting(database, 'managed_sale_linked_platform_retention_bps', 2000)).value, 900);
+    await assert.rejects(getEffectiveBusinessSetting(database, 'managed_sale_linked_platform_retention_bps', 2000), /No effective published.*rate/i);
   } finally { sqlite.close(); }
 });
 

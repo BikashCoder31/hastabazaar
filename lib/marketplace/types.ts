@@ -122,6 +122,7 @@ export interface MarketplacePolicy {
     changeOfMindEnabled: boolean;
     highValueRefundThresholdPaisa: MoneyPaisa;
     refundInitiationBusinessDays: number;
+    refundCompletionCalendarDays?: number;
     digitalRefundEstimateBusinessDays: readonly [number, number];
     codRefundEstimateBusinessDays: readonly [number, number];
   };

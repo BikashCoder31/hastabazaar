@@ -1,146 +1,48 @@
 'use client';
-
-import { PackageCheck, PackageOpen } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
-
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Button } from '@/components/ui/button';
-import type {
-  ItemFulfillmentStatus,
-  SellerFulfillmentAction,
-} from '@/lib/db/repositories/fulfillment';
-
-const definitions = {
-  start_packing: {
-    title: 'Start packing these items?',
-    description:
-      'HastaBazaar operations will see that preparation is underway.',
-    label: 'Start packing',
-    icon: PackageOpen,
-  },
-  ready_for_pickup: {
-    title: 'Are all items packed and ready?',
-    description:
-      'Only confirm when the parcel is sealed, labelled, and ready for carrier collection.',
-    label: 'Mark ready for pickup',
-    icon: PackageCheck,
-  },
-} as const;
-
-export function SellerOrderFulfillmentActions({
-  orderId,
-  itemStatuses,
-}: {
-  orderId: string;
-  itemStatuses: readonly ItemFulfillmentStatus[];
-}) {
-  const router = useRouter();
-  const [selected, setSelected] = useState<SellerFulfillmentAction | null>(
-    null,
-  );
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState('');
-  const uniform =
-    itemStatuses.length > 0 &&
-    itemStatuses.every((status) => status === itemStatuses[0])
-      ? itemStatuses[0]
-      : null;
-  const action: SellerFulfillmentAction | null =
-    uniform === 'confirmed'
-      ? 'start_packing'
-      : uniform === 'packing'
-        ? 'ready_for_pickup'
-        : null;
-  if (!action)
-    return (
-      <p className="text-sm leading-6 text-muted-foreground">
-        No seller action is currently required.
-      </p>
-    );
-  const definition = definitions[action];
-  const Icon = definition.icon;
-
-  async function submit() {
-    if (!selected || pending) return;
-    setPending(true);
-    setError('');
-    try {
-      const response = await fetch(
-        `/api/seller/orders/${encodeURIComponent(orderId)}/fulfillment`,
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ action: selected }),
-        },
-      );
-      const result = (await response.json()) as { error?: string };
-      if (!response.ok)
-        throw new Error(result.error || 'Status could not be updated.');
-      setSelected(null);
-      router.refresh();
-    } catch (reason) {
-      setError(
-        reason instanceof Error
-          ? reason.message
-          : 'Status could not be updated.',
-      );
-    } finally {
-      setPending(false);
-    }
+import {useState} from 'react';
+import {useRouter} from 'next/navigation';
+import {OrderOfferDetails} from '@/components/commerce/order-offer-details';
+import {Button} from '@/components/ui/button';
+import {useOwnedFormScope} from '@/components/forms/use-owned-form-scope';
+import {useActionRecovery} from '@/components/orders/use-action-recovery';
+import {sellerAccessDenied} from '@/lib/sellers/client-access';
+import type {FulfillmentItem,SellerFulfillmentAction} from '@/lib/db/repositories/fulfillment';
+import {packedWeightRange,parsePackedWeightKg} from '@/lib/shipping/packed-weight';
+import {PackedWeightInput} from './packed-weight-input';
+type Props={orderId:string;actorId:string;items:readonly Pick<FulfillmentItem,'id'|'productName'|'quantity'|'fulfillmentStatus'|'offerSnapshot'>[];parcelWeight?:{prefilledGrams:number|null}};
+const actions=['start_packing','ready_for_pickup'];
+export function SellerOrderFulfillmentActions(props:Props){const scope=useOwnedFormScope(JSON.stringify([props.actorId,props.orderId]));return <OwnedActions key={scope.key} {...props} isCurrent={scope.isCurrent}/>;}
+function OwnedActions({orderId,actorId,items,isCurrent,parcelWeight}:Props&{isCurrent:()=>boolean}){
+ const router=useRouter(),[selected,setSelected]=useState<string[]>([]),[selectionMessage,setSelectionMessage]=useState('');
+ const [enteredWeight,setEnteredWeight]=useState<string|null>(null),[weightInvalid,setWeightInvalid]=useState(false);
+ const displayedWeight=enteredWeight ?? (parcelWeight?.prefilledGrams==null?'':String(parcelWeight.prefilledGrams/1000));
+ const recovery=useActionRecovery({actorId,sourceId:orderId,endpoint:`/api/seller/orders/${encodeURIComponent(orderId)}/fulfillment`,storageKey:`hastabazaar:preparation:${actorId}:${orderId}`,actions,isCurrent,onDenied:()=>{sellerAccessDenied(actorId);router.refresh();}});
+ async function submit(action:SellerFulfillmentAction){
+  const from=action==='start_packing'?'confirmed':'packing';
+  const matching=items.filter(item=>item.fulfillmentStatus===from);
+  const itemIds=items.length===1 ? matching.map(item=>item.id) : matching.filter(item=>selected.includes(item.id)).map(item=>item.id);
+  if(!itemIds.length){setSelectionMessage('Select the exact items for this action.');return;}setSelectionMessage('');
+  const needsWeight=action==='ready_for_pickup'&&parcelWeight!==undefined;
+  const grams=needsWeight?parsePackedWeightKg(displayedWeight):null;
+  if(needsWeight&&grams===null){setWeightInvalid(true);setSelectionMessage(packedWeightRange);return;}
+  const note=action==='start_packing'?'Started actual preparation of the selected items.':'The selected items are packed and ready for carrier pickup.';
+  if(await recovery.run(action,{action,itemIds,note,...(grams===null?{}:{packedParcelWeightGrams:grams})})&&isCurrent()){
+    setSelected([]);setEnteredWeight(null);setWeightInvalid(false);router.refresh();
   }
-
-  return (
-    <div>
-      <Button
-        className="min-h-11 h-auto whitespace-normal rounded-full py-3"
-        disabled={pending}
-        onClick={() => setSelected(action)}
-      >
-        <Icon />
-        {definition.label}
-      </Button>
-      {error ? (
-        <p role="alert" className="mt-3 text-sm font-medium text-destructive">
-          {error}
-        </p>
-      ) : null}
-      <AlertDialog
-        open={selected !== null}
-        onOpenChange={(open) => {
-          if (!open && !pending) setSelected(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{definition.title}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {definition.description}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={pending}>Go back</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={pending}
-              onClick={(event) => {
-                event.preventDefault();
-                void submit();
-              }}
-            >
-              {pending ? 'Updating…' : definition.label}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
-  );
+ }
+ if(recovery.denied)return <p role="alert">Seller access changed. Reopen this order with current access.</p>;
+ const eligible=items.filter(item=>['confirmed','packing'].includes(item.fulfillmentStatus));
+ if (!eligible.length && !recovery.pending && !recovery.message) return null;
+ return <div className="space-y-3 [&_button]:min-h-11">
+ {eligible.length > 1 ? <fieldset disabled={recovery.blocked} className="space-y-2"><legend className="mb-2 text-sm font-semibold">Select the items to update</legend>{eligible.map(item=><label key={item.id} className="flex min-h-11 items-start gap-2 rounded-lg border bg-card p-3 text-sm"><input type="checkbox" checked={selected.includes(item.id)} onChange={event=>setSelected(values=>event.target.checked?[...values,item.id]:values.filter(id=>id!==item.id))}/><span>{item.productName} × {item.quantity} · {item.fulfillmentStatus==='confirmed'?'Awaiting preparation':'Preparing'}<OrderOfferDetails offer={item.offerSnapshot}/></span></label>)}</fieldset> : null}
+ {recovery.pending?<div className="space-y-2"><p>The original action still needs confirmation. Its private entries stay only in this open page.</p>{recovery.canRetry?<Button disabled={recovery.busy} onClick={()=>void recovery.retry()}>Retry the same saved action</Button>:null}{recovery.reference?<Button disabled={recovery.busy} onClick={()=>void recovery.check()}>Check original saved outcome</Button>:null}{recovery.rejected?<Button disabled={recovery.busy} onClick={recovery.reviewAgain}>Review current items for a new attempt</Button>:null}</div>:<div className="space-y-2">
+  {eligible.some(item=>item.fulfillmentStatus==='confirmed')?<Button className="min-h-11 w-full bg-[#A8232E] text-white hover:bg-[#8F1D27]" disabled={recovery.blocked} onClick={()=>void submit('start_packing')}>Start preparing</Button>:null}
+  {eligible.some(item=>item.fulfillmentStatus==='packing')?<>
+    {parcelWeight?<PackedWeightInput label="Packed parcel weight (kg)" value={displayedWeight} required disabled={recovery.blocked}
+      invalid={weightInvalid} hint={weightInvalid?packedWeightRange:'Weigh the whole parcel, including its packaging.'}
+      onChange={value=>{setEnteredWeight(value);setWeightInvalid(false);setSelectionMessage('');}}/>:null}
+    <Button className="min-h-11 w-full bg-[#A8232E] text-white hover:bg-[#8F1D27]" disabled={recovery.blocked} onClick={()=>void submit('ready_for_pickup')}>Mark ready for pickup</Button>
+  </>:null}
+ </div>}
+<output className="block" aria-live="polite">{recovery.message||selectionMessage}</output></div>;
 }

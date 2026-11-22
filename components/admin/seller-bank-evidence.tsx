@@ -1,0 +1,9 @@
+import type { privateBankWorkspace } from '@/lib/sellers/bank-details';
+export function SellerBankEvidence({workspace}:{workspace:Awaited<ReturnType<typeof privateBankWorkspace>>}) {
+  const section=(title:string,value:{details:{payoutBeneficiary:string;bankName:string;bankBranch:string;bankAccountNumber:string};documentId:string}|null)=><div className="space-y-3 rounded-lg border p-4"><h4 className="font-semibold">{title}</h4>{value?<><dl className="space-y-2 text-sm">
+    {([['Beneficiary',value.details.payoutBeneficiary],['Bank',value.details.bankName],['Branch',value.details.bankBranch],['Account',value.details.bankAccountNumber]] as const).map(([label,text])=><div key={label}><dt className="text-muted-foreground">{label}</dt><dd>{text}</dd></div>)}</dl>
+    <a className="section-link" href={`/api/admin/seller-documents/${encodeURIComponent(value.documentId)}`} target="_blank" rel="noreferrer">Open private bank evidence ↗</a></>:<p className="text-sm">No versioned ownership evidence is recorded here. A historical reference alone does not establish verified beneficiary ownership.</p>}</div>;
+  return <section className="space-y-3 rounded-xl border p-5" aria-labelledby="private-bank-title"><h3 id="private-bank-title" className="font-heading text-xl">Private beneficiary comparison</h3>
+    <p className="text-sm">Compare with the current seller identity and registration. Access to these details is recorded.</p><div className="grid gap-4 md:grid-cols-2">{section('Current recorded version',workspace.current)}{section('Proposed bank details',workspace.proposed)}</div>
+    {workspace.current?<p className="text-sm">Beneficiary version {workspace.current.id} · {workspace.current.identityRevision===workspace.identityRevision?'Recorded against the current identity version.':'Identity changed since this review; beneficiary ownership needs revalidation.'}</p>:null}</section>;
+}

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { CompanyDisclosure } from '@/components/layout/company-disclosure';
+import { companyDetails } from '@/lib/content/company-details';
 import { ArrowRight, FileText } from 'lucide-react';
 
 import { SiteFooter } from '@/components/layout/site-footer';
@@ -10,7 +11,7 @@ export const metadata = {
   alternates: { canonical: 'https://hastabazaar.com/legal' },
   title: 'Legal & Policies',
   description:
-    'Find policies about shopping, selling, delivery and personal information on HastaBazaar.',
+    'Find policies about shopping, selling, delivery and personal information on Hastabazaar.',
 };
 
 export default function LegalPage() {
@@ -25,16 +26,16 @@ export default function LegalPage() {
             </h1>
             <p className="mt-5 max-w-3xl text-lg leading-8 text-muted-foreground">
               Find the policies that explain shopping, selling, delivery and
-              personal information on HastaBazaar.
+              personal information on Hastabazaar.
             </p>
-          <p className="mt-4 text-sm text-muted-foreground">Updated {LEGAL_POLICY_DATE_LABEL} · Nepal time · <Link href="/legal/history" className="font-semibold text-primary underline underline-offset-4">Policy history</Link></p>
+          <p className="mt-4 text-sm text-muted-foreground">Updated {LEGAL_POLICY_DATE_LABEL} · Nepal time</p>
           <p className="mt-5 text-base leading-7 text-muted-foreground">
             Questions about our policies? Contact{' '}
             <a
-              href="mailto:support@hastabazaar.com"
+              href={`mailto:${companyDetails.supportEmail}`}
               className="font-semibold text-primary underline underline-offset-4"
             >
-              support@hastabazaar.com
+              {companyDetails.supportEmail}
             </a>
             .
           </p>

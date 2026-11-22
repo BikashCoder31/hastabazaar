@@ -1,0 +1,15 @@
+# T33 remaining NUL native evidence — 10 November
+
+The resumed isolated native run completed **11 fresh cases, exit 0** against candidate `.test-artifacts/t35/current-schema-nul-parity-candidate-20261105-v1/mariadb-schema.sql`, SHA256 `1724e01be54c982be9096f61cb89a806d55f40e496287fe216059334320842e0`. **Fresh independent review accepted the finite native gate**, with no blocking findings. This is not whole-version or release acceptance.
+
+Independent review: `.test-artifacts/t33/nul-native-acceptance-review-20261110-astra/REPORT.md` and `acceptance.json`. It rehashed 23 input records and nine receipt files, verified the exact accepted prefix and 139 unchanged historical assets, traced all 11 assertions, and compared every required manifest CHECK against the native snapshot. The 309 manifest definitions are a required subset, not the total 1,046 native CHECK rows. This exact candidate is selected for subsequent functional verification and package preparation; public assets/reset remain preserved.
+
+Evidence: `.test-artifacts/t33/nul-native-completion-20261110-astra/REPORT.md`, `REVIEW-PACKAGE.md`, `final-verification.json` and `run-1794325221602/`. The retained remaining-v2 runner, matrix and populated fixture were copied byte-identically into a new owner; no application/schema/fixture behavior was changed. All 23 retained input/hash records match. Prior STOP and failed receipts remain untouched.
+
+The 11 cases cover mixed-valid/NUL-invalid refusal before DDL; populated interruption cuts 0, 1, 9 and 19; malformed named-guard refusal; invalid future request and human reason rejection; valid prefix-NUL/100-character Nepali values; all 309 manifest CHECK definitions; and actual Maria CLI replay. Original raw all-column values were preserved across 363 base tables and 70 fictional/reference rows, with 795 triggers and the accepted main CHECK transition retained. Immediate replay measured zero additional DDL/DML. Two actual guarded-table journeys are not a substitute for the separately pending complete finance/health/customer journeys.
+
+Fresh results SHA256: `26eaf6417631904e8e5b0165f8015c48ecd849a1ff8bf15e1d5d21a54a18d842`. The receipt's `expressionCases:270` field refers to historical 5 November projection evidence; those cases were not rerun. Fresh evidence is exactly 11 cases, in addition to the previously accepted source/projection/main228 evidence.
+
+The exact owned container `0c88025584d431453217bea0b6ffc465d04d175e8341b3cb4efd861ada119efd` was authenticated and stopped, then independently re-attested exited. Receipt: failure null, stopped true, cleanupErrors empty. The disposable stopped container and evidence are retained. Docker required starting the installed engine and elevated local named-pipe access; no image pull, daemon/context change or canonical data operation occurred. The heavy execution slot was released to the Linux dependency audit.
+
+No Git mutation, canonical database repair, public/reset overwrite, real mail/payment, seller activation or deployment occurred. Native fee29/health3, final regression and Linux package acceptance remain open.

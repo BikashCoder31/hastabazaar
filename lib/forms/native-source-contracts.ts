@@ -1,0 +1,108 @@
+import type {FormAudience, FormDefinition, FormMode} from './types';
+
+// Source inventory, not a runtime health assertion. These feature-owned commands
+// already validate and retain their own records. `none` means no GENERIC answer
+// snapshot; it never means the submitted domain data is discarded. Do not attach
+// these new IDs to a historical catalog publication or manufacture core receipts.
+type NativeSource = {
+  id:string; audience:FormAudience; mode:FormMode; route:string;
+  fields:readonly string[]; owner:string; records:string;
+};
+function source(id:string,audience:FormAudience,mode:FormMode,route:string,
+  fields:string,owner:string,records:string):NativeSource {
+  return Object.freeze({id,audience,mode,route,fields:Object.freeze(fields.split(' ')),owner,records});
+}
+
+export const NATIVE_FORM_SOURCES:readonly NativeSource[] = Object.freeze([
+  source('staff.customer-directory-search','staff','query','/admin/customers',
+    'q view page customer','lib/admin/customers.ts',
+    'Read-only staff directory search with existing permissions. No customer record or answer is written.'),
+  source('staff.system-records-filter','staff','query','/admin/system-health/records',
+    'reference type actor from to status action returnTo','lib/operations/system-records.ts',
+    'Read-only scoped search of existing records; current source permissions and environment remain enforced.'),
+  source('staff.incoming-payment-filter','staff','query','/admin/payments',
+    'order returnTo','components/admin/manual-payment-review.tsx',
+    'GET-only exact-order navigation; no payment, receipt or answer is created.'),
+  source('staff.refund-funding-filter','staff','query','/admin/payments/refunds',
+    'search pageSize case obligation returnLoss returnSatisfaction returnTo','components/admin/refund-funding-review.tsx',
+    'GET-only bounded reference search of original finance records; no refund or funding decision is made.'),
+  source('staff.team-people-filter','staff','query','/admin/team',
+    'tab department status permission returnTo','components/admin/team-workspace.tsx',
+    'GET-only people filtering; selections cannot grant work access or change a staff record.'),
+  source('staff.commercial-combination-preview','staff','query','/api/admin/fees/combination-preview',
+    'at district lines useWallet promo referralCode proposed','lib/incentives/commercial-combination-preview.ts',
+    'Read-only POST calculation over authorized native snapshots; creates neither a checkout quote nor a commercial publication.'),
+  source('seller.document-change-request','seller','operation','/api/seller-applications/document-change',
+    'documentId reason commandId','lib/sellers/document-review.ts',
+    'seller_document_change_requests and audit_logs retain the exact document scope and required reason.'),
+  source('seller.document-correction-upload','seller','operation','/api/seller-applications/documents/:id/replacement',
+    'document commandId','lib/sellers/document-upload.ts',
+    'Private bucket evidence and seller_documents retain the corrected upload; previous evidence remains and fresh verification is required.'),
+  source('seller.document-replacement-upload','seller','operation','/api/seller-applications/document-change/:id/replacement',
+    'document permissionId commandId','lib/sellers/document-upload.ts',
+    'Private replacement evidence, seller_documents and seller_document_replacement_permissions preserve the approved scope and consumed permission.'),
+  source('staff.seller-document-review','staff','operation','/api/admin/seller-documents/:id/review',
+    'decision reason sellerId expectedReviewId commandId','lib/sellers/document-review.ts',
+    'seller_documents, document replacement permissions and audit_logs retain verification, correction and rejection decisions under current document authority.'),
+  source('staff.seller-document-change-permission','staff','operation','/api/admin/seller-document-change-requests/:id',
+    'decision reason expectedOperationId commandId','lib/sellers/document-review.ts',
+    'seller_document_change_requests, replacement permissions and audit_logs retain exact reviewed scope and original decision recovery.'),
+  source('seller.protected-change-request','seller','operation','/api/seller/protected-changes',
+    'kind fields identityRevision bankRevision accountId reason currentUnusable commandId','lib/sellers/protected-change-requests.ts',
+    'seller_protected_change_cases, review_tasks and audit history retain the proposed identity or bank scope; requesting never authorizes replacement.'),
+  source('seller.protected-change-withdrawal','seller','operation','/api/seller/protected-changes/:id/withdraw',
+    'reason version accountId commandId','lib/sellers/protected-change-disposition.ts',
+    'Protected case disposition and audit history retain withdrawal without silently releasing independent holds.'),
+  source('seller.protected-identity-upload','seller','identity','/api/seller/protected-changes/:id/identity',
+    'commandId permissionId accountId values representative_identity pan_certificate business_registration','lib/sellers/protected-identity-change.ts',
+    'Private identity evidence and immutable protected identity proposals retain exact permission and revision; upload does not verify identity.'),
+  source('staff.protected-change-permission','staff','operation','/api/admin/seller-protected-changes/:id/permission',
+    'decision reason version identityRevision bankRevision commandId','lib/sellers/protected-change-requests.ts',
+    'seller_protected_change_permissions, case revisions and audit history retain scoped approval, clarification or rejection.'),
+  source('staff.protected-identity-review','staff','identity','/api/admin/seller-protected-changes/:id/verify-identity',
+    'reason version identityRevision bankRevision sameLegalPersonConfirmed evidenceReference commandId','lib/sellers/protected-identity-change.ts',
+    'Protected identity revisions, evidence and audit history retain the verified decision; independent financial holds remain authoritative.'),
+  source('staff.protected-change-disposition','staff','operation','/api/admin/seller-protected-changes/:id/disposition',
+    'action reason version identityRevision bankRevision currentEvidenceValidConfirmed bankOwnershipConfirmed factsUnchanged ownershipBasis capabilities model payoutId notExecutedConfirmed evidenceReference commandId','lib/sellers/protected-change-disposition.ts',
+    'Protected hold dispositions, bank revalidation and retired payout packets keep their native guarded records and original decision recovery.'),
+  source('seller.public-profile-withdrawal','seller','operation','/api/seller/public-profile',
+    'action candidateId expectedVersion reason requestId sellerId ownerId','lib/sellers/public-profile-commands.ts',
+    'Frozen public-profile proposals and seller_public_profile_events retain the withdrawal and original version without changing published history.'),
+  source('seller.public-profile-correction','seller','operation','/api/seller/public-profile',
+    'action correctionId expectedVersion baseVersion fields desired category reason requestId sellerId ownerId','lib/sellers/public-profile-commands.ts',
+    'Native scoped correction records and profile events retain requested and answered fields independently of normal publication cooldown.'),
+  source('seller.public-support-contacts','seller','collection','/api/seller/public-profile',
+    'action expectedRevision email phone phoneCountry publicDisclosureConfirmed requestId sellerId ownerId','lib/sellers/profile-contact-locations.ts',
+    'seller_profiles support contacts and seller_public_profile_events retain explicit public disclosure consent; private login destinations remain separate.'),
+  source('seller.operational-locations','seller','collection','/api/seller/public-profile',
+    'action expectedRevision pickupAddress returnAddress requestId sellerId ownerId','lib/sellers/profile-contact-locations.ts',
+    'seller_operational_addresses and profile events retain private pickup/return addresses without rewriting public city or existing order destinations.'),
+  source('seller.public-profile-media','seller','collection','/api/seller/public-profile/media',
+    'kind file requestId sellerId ownerId','lib/sellers/public-profile-media.ts',
+    'Private bucket objects and native media records retain uploaded material until separately reviewed publication; no generic answer contains the file.'),
+  source('staff.public-profile-review','super_admin','operation','/api/admin/sellers/:id/public-profile',
+    'action candidateId correctionId expectedVersion reason scopeConfirmed nextUpdateAt requestId','lib/sellers/public-profile-commands.ts',
+    'Native candidate/correction versions, publication and profile events retain the eligible independent reviewer decision and exact recovery.'),
+  source('staff.public-profile-correction-request','super_admin','operation','/api/admin/sellers/:id/public-profile',
+    'action baseVersion fields reason nextUpdateAt requestId','lib/sellers/public-profile-commands.ts',
+    'Native scoped correction and profile events retain the required reason and next-update deadline without publishing a normal proposal.'),
+  source('staff.public-profile-history-reconciliation','super_admin','operation','/api/admin/sellers/:id/public-profile',
+    'action expectedVersion reliableSavedAt evidenceReference reason requestId','lib/sellers/public-profile-commands.ts',
+    'Native historical reconciliation retains proven source evidence or explicit unknown time; it cannot invent a prior approval or restart cooldown.'),
+  source('seller.order-preparation','seller','operation','/api/seller/order-responses',
+    'action requestId expectedRevision input portionId itemIds kind detail proposedReadyAt caseId ownerId backupId state nextUpdateAt privateNote customerMessage','lib/orders/response-http.ts',
+    'Native preparation reports, exact item transitions and owned delay cases retain original release clocks, scope, authority and recovery.'),
+  source('staff.order-preparation','staff','operation','/api/admin/order-responses',
+    'action requestId expectedRevision input portionId itemIds kind detail proposedReadyAt caseId ownerId backupId state nextUpdateAt privateNote customerMessage','lib/orders/response-http.ts',
+    'Native preparation reports and owned delay-case follow-ups retain original item scope, current order authority and exact recovery.'),
+]);
+
+export const NATIVE_SOURCE_FORM_CONTRACTS:Readonly<Record<string,FormDefinition>> = Object.freeze(
+  Object.fromEntries(NATIVE_FORM_SOURCES.map(({id,audience,mode,route,fields,records}) => [id,Object.freeze({
+    id,adapterId:id,audience,mode,route,
+    baseFields:Object.freeze(fields.map(key=>Object.freeze({key,label:key,type:'existing',capability:'protected' as const,
+      explanation:'The owning feature enforces required fields, current permissions, evidence, versions and exact recovery.'}))),
+    capabilities:Object.freeze({customFieldTypes:Object.freeze([]),answerBehavior:mode==='query'?'query' as const:'none' as const,
+      explanation:records+' No arbitrary questions or generic answer snapshots are supported; this source declaration does not certify runtime health.'}),
+  })])),
+);

@@ -12,7 +12,7 @@ void test('traffic beacon emits no literal private paths and preserves public pr
   const previous = globalThis.fetch; const bodies: unknown[] = [];
   globalThis.fetch = async (_url, options) => { assert.equal(typeof options?.body, 'string'); bodies.push(JSON.parse(options!.body as string)); return new Response(null); };
   try {
-    for (const path of ['/orders/private-order', '/account/private-account', '/seller/documents/private-document', '/orders/order/managed-invoices/invoice']) {
+    for (const path of ['/orders/private-order', '/account/private-account', '/seller/documents/private-document', '/orders/order/managed-invoices/invoice', '/recover-account']) {
       globalThis.securityBeaconPath = path; TrafficBeacon();
     }
     assert.deepEqual(bodies, []);

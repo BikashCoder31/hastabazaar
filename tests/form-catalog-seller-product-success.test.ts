@@ -15,9 +15,11 @@ function clientBundle() {
       ? <SellerReviewActions sellerId="seller-one" status="submitted"/>
       :mode==='governance'?<SellerGovernanceActions sellerId="seller-one" current={null}/>
       :mode==='product-review'?<ProductReviewActions productId="product-one" status="submitted"/>
-      :<HomepageVisibilityControl productId="product-one" productName="Fictional product" hidden={false} version={0} lastReason={null}/>);
+      :<HomepageVisibilityControl actorId="reviewer" productId="product-one" productName="Fictional product" hidden={false} version={0} lastReason={null}/>);
   `},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"production"'},
   plugins:[{name:'success-stubs',setup(bundler){
+    bundler.onResolve({filter:/^next\/link$/},()=>({path:'link',namespace:'success'}));
+    bundler.onLoad({filter:/^link$/,namespace:'success'},()=>({resolveDir:process.cwd(),loader:'tsx',contents:'import React from "react";export default function Link({children,...props}){return <a {...props}>{children}</a>}'}));
     for(const [filter,path] of [[/^next\/navigation$/,'navigation'],[/^@\/components\/forms\/form-config-client$/,'config'],[/^@\/components\/ui\/alert-dialog$/,'dialog']] as const)
       bundler.onResolve({filter},()=>({path,namespace:'success'}));
     bundler.onLoad({filter:/^navigation$/,namespace:'success'},()=>({contents:'export function useRouter(){return {refresh(){}}}',loader:'js'}));
@@ -84,10 +86,20 @@ for(const mode of ['seller-review','governance','product-review','homepage'] as 
         assert.equal(requests.length,previous+1);
         await page.waitForTimeout(80);
       };
+      if(mode==='homepage'){
+        await submit();const id=String(requests[0].requestId),original=JSON.stringify(requests[0]);
+        assert.equal(await page.evaluate((id:string)=>Object.values(sessionStorage).includes(id),id),true);
+        const retry=async()=>{const previous=requests.length,done=page.waitForResponse((response:{request():{method():string}})=>response.request().method()==='POST');await form.getByRole('button',{name:'Retry original action',exact:true}).click();await done;await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>resolve())));assert.equal(requests.length,previous+1);assert.equal(JSON.stringify(requests.at(-1)),original);};
+        for(const malformed of [null,{error:'Unconfirmed'},{hidden:'true',version:1}]){responseBody=malformed;await retry();assert.equal(await page.evaluate((id:string)=>Object.values(sessionStorage).includes(id),id),true);}
+        for(const conflict of [400,409]){status=conflict;responseBody={error:'A later rejected invocation cannot disprove the original unknown result.',phase:'rejected_before_write'};await retry();assert.equal(await page.evaluate((id:string)=>Object.values(sessionStorage).includes(id),id),true);}
+        assert.equal((await page.evaluate(()=>JSON.stringify(Object.fromEntries(Object.keys(sessionStorage).map(key=>[key,sessionStorage.getItem(key)]))))).includes('Fictional private evidence'),false);
+        status=200;responseBody={hidden:true,version:1};await retry();assert.equal(await page.evaluate((id:string)=>Object.values(sessionStorage).includes(id),id),false);
+        form=await mount();status=409;responseBody={error:'Stale form',code:'stale_version',phase:'rejected_before_write'};await submit();const staleId=String(requests.at(-1)?.requestId);assert.equal(await page.evaluate((id:string)=>Object.values(sessionStorage).includes(id),staleId),false);assert.equal(await form.getByRole('button',{name:'Start a new attempt',exact:true}).count(),0);assert.equal(await form.getByRole('button',{name:'Hide from homepage',exact:true}).isEnabled(),false);await form.getByRole('button',{name:'Refresh current form configuration',exact:true}).click();assert.equal(await form.getByLabel('Staff context').inputValue(),'Fictional private evidence');assert.equal(await form.getByLabel('Decision reason').inputValue(),'Fictional homepage decision');status=200;responseBody={hidden:true,version:1};await submit();assert.notEqual(requests.at(-1)?.requestId,staleId);return;
+      }
       await submit();
       const id=String(requests[0].requestId);
       assert.equal(await page.evaluate((id:string)=>Object.values(sessionStorage).includes(id),id),true,'Malformed2xx must retain opaque identity');
-      for(const malformed of [null,{error:'Unconfirmed'},mode==='homepage'?{hidden:'true',version:1}:mode==='governance'?{restriction:{version:'1'}}:{status:'unknown'}]){
+      for(const malformed of [null,{error:'Unconfirmed'},mode==='governance'?{restriction:{version:'1'}}:{status:'unknown'}]){
         form=await mount();responseBody=malformed;await submit();
         assert.equal(requests.at(-1)?.requestId,id);
         assert.equal(await page.evaluate((id:string)=>Object.values(sessionStorage).includes(id),id),true);
@@ -99,13 +111,13 @@ for(const mode of ['seller-review','governance','product-review','homepage'] as 
         assert.equal(await page.evaluate(()=>(window as Window & {__staleCalls?:number}).__staleCalls??0),0);
       }
       status=200;
-      responseBody=mode==='homepage'?{hidden:true,version:1}:mode==='governance'?{restriction:{mode:'active',obligationMode:'admin_review',version:1}}:{status:'under_review'};
+      responseBody=mode==='governance'?{restriction:{mode:'active',obligationMode:'admin_review',version:1}}:{status:'under_review'};
       await submit();
       assert.equal(await page.evaluate((id:string)=>Object.values(sessionStorage).includes(id),id),false,'Verified result clears opaque identity');
       form=await mount();status=409;responseBody={error:'Stale form',code:'stale_version'};
       await submit();
       const staleId=String(requests.at(-1)?.requestId);
-      const operationButton=form.getByRole('button',{name:mode==='governance'?'Record seller decision':mode==='homepage'?'Hide from homepage':'Start review',exact:true}).first();
+      const operationButton=form.getByRole('button',{name:mode==='governance'?'Record seller decision':'Start review',exact:true}).first();
       assert.equal(await operationButton.isEnabled(),false,'True stale response freezes submission');
       page.once('dialog',(dialog:{dismiss():Promise<void>})=>void dialog.dismiss());
       await form.getByRole('button',{name:'Start a new attempt',exact:true}).click();
@@ -115,7 +127,7 @@ for(const mode of ['seller-review','governance','product-review','homepage'] as 
       await form.getByRole('button',{name:'Start a new attempt',exact:true}).click();
       assert.equal(await operationButton.isEnabled(),true,'Confirmed reset refreshes stale config');
       assert.equal(await form.getByLabel('Staff context').inputValue(),'Fictional private evidence');
-      status=200;responseBody=mode==='homepage'?{hidden:true,version:1}:mode==='governance'?{restriction:{mode:'active',obligationMode:'admin_review',version:1}}:{status:'under_review'};
+      status=200;responseBody=mode==='governance'?{restriction:{mode:'active',obligationMode:'admin_review',version:1}}:{status:'under_review'};
       await submit();
       assert.notEqual(requests.at(-1)?.requestId,staleId);
     }finally{await browser.close();}

@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { registerHooks } from 'node:module';
-import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite';
+import type { DatabaseSync, SQLInputValue, StatementSync } from 'node:sqlite';
 import test from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -9,6 +8,7 @@ import { buildFormAnswerInsert } from '../lib/db/repositories/form-answers';
 import { FORM_REGISTRY } from '../lib/forms/registry';
 import type { FormId } from '../lib/forms/types';
 import { validateAnswersForDefinition, validateFormDraft } from '../lib/forms/validation';
+import { incentiveReportDatabase } from './helpers/incentive-report-database';
 
 declare global {
   var sellerCaseHistoryDb: D1Database;
@@ -25,7 +25,9 @@ registerHooks({ resolve(specifier, context, nextResolve) {
         ? 'export function notFound(){throw Error("NOT_FOUND")};export function redirect(path){throw Error("REDIRECT:"+path)};export function useRouter(){return {refresh(){}}}'
         : specifier === 'next/link'
           ? 'export default function Link({children,...props}){return globalThis.sellerCaseHistoryReact.createElement("a",props,children)}'
-          : null;
+          : specifier === 'next/image'
+            ? 'export default function Image({unoptimized,...props}){return globalThis.sellerCaseHistoryReact.createElement("img",props)}'
+            : null;
   return fixture ? { url: `data:text/javascript,${fixture}`, shortCircuit: true } : nextResolve(specifier, context);
 } });
 
@@ -55,32 +57,53 @@ type Case = typeof cases[number];
 type Cursor = { historyAt?: string; historyId?: string };
 const fields = [{ id: 'context_note', key: 'context_note', label: 'Original seller context', type: 'short_text', required: true, order: 0, status: 'active' }];
 
-function fixture() {
-  const sqlite = new DatabaseSync(':memory:');
-  sqlite.exec(`PRAGMA foreign_keys=ON;
-    CREATE TABLE users(id TEXT PRIMARY KEY,auth_subject TEXT,email TEXT,display_name TEXT,status TEXT);
-    CREATE TABLE user_roles(user_id TEXT,role TEXT);
-    CREATE TABLE seller_profiles(id TEXT PRIMARY KEY,user_id TEXT,status TEXT,trading_name TEXT,seller_agreement_version TEXT,seller_agreement_accepted_at INTEGER);
-    CREATE TABLE orders(id TEXT PRIMARY KEY,order_number TEXT);
-    CREATE TABLE order_items(id TEXT PRIMARY KEY,order_id TEXT,seller_id TEXT,product_name_snapshot TEXT,seller_name_snapshot TEXT);
-    CREATE TABLE return_requests(id TEXT PRIMARY KEY,reference_number TEXT,order_item_id TEXT,quantity INTEGER,reason TEXT,detail TEXT,locale TEXT,requested_resolution TEXT,original_seal_intact INTEGER,status TEXT,responsibility TEXT,eligibility_decision TEXT,eligibility_reason_en TEXT,eligibility_reason_ne TEXT,seller_recommendation TEXT,seller_response TEXT,investigation_summary TEXT,resolution_outcome TEXT,return_shipment_reference TEXT,requested_at INTEGER,updated_at INTEGER,resolved_at INTEGER);
-    CREATE TABLE refunds(id TEXT,return_request_id TEXT,status TEXT,amount_paisa INTEGER,wallet_credit_paisa INTEGER,referral_discount_paisa INTEGER,promo_discount_paisa INTEGER NOT NULL DEFAULT 0 CHECK(typeof(promo_discount_paisa)='integer' AND promo_discount_paisa BETWEEN 0 AND 9007199254740991),provider_reference TEXT);
-    CREATE TABLE complaints(id TEXT PRIMARY KEY,reference_number TEXT,order_id TEXT,order_item_id TEXT,seller_id TEXT,category TEXT,subject TEXT,detail TEXT,locale TEXT,priority TEXT,status TEXT,assigned_to TEXT,resolution TEXT,resolution_ne TEXT,seller_response TEXT,escalation_reason TEXT,created_at INTEGER,updated_at INTEGER,resolved_at INTEGER);
-    CREATE TABLE return_request_events(id TEXT PRIMARY KEY,return_request_id TEXT,request_id TEXT,actor_id TEXT,actor_type TEXT,action TEXT,from_status TEXT,to_status TEXT,public_message_en TEXT,public_message_ne TEXT,internal_note TEXT,created_at INTEGER);
-    CREATE TABLE complaint_events(id TEXT PRIMARY KEY,complaint_id TEXT,request_id TEXT,actor_id TEXT,actor_type TEXT,action TEXT,from_status TEXT,to_status TEXT,public_message_en TEXT,public_message_ne TEXT,internal_note TEXT,created_at INTEGER);
-    CREATE TABLE return_evidence(id TEXT,return_request_id TEXT,original_name TEXT,mime_type TEXT,size_bytes INTEGER,uploaded_by_type TEXT,created_at INTEGER);
-    INSERT INTO users VALUES('seller-user','seller-auth','seller@example.test','Fictional seller','active'),('other-seller','other-auth','other@example.test','Other seller','active'),('buyer',NULL,'buyer@example.test','Buyer','active'),('staff',NULL,'staff@example.test','Staff','active');
-    INSERT INTO user_roles VALUES('seller-user','seller'),('other-seller','seller'),('buyer','customer'),('staff','admin');
-    INSERT INTO seller_profiles VALUES('seller-one','seller-user','approved','Fictional seller',NULL,NULL),('seller-other','other-seller','approved','Other seller',NULL,NULL);
-    INSERT INTO orders VALUES('order-one','HK-FICTIONAL');
-    INSERT INTO order_items VALUES('item-one','order-one','seller-one','Fictional item','Fictional seller'),('item-other','order-one','seller-other','Other item','Other seller');
-    INSERT INTO return_requests(id,reference_number,order_item_id,quantity,reason,detail,requested_resolution,status,eligibility_decision,eligibility_reason_en,seller_response) VALUES('return-one','RET-FICTIONAL','item-one',1,'defective','Fictional case detail','refund','resolved','eligible','Reviewed','Recorded seller response'),('return-foreign','RET-OTHER','item-other',1,'defective','Other case','refund','resolved','eligible','Reviewed',NULL);
-    INSERT INTO complaints(id,reference_number,order_id,order_item_id,seller_id,category,subject,detail,status,seller_response) VALUES('complaint-one','CMP-FICTIONAL','order-one','item-one','seller-one','product','Fictional complaint','Fictional case detail','closed','Recorded seller response'),('complaint-foreign','CMP-OTHER','order-one','item-other','seller-other','product','Other complaint','Other case','closed',NULL);`);
-  for (const part of readFileSync(new URL('../drizzle/0056_form_catalog.sql', import.meta.url), 'utf8').split('--> statement-breakpoint'))
-    if (part.trim()) sqlite.exec(part);
+async function fixture() {
+  // Retained terminal cases existed before offer/handling/native-answer storage.
+  // Insert their complete historical facts before later migrations retain them.
+  const { sqlite } = await incentiveReportDatabase(async (name, legacy) => {
+    if (name !== '0056_form_catalog.sql') return;
+    legacy.exec(`
+      INSERT INTO users(id,auth_subject,email,display_name,status,created_at,updated_at) VALUES
+        ('seller-user','seller-auth','seller@example.test','Fictional seller','active',1,1),
+        ('other-seller','other-auth','other@example.test','Other seller','active',1,1),
+        ('buyer',NULL,'buyer@example.test','Buyer','active',1,1),
+        ('staff',NULL,'staff@example.test','Staff','active',1,1);
+      INSERT INTO user_roles(user_id,role,assigned_at) VALUES
+        ('seller-user','seller',1),('other-seller','seller',1),('buyer','customer',1),('staff','admin',1);
+      INSERT INTO seller_profiles(id,user_id,legal_name,trading_name,registration_authority,registration_number,
+        tax_mode,tax_registration_number,representative_name,support_phone,support_email,province,district,
+        municipality,locality,status,created_at,updated_at) VALUES
+        ('seller-one','seller-user','Fictional seller','Fictional seller','Local','FIX-ONE','NONE','','Maker',
+        '9800000000','seller@example.test','Madhesh','Dhanusha','Janakpur','Ward 1','approved',1,1),
+        ('seller-other','other-seller','Other seller','Other seller','Local','FIX-OTHER','NONE','','Other maker',
+        '9800000001','other@example.test','Madhesh','Dhanusha','Janakpur','Ward 2','approved',1,1);
+      INSERT INTO categories(id,slug,name_en,is_active,sort_order,created_at,updated_at)
+        VALUES('category','fixture-category','Fixture',1,1,1,1);
+      INSERT INTO products(id,seller_id,category_id,slug,sku,name_en,description_en,price_paisa,inventory_quantity,
+        producer,country_of_origin,materials,return_eligible,status,created_at,updated_at) VALUES
+        ('product-one','seller-one','category','fixture-one','FIX-ONE','Fictional item','Fictional',100,5,'Maker','NP','Fibre',1,'published',1,1),
+        ('product-other','seller-other','category','fixture-other','FIX-OTHER','Other item','Fictional',100,5,'Other maker','NP','Fibre',1,'published',1,1);
+      INSERT INTO orders(id,order_number,customer_id,customer_email,customer_phone,status,locale,policy_version,
+        shipping_address_json,item_subtotal_paisa,delivery_charge_paisa,grand_total_paisa,payment_mode,payment_status,created_at,updated_at)
+        VALUES('order-one','HK-FICTIONAL','buyer','buyer@example.test','9811111111','delivered','en-NP','fixture','{}',200,0,200,'cod','paid',1,1);
+      INSERT INTO order_items(id,order_id,product_id,seller_id,product_name_snapshot,seller_name_snapshot,sku_snapshot,
+        unit_price_paisa,quantity,commission_bps,commission_paisa,line_total_paisa,created_at) VALUES
+        ('item-one','order-one','product-one','seller-one','Fictional item','Fictional seller','FIX-ONE',100,1,0,0,100,1),
+        ('item-other','order-one','product-other','seller-other','Other item','Other seller','FIX-OTHER',100,1,0,0,100,1);
+      INSERT INTO return_requests(id,reference_number,order_item_id,quantity,reason,detail,requested_resolution,
+        status,eligibility_decision,eligibility_reason_en,seller_response,requested_at,updated_at,resolved_at) VALUES
+        ('return-one','RET-FICTIONAL','item-one',1,'defective','Fictional case detail','refund','resolved','eligible','Reviewed','Recorded seller response',1,2,2),
+        ('return-foreign','RET-OTHER','item-other',1,'defective','Other case','refund','resolved','eligible','Reviewed',NULL,1,2,2);
+      INSERT INTO complaints(id,reference_number,order_id,order_item_id,seller_id,category,subject,detail,status,
+        seller_response,created_at,updated_at,resolved_at) VALUES
+        ('complaint-one','CMP-FICTIONAL','order-one','item-one','seller-one','product','Fictional complaint','Fictional case detail','closed','Recorded seller response',1,2,2),
+        ('complaint-foreign','CMP-OTHER','order-one','item-other','seller-other','product','Other complaint','Other case','closed',NULL,1,2,2);
+    `);
+  });
+  assert.deepEqual(sqlite.prepare('PRAGMA foreign_key_check').all(), []);
   const historyReads: number[] = [];
   const db = { prepare(sql: string) {
-    return new Statement(sqlite.prepare(sql), sql.includes('FROM form_answer_sets a') && sql.includes('LIMIT 51')
+    return new Statement(sqlite.prepare(sql), sql.includes('a.subject_type=? AND a.subject_id=? AND a.form_id=?') && sql.includes('LIMIT 51')
       ? (count) => historyReads.push(count) : undefined);
   } } as unknown as D1Database;
   globalThis.sellerCaseHistoryDb = db;
@@ -95,7 +118,7 @@ function publish(sqlite: DatabaseSync, formId: FormId, version = 1, archived = f
   return { ...config, version, publishedAt: 1 };
 }
 
-async function store(h: ReturnType<typeof fixture>, item: Case, index: number, options: {
+async function store(h: Awaited<ReturnType<typeof fixture>>, item: Case, index: number, options: {
   formId?: FormId; parent?: string; actor?: string; value?: string;
 } = {}) {
   const formId = options.formId ?? item.formId;
@@ -109,8 +132,9 @@ async function store(h: ReturnType<typeof fixture>, item: Case, index: number, o
     subjectId, actorId, answers, now: 100 + index }).run();
   h.sqlite.prepare('UPDATE form_answer_sets SET id=? WHERE form_id=? AND request_id=?')
     .run(formId === item.formId ? `answer-${index}/encoded?value` : `${formId}-answer-${index}`, formId, requestId);
-  if (formId === item.formId) h.sqlite.prepare(`INSERT INTO ${item.table}(id,${item.parentColumn},request_id,actor_id,actor_type,action,created_at)
-    VALUES(?,?,?,?,'seller','seller_responded',?)`).run(`event-${index}`, subjectId, requestId, actorId, 100 + index);
+  if (formId === item.formId) h.sqlite.prepare(`INSERT INTO ${item.table}(id,${item.parentColumn},request_id,actor_id,actor_type,action,to_status,public_message_en,public_message_ne,created_at)
+    VALUES(?,?,?,?,'seller','seller_responded',?,'Recorded seller response','Recorded seller response',?)`)
+    .run(`event-${index}`, subjectId, requestId, actorId, item.kind === 'returns' ? 'resolved' : 'closed', 100 + index);
 }
 
 async function page(item: Case, cursor: Cursor = {}, id: string = item.id) {
@@ -123,7 +147,7 @@ async function page(item: Case, cursor: Cursor = {}, id: string = item.id) {
 
 for (const item of cases) {
 void test(`${item.kind}: terminal page shows archived seller answers without customer or staff context`, async () => {
-    const h = fixture();
+    const h = await fixture();
     try {
       await store(h, item, 0);
       await store(h, item, 1, { formId: item.customerId, actor: 'buyer', value: 'CUSTOMER PRIVATE CONTEXT' });
@@ -141,7 +165,7 @@ void test(`${item.kind}: terminal page shows archived seller answers without cus
 });
 
 void test(`${item.kind}: history filters before its bounded cursor and encodes the next link`, async () => {
-    const h = fixture();
+    const h = await fixture();
     try {
       for (let index = 0; index < 53; index++) await store(h, item, index);
       for (let index = 0; index < 60; index++) await store(h, item, index,
@@ -160,7 +184,7 @@ void test(`${item.kind}: history filters before its bounded cursor and encodes t
 });
 
 void test(`${item.kind}: per-answer event authorization preserves a next page after fifty denials`, async () => {
-    const h = fixture();
+    const h = await fixture();
     try {
       for (let index = 0; index < 53; index++) await store(h, item, index);
       h.sqlite.prepare(`UPDATE ${item.table} SET actor_id='other-seller' WHERE created_at<150`).run();
@@ -169,13 +193,13 @@ void test(`${item.kind}: per-answer event authorization preserves a next page af
       assert.match(first, /historyAt=149&amp;historyId=answer-49%2Fencoded%3Fvalue/);
       const second = await page(item, { historyAt: '149', historyId: 'answer-49/encoded?value' });
       assert.match(second, /Seller historical value 52/);
-      h.sqlite.prepare(`UPDATE ${item.table} SET request_id='forged-request' WHERE created_at>=150`).run();
+      h.sqlite.prepare(`UPDATE ${item.table} SET request_id='forged-request-'||id WHERE created_at>=150`).run();
       assert.doesNotMatch(await page(item, { historyAt: '149', historyId: 'answer-49/encoded?value' }), /Seller historical value/);
     } finally { h.sqlite.close(); }
 });
 
 void test(`${item.kind}: seller ownership and malformed cursors fail before any answer query`, async () => {
-    const h = fixture();
+    const h = await fixture();
     try {
       await store(h, item, 0);
       await assert.rejects(() => page(item, {}, item.foreignId), /NOT_FOUND/);

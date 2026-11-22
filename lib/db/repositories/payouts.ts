@@ -1,3 +1,6 @@
+import { formAnswerSourceSql, formAnswerSnapshotMatches } from '../../forms/answer-proof';
+import {payoutRequestReadySql,sellerPayoutRequestReadiness} from '../../payments/payout-request-readiness';
+import {commandReceipt} from '../../workflows/contracts';
 import {staffMutationGuard} from './staff-mutation-guard';
 import { operationalBusinessNotificationStatements } from '../../operations/business-notifications';
 import type { StaffRole } from '@/lib/auth/staff';
@@ -5,10 +8,16 @@ import { phaseOneMarketplacePolicy } from '@/lib/marketplace/policy';
 import { buildFormAnswerInsert } from './form-answers';
 import type { FormAnswerSnapshot } from '@/lib/forms/types';
 import { digestFormRequest, formRequestReplay, FormRequestConflictError } from '@/lib/forms/submission';
+import { orderActualCashSql } from '../../payments/refund-obligations';
+import { VARIANT_PRICING_RULE_VERSION } from '../../products/variant-pricing';
+import { protectedPayoutGuards,protectedGuard } from '../../sellers/protected-change-policy';
+import {payoutRegistrationBlocker,payoutRegistrationGuards} from '../../payments/payout-registration-readiness';
+import {sellerPayoutFixOpenSql} from '../../sellers/payout-fixes';
+import {protectedPayoutReplacementStatements} from '../../sellers/protected-payout-disposition';
 
 const payoutPolicy = phaseOneMarketplacePolicy.value.payouts;
 const dayMs = 86_400_000;
-function standardLedgerEligibility(alias: string): string {
+export function standardLedgerEligibility(alias: 'seller_ledger_entries' | 'e'): string {
   return `NOT EXISTS(SELECT 1 FROM managed_commercial_snapshots m WHERE m.order_item_id=${alias}.order_item_id)
     AND NOT EXISTS(SELECT 1 FROM order_items mi WHERE mi.id=${alias}.order_item_id
       AND mi.commission_rule_version LIKE 'managed-%')`;
@@ -32,6 +41,17 @@ export type PayoutOperation =
 
 export class PayoutConflictError extends Error {}
 
+/** A confirmed manual bank payment remains verifiable after its refund changes payment status. */
+export function savedManualBankCaptureSql(order: 'orders' | 'o'): string {
+  return `${order}.payment_mode='prepaid'
+    AND EXISTS(SELECT 1 FROM order_policy_acceptances accepted WHERE accepted.order_id=${order}.id
+      AND json_extract(accepted.terms_snapshot_json,'$.variantPricingRuleVersion')='${VARIANT_PRICING_RULE_VERSION}')
+    AND EXISTS(SELECT 1 FROM manual_payment_windows original_window WHERE original_window.order_id=${order}.id
+      AND original_window.paid_at IS NOT NULL AND original_window.released_at IS NOT NULL AND original_window.closed_at IS NULL
+      AND (${orderActualCashSql(order)})=(SELECT SUM(a.amount_paisa) FROM manual_payment_allocations a
+        WHERE a.order_id=original_window.order_id AND a.allocated_at<=original_window.paid_at))`;
+}
+
 export function buildEarningsAccrualStatements(
   database: D1Database,
   options: { orderId?: string; now: number },
@@ -41,18 +61,42 @@ export function buildEarningsAccrualStatements(
   const availableOffset = payoutPolicy.deliveryHoldDays * dayMs;
   const reserveReleaseOffset = payoutPolicy.reserveReleaseAfterDays * dayMs;
   const reserveWindow = payoutPolicy.reserveAppliesForDays * dayMs;
+  // Existing orders without this evidence retain the original launch rule. New orders
+  // carry their own prospective terms; never substitute today's settings here.
+  const evidence = `(SELECT p.terms_snapshot_json FROM order_policy_acceptances p WHERE p.order_id=orders.id LIMIT 1)`;
+  const maria = (database as D1Database & { dialect?: string }).dialect === 'mariadb';
+  const typeAt = (field = '') => maria
+    ? `LOWER(JSON_TYPE(JSON_EXTRACT(${evidence},'$.registeredSettlementTerms${field ? '.'+field : ''}')))`
+    : `json_type(${evidence},'$.registeredSettlementTerms${field ? '.'+field : ''}')`;
+  const present = `${typeAt()} IS NOT NULL`;
+  const value = (field: string) => `json_extract(${evidence},'$.registeredSettlementTerms.${field}')`;
+  const offset = (field: string) => `(CASE WHEN ${present} THEN ${value(field)} * ${dayMs} ELSE ? END)`;
+  const reserveBps = `(CASE WHEN ${present} THEN ${value('reserveBps')} ELSE ? END)`;
+  // Refund state describes the later reversal, not the absence of the original
+  // sale. Require capture evidence and keep the full-remittance gate below.
   const base = `
     FROM order_items
     INNER JOIN orders ON orders.id = order_items.order_id
     INNER JOIN seller_profiles ON seller_profiles.id = order_items.seller_id
-    WHERE orders.status = 'delivered' AND orders.payment_status = 'paid'
+    WHERE orders.status = 'delivered'
+      AND (orders.payment_status = 'paid' OR (orders.payment_status IN ('part_refunded','refunded')
+        AND (EXISTS(SELECT 1 FROM payments payment WHERE payment.order_id=orders.id AND payment.status='captured')
+          OR EXISTS(SELECT 1 FROM shipping_parcels p JOIN shipping_jobs j ON j.id=p.shipping_job_id WHERE j.order_id=orders.id)
+          OR (${savedManualBankCaptureSql('orders')}))
+        AND NOT EXISTS(SELECT 1 FROM shipping_parcels p JOIN shipping_jobs j ON j.id=p.shipping_job_id
+          WHERE j.order_id=orders.id AND p.collected_paisa<>p.cod_due_paisa)))
       AND order_items.fulfillment_status = 'delivered'
       AND NOT EXISTS(SELECT 1 FROM managed_commercial_snapshots m WHERE m.order_item_id=order_items.id)
       AND COALESCE(order_items.commission_rule_version,'') NOT LIKE 'managed-%'
       AND NOT EXISTS(SELECT 1 FROM shipping_parcels p JOIN shipping_jobs j ON j.id=p.shipping_job_id WHERE j.order_id=orders.id AND ((j.status NOT IN ('delivered','cancelled')) OR p.remitted_paisa<>p.cod_due_paisa))
       ${orderFilter}`;
 
+  const valid = `${value('schemaVersion')}=1 AND ${['deliveryHoldDays','reserveBps','reserveAppliesForDays','reserveReleaseAfterDays'].map(field => `${typeAt(field)}='integer' AND ${value(field)}>=0`).join(' AND ')} AND ${value('deliveryHoldDays')}<=365 AND ${value('reserveBps')}<=10000
+    AND ${typeAt('holdSettingVersionId')} IN ('null','${maria ? 'string' : 'text'}')
+    AND ${typeAt('reserveSettingVersionId')} IN ('null','${maria ? 'string' : 'text'}')`;
+  const guardId = crypto.randomUUID();
   return [
+    database.prepare(`INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN EXISTS(SELECT 1 ${base} AND ${present} AND NOT(COALESCE((${valid}),0))) THEN 0 ELSE 1 END`).bind(guardId,...orderBindings),
     database
       .prepare(
         `INSERT OR IGNORE INTO seller_ledger_entries (
@@ -60,7 +104,7 @@ export function buildEarningsAccrualStatements(
         available_at, description, created_at
       ) SELECT lower(hex(randomblob(16))), order_items.seller_id, order_items.id,
         NULL, NULL, 'sale', order_items.line_total_paisa,
-        COALESCE(orders.delivered_at, ?) + ?,
+        COALESCE(orders.delivered_at, ?) + ${offset('deliveryHoldDays')},
         'Delivered item sale', COALESCE(orders.delivered_at, ?)
         ${base}`,
       )
@@ -72,8 +116,8 @@ export function buildEarningsAccrualStatements(
         available_at, description, created_at
       ) SELECT lower(hex(randomblob(16))), order_items.seller_id, order_items.id,
         NULL, NULL, 'commission', -order_items.commission_paisa,
-        COALESCE(orders.delivered_at, ?) + ?,
-        'HastaBazaar commission', COALESCE(orders.delivered_at, ?)
+        COALESCE(orders.delivered_at, ?) + ${offset('deliveryHoldDays')},
+        'Hastabazaar commission', COALESCE(orders.delivered_at, ?)
         ${base}`,
       )
       .bind(options.now, availableOffset, options.now, ...orderBindings),
@@ -84,10 +128,11 @@ export function buildEarningsAccrualStatements(
         available_at, description, created_at
       ) SELECT lower(hex(randomblob(16))), order_items.seller_id, order_items.id,
         NULL, NULL, 'reserve_hold',
-        -CAST(ROUND((order_items.line_total_paisa - order_items.commission_paisa) * ? / 10000.0) AS INTEGER),
-        COALESCE(orders.delivered_at, ?) + ?,
+        -CAST(ROUND((order_items.line_total_paisa - order_items.commission_paisa) * ${reserveBps} / 10000.0) AS INTEGER),
+        COALESCE(orders.delivered_at, ?) + ${offset('deliveryHoldDays')},
         'New seller reserve hold', COALESCE(orders.delivered_at, ?)
-        ${base} AND (seller_profiles.approved_at IS NULL OR seller_profiles.approved_at + ? > COALESCE(orders.delivered_at, ?))`,
+        ${base} AND (CASE WHEN ${present} THEN ${value('reserveBps')} ELSE ${payoutPolicy.newSellerReserveBps} END)>0
+        AND (seller_profiles.approved_at IS NULL OR seller_profiles.approved_at + ${offset('reserveAppliesForDays')} > COALESCE(orders.delivered_at, ?))`,
       )
       .bind(
         payoutPolicy.newSellerReserveBps,
@@ -105,10 +150,11 @@ export function buildEarningsAccrualStatements(
         available_at, description, created_at
       ) SELECT lower(hex(randomblob(16))), order_items.seller_id, order_items.id,
         NULL, NULL, 'reserve_release',
-        CAST(ROUND((order_items.line_total_paisa - order_items.commission_paisa) * ? / 10000.0) AS INTEGER),
-        COALESCE(orders.delivered_at, ?) + ?,
+        CAST(ROUND((order_items.line_total_paisa - order_items.commission_paisa) * ${reserveBps} / 10000.0) AS INTEGER),
+        COALESCE(orders.delivered_at, ?) + ${offset('reserveReleaseAfterDays')},
         'New seller reserve release', COALESCE(orders.delivered_at, ?)
-        ${base} AND (seller_profiles.approved_at IS NULL OR seller_profiles.approved_at + ? > COALESCE(orders.delivered_at, ?))`,
+        ${base} AND (CASE WHEN ${present} THEN ${value('reserveBps')} ELSE ${payoutPolicy.newSellerReserveBps} END)>0
+        AND (seller_profiles.approved_at IS NULL OR seller_profiles.approved_at + ${offset('reserveAppliesForDays')} > COALESCE(orders.delivered_at, ?))`,
       )
       .bind(
         payoutPolicy.newSellerReserveBps,
@@ -119,6 +165,24 @@ export function buildEarningsAccrualStatements(
         reserveWindow,
         options.now,
       ),
+    // A refund may complete before remittance makes the original sale eligible.
+    // Its saved reversal is posted only after that commission exists; the unique
+    // refund/type key also makes accrual retries safe after ordinary refund posting.
+    database.prepare(`INSERT OR IGNORE INTO seller_ledger_entries (
+      id,seller_id,order_item_id,refund_id,payout_id,type,amount_paisa,available_at,description,created_at
+    ) SELECT lower(hex(randomblob(16))),order_items.seller_id,order_items.id,refunds.id,NULL,
+      'commission_reversal',refunds.commission_reversal_paisa,COALESCE(refunds.processed_at,?),
+      ${maria ? "CONCAT('Commission reversal for paid refund ',refunds.id)" : "'Commission reversal for paid refund ' || refunds.id"},COALESCE(refunds.processed_at,?)
+      FROM refunds JOIN return_requests ON return_requests.id=refunds.return_request_id
+      JOIN order_items ON order_items.id=return_requests.order_item_id
+      JOIN orders ON orders.id=order_items.order_id
+      WHERE refunds.status='paid' AND refunds.commission_reversal_paisa>0
+        AND NOT EXISTS(SELECT 1 FROM managed_commercial_snapshots m WHERE m.order_item_id=order_items.id)
+        AND COALESCE(order_items.commission_rule_version,'') NOT LIKE 'managed-%'
+        AND EXISTS(SELECT 1 FROM seller_ledger_entries original WHERE original.order_item_id=order_items.id AND original.type='commission')
+        AND NOT EXISTS(SELECT 1 FROM seller_ledger_entries reversal WHERE reversal.refund_id=refunds.id AND reversal.type='commission_reversal')
+        ${orderFilter}`).bind(options.now,options.now,...orderBindings),
+    database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(guardId),
   ];
 }
 
@@ -326,6 +390,7 @@ export interface PayoutCandidate {
 export async function listPayoutCandidates(
   database: D1Database,
   now = Date.now(),
+  sellerId?:string,
 ): Promise<readonly PayoutCandidate[]> {
   const result = await database
     .prepare(
@@ -337,27 +402,32 @@ export async function listPayoutCandidates(
      INNER JOIN seller_profiles ON seller_profiles.id = seller_ledger_entries.seller_id
      LEFT JOIN payout_entries ON payout_entries.ledger_entry_id = seller_ledger_entries.id AND payout_entries.released_at IS NULL
      WHERE seller_profiles.status = 'approved'
+       AND NOT (${sellerPayoutFixOpenSql('seller_profiles.id')})
        AND seller_profiles.payout_account_reference IS NOT NULL
        AND trim(seller_profiles.payout_account_reference) != ''
+       AND instr(trim(seller_profiles.payout_account_reference),'PENDING VERIFICATION:') != 1
        AND seller_ledger_entries.available_at <= ?
        AND ${standardLedgerEligibility('seller_ledger_entries')}
        AND payout_entries.ledger_entry_id IS NULL
+       ${sellerId?'AND seller_profiles.id=?':''}
      GROUP BY seller_profiles.id
      HAVING SUM(seller_ledger_entries.amount_paisa) > 0
      ORDER BY amountPaisa DESC`,
     )
-    .bind(now)
+    .bind(...(sellerId?[now,sellerId]:[now]))
     .all<PayoutCandidate>();
   return result.results;
 }
 
 export async function listPayoutsForOperations(
   database: D1Database,
+  sellerId?:string,
 ): Promise<readonly PayoutRow[]> {
   const result = await database
     .prepare(
-      `${payoutSelect} ORDER BY CASE payouts.status WHEN 'prepared' THEN 0 WHEN 'approved' THEN 1 WHEN 'processing' THEN 2 WHEN 'failed' THEN 3 ELSE 4 END, payouts.created_at DESC LIMIT 150`,
+      `${payoutSelect} ${sellerId?'WHERE payouts.seller_id=?':''} ORDER BY CASE payouts.status WHEN 'prepared' THEN 0 WHEN 'approved' THEN 1 WHEN 'processing' THEN 2 WHEN 'failed' THEN 3 ELSE 4 END, payouts.created_at DESC LIMIT 150`,
     )
+    .bind(...(sellerId?[sellerId]:[]))
     .all<PayoutRow>();
   return result.results;
 }
@@ -368,6 +438,8 @@ export interface PayoutRequestRow {
   tradingName: string;
   status: 'submitted' | 'prepared' | 'rejected';
   sellerNote: string;
+  purpose: string|null;
+  firstFinanceDueAt:number|null;
   availableAmountSnapshotPaisa: number;
   payoutId: string | null;
   processingNote: string | null;
@@ -376,7 +448,7 @@ export interface PayoutRequestRow {
 
 const payoutRequestSelect = `SELECT payout_requests.id, payout_requests.seller_id AS sellerId,
   seller_profiles.trading_name AS tradingName, payout_requests.status,
-  payout_requests.seller_note AS sellerNote,
+  payout_requests.seller_note AS sellerNote,payout_requests.purpose,payout_requests.first_finance_due_at AS firstFinanceDueAt,
   payout_requests.available_amount_snapshot_paisa AS availableAmountSnapshotPaisa,
   payout_requests.payout_id AS payoutId, payout_requests.processing_note AS processingNote,
   payout_requests.created_at AS createdAt FROM payout_requests
@@ -385,13 +457,20 @@ const payoutRequestSelect = `SELECT payout_requests.id, payout_requests.seller_i
 export async function listPayoutRequests(
   database: D1Database,
   sellerId?: string,
+  options:{requestId?:string;status?:'submitted'|'prepared'|'rejected';limit?:number}={},
 ): Promise<readonly PayoutRequestRow[]> {
-  const filter = sellerId ? 'WHERE payout_requests.seller_id = ?' : '';
+  const limit=options.limit??150;
+  if(!Number.isSafeInteger(limit)||limit<1||limit>151||options.requestId!==undefined&&(typeof options.requestId!=='string'||!options.requestId||options.requestId.length>191)||options.status!==undefined&&!['submitted','prepared','rejected'].includes(options.status))throw new PayoutConflictError('Use a bounded original payout request view.');
+  const clauses:string[]=[],values:unknown[]=[];
+  if(sellerId){clauses.push('payout_requests.seller_id=?');values.push(sellerId);}
+  if(options.requestId){clauses.push('payout_requests.id=?');values.push(options.requestId);}
+  if(options.status){clauses.push('payout_requests.status=?');values.push(options.status);}
+  const filter=clauses.length?'WHERE '+clauses.join(' AND '):'';
   const result = await database
     .prepare(
-      `${payoutRequestSelect} ${filter} ORDER BY payout_requests.created_at DESC LIMIT 150`,
+      `${payoutRequestSelect} ${filter} ORDER BY payout_requests.created_at DESC,payout_requests.id LIMIT ?`,
     )
-    .bind(...(sellerId ? [sellerId] : []))
+    .bind(...values,limit)
     .all<PayoutRequestRow>();
   return result.results;
 }
@@ -407,6 +486,16 @@ export async function requestSellerPayout(
     form?: { requestId: string; versionId: string; answers: FormAnswerSnapshot };
   },
 ): Promise<string> {
+  const note=options.note.trim();
+  if(note.length>500)throw new PayoutConflictError('Keep the optional note within 500 characters.');
+  const ownership="EXISTS(SELECT 1 FROM seller_profiles s JOIN users u ON u.id=s.user_id WHERE s.id=? AND u.id=? AND u.status='active' AND EXISTS(SELECT 1 FROM user_roles WHERE user_id=u.id AND role IN('seller','customer')))";
+  const ownershipValues=[options.sellerId,options.actorId];
+  const assertOwner=async()=>{if(!await database.prepare('SELECT 1 WHERE '+ownership).bind(...ownershipValues).first())throw new PayoutConflictError('Only the current active seller owner can submit or recover this payout request.');};
+  await assertOwner();
+  const context={actorId:options.actorId,requestId:options.requestId,expectedRevision:null,now:options.now},source={action:'payout.request.command',subjectType:'seller',subjectId:options.sellerId},payload={purpose:'seller_earnings_payout',note,form:options.form??null};
+  const readReceipt=async()=>{try{return await commandReceipt(database,context,source,payload);}catch(error){if(error instanceof Error&&error.message==='Request reference was already used for different command content.')throw new PayoutConflictError(error.message);throw error;}};
+  const receipt=await readReceipt();
+  if(receipt.replayed)return (receipt.result as {id:string}).id;
   const catalogDigest = options.form ? await digestFormRequest({ sellerId: options.sellerId,
     note: options.note.trim(), versionId: options.form.versionId, answers: options.form.answers }) : null;
   if (options.form) {
@@ -426,6 +515,8 @@ export async function requestSellerPayout(
     .first<{ id: string }>();
   if (duplicate) {
     if (options.form) throw new FormRequestConflictError('Request reference is already used.');
+    const original=await database.prepare('SELECT seller_id AS sellerId,seller_note AS note FROM payout_requests WHERE id=?').bind(duplicate.id).first<{sellerId:string;note:string}>();
+    if(original?.sellerId!==options.sellerId||original.note!==note)throw new PayoutConflictError('This request identity already belongs to different payout content.');
     return duplicate.id;
   }
   const open = await database
@@ -438,6 +529,8 @@ export async function requestSellerPayout(
     throw new PayoutConflictError(
       'A payout request is already awaiting review.',
     );
+  const readiness=await sellerPayoutRequestReadiness(database,options.sellerId,options.now);
+  if(!readiness.ready)throw new PayoutConflictError(readiness.blocker!);
   const summary = await getSellerFinanceSummary(
     database,
     options.sellerId,
@@ -447,14 +540,16 @@ export async function requestSellerPayout(
     throw new PayoutConflictError(
       'A positive available balance is required to request a payout.',
     );
-  const note = options.note.trim();
-  if (note.length < 8 || note.length > 500)
-    throw new PayoutConflictError('Add a payout note of 8–500 characters.');
   const id = crypto.randomUUID();
   try { await database.batch([
+    ...payoutRegistrationGuards(database,options.sellerId,'registered'),
+    ...protectedGuard(database,ownership,ownershipValues),
+    ...protectedGuard(database,payoutRequestReadySql(options.now),[options.sellerId]),
+    ...protectedGuard(database,"NOT EXISTS(SELECT 1 FROM payout_requests WHERE seller_id=? AND status='submitted')",[options.sellerId]),
+    ...protectedGuard(database,`(SELECT COALESCE(SUM(e.amount_paisa),0) FROM seller_ledger_entries e WHERE e.seller_id=? AND e.available_at<=? AND ${standardLedgerEligibility('e')} AND NOT EXISTS(SELECT 1 FROM payout_entries pe WHERE pe.ledger_entry_id=e.id AND pe.released_at IS NULL))=?`,[options.sellerId,options.now,summary.availablePaisa]),
     database
       .prepare(
-        `INSERT INTO payout_requests (id, seller_id, status, seller_note, available_amount_snapshot_paisa, payout_id, processed_by, processing_note, created_request_id, operation_request_id, created_at, updated_at) VALUES (?, ?, 'submitted', ?, ?, NULL, NULL, NULL, ?, NULL, ?, ?)`,
+        `INSERT INTO payout_requests (id, seller_id, status, seller_note, available_amount_snapshot_paisa, payout_id, processed_by, processing_note, created_request_id, operation_request_id, created_at, updated_at,purpose,first_finance_due_at,calendar_version) VALUES (?, ?, 'submitted', ?, ?, NULL, NULL, NULL, ?, NULL, ?, ?,'seller_earnings_payout',?,'continuous-v1')`,
       )
       .bind(
         id,
@@ -464,6 +559,7 @@ export async function requestSellerPayout(
         options.requestId,
         options.now,
         options.now,
+        options.now+dayMs,
       ),
     database
       .prepare(
@@ -476,6 +572,7 @@ export async function requestSellerPayout(
         note,
         JSON.stringify({
           status: 'submitted',
+          purpose: 'seller_earnings_payout',
           availableAmountSnapshotPaisa: summary.availablePaisa,
           ...(catalogDigest ? { catalogDigest } : {}),
         }),
@@ -486,7 +583,11 @@ export async function requestSellerPayout(
     ...(options.form ? [buildFormAnswerInsert(database, { formId: 'seller.payout-request',
       requestId: options.requestId, versionId: options.form.versionId, subjectType: 'payout_request',
       subjectId: id, actorId: options.actorId, answers: options.form.answers, now: options.now })] : []),
+    ...protectedGuard(database,ownership,ownershipValues),receipt.insert({id}),
   ]); } catch (error) {
+    await assertOwner();
+    const recovered=await readReceipt();
+    if(recovered.replayed)return (recovered.result as {id:string}).id;
     if (options.form) {
       const replay = await formRequestReplay(database, { formId: 'seller.payout-request',
         requestId: options.requestId, actorId: options.actorId, action: 'payout.seller.requested',
@@ -621,7 +722,7 @@ export async function processPayoutRequest(
           options.requestId,
           options.now,
         ),
-        ...await operationalBusinessNotificationStatements(database,{kind:'payout.request.result',sourceId:options.id,eventId:options.requestId,actorId:options.actorId,now:options.now}),
+        ...await operationalBusinessNotificationStatements(database,{kind:'payout.request.result',sourceId:options.id,eventId:options.requestId,actorId:options.actorId,now:options.now,status:'rejected'}),
     ...(options.form?[buildFormAnswerInsert(database,{formId:'staff.payout-request-action',requestId:options.requestId,
       versionId:options.form.versionId,subjectType:'payout_request',subjectId:options.id,
       actorId:options.actorId,answers:options.form.answers,now:options.now})]:[]),
@@ -672,7 +773,7 @@ export async function prepareSellerPayout(
         f.config_version_id AS versionId,f.answers_json AS answersJson
         FROM payouts p JOIN payout_events e ON e.payout_id=p.id AND e.request_id=p.created_request_id
         JOIN audit_logs a ON a.request_id=p.created_request_id
-        JOIN form_answer_sets f ON f.request_id=p.created_request_id
+        JOIN ${formAnswerSourceSql(database)} f ON f.request_id=p.created_request_id
         WHERE p.id=?`).bind(duplicate.id).first<{sellerId:string;preparedBy:string;note:string;
           eventActor:string;eventAction:string;eventNote:string;auditActor:string;auditAction:string;
           auditSubject:string;nextJson:string;formId:string;subjectType:string;answerSubject:string;
@@ -685,16 +786,26 @@ export async function prepareSellerPayout(
         previous.formId!=='staff.payout-1'||previous.subjectType!=='payout'||
         previous.answerSubject!==duplicate.id||previous.answerActor!==options.actorId||
         previous.versionId!==options.form.versionId||
-        previous.answersJson!==JSON.stringify(options.form.answers)||recordedDigest!==formDigest)
+        !formAnswerSnapshotMatches(previous.answersJson, options.form.answers)||recordedDigest!==formDigest)
         throw new PayoutConflictError('Request reference was already used for another payout preparation.');
+    }
+    if(!options.form){
+      const original=await database.prepare(`SELECT p.seller_id AS sellerId,p.prepared_by AS actorId,p.note,e.actor_type AS actorRole
+        FROM payouts p JOIN payout_events e ON e.payout_id=p.id AND e.request_id=p.created_request_id AND e.action='prepare'
+        WHERE p.id=? AND NOT EXISTS(SELECT 1 FROM ${formAnswerSourceSql(database)} f WHERE f.request_id=p.created_request_id)`)
+        .bind(duplicate.id).first<{sellerId:string;actorId:string;note:string;actorRole:string}>();
+      if(!original||original.sellerId!==options.sellerId||original.actorId!==options.actorId||original.note!==note||original.actorRole!==options.actorRole)
+        throw new PayoutConflictError('This request reference belongs to different original payout preparation content.');
     }
     return { id: duplicate.id, duplicate: true };
   }
+  const registrationBlocker=await payoutRegistrationBlocker(database,options.sellerId,'registered',options.now);
+  if(registrationBlocker)throw new PayoutConflictError(registrationBlocker);
   const seller = await database
     .prepare(
       `SELECT payout_account_reference AS destinationReference FROM seller_profiles
      WHERE id = ? AND status = 'approved' AND payout_account_reference IS NOT NULL
-       AND trim(payout_account_reference) != '' LIMIT 1`,
+       AND trim(payout_account_reference) != '' AND instr(trim(payout_account_reference),'PENDING VERIFICATION:') != 1 LIMIT 1`,
     )
     .bind(options.sellerId)
     .first<{ destinationReference: string }>();
@@ -734,6 +845,7 @@ export async function prepareSellerPayout(
   const directGuardId=crypto.randomUUID();
   const modelGuardId = crypto.randomUUID();
   const statements: D1PreparedStatement[] = [
+    ...payoutRegistrationGuards(database,options.sellerId,'registered',seller.destinationReference),
     database.prepare(`INSERT INTO operation_transaction_guards(id,valid) SELECT ?,CASE WHEN
       (SELECT COUNT(*) FROM seller_ledger_entries e WHERE e.id IN (${entries.results.map(()=>'?').join(',')})
         AND ${standardLedgerEligibility('e')})=? THEN 1 ELSE 0 END`)
@@ -838,7 +950,7 @@ export async function prepareSellerPayout(
       .bind(crypto.randomUUID(),options.actorId,tail.id,tail.note,JSON.stringify({status:'submitted'}),
         JSON.stringify({status:'prepared',payoutId,catalogDigest:tail.formDigest}),tail.requestId,options.now));
     statements.push(...await operationalBusinessNotificationStatements(database,{kind:'payout.request.result',sourceId:tail.id,
-      eventId:tail.requestId,actorId:options.actorId,now:options.now}));
+      eventId:tail.requestId,actorId:options.actorId,now:options.now,status:'prepared'}));
     statements.push(buildFormAnswerInsert(database,{formId:'staff.payout-request-action',requestId:tail.requestId,
       versionId:tail.form.versionId,subjectType:'payout_request',subjectId:tail.id,actorId:options.actorId,
       answers:tail.form.answers,now:options.now}));
@@ -846,7 +958,8 @@ export async function prepareSellerPayout(
   if(options.form)statements.push(buildFormAnswerInsert(database,{formId:'staff.payout-1',
     requestId:options.requestId,versionId:options.form.versionId,subjectType:'payout',
     subjectId:payoutId,actorId:options.actorId,answers:options.form.answers,now:options.now}));
-  statements.push(...authority.statements);
+  statements.push(...authority.statements,...protectedPayoutGuards(database,options.sellerId,options.actorId));
+  statements.push(...protectedPayoutReplacementStatements(database,{model:'registered',payoutId,sellerId:options.sellerId,actorId:options.actorId,now:options.now}));
   await database.batch(statements);
   return { id: payoutId, duplicate: false };
 }
@@ -894,7 +1007,7 @@ export async function getPayoutDetail(
   return { ...payout, entries: entries.results, events: events.results };
 }
 
-export async function operatePayout(
+export async function preparePayoutOperationStatements(
   database: D1Database,
   options: {
     payoutId: string;
@@ -907,15 +1020,17 @@ export async function operatePayout(
     now: number;
     form?:{formId:'staff.payout-2';requestId:string;versionId:string;answers:FormAnswerSnapshot};
   },
-): Promise<void> {
+  execution?:{packetId:string},
+): Promise<D1PreparedStatement[]> {
+  if(['start_processing','mark_paid','mark_failed'].includes(options.action)&&!execution)throw new PayoutConflictError('Use the original verified payout execution packet and actual bank outcome.');
   if(options.form && options.form.requestId!==options.requestId)
     throw new PayoutConflictError('Form request does not match the payout action.');
-  const authority=await staffMutationGuard(database,options.actorId,options.action==='approve'||options.action==='reject'?'payout.approve':'payout.mark_paid',PayoutConflictError,options.actorRole);
+  const authority=await staffMutationGuard(database,options.actorId,options.action==='approve'||options.action==='reject'?'payout.approve':'payout.mark_paid',PayoutConflictError,'super_admin');
   const note=options.note.trim();
   const replayReference=options.providerReference?.trim()??null;
-  const formDigest=options.form?await digestFormRequest({payoutId:options.payoutId,
+  const formDigest=await digestFormRequest({payoutId:options.payoutId,
     actorId:options.actorId,actorRole:options.actorRole,action:options.action,note,
-    providerReference:replayReference,versionId:options.form.versionId,answers:options.form.answers}):null;
+    providerReference:replayReference,versionId:options.form?.versionId??null,answers:options.form?.answers??null,executionPacketId:execution?.packetId??null});
   const duplicate=await database.prepare('SELECT id FROM payout_events WHERE request_id=? LIMIT 1')
     .bind(options.requestId).first();
   if (duplicate){
@@ -927,7 +1042,7 @@ export async function operatePayout(
         f.subject_id AS answerSubject,f.actor_id AS answerActor,
         f.config_version_id AS versionId,f.answers_json AS answersJson
         FROM payout_events e JOIN audit_logs a ON a.request_id=e.request_id
-        JOIN form_answer_sets f ON f.request_id=e.request_id WHERE e.request_id=?`)
+        JOIN ${formAnswerSourceSql(database)} f ON f.request_id=e.request_id WHERE e.request_id=?`)
         .bind(options.requestId).first<{payoutId:string;eventActor:string;eventAction:string;
           eventNote:string;auditActor:string;auditAction:string;auditSubjectType:string;
           auditSubject:string;nextJson:string;formId:string;answerSubjectType:string;
@@ -940,14 +1055,16 @@ export async function operatePayout(
         previous.formId!=='staff.payout-2'||previous.answerSubjectType!=='payout'||
         previous.answerSubject!==options.payoutId||previous.answerActor!==options.actorId||
         previous.versionId!==options.form.versionId||
-        previous.answersJson!==JSON.stringify(options.form.answers)||recordedDigest!==formDigest)
+        !formAnswerSnapshotMatches(previous.answersJson, options.form.answers)||recordedDigest!==formDigest)
         throw new PayoutConflictError('Request reference was already used for another payout action.');
     }
-    return;
+    if(!options.form){const saved=await database.prepare("SELECT actor_id AS actorId,subject_id AS subjectId,next_json AS nextJson FROM audit_logs WHERE request_id=? AND action=? AND subject_type='payout'").bind(options.requestId,'payout.'+options.action).first<{actorId:string;subjectId:string;nextJson:string}>();if(!saved||saved.actorId!==options.actorId||saved.subjectId!==options.payoutId||JSON.parse(saved.nextJson).catalogDigest!==formDigest)throw new PayoutConflictError('Request reference was already used for another payout action.');}
+    return [];
   }
   const current = await database
     .prepare(
-      `SELECT status, prepared_by AS preparedBy, amount_paisa AS amountPaisa, seller_id AS sellerId FROM payouts WHERE id = ? LIMIT 1`,
+      `SELECT status, prepared_by AS preparedBy, amount_paisa AS amountPaisa, seller_id AS sellerId,
+        destination_reference AS destination FROM payouts WHERE id = ? LIMIT 1`,
     )
     .bind(options.payoutId)
     .first<{
@@ -955,15 +1072,21 @@ export async function operatePayout(
       preparedBy: string;
       amountPaisa: number;
       sellerId: string;
+      destination: string;
     }>();
   if (!current) throw new PayoutConflictError('Payout not found.');
+  const advancesUnsentPacket=options.action==='approve'||options.action==='start_processing';
+  if(advancesUnsentPacket){
+    const blocker=await payoutRegistrationBlocker(database,current.sellerId,'registered',options.now,current.destination);
+    if(blocker)throw new PayoutConflictError(blocker);
+  }
   if (note.length < 8 || note.length > 1000)
     throw new PayoutConflictError(
       'Add an operational note of 8–1,000 characters.',
     );
   let toStatus: PayoutStatus;
   if (options.action === 'approve' || options.action === 'reject') {
-    if (current.status !== 'prepared' && current.status !== 'scheduled')
+    if (current.status !== 'prepared' && current.status !== 'scheduled' && !(execution&&options.action==='approve'&&current.status==='failed') && !(execution&&options.action==='reject'&&current.status==='approved'))
       throw new PayoutConflictError(
         'Only a prepared payout can be approved or rejected.',
       );
@@ -973,9 +1096,9 @@ export async function operatePayout(
       );
     toStatus = options.action === 'approve' ? 'approved' : 'rejected';
   } else if (options.action === 'start_processing') {
-    if (!['approved', 'failed'].includes(current.status))
+    if (current.status !== 'approved')
       throw new PayoutConflictError(
-        'Only an approved or failed payout can enter processing.',
+        'Only a current approved payout can enter processing. A failed or uncertain attempt requires outcome reconciliation and fresh preparation.',
       );
     toStatus = 'processing';
   } else if (options.action === 'mark_paid') {
@@ -1001,7 +1124,7 @@ export async function operatePayout(
   const stateGuardId=crypto.randomUUID();
   const payoutModelGuardId=crypto.randomUUID();
   const advancesSettlement=['approved','processing','paid'].includes(toStatus);
-  const results = await database.batch([
+  const statements:D1PreparedStatement[] = [
     database
       .prepare(
         `UPDATE payouts SET status = ?,
@@ -1038,12 +1161,12 @@ export async function operatePayout(
         current.status,
         current.preparedBy,
       ),
-    ...(options.form?[database.prepare(`INSERT INTO operation_transaction_guards(id,valid)
+    database.prepare(`INSERT INTO operation_transaction_guards(id,valid)
       SELECT ?,CASE WHEN EXISTS(SELECT 1 FROM payouts WHERE id=? AND status=?
         AND operation_request_id=? AND prepared_by=?)
         THEN 1 ELSE 0 END`).bind(stateGuardId,options.payoutId,toStatus,
         options.requestId,current.preparedBy),
-      database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(stateGuardId)]:[]),
+      database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(stateGuardId),
     database
       .prepare(
         `UPDATE payout_entries SET released_at = ?, release_reason = ?
@@ -1126,11 +1249,15 @@ export async function operatePayout(
       THEN 1 ELSE 0 END`).bind(payoutModelGuardId,options.payoutId),
       database.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(payoutModelGuardId)]:[]),
     ...authority.statements,
-  ]);
-  if (!options.form &&
-    (results[0].meta.changes ?? 0) !== 1 ||
-    !options.form && (results[4].meta.changes ?? 0) !== 1
-  ) {
-    throw new PayoutConflictError('The payout changed. Refresh and try again.');
-  }
+    ...(advancesUnsentPacket?[
+      ...payoutRegistrationGuards(database,current.sellerId,'registered',current.destination),
+      ...protectedPayoutGuards(database,current.sellerId,options.actorId,{id:options.payoutId,model:'registered'}),
+    ]:[]),
+    ...(options.action==='reject'?protectedGuard(database,"NOT EXISTS(SELECT 1 FROM seller_payout_review_blocks WHERE payout_model='registered' AND payout_id=?)",[options.payoutId]):[]),
+    ...protectedGuard(database,'EXISTS(SELECT 1 FROM seller_profiles WHERE id=? AND user_id<>?)',[current.sellerId,options.actorId]),
+    ...(execution?protectedGuard(database,"EXISTS(SELECT 1 FROM payout_transfer_packets p WHERE p.id=? AND p.registered_payout_id=? AND p.amount_paisa=? AND p.state=?)",[execution.packetId,options.payoutId,current.amountPaisa,toStatus==='rejected'?'void':toStatus]):[]),
+  ];
+  return statements;
 }
+export async function operatePayout(database:D1Database,options:Parameters<typeof preparePayoutOperationStatements>[1]):Promise<void>{const statements=await preparePayoutOperationStatements(database,options);if(statements.length)await database.batch(statements);}
+

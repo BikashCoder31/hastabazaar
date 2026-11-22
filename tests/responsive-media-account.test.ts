@@ -56,21 +56,29 @@ void test('document QR retains its intrinsic code geometry in a shrink-safe cont
 });
 
 void test('shared brand marks and footer lockup retain their semantics', async () => {
-  const [header, footer, staffDenied, sellerDenied] = await Promise.all([
+  const [header, footer, staffDenied, sellerDenied, admin, seller] = await Promise.all([
     source('components/layout/site-header.tsx'),
     source('components/layout/site-footer.tsx'),
     source('app/staff-access-denied/page.tsx'),
     source('app/seller-access-denied/page.tsx'),
+    source('components/admin/admin-navigation.tsx'),
+    source('app/seller/layout.tsx'),
   ]);
 
-  for (const brandMark of [header, staffDenied, sellerDenied]) {
-    assert.match(brandMark, /data-media-mode="contain"/);
-    assert.match(brandMark, /sizes=\{mediaSizes\.brandMark\}/);
-    assert.match(brandMark, /alt=""/);
+  for (const sourceText of [header, staffDenied, sellerDenied, admin, seller]) {
+    const brandMarks = [...sourceText.matchAll(/<Image\b[^>]*hastabazaar-mark-96\.png[^>]*>/g)];
+    assert.ok(brandMarks.length > 0);
+    for (const [brandMark] of brandMarks) {
+      assert.match(brandMark, /data-media-mode="contain"/);
+      assert.match(brandMark, /alt=""/);
+      assert.match(brandMark, /\bpriority\b/);
+      assert.match(brandMark, /\bsizes=/);
+    }
   }
-  assert.match(header, /priority/);
-  assert.doesNotMatch(staffDenied, /priority/);
-  assert.doesNotMatch(sellerDenied, /priority/);
+  assert.match(header, /sizes="\(min-width: 1024px\) 56px, \(min-width: 640px\) 32px, clamp\(24px, 8vw, 32px\)"/);
+  assert.match(admin, /sizes="32px"/);
+  assert.match(seller, /sizes="30px"/);
+  assert.match(seller, /sizes="44px"/);
 
   assert.match(footer, /data-media-mode="natural"/);
   assert.match(footer, /sizes=\{mediaSizes\.footerLogo\}/);
@@ -78,6 +86,14 @@ void test('shared brand marks and footer lockup retain their semantics', async (
     footer,
     /alt="Hastabazaar"/,
   );
+});
+
+void test('the initial Admin shell carries a non-interactive brand before hydration', async () => {
+  const layout = await source('app/admin/layout.tsx');
+  const fallback = layout.split('fallback={<>')[1]?.split('</>}>')[0];
+  assert.ok(fallback);
+  assert.equal(fallback.match(/<AdminBrandMark \/>/g)?.length, 2);
+  assert.doesNotMatch(fallback, /<Link|<button/);
 });
 
 void test('404 artwork declares the shared responsive image contract', async () => {

@@ -13,7 +13,7 @@ function safe(n: number) {
     throw new Error('Invalid cancellation amount.');
   return n;
 }
-function split(total: number, rows: readonly { id: string; amount: number }[]) {
+export function splitOriginalPaisa(total: number, rows: readonly { id: string; amount: number }[]) {
   safe(total);
   const sum = rows.reduce((n, r) => n + BigInt(safe(r.amount)), BigInt(0));
   if (sum > BigInt(Number.MAX_SAFE_INTEGER) || (!sum && total))
@@ -54,15 +54,15 @@ export function allocateCancellationItems(
     if (source.reduce((sum, row) => sum + safe(row.promo ?? 0), 0) !== discount)
       throw new Error('Invalid original promo allocation.');
     const rows = [...source].sort((a, b) => a.id.localeCompare(b.id));
-    const walletParts = split(wallet, rows.map((row) => ({
+    const walletParts = splitOriginalPaisa(wallet, rows.map((row) => ({
       id: row.id, amount: safe(row.amount - safe(row.promo ?? 0)),
     })));
     return rows.map((row) => ({ ...row, promo: row.promo ?? 0,
       wallet: walletParts.get(row.id)!, discount: row.promo ?? 0 }));
   }
   const rows = [...source].sort((a, b) => a.id.localeCompare(b.id)),
-    combined = split(promo, rows),
-    walletParts = split(
+    combined = splitOriginalPaisa(promo, rows),
+    walletParts = splitOriginalPaisa(
       wallet,
       rows.map((r) => ({ id: r.id, amount: combined.get(r.id)! })),
     );
@@ -78,21 +78,21 @@ export function calculateCancellation(
   deliveryRule: number | {
     pricingPolicy: typeof DELIVERY_PRICING_POLICY;
     baseChargePaisa: number;
+  } | {
+    pricingPolicy: 'seller_shipment_equal_units_v2';
+    sellerCharges: ReadonlyMap<string, number>;
   },
+  originalServiceFeePaisa = 0,
 ) {
+  safe(originalServiceFeePaisa);
   if(typeof deliveryRule==='number')safe(deliveryRule);
-  else {
-    if(deliveryRule.pricingPolicy!==DELIVERY_PRICING_POLICY)throw new Error('Invalid delivery pricing policy.');
-    safe(deliveryRule.baseChargePaisa);
-  }
+  else if (deliveryRule.pricingPolicy === DELIVERY_PRICING_POLICY) safe(deliveryRule.baseChargePaisa);
+  else if (deliveryRule.pricingPolicy !== 'seller_shipment_equal_units_v2') throw new Error('Invalid delivery pricing policy.');
   const remaining = items.filter((r) => !cancelledSellers.has(r.sellerId)),
     cancelled = items.filter((r) => cancelledSellers.has(r.sellerId));
   const subtotal = remaining.reduce((n, r) => n + r.amount, 0),
     wallet = remaining.reduce((n, r) => n + r.wallet, 0),
-    discount = remaining.reduce((n, r) => n + r.discount, 0),
-    delivery = typeof deliveryRule==='number'
-      ? (remaining.length ? deliveryRule : 0)
-      : deliveryChargeForStores(deliveryRule.baseChargePaisa,new Set(remaining.map((r)=>r.sellerId)).size);
+    discount = remaining.reduce((n, r) => n + r.discount, 0);
   const sellers = new Map<string, { amount: number; net: number }>();
   for (const row of remaining) {
     const existing = sellers.get(row.sellerId) ?? { amount: 0, net: 0 };
@@ -100,8 +100,16 @@ export function calculateCancellation(
     existing.net += row.amount - row.wallet - row.discount;
     sellers.set(row.sellerId, existing);
   }
-  const fees = split(
-    delivery,
+  const savedCharges = typeof deliveryRule !== 'number' && deliveryRule.pricingPolicy === 'seller_shipment_equal_units_v2'
+    ? deliveryRule.sellerCharges : null;
+  const savedCharge = (sellerId: string) => safe(savedCharges?.get(sellerId) ?? (savedCharges ? NaN : 0));
+  const delivery = savedCharges
+    ? safe([...sellers.keys()].reduce((sum, sellerId) => sum + savedCharge(sellerId), 0))
+    : typeof deliveryRule === 'number' ? (remaining.length ? deliveryRule : 0)
+    : deliveryRule.pricingPolicy === DELIVERY_PRICING_POLICY
+      ? deliveryChargeForStores(deliveryRule.baseChargePaisa, sellers.size) : 0;
+  const fees = splitOriginalPaisa(
+    safe((savedCharges ? 0 : delivery) + (remaining.length ? originalServiceFeePaisa : 0)),
     [...sellers].map(([id, r]) => ({ id, amount: r.amount })),
   );
   return {
@@ -109,10 +117,12 @@ export function calculateCancellation(
     wallet,
     discount,
     delivery,
+    ...(originalServiceFeePaisa ? { platformServiceFeePaisa: remaining.length ? originalServiceFeePaisa : 0,
+      uncollectedServiceFeeWaivedPaisa: remaining.length ? 0 : originalServiceFeePaisa } : {}),
     promoDiscount: remaining.reduce((n, r) => n + (r.promo ?? 0), 0),
     total: safe(
       Number(
-        BigInt(subtotal) + BigInt(delivery) - BigInt(wallet) - BigInt(discount),
+        BigInt(subtotal) + BigInt(delivery) + BigInt(remaining.length ? originalServiceFeePaisa : 0) - BigInt(wallet) - BigInt(discount),
       ),
     ),
     walletRestored: cancelled.reduce((n, r) => n + r.wallet, 0),
@@ -122,7 +132,7 @@ export function calculateCancellation(
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([sellerId, r]) => ({
         sellerId,
-        amount: safe(r.net + fees.get(sellerId)!),
+        amount: safe(r.net + fees.get(sellerId)! + savedCharge(sellerId)),
       })),
   };
 }

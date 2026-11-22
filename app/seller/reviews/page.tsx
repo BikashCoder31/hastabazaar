@@ -34,7 +34,7 @@ export default async function SellerReviews() {
         Respond to verified purchases of your products. Customers’ ratings and
         words stay their own.
       </p>
-      <p className="mt-3"><Link className="section-link" href="/seller/form-history?kind=review-reply">Review reply answer history</Link></p>
+      <p className="mt-3"><Link className="section-link text-[#A8232E] underline" href="/seller/form-history?kind=review-reply">Review reply answer history</Link></p>
       <div className="mt-7 grid gap-5 lg:grid-cols-2">
         {reviews.results.map((r) => {
           const reply = extras.replies.find((x) => x.reviewId === r.id);
@@ -44,7 +44,7 @@ export default async function SellerReviews() {
               className="min-w-0 rounded-2xl border bg-card p-5"
             >
               <Link
-                className="font-semibold underline underline-offset-4"
+                className="section-link text-[#A8232E] underline"
                 href={`/products/${encodeURIComponent(r.slug)}#reviews`}
               >
                 {r.productName}

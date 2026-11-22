@@ -1,7 +1,9 @@
+import { openCheckoutPayment } from './helpers/checkout-step-navigation';
+import {checkoutClientReadiness} from './helpers/checkout-client-readiness';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { build } from 'esbuild';
-import { stubFixtureLink } from './helpers/browser-fixture-link';
+import { stubFixtureImage, stubFixtureLink } from './helpers/browser-fixture-link';
 import type { FixtureBrowser } from './helpers/browser-fixture-types';
 import type { PublishedFormConfig } from '../lib/forms/types';
 
@@ -21,6 +23,7 @@ async function fixture(
       }): Promise<FixtureBrowser>;
     };
   };
+  const readiness=await checkoutClientReadiness();
   const bundle = await build({
     stdin: {
       sourcefile: 'checkout-config-activation-fixture.tsx',
@@ -30,7 +33,12 @@ async function fixture(
       import React from 'react'; import {createRoot} from 'react-dom/client';
       import {CheckoutForm} from './components/commerce/checkout-form';
       createRoot(document.getElementById('root')).render(<CheckoutForm
-        customerId={${customer ? "'customer-fixture'" : 'undefined'}} />);
+        cartScope={${JSON.stringify(readiness.cartScope)}} paymentCapabilities={${JSON.stringify(readiness.paymentCapabilities)}}
+        policyContext={'a'.repeat(64)}
+        customerId={${customer ? "'customer-fixture'" : 'undefined'}}
+        customerEmail={${customer ? "'fixture@example.test'" : 'undefined'}}
+        customerPhone="9811111111"
+        savedAddresses={${customer ? "[{id:'fixture-address',label:'Home',isDefault:1,recipientName:'Fixture Buyer',phone:'9811111111',province:'Madhesh',district:'Dhanusha',municipality:'Janakpur',locality:'Fixture locality',ward:null,landmark:null,postalCode:null}]" : '[]'}} />);
     `,
     },
     bundle: true,
@@ -42,7 +50,7 @@ async function fixture(
       {
         name: 'checkout-config-navigation',
         setup(bundler) {
-          stubFixtureLink(bundler);
+          stubFixtureLink(bundler);stubFixtureImage(bundler);
           bundler.onResolve(
             {
               filter:
@@ -121,7 +129,12 @@ async function fixture(
               : { error: 'Sign in.' },
           ),
         });
-      if (url.pathname.startsWith('/api/forms/')) {
+      if (url.pathname === '/api/forms/commerce.promo-quote') return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ config: { formId: 'commerce.promo-quote', version: 1, publishedAt: 1, fields: [] } }),
+      });
+      if (url.pathname === '/api/forms/commerce.checkout') {
         configRequests.push(url.pathname);
         return route.fulfill({
           status: customer && !unavailable ? 200 : 403,
@@ -155,6 +168,7 @@ async function fixture(
   );
   await page.goto('https://checkout-config-activation.test/');
   await page.addScriptTag({ content: bundle.outputFiles[0].text });
+  if (customer) await openCheckoutPayment(page).catch(async error => { await browser.close(); throw error; });
   return { browser, page, configRequests };
 }
 
@@ -179,7 +193,7 @@ void test('guest checkout retains its sign-in gate without requesting a protecte
     );
     assert.equal(
       await h.page
-        .getByRole('button', { name: 'Place COD order', exact: true })
+        .locator('button[aria-label="Place COD order"]')
         .isDisabled(),
       true,
     );
@@ -287,6 +301,7 @@ for (const [scenario, fields] of [
           name: 'Place COD order',
           exact: true,
         });
+        await h.page.locator('label[for="checkout-terms"]').click();
         await h.page.waitForFunction(
           () =>
             !document.querySelector<HTMLButtonElement>('button[type="submit"]')
@@ -309,8 +324,8 @@ for (const [scenario, fields] of [
         );
         assert.equal(await submit.isEnabled(), true);
         assert.equal(
-          await h.page.getByLabel('Recipient name').isVisible(),
-          true,
+          await h.page.getByLabel('Recipient name').count(),
+          1,
         );
       } finally {
         await h.browser.close();

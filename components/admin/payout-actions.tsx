@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
+  DialogClose,
   DialogHeader,
   DialogTitle,
   DialogDescription,
@@ -24,7 +25,7 @@ import type {
 } from '@/lib/db/repositories/payouts';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 
 const prepareBaseKeys = ['sellerId', 'note', 'idempotencyKey', 'formVersion', 'customAnswers'];
@@ -37,6 +38,7 @@ export function AccrueEarningsButton() {
     <div>
       <Button
         variant="outline"
+        className="min-h-11"
         disabled={pending}
         onClick={() => {
           setDone(false);
@@ -91,7 +93,7 @@ export function PreparePayoutButton({
         if (!pending) setOpen(value);
       }}
     >
-      <DialogTrigger render={<Button size="sm" />}>
+      <DialogTrigger render={<Button className="min-h-11 max-w-full" />}>
         {directApproval ? 'Create approved payout' : 'Prepare payout'}
       </DialogTrigger>
       <DialogContent
@@ -207,18 +209,35 @@ const explanations: Record<PayoutOperation, string> = {
     'This records an unsuccessful payment attempt. Include the actual failure reason in your note.',
 };
 
+export function ApprovePreparedPayoutButton({ amount, ...props }: React.ComponentProps<typeof PayoutWorkflowActions> & { amount: string }) {
+  return (
+    <Dialog>
+      <DialogTrigger type="button" data-desk-action={props.desk?"approve":undefined} className="admin-decision max-w-full">{props.desk?"Approve payout":"Approve "+amount}</DialogTrigger>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto border border-[#E3D8C7] bg-white p-5 text-[#14213D] sm:max-w-md" showCloseButton={false}>
+        <DialogTitle className="text-xl">Approve prepared payout</DialogTitle>
+        <DialogDescription>Review the prepared balance and record your decision.</DialogDescription>
+        <PayoutWorkflowActions {...props} decisionOnly="approve" />
+        <DialogClose type="button" className="min-h-11 rounded-lg border border-[#CDBFA9] px-3 font-semibold hover:bg-[#F0EBE1]">Cancel</DialogClose>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function PayoutWorkflowActions({
   payoutId,
   status,
   canApprove,
   canProcess,
   isPreparer,
+  decisionOnly, desk,
 }: {
+  desk?: boolean;
   payoutId: string;
   status: PayoutStatus;
   canApprove: boolean;
   canProcess: boolean;
   isPreparer: boolean;
+  decisionOnly?: 'approve' | 'reject';
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -229,7 +248,7 @@ export function PayoutWorkflowActions({
     canApprove,
     canProcess,
     isPreparer,
-  });
+  }).filter(action => decisionOnly ? action === decisionOnly : !['start_processing','mark_paid','mark_failed'].includes(action));
   const [action, setAction] = useState<PayoutOperation>(
     permitted[0] ?? 'approve',
   );
@@ -245,10 +264,11 @@ export function PayoutWorkflowActions({
   if (!permitted.length)
     return (
       <div className="space-y-2">
+      {canProcess && !['paid','rejected','reversed'].includes(status)?<Link className="block underline" href="/admin/payments/payouts">Review verified funding and actual payout outcomes</Link>:null}
       <p className="rounded-xl bg-muted/60 p-4 text-sm leading-6 text-muted-foreground">
         {status === 'paid' || status === 'rejected' || status === 'reversed'
             ? 'This payout has no further actions at this stage. Its history remains available below.'
-            : 'No payout action is available for your role at this stage. A Super Admin handles approval and payment recording.'}
+            : 'Bank instructions and actual outcomes are handled in Payout transfers by an eligible Super Admin.'}
       </p>
       <Link href={`/admin/staff-form-history?kind=${canApprove || canProcess ? 'payout-action' : 'payout-preparation'}&id=${encodeURIComponent(payoutId)}`} className="block text-sm underline">View payout form history</Link>
       </div>
@@ -275,7 +295,7 @@ export function PayoutWorkflowActions({
       <FormGuide formId="staff.payout-2" />
 
         <fieldset disabled={pending} className="space-y-4">
-          <div>
+          {decisionOnly ? null : <div>
             <Label htmlFor={id + '-action'}>Next action</Label>
             <select
               id={id + '-action'}
@@ -283,7 +303,7 @@ export function PayoutWorkflowActions({
               onChange={(event) =>
                 setAction(event.target.value as PayoutOperation)
               }
-              className="mt-2 w-full rounded-lg border bg-background px-3 py-2"
+              className="mt-2 min-h-11 w-full rounded-lg border bg-background px-3 py-2"
             >
               {permitted.map((item) => (
                 <option key={item} value={item}>
@@ -291,7 +311,7 @@ export function PayoutWorkflowActions({
                 </option>
               ))}
             </select>
-          </div>
+          </div>}
           <p className="text-sm leading-6 text-muted-foreground">
             {explanations[effectiveAction]}
           </p>
@@ -339,6 +359,7 @@ export function PayoutWorkflowActions({
           }}>Start a new attempt</Button></div> : null}
           <Button
             type="submit"
+            className="min-h-11"
             disabled={
               pending || !catalog.canSubmit ||
               note.trim().length < 8 ||
@@ -368,7 +389,7 @@ export function PayoutWorkflowActions({
               if (result?.code === 'stale_version') catalog.handleSubmissionResponse(response, result.code);
               if (!response.ok) throw new Error(result?.error ?? 'Payout action failed. Retry the same request.');
               if (result?.ok !== true) throw new Error('The response could not confirm this action. Retry the same request.');
-              clearSessionAttempt(attemptKey); setRetry(false); setConfirm(false); setNote(''); setReference(''); setConfigured(null); router.refresh();
+              clearSessionAttempt(attemptKey); setRetry(false); setConfirm(false); setNote(''); setReference(''); setConfigured(null); if(desk)window.dispatchEvent(new Event('seller-desk-decided')); router.refresh();
             } catch (cause) { setError(cause instanceof Error ? cause.message : 'Payout action failed.'); }
             finally { setPending(false); }
           })();

@@ -1,0 +1,13 @@
+# 4 November: current presentation, notification and import fixture reconciliation
+
+Scope: reversible test-only corrections. Canonical data and runtime remain untouched. These are bounded checks, not a full-suite verdict.
+
+- `tests/direct-super-admin-dashboard.test.ts` now supplies current navigation APIs and an actual foreign-key memory database for the current staff-authority recheck. It preserves direct one-Super-Admin wording versus ordinary Admin requests and additionally proves a disabled persisted Super Admin cannot render the private page under the unchanged claimed role.
+- `tests/email-delivery-schema.test.ts` includes the real0150 health-observation extension and compares ORM columns to actual SQLite table metadata. The old regex read only original CREATE columns and missed evidence_scope. Original accepted delivery/incident immutability checks remain.
+- `tests/fee-waiver-page.test.ts` supplies actual current framework exports and a narrow empty-cart payment-capability boundary. Original fee snapshot identity and current-time read assertions remain; no legacy seller-fee waiver is projected into current policy.
+- `tests/exception-work.test.ts` requires exactly assignee+Super Admin email/in-app recipients, correct audience/template/source, unique request identities and zero additional notices on exact assignment replay. The old two-message assertion omitted required oversight copies. Parcel/cash/history assertions remain.
+- Final combined four-file memory/SSR/source run:15/15,0skips,exit0,28.153s. Log `.test-artifacts/t34/presentation-contract-regression-root-20261104/final-memory.tap`. Earlier first/second diagnostics retained, including fictional message projection; no runtime changes were needed.
+- `tests/document-change-interface.test.ts` now has an anchor-preserving Next Link browser adapter. Actual Chrome rerun remains queued until the full default suite releases the heavy slot; the import correction alone is not browser acceptance.
+- Finance actor/scope tests now declare a deliberately fail-closed provider import seam: provider identity lookup is forbidden in this staff-only intent fixture, so an unintended call cannot masquerade as authenticated success. The actual staff authority/native route logic remains. `finance-actor-intent.test.ts` passes2/2,exit0,23.003s; `.test-artifacts/t34/finance-provider-import-root-20261104/intent.tap`. Finance scope Chrome still queued. Actual hosted authentication has separate prior28/28 proof, not represented by these seams.
+
+Before copies are preserved in both artifact directories. Final scoped/global lint remains pending after all current source/fixture work; no pass is inferred from older global checks.

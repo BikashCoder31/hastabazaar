@@ -70,11 +70,11 @@ export default async function SellerFormHistoryPage({ searchParams }: {
       authorizeFormAnswerRead(db, { id: seller.userId, role: 'seller' }, answer)));
     if (allowed.some((value) => !value)) notFound();
     return <main className="space-y-5">
-      <p><Link className="section-link" href={base}>← {spec.title}</Link></p>
+      <p><Link className="section-link text-[#A8232E] underline" href={base}>← {spec.title}</Link></p>
       <h1 className="section-title">{spec.title} answer history</h1>
       <p className="break-all text-sm text-muted-foreground">Record {query.id}</p>
       {answers.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)}
-      {nextCursor ? <Link className="section-link" href={
+      {nextCursor ? <Link className="section-link text-[#A8232E] underline" href={
         `${base}&id=${encodeURIComponent(query.id)}&afterAt=${nextCursor.createdAt}&afterId=${encodeURIComponent(nextCursor.id)}`
       }>Next 50 answers</Link> : null}
     </main>;
@@ -96,9 +96,9 @@ export default async function SellerFormHistoryPage({ searchParams }: {
     <h1 className="section-title">{spec.title} answer history</h1>
     <p className="text-sm text-muted-foreground">Select a record to view the answers saved with that action.</p>
     {records.length ? <ul className="space-y-2">{records.map((record) => <li key={record.id}>
-      <Link className="section-link break-all" href={`${base}&id=${encodeURIComponent(record.id)}`}>{record.id}</Link>
+      <Link className="section-link text-[#A8232E] underline break-all" href={`${base}&id=${encodeURIComponent(record.id)}`}>{record.id}</Link>
     </li>)}</ul> : <p>No submitted answers yet.</p>}
-    {rows.results.length > 50 && last ? <Link className="section-link" href={
+    {rows.results.length > 50 && last ? <Link className="section-link text-[#A8232E] underline" href={
       `${base}&beforeAt=${last.createdAt}&beforeId=${encodeURIComponent(last.id)}`
     }>Next older records</Link> : null}
   </main>;

@@ -16,7 +16,7 @@ void test('seller product previews use explicit responsive media modes', async (
       'utf8',
     ),
     readFile(
-      new URL('../app/seller/products/page.tsx', import.meta.url),
+      new URL('../components/seller/product-catalogue.tsx', import.meta.url),
       'utf8',
     ),
     readFile(new URL('../app/seller/layout.tsx', import.meta.url), 'utf8'),
@@ -177,29 +177,27 @@ void test('admin product review wraps generated SKU text at the 320px boundary',
     new URL('../app/admin/products/[id]/page.tsx', import.meta.url),
     'utf8',
   );
-  const sku = review.match(/<p\b[^>]*>SKU \{product\.sku\}<\/p>/)?.[0];
+  const sku = review.match(/<p\b[^>]*>Platform SKU: \{product\.sku\}<\/p>/)?.[0];
   assert.ok(sku, 'The product identifier remains visible for reviewers.');
   assert.match(
     sku,
     /break-all|\[overflow-wrap:anywhere\]/,
     'Long generated SKU text must wrap inside the phone viewport.',
   );
+  const sellerSku=review.match(/<p\b[^>]*>Seller SKU: [\s\S]*?<\/p>/)?.[0];
+  assert.ok(sellerSku,'The separate seller stock code remains visible.');
+  assert.match(sellerSku,/break-all|\[overflow-wrap:anywhere\]/);
 });
 
-void test('seller product scroll container also contains absolute accessible labels', async () => {
+void test('seller product rows wrap into cards without a horizontal scroller', async () => {
   const source = await readFile(
-    new URL('../app/seller/products/page.tsx', import.meta.url),
+    new URL('../components/seller/product-catalogue.tsx', import.meta.url),
     'utf8',
   );
-  const scroller = source.match(
-    /<div className="([^"]*overflow-x-auto[^"]*)">/,
-  )?.[1];
-  assert.ok(scroller);
-  assert.match(
-    scroller,
-    /\brelative\b/,
-    'Absolute screen-reader labels must not escape the local table scroller into page overflow.',
-  );
+  assert.doesNotMatch(source, /overflow-x-auto/);
+  assert.match(source, /<table aria-label="Products" className="[^"]*w-full min-w-0/);
+  assert.match(source, /grid-cols-\[36px_minmax\(0,1fr\)_auto\]/);
+  assert.match(source, /aria-label=\{'Select ' \+ product\.nameEn\}/);
 });
 
 void test('admin thumbnails crop in bounded cover frames and operations branding stays contained', async () => {
@@ -213,11 +211,11 @@ void test('admin thumbnails crop in bounded cover frames and operations branding
     assert.match(source, /sizes=\{mediaSizes\.adminThumbnail\}/);
     assert.match(source, /mediaObjectClass\('cover'/);
   }
-  const layout = await readFile(
-    new URL('../app/admin/layout.tsx', import.meta.url),
+  const navigation = await readFile(
+    new URL('../components/admin/admin-navigation.tsx', import.meta.url),
     'utf8',
   );
-  assert.match(layout, /data-media-mode="contain"/);
-  assert.match(layout, /mediaObjectClass\('contain'/);
-  assert.match(layout, /media-shrink/);
+  assert.match(navigation, /data-media-mode="contain"/);
+  assert.match(navigation, /mediaObjectClass\('contain'/);
+  assert.match(navigation, /media-shrink/);
 });

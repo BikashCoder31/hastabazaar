@@ -1,4 +1,6 @@
+import {formAnswerSourceSql} from '../../forms/answer-proof';
 import { publicProductEligibility } from '@/lib/products/eligibility';
+import {publicProfileFieldSql} from '@/lib/sellers/public-profile-sql';
 import { CustomerDataConflictError } from './customers';
 import { buildFormAnswerInsert } from './form-answers';
 import type { FormAnswerSnapshot } from '@/lib/forms/types';
@@ -38,7 +40,7 @@ export async function getReviewExtras(
       .bind(...ids)
       .all<ReviewPhoto>(),
     db
-      .prepare(`SELECT x.id,x.review_id AS reviewId,x.body,x.version,x.status,x.created_at AS createdAt,s.trading_name AS sellerName
+      .prepare(`SELECT x.id,x.review_id AS reviewId,x.body,x.version,x.status,x.created_at AS createdAt,${publicProfileFieldSql('publicName','s.id')} AS sellerName
    FROM review_replies x JOIN product_reviews r ON r.id=x.review_id JOIN products p ON p.id=r.product_id JOIN seller_profiles s ON s.id=x.seller_id
    WHERE r.id IN (${placeholders}) ${visibility} ${privateAccess ? '' : "AND x.status='published'"}
    AND x.version=(SELECT MAX(newer.version) FROM review_replies newer WHERE newer.review_id=x.review_id)`)
@@ -212,7 +214,7 @@ export async function moderateSellerReply(
     let savedDigest: unknown;
     try { savedDigest = JSON.parse(prior.nextJson ?? '').catalogDigest; } catch { /* conflict below */ }
     const answer = o.form && await db.prepare(`SELECT actor_id AS actorId,config_version_id AS versionId,
-      subject_type AS subjectType,subject_id AS subjectId FROM form_answer_sets
+      subject_type AS subjectType,subject_id AS subjectId FROM ${formAnswerSourceSql(db)} reply_answer
       WHERE form_id='staff.review-moderation' AND request_id=? LIMIT 1`)
       .bind(o.requestId).first<{ actorId: string; versionId: string; subjectType: string; subjectId: string }>();
     const reply = answer && await db.prepare('SELECT review_id AS reviewId,version FROM review_replies WHERE id=? LIMIT 1')

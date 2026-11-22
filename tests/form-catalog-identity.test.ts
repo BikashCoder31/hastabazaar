@@ -160,6 +160,12 @@ void test('required registration and login context is saved only after verified 
     const loginCall = (requestId: string, password: string, note?: string) => login.POST(
       identityPost('/api/auth/login', { ...loginFields, password, requestId }, note));
     assert.equal((await loginCall('login-bad', 'wrong-password', 'Private attempt')).status, 303);
+    const reauthenticationRetry = await login.POST(identityPost('/api/auth/login?reauth=password', {
+      ...loginFields, password: 'wrong-password', requestId: 'reauth-bad', return_to: '/admin',
+    }, 'Private attempt'));
+    assert.equal(reauthenticationRetry.status, 303);
+    assert.equal(reauthenticationRetry.headers.get('location'), '/login?return_to=%2Fadmin&error=invalid&reauth=password');
+    assert.equal(reauthenticationRetry.headers.get('set-cookie'), null);
     assert.equal((await loginCall('login-missing', 'strong-pass-123')).status, 422);
     const rejected = await loginCall('login-secret', 'strong-pass-123', 'strong-pass-123');
     assert.equal(rejected.status, 422);
@@ -467,9 +473,9 @@ void test('identity history displays an answer after its published field is arch
 
 void test('login keeps each available sign-in form when the other configuration is unavailable', async () => {
   const { default: loginPage } = await import('../app/login/page');
-  const render = async (skipped: readonly string[]) => {
+  const render = async (skipped: readonly string[], reauth?: string) => {
     const { sqlite } = fixture(skipped);
-    try { return renderToStaticMarkup(await loginPage({ searchParams: Promise.resolve({}) })); }
+    try { return renderToStaticMarkup(await loginPage({ searchParams: Promise.resolve({ reauth }) })); }
     finally { sqlite.close(); }
   };
   const passwordOnly = await render(['identity.email-code-request']);
@@ -485,6 +491,10 @@ void test('login keeps each available sign-in form when the other configuration 
   assert.doesNotMatch(neither, />or<\/span>/);
   const both = await render([]);
   assert.match(both, />or<\/span>/);
+  const confirmPassword = await render([], 'password');
+  assert.match(confirmPassword, /action="\/api\/auth\/login\?reauth=password"/);
+  assert.doesNotMatch(confirmPassword, /\/api\/auth\/(?:email-code|google)/);
+  assert.doesNotMatch(confirmPassword, /autocomplete="one-time-code"/i);
 });
 
 void test('identity transaction rejects a publication racing registration before account creation', async () => {
@@ -602,6 +612,24 @@ function loginRequest(requestId: string, password: string) {
     method: 'POST', headers: { origin: 'http://localhost:3000' }, body: data,
   });
 }
+
+for (const role of ['admin', 'super_admin'] as const) void test(`password sign-in from a public page sends ${role} through the authenticated continuation`, async () => {
+  const { sqlite } = fixture();
+  try {
+    const register = await import('../app/api/auth/register/route');
+    await register.POST(registration(`register-public-${role}`));
+    const userId = sqlite.prepare("SELECT id FROM users WHERE email='new@example.test'").get()?.id;
+    sqlite.prepare('INSERT INTO user_roles(user_id,role,assigned_at) VALUES (?,?,1)').run(userId!, role);
+    const { POST } = await import('../app/api/auth/login/route');
+    const response = await POST(identityPost('/api/auth/login', {
+      email: 'new@example.test', password: 'strong-pass-123', formVersion: '1',
+      requestId: `login-public-${role}`, return_to: '/sell?route=business',
+    }));
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get('location'), '/auth/continue?return_to=%2Fsell%3Froute%3Dbusiness');
+    assert.match(response.headers.get('set-cookie') ?? '', /hastabazaar_session=/);
+  } finally { sqlite.close(); }
+});
 
 void test('login records an answer only for a verified credential and a committed session', async () => {
   const { sqlite } = fixture();

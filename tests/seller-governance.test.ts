@@ -15,6 +15,7 @@ import {
 import { getUnavailablePublishedProductBySlug } from '../lib/db/repositories/products';
 import { publicProductEligibility } from '../lib/products/eligibility';
 import { can } from '../lib/marketplace/permissions';
+import { actionableOrderFixture } from './helpers/order-response-fixture';
 
 const now = 1_800_000_000_000;
 
@@ -326,11 +327,33 @@ void test('seller governance rejects unsafe automatic fulfillment, self restrict
 });
 
 void test('existing fulfillment obeys the recorded obligation mode', async () => {
-  const f = await fixture();
+  const f = await actionableOrderFixture();
   try {
-    await applySellerRestriction(f.database, {
-      sellerId: 'seller',
-      actorId: 'super-one',
+    assert.equal(f.rows.length, 1);
+    const [row] = f.rows;
+    const itemId = String(row.id);
+    const sellerId = String(row.sellerId);
+    const now = f.releasedAt + 1;
+    const command = {
+      orderId: f.orderId,
+      sellerId,
+      actorId: 'registered-owner',
+      action: 'start_packing' as const,
+      itemIds: [itemId],
+      note: '',
+    };
+    const currentItem = () => f.sqlite.prepare(`SELECT i.fulfillment_status AS status,
+      r.released_at AS releasedAt,r.progress_at AS progressAt
+      FROM order_items i JOIN order_response_items r ON r.order_item_id=i.id
+      JOIN order_response_portions p ON p.id=r.portion_id
+      WHERE i.id=? AND i.order_id=? AND i.seller_id=? AND p.operator_mode='seller'`)
+      .get(itemId, f.orderId, sellerId);
+    assert.deepEqual({ ...currentItem() }, {
+      status: 'confirmed', releasedAt: f.releasedAt, progressAt: null,
+    });
+    await applySellerRestriction(f.db, {
+      sellerId,
+      actorId: 'reviewer',
       mode: 'disabled',
       obligationMode: 'admin_review',
       reasonCode: 'performance_review',
@@ -339,22 +362,19 @@ void test('existing fulfillment obeys the recorded obligation mode', async () =>
       requestId: 'fulfillment-review',
       now,
     });
+    const before = currentItem();
     await assert.rejects(
-      () =>
-        transitionSellerFulfillment(f.database, {
-          orderId: 'missing-order',
-          sellerId: 'seller',
-          actorId: 'seller-user',
-          action: 'start_packing',
-          note: '',
-          requestId: 'blocked-fulfillment',
-          now,
-        }),
-      /requires an administrative fulfillment decision/i,
+      transitionSellerFulfillment(f.db, { ...command, requestId: 'blocked-fulfillment', now }),
+      (error: unknown) => error instanceof FulfillmentConflictError &&
+        /requires an administrative fulfillment decision/i.test(error.message),
     );
-    await applySellerRestriction(f.database, {
-      sellerId: 'seller',
-      actorId: 'super-two',
+    assert.deepEqual(currentItem(), before);
+    assert.equal(f.sqlite.prepare('SELECT id FROM order_item_status_events WHERE request_id=?')
+      .get('blocked-fulfillment'), undefined);
+
+    const allowed = await applySellerRestriction(f.db, {
+      sellerId,
+      actorId: 'reviewer',
       mode: 'disabled',
       obligationMode: 'allow_existing',
       reasonCode: 'performance_review',
@@ -363,21 +383,17 @@ void test('existing fulfillment obeys the recorded obligation mode', async () =>
       requestId: 'fulfillment-allowed',
       now: now + 1,
     });
-    await assert.rejects(
-      () =>
-        transitionSellerFulfillment(f.database, {
-          orderId: 'missing-order',
-          sellerId: 'seller',
-          actorId: 'seller-user',
-          action: 'start_packing',
-          note: '',
-          requestId: 'allowed-through-governance',
-          now: now + 1,
-        }),
-      (error: unknown) =>
-        error instanceof FulfillmentConflictError &&
-        !/administrative fulfillment decision/i.test(error.message),
-    );
+    assert.equal(allowed.mode, 'disabled');
+    assert.equal(allowed.obligationMode, 'allow_existing');
+    f.setClock(now + 1);
+    await transitionSellerFulfillment(f.db, {
+      ...command, requestId: 'allowed-through-governance', now: now + 1,
+    });
+    assert.deepEqual({ ...currentItem() }, {
+      status: 'packing', releasedAt: f.releasedAt, progressAt: now + 1,
+    });
+    assert.equal(f.sqlite.prepare('SELECT actor_id FROM order_item_status_events WHERE request_id=? AND order_item_id=?')
+      .get('allowed-through-governance', itemId)?.actor_id, command.actorId);
   } finally {
     f.dispose();
   }

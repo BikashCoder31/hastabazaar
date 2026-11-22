@@ -1,14 +1,14 @@
 'use client';
 import { FormGuide } from '@/components/forms/form-guide';
-import { useState, useSyncExternalStore } from 'react';
+import { useRef, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
-import { Boxes } from 'lucide-react';
+import { Boxes, Minus, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
 
 const catalogBaseKeys = ['quantity', 'reason', 'requestId', 'productId', 'sellerId', 'formVersion', 'customAnswers'];
@@ -20,11 +20,13 @@ export function InventoryEditor({
   quantity,
   productName,
   disabled = false,
+  compact = false,
 }: {
   productId: string;
   quantity: number;
   productName: string;
   disabled?: boolean;
+  compact?: boolean;
 }) {
   const router = useRouter();
   const [value, setValue] = useState(String(quantity));
@@ -36,12 +38,20 @@ export function InventoryEditor({
   const attemptPresent = useSyncExternalStore(subscribeToAttempt,
     () => hasSessionAttempt(attemptKey), () => false);
   const catalog = usePublishedFormConfig('seller.inventory');
+  const form = useRef<HTMLFormElement>(null);
+  const saving = useRef(false);
+  const hasCustomFields = catalog.config?.fields.some(field =>
+    !catalogBaseKeys.includes(field.key) && field.status === 'active',
+  );
   async function save(event: { preventDefault(): void; currentTarget: HTMLFormElement }) {
     event.preventDefault();
-    if (busy || disabled || !catalog.canSubmit || !catalog.config) return;
-    const next = Number(value);
+    await saveValue(event.currentTarget, value);
+  }
+  async function saveValue(formElement: HTMLFormElement, stock: string) {
+    if (saving.current || disabled || !catalog.canSubmit || !catalog.config) return;
+    const next = Number(stock);
     if (
-      !value.trim() ||
+      !stock.trim() ||
       !Number.isInteger(next) ||
       next < 0 ||
       next > 1000000
@@ -49,11 +59,12 @@ export function InventoryEditor({
       setError('Enter a whole number from 0 to 1,000,000.');
       return;
     }
+    saving.current = true;
     setBusy(true);
     setError('');
     setMessage('');
     try {
-      const configured = readConfiguredSubmission(event.currentTarget, catalog.config, catalogBaseKeys);
+      const configured = readConfiguredSubmission(formElement, catalog.config, catalogBaseKeys);
       const requestId = getOrCreateSessionAttempt(attemptKey);
       setAttemptRevision((revision) => revision + 1);
       const response = await fetch('/api/seller/products/' + encodeURIComponent(productId) + '/inventory', {
@@ -75,17 +86,26 @@ export function InventoryEditor({
         reason instanceof Error ? reason.message : 'Inventory update failed.',
       );
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   }
+  function adjust(delta: number) {
+    if (attemptPresent || busy || disabled || !catalog.canSubmit) return;
+    const next = String(Math.max(0, Math.min(1000000, Number(value || quantity) + delta)));
+    setValue(next);
+    setMessage('');
+    if (!hasCustomFields && form.current) void saveValue(form.current, next);
+  }
   return (
-    <form data-form-id="seller.inventory" onSubmit={save} className="min-w-0 space-y-2">
-      <FormGuide formId="seller.inventory" />
+    <form ref={form} data-form-id="seller.inventory" onSubmit={save} className="min-w-0 space-y-2">
+      {!compact ? <FormGuide formId="seller.inventory" /> : null}
 
-      <Label htmlFor={'stock-' + productId}>
+      <Label htmlFor={'stock-' + productId} className={compact ? 'sr-only' : undefined}>
         Available stock<span className="sr-only"> for {productName}</span>
       </Label>
-      <div className="flex flex-wrap gap-2">
+      <div className={compact ? 'inline-flex max-w-full items-center rounded-lg border border-[#D7C4A9] bg-white' : 'flex flex-wrap gap-2'}>
+        {compact ? <button type="button" className="grid size-11 shrink-0 place-items-center rounded-l-lg text-[#46536F] hover:bg-[#F7F3EC] disabled:opacity-40" aria-label={'One less ' + productName} disabled={busy || disabled || attemptPresent || !catalog.canSubmit || Number(value) <= 0} onClick={() => adjust(-1)}><Minus className="size-4" /></button> : null}
         <Input
           id={'stock-' + productId}
           type="number"
@@ -95,13 +115,14 @@ export function InventoryEditor({
           required
           value={value}
           disabled={busy || disabled}
+          readOnly={compact && !attemptPresent}
           onChange={(event) => {
             setValue(event.target.value);
             setMessage('');
           }}
-          className="h-11 w-24 text-base"
+          className={compact ? 'h-11 min-w-0 w-8 rounded-none border-0 bg-transparent px-0 text-center text-sm font-bold tabular-nums shadow-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [appearance:textfield]' : 'h-11 w-24 text-base'}
         />
-        <Button
+        {compact ? <button type="button" className="grid size-11 shrink-0 place-items-center rounded-r-lg text-[#46536F] hover:bg-[#F7F3EC] disabled:opacity-40" aria-label={'One more ' + productName} disabled={busy || disabled || attemptPresent || !catalog.canSubmit || Number(value) >= 1000000} onClick={() => adjust(1)}><Plus className="size-4" /></button> : <Button
           type="submit"
           variant="outline"
           disabled={busy || disabled || !catalog.canSubmit || Number(value) === quantity}
@@ -109,10 +130,11 @@ export function InventoryEditor({
         >
           <Boxes />
           {busy ? 'Saving…' : 'Update stock'}
-        </Button>
+        </Button>}
       </div>
-      {catalog.config ? <ConfiguredFields config={catalog.config} baseKeys={catalogBaseKeys} /> : null}
-      {catalog.status !== 'ready' ? <p role="alert" className="text-sm text-destructive">{catalog.message || 'Form configuration is unavailable. Please try again.'}</p> : null}
+      {catalog.config && (!compact || hasCustomFields) ? <ConfiguredFields config={catalog.config} baseKeys={catalogBaseKeys} /> : null}
+      {compact && (hasCustomFields || attemptPresent) ? <Button type="submit" variant="outline" className="min-h-11" disabled={busy || disabled || !catalog.canSubmit || (Number(value) === quantity && !attemptPresent)}>{busy ? 'Saving…' : attemptPresent ? 'Retry stock update' : 'Update stock'}</Button> : null}
+      {catalog.status !== 'ready' && (!compact || catalog.status !== 'loading') ? <p role="alert" className="text-sm text-destructive">{catalog.message || 'Form configuration is unavailable. Please try again.'}</p> : null}
       {disabled ? (
         <p className="text-sm text-muted-foreground">
           Stock is locked for this listing status.

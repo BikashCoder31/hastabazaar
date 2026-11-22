@@ -12,7 +12,7 @@ import { authorizeFormAnswerRead } from '../lib/forms/access';
 import { collectFormAnswersForPrivacy, eraseFormAnswersForPrivacy,
   placeDataRightsLegalHold, releaseDataRightsLegalHold } from '../lib/forms/privacy';
 import { AnswerDetails } from '../components/forms/answer-details';
-import { getFormAnswerById, listFormAnswersForSubject } from '../lib/db/repositories/form-answers';
+import { buildFormAnswerInsert, getFormAnswerById, listFormAnswersForSubject } from '../lib/db/repositories/form-answers';
 
 declare global {
   var answerTestCreateElement: typeof createElement;
@@ -64,14 +64,14 @@ class Statement {
 
 class Database {
   failStatement: number | null = null;
-  beforeBatch: (() => void) | null = null;
+  beforeBatch: (() => void | Promise<void>) | null = null;
   beforeRun: ((sql: string) => void) | null = null;
   beforeFirst: ((sql: string) => void) | null = null;
   constructor(readonly sqlite: DatabaseSync) {}
   prepare(sql: string) { return new Statement(this.sqlite.prepare(sql), () => this.beforeRun?.(sql),
     () => this.beforeFirst?.(sql)); }
   async batch(statements: readonly Statement[]) {
-    this.beforeBatch?.();
+    await this.beforeBatch?.();
     this.beforeBatch = null;
     this.sqlite.exec('BEGIN');
     try {
@@ -158,6 +158,10 @@ async function fixture() {
     const migration = await readFile(new URL(path, import.meta.url), 'utf8');
     for (const statement of migration.split('--> statement-breakpoint')) if (statement.trim()) sqlite.exec(statement);
   }
+  // Current answer writes use these canonical columns; only this owned :memory: fixture changes.
+  const healthMigration = await readFile(new URL('../drizzle/0151_form_health_records.sql', import.meta.url), 'utf8');
+  for (const statement of healthMigration.split('--> statement-breakpoint').slice(0, 4))
+    if (statement.trim()) sqlite.exec(statement);
   const choice = { id: 'color', key: 'color', type: 'single_choice', label: 'Original color',
     required: false, order: 0, status: 'active', choices: [{ value: 'blue', label: 'Original blue' }] };
   const config = JSON.stringify({ formId: 'account.profile', fields: [choice] });
@@ -303,16 +307,22 @@ for (const [change, permissionsJson] of [
         (user_id,permissions_json,version,updated_by,updated_at) VALUES ('staff',?,1,'staff-other',1)`)
         .run(JSON.stringify(['support.manage']));
       globalThis.answerTestSubject = 'auth-staff';
+      let injected = false;
       database.beforeFirst = (sql) => {
-        if (!sql.includes('FROM form_answer_sets a')) return;
+        if (!sql.includes('a.answers_json AS answersJson') || !sql.includes('WHERE a.id=? LIMIT 1')) return;
+        assert.match(sql, /UNION ALL SELECT/);
         database.beforeFirst = null;
+        injected = true;
         sqlite.prepare('UPDATE staff_permission_profiles SET permissions_json=?,version=2 WHERE user_id=?')
           .run(permissionsJson, 'staff');
       };
       const { GET } = await import('../app/api/forms/answers/[id]/route');
       const response = await GET(new Request('http://localhost/api/forms/answers/a-owner'),
         { params: Promise.resolve({ id: 'a-owner' }) });
+      assert.equal(injected, true, 'permission change must occur at the actual answer read');
+      assert.equal(sqlite.prepare('SELECT permissions_json FROM staff_permission_profiles WHERE user_id=?').get('staff')?.permissions_json, permissionsJson);
       assert.equal(response.status, 404);
+      assert.equal(response.headers.get('Cache-Control'), 'no-store');
       assert.doesNotMatch(await response.text(), /Original color|Original blue|a-owner/);
     } finally { sqlite.close(); }
   });
@@ -372,7 +382,7 @@ void test('privacy controls expose explicit actions only for an assigned approve
     assignedToCurrentStaff: true, canDecide: true,
   }));
   assert.match(eligibleDeletion, /Erase profile answers/);
-  assert.match(eligibleDeletion, /Linked seller, rider, order, and case records remain/);
+  assert.match(eligibleDeletion, /Linked seller, delivery, order, and case records remain/);
 });
 
 void test('mounted access export can start a fresh attempt after an audited-ID conflict', async () => {
@@ -611,6 +621,12 @@ void test('deletion completion rechecks surviving answers inside the status batc
     sqlite.exec("INSERT INTO user_roles VALUES ('staff','super_admin')");
     await eraseFormAnswersForPrivacy(db, { userId: 'owner', requestId: 'erase-before-race',
       dataRightsRequestId: 'delete-owner', actorId: 'staff' });
+    let injected = false;
+    database.beforeRun = (sql) => {
+      if (!sql.startsWith('UPDATE data_rights_requests SET status')) return;
+      database.beforeRun = null;
+      injected = true;
+    };
     database.beforeBatch = () => sqlite.exec(`INSERT INTO form_answer_sets(id,form_id,request_id,config_version_id,
       subject_type,subject_id,actor_id,answers_json,created_at)
       SELECT 'late-answer',form_id,'late-answer-request',config_version_id,
@@ -623,6 +639,7 @@ void test('deletion completion rechecks surviving answers inside the status batc
       body: JSON.stringify({ action: 'complete', note: 'History was erased earlier.',
         requestId: 'complete-race', formVersion: 1, customAnswers: [] }),
     }), { params: Promise.resolve({ id: 'delete-owner' }) });
+    assert.equal(injected, true, 'the surviving answer must be checked by the actual status batch');
     assert.equal(response.status, 409);
     assert.equal(sqlite.prepare("SELECT status FROM data_rights_requests WHERE id='delete-owner'").get()?.status, 'approved');
     assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM form_answer_sets WHERE id='late-answer'").get()?.count, 1);
@@ -644,6 +661,125 @@ void test('privacy export contains owned historical snapshots without other user
   } finally { sqlite.close(); }
 });
 
+void test('privacy export API projects native core receipts without internal source or owner identifiers', async () => {
+  const { sqlite, db } = await fixture();
+  try {
+    sqlite.exec("UPDATE data_rights_requests SET status='approved' WHERE id='access-owner'");
+    sqlite.exec("INSERT INTO orders VALUES ('private-core-order','owner'),('foreign-core-order','other')");
+    for (const [subjectId, actorId, requestId] of [
+      ['private-core-order', 'owner', 'private-core-source-request'],
+      ['foreign-core-order', 'other', 'foreign-core-source-request'],
+    ]) await buildFormAnswerInsert(db, { formId: 'commerce.checkout', requestId,
+      versionId: 'core:commerce.checkout:1', subjectType: 'order', subjectId, actorId,
+      answers: { formId: 'commerce.checkout', version: 1, answers: [] }, now: 4 }).run();
+    const { POST } = await import('../app/api/admin/privacy/[id]/route');
+    const response = await POST(new Request('http://localhost:3000/api/admin/privacy/access-owner', {
+      method: 'POST', headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'export_answers', requestId: 'native-safe-export' }),
+    }), { params: Promise.resolve({ id: 'access-owner' }) });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+    const text = await response.text();
+    assert.doesNotMatch(text, /private-core-order|foreign-core-order|private-core-source-request|foreign-core-source-request|actorId|requestId|subjectId|versionId|healthScope/);
+    const body = JSON.parse(text) as { answers: Record<string, unknown>[] };
+    const core = body.answers.filter(answer => answer.formId === 'commerce.checkout');
+    assert.equal(core.length, 1);
+    assert.deepEqual(Object.keys(core[0]).sort(), ['answers', 'createdAt', 'formId', 'historicalFieldIds', 'id']);
+    assert.deepEqual(core[0].answers, { formId: 'commerce.checkout', version: 1, answers: [] });
+  } finally { sqlite.close(); }
+});
+
+for (const timing of ['before completion', 'at status batch'] as const) {
+  for (const formId of ['commerce.checkout', 'account.privacy-request'] as const) {
+  void test(`deletion completion retains owned core audit receipts for ${formId} ${timing} without false completion`, async () => {
+    const { sqlite, db, database } = await fixture();
+    try {
+      sqlite.exec("INSERT INTO user_roles VALUES ('staff','super_admin')");
+      sqlite.exec("INSERT INTO orders VALUES ('core-owner-order','owner'),('core-other-order','other')");
+      await eraseFormAnswersForPrivacy(db, { userId: 'owner', requestId: 'erase-before-core',
+        dataRightsRequestId: 'delete-owner', actorId: 'staff' });
+      const insert = buildFormAnswerInsert(db, { formId, requestId: 'core-owner-request',
+        versionId: `core:${formId}:1`, subjectType: formId === 'commerce.checkout' ? 'order' : 'data_rights_request',
+        subjectId: formId === 'commerce.checkout' ? 'core-owner-order' : 'delete-owner',
+        actorId: 'owner', answers: { formId, version: 1, answers: [] }, now: 4 });
+      let injected = false;
+      if (timing === 'before completion') await insert.run();
+      else database.beforeBatch = async () => {
+        injected = true;
+        await insert.run();
+      };
+      globalThis.answerTestStaffActor = { id: 'staff', role: 'super_admin', permissions: ['support.manage'] };
+      const { POST } = await import('../app/api/admin/privacy/[id]/route');
+      const response = await POST(new Request('http://localhost:3000/api/admin/privacy/delete-owner', {
+        method: 'POST', headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'complete', note: 'Profile answers were erased; original native proof remains.',
+          requestId: 'complete-with-core', formVersion: 1, customAnswers: [] }),
+      }), { params: Promise.resolve({ id: 'delete-owner' }) });
+      if (timing === 'at status batch') assert.equal(injected, true);
+      assert.equal(response.status, 409);
+      assert.match((await response.json() as { error: string }).error, /retained native proof/);
+      assert.equal(sqlite.prepare("SELECT status FROM data_rights_requests WHERE id='delete-owner'").get()?.status, 'approved');
+      assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM data_rights_events WHERE action='complete'").get()?.count, 0);
+      assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM audit_logs WHERE action='form.core_answers'").get()?.count, 1);
+      assert.deepEqual(sqlite.prepare('PRAGMA foreign_key_check').all(), []);
+    } finally { sqlite.close(); }
+  });
+  }
+}
+
+void test('the privacy request own published receipt remains a deletion blocker consistently with its core receipt', async () => {
+  const { sqlite, db } = await fixture();
+  try {
+    sqlite.exec("INSERT INTO user_roles VALUES ('staff','super_admin')");
+    await eraseFormAnswersForPrivacy(db, { userId: 'owner', requestId: 'erase-own-request',
+      dataRightsRequestId: 'delete-owner', actorId: 'staff' });
+    sqlite.prepare(`INSERT INTO form_config_versions(id,form_id,version,revision,status,config_json,
+      reason,created_by,created_at,updated_by,updated_at,published_by,published_at,last_request_id)
+      VALUES ('own-privacy-config','account.privacy-request',1,1,'published',?,
+        'Original fixture','staff',1,'staff',1,'staff',1,'own-privacy-config')`)
+      .run(JSON.stringify({ formId: 'account.privacy-request', fields: [] }));
+    await buildFormAnswerInsert(db, { formId: 'account.privacy-request', requestId: 'original-own-request',
+      versionId: 'own-privacy-config', subjectType: 'data_rights_request', subjectId: 'delete-owner',
+      actorId: 'owner', answers: { formId: 'account.privacy-request', version: 1, answers: [] }, now: 4 }).run();
+    globalThis.answerTestStaffActor = { id: 'staff', role: 'super_admin', permissions: ['support.manage'] };
+    const { POST } = await import('../app/api/admin/privacy/[id]/route');
+    const response = await POST(new Request('http://localhost:3000/api/admin/privacy/delete-owner', {
+      method: 'POST', headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'complete', note: 'Original request proof remains retained.',
+        requestId: 'complete-own-published', formVersion: 1, customAnswers: [] }),
+    }), { params: Promise.resolve({ id: 'delete-owner' }) });
+    assert.equal(response.status, 409);
+    assert.equal(sqlite.prepare("SELECT status FROM data_rights_requests WHERE id='delete-owner'").get()?.status, 'approved');
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM form_answer_sets WHERE request_id='original-own-request'").get()?.count, 1);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM data_rights_events WHERE action='complete'").get()?.count, 0);
+  } finally { sqlite.close(); }
+});
+
+void test('deletion completion ignores another customer core receipt and preserves it unchanged', async () => {
+  const { sqlite, db } = await fixture();
+  try {
+    sqlite.exec("INSERT INTO user_roles VALUES ('staff','super_admin')");
+    sqlite.exec("INSERT INTO orders VALUES ('unrelated-core-order','other')");
+    await buildFormAnswerInsert(db, { formId: 'commerce.checkout', requestId: 'unrelated-core-request',
+      versionId: 'core:commerce.checkout:1', subjectType: 'order', subjectId: 'unrelated-core-order',
+      actorId: 'other', answers: { formId: 'commerce.checkout', version: 1, answers: [] }, now: 4 }).run();
+    const before = sqlite.prepare("SELECT * FROM audit_logs WHERE action='form.core_answers'").all();
+    await eraseFormAnswersForPrivacy(db, { userId: 'owner', requestId: 'erase-unrelated-core',
+      dataRightsRequestId: 'delete-owner', actorId: 'staff' });
+    globalThis.answerTestStaffActor = { id: 'staff', role: 'super_admin', permissions: ['support.manage'] };
+    const { POST } = await import('../app/api/admin/privacy/[id]/route');
+    const response = await POST(new Request('http://localhost:3000/api/admin/privacy/delete-owner', {
+      method: 'POST', headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'complete', note: 'Own profile answers erased; unrelated proof retained.',
+        requestId: 'complete-unrelated-core', formVersion: 1, customAnswers: [] }),
+    }), { params: Promise.resolve({ id: 'delete-owner' }) });
+    assert.equal(response.status, 200);
+    assert.equal(sqlite.prepare("SELECT status FROM data_rights_requests WHERE id='delete-owner'").get()?.status, 'completed');
+    assert.deepEqual(sqlite.prepare("SELECT * FROM audit_logs WHERE action='form.core_answers'").all(), before);
+    assert.deepEqual(sqlite.prepare('PRAGMA foreign_key_check').all(), []);
+  } finally { sqlite.close(); }
+});
+
 void test('customer privacy export excludes staff decision answers on their request', async () => {
   const { sqlite, db } = await fixture();
   try {
@@ -655,6 +791,9 @@ void test('customer privacy export excludes staff decision answers on their requ
     const staffAnswer = await getFormAnswerById(db, 'staff-private');
     assert.ok(staffAnswer);
     assert.equal(await authorizeFormAnswerRead(db, { id: 'owner', role: 'customer' }, staffAnswer), false);
+    await buildFormAnswerInsert(db, { formId: 'staff.exception-work', requestId: 'staff-core-private',
+      versionId: 'core:staff.exception-work:1', subjectType: 'data_rights_request', subjectId: 'access-owner',
+      actorId: 'staff', answers: { formId: 'staff.exception-work', version: 1, answers: [] }, now: 5 }).run();
     assert.deepEqual((await collectFormAnswersForPrivacy(db, 'owner')).map((row) => row.id),
       ['a-owner']);
   } finally { sqlite.close(); }

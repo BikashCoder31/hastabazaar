@@ -1,7 +1,12 @@
 import { staffMutationGuard } from './staff-mutation-guard';
 import { buildFormAnswerInsert } from './form-answers';
 import { assertCommerceFormReplay, type CommerceForm } from './commerce-form-replay';
+import {CURRENT_CUSTOMER_ROLE_SQL,assertCurrentCustomerScope} from '../../auth/customer-scope';
+import {operationalBusinessNotificationStatements} from '../../operations/business-notifications';
 export class GiftCardConflictError extends Error {}
+export class GiftCardAccessError extends GiftCardConflictError{readonly status=403;constructor(message='Current gift card access is required.',readonly beforeWrite=true){super(message);}}
+/** The atomic outcome cannot be inferred from a failed transport acknowledgement. */
+export class GiftCardUnconfirmedError extends GiftCardConflictError{readonly code='outcome_unconfirmed';}
 export const MAX_GIFT_PAISA = Number.MAX_SAFE_INTEGER;
 export function parseGiftAmount(value: unknown): number {
   if (
@@ -65,37 +70,6 @@ function audit(
       now,
     );
 }
-function notification(
-  db: D1Database,
-  user: string,
-  id: string,
-  now: number,
-  issued: boolean,
-) {
-  const title = issued ? 'Gift card issued' : 'Gift card shopping credit added';
-  const body = issued
-    ? 'Your gift card was issued. Its secret code is shown only in the issuance response. Open gift cards to review the safe issuance record.'
-    : 'Shopping credit is available in your wallet. Use it for products at checkout; deposits and withdrawals are unavailable.';
-  return db
-    .prepare(
-      "INSERT INTO notification_messages(id,recipient_user_id,audience_role,channel,template_key,subject_en,subject_ne,body_en,body_ne,related_type,related_id,status,request_id,created_at,required_permission) VALUES (?,?,?,'in_app',?,?,?,?,?,? ,?,'queued',?,?,?)",
-    )
-    .bind(
-      crypto.randomUUID(),
-      user,
-      issued ? 'staff' : 'customer',
-      issued ? 'gift_card.issued' : 'gift_card.redeemed',
-      title,
-      title,
-      body,
-      body,
-      issued ? 'gift_card_issued' : 'gift_card',
-      id,
-      'gift:' + id + ':' + (issued ? 'issued' : 'redeemed'),
-      now,
-      issued ? 'admin.invite' : null,
-    );
-}
 export async function issueGiftCard(
   db: D1Database,
   o: { actorId: string; amountPaisa: number; requestId: string; now: number;
@@ -110,7 +84,7 @@ export async function issueGiftCard(
     db,
     o.actorId,
     'admin.invite',
-    GiftCardConflictError,
+    GiftCardAccessError,
     'super_admin',
   );
   const prior = await db
@@ -157,11 +131,12 @@ export async function issueGiftCard(
       ...(o.form ? [buildFormAnswerInsert(db, { formId: 'commerce.gift-card-issue',
         requestId: o.requestId, versionId: o.form.versionId, subjectType: 'gift_card_issue',
         subjectId: id, actorId: o.actorId, answers: o.form.answers, now: o.now })] : []),
-      notification(db, o.actorId, id, o.now, true),
+      ...await operationalBusinessNotificationStatements(db,{kind:'gift.issued',sourceId:id,eventId:id,actorId:o.actorId,now:o.now}),
     ]);
   } catch {
-    throw new GiftCardConflictError(
-      'Gift card could not be issued. Retry the same request to check its result.',
+    try{await staffMutationGuard(db,o.actorId,'admin.invite',GiftCardAccessError,'super_admin');}catch{throw new GiftCardAccessError('Current gift card access changed. Reopen the intended staff account.',false);}
+    throw new GiftCardUnconfirmedError(
+      'The gift card issuance outcome is unconfirmed. Check its saved result or retry the exact original request before starting another issuance.',
     );
   }
   return { id, amountPaisa: o.amountPaisa, code, duplicate: false };
@@ -190,14 +165,14 @@ export async function redeemGiftCard(
   if (!card)
     throw new GiftCardConflictError('This gift card cannot be redeemed.');
   const active =
-    "EXISTS(SELECT 1 FROM users u JOIN user_roles r ON r.user_id=u.id WHERE u.id=? AND u.status='active' AND r.role='customer')";
+    "EXISTS(SELECT 1 FROM users WHERE id=? AND HEX(id)=HEX(?) AND status='active' AND HEX(status)=HEX('active') AND "+CURRENT_CUSTOMER_ROLE_SQL+')';
   if (
     !(await db
       .prepare('SELECT 1 WHERE ' + active)
-      .bind(o.userId)
+      .bind(o.userId,o.userId)
       .first())
   )
-    throw new GiftCardConflictError(
+    throw new GiftCardAccessError(
       'An active signed-in customer is required.',
     );
   if (card.redeemedBy) {
@@ -211,7 +186,7 @@ export async function redeemGiftCard(
   }
   try {
     await db.batch([
-      ...guard(db, active, [o.userId]),
+      ...guard(db, active, [o.userId,o.userId]),
       db
         .prepare(
           'INSERT OR IGNORE INTO wallet_accounts(user_id,referral_code,balance_paisa,created_at) VALUES (?,?,0,?)',
@@ -266,11 +241,12 @@ export async function redeemGiftCard(
       ...(o.form ? [buildFormAnswerInsert(db, { formId: 'commerce.gift-card-redeem',
         requestId: o.requestId, versionId: o.form.versionId, subjectType: 'gift_card_redemption',
         subjectId: card.id, actorId: o.userId, answers: o.form.answers, now: o.now })] : []),
-      notification(db, o.userId, card.id, o.now, false),
+      ...await operationalBusinessNotificationStatements(db,{kind:'gift.redeemed',sourceId:card.id,eventId:card.id,actorId:o.userId,now:o.now}),
     ]);
   } catch {
-    throw new GiftCardConflictError(
-      'This gift card cannot be redeemed or the wallet has reached its safe money limit. Refresh before retrying.',
+    try{await assertCurrentCustomerScope(db,o.userId);}catch{throw new GiftCardAccessError('Current gift card account access changed. Reopen the intended account.',false);}
+    throw new GiftCardUnconfirmedError(
+      'The gift card redemption outcome is unconfirmed. Check its saved result or retry the exact original request before starting another redemption.',
     );
   }
   return { id: card.id, amountPaisa: card.amountPaisa, duplicate: false };

@@ -1,4 +1,5 @@
 import type { FormId } from './types';
+import {formAnswerSourceSql} from './answer-proof';
 
 export const riderHistoryKinds = {
   application: { title: 'Rider applications', formId: 'rider.application',
@@ -43,10 +44,11 @@ export async function listRiderHistoryRecords(db: D1Database, kind: RiderHistory
     records: { id: string; createdAt: number }[]; nextCursor: HistoryCursor | null;
   }> {
   const spec = riderHistoryKinds[kind];
+  const answerSource=kind==='report'||kind==='remittance'?formAnswerSourceSql(db):'form_answer_sets';
   const rows = await db.prepare(`SELECT record.id,record.created_at AS createdAt
     FROM ${spec.table} record WHERE 1=1 ${spec.filter}
       ${ownerId ? `AND record.${spec.ownerColumn}=?` : ''}
-      AND EXISTS(SELECT 1 FROM form_answer_sets answer WHERE answer.subject_type=?
+      AND EXISTS(SELECT 1 FROM ${answerSource} answer WHERE answer.subject_type=?
         AND answer.subject_id=record.id AND answer.form_id=?)
       AND (? IS NULL OR record.created_at<? OR
         (record.created_at=? AND record.id<?))

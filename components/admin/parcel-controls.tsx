@@ -1,15 +1,20 @@
 'use client';
 import { FormGuide } from '@/components/forms/form-guide';
 import Link from 'next/link';
+import {incomingParcelHref} from '@/lib/payments/incoming-links';
 import { useRef, useState, useSyncExternalStore, type SyntheticEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Parcel } from '@/lib/operations/parcels';
 import { ConfiguredFields } from '@/components/forms/configured-fields';
 import { usePublishedFormConfig } from '@/components/forms/form-config-client';
-import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/submission';
+import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/client-submission';
 import { clearSessionAttempt, getOrCreateSessionAttempt, hasSessionAttempt, sessionAttemptKey } from '@/lib/forms/client-attempt';
+import { ACTOR_INTENT_HEADER } from '@/lib/http/actor-intent';
+import { DeliveryFailureReasonField } from './delivery-failure-reason-field';
+import type { CancellationCause } from '@/lib/cancellation/causes';
+import { CancellationCauseField } from './cancellation-cause-field';
 const BASE_KEYS = ['jobId','version','action','note','method','riderEmail','courierName','trackingCode',
-  'trackingUrl','reference','amount','amountPaisa','cashRecordId','requestId'];
+  'trackingUrl','reference','amount','amountPaisa','cashRecordId','failureReason','cause','requestId'];
 // Hydrate the absent server snapshot; own attempt mutations rerender the client.
 const subscribeToAttempt = () => () => undefined;
 const money = (n: number) =>
@@ -45,7 +50,11 @@ export function ParcelControls({
   compensation,
   actorId,
   isSuperAdmin = false,
+  canReviewIncoming = false,
+  returnTo,
   canPrepare,
+  failureReasonsAvailable = false,
+  cancellationCausesBySeller,
 }: {
   orderId: string;
   parcels: Parcel[];
@@ -53,7 +62,11 @@ export function ParcelControls({
   compensation: Compensation[];
   actorId: string;
   isSuperAdmin?: boolean;
+  canReviewIncoming?: boolean;
+  returnTo?: string;
   canPrepare: boolean;
+  failureReasonsAvailable?: boolean;
+  cancellationCausesBySeller?: Record<string, CancellationCause | null>;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false),
@@ -64,7 +77,7 @@ export function ParcelControls({
     try {
       const response = await fetch(`/api/admin/orders/${orderId}/parcels`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(body.failureReason || body.cause ? { [ACTOR_INTENT_HEADER]: actorId } : {}) },
         body: JSON.stringify({ ...body, requestId: typeof body.requestId === 'string' ? body.requestId : crypto.randomUUID() }),
       });
       const result = (await response.json().catch(() => null)) as { error?: string; code?: string; ok?: boolean } | null;
@@ -145,7 +158,9 @@ export function ParcelControls({
               Actual courier costs: {money(p.courierCostPaisa)}. Operational
               expense only; customer total and seller settlement are unchanged.
             </p>
-            <ParcelForm parcel={p} busy={busy} send={send} isSuperAdmin={isSuperAdmin} />
+            <ParcelForm parcel={p} busy={busy} send={send} isSuperAdmin={isSuperAdmin}
+              cancellationCause={cancellationCausesBySeller && (cancellationCausesBySeller[p.sellerId] ?? null)}
+              recordFailureReason={failureReasonsAvailable && p.method === 'courier' && p.riderUserId === null} />
             {records
               .filter((r) => r.jobId === p.id)
               .map((r) => (
@@ -171,23 +186,9 @@ export function ParcelControls({
                   ) : null}
                   {r.status === 'pending' ? (
                     <div className="mt-2 flex flex-wrap gap-3">
+                      {r.kind==='remittance'&&canReviewIncoming&&r.riderId!==actorId&&(r.maker!==actorId||isSuperAdmin)?<Link className="rounded border p-2 underline" href={incomingParcelHref(orderId,p.id,r.id,returnTo??'/admin/orders/'+encodeURIComponent(orderId))}>Review exact remittance in Incoming payments</Link>:<span>Actual company receipt and allocation require an eligible Finance reviewer in Incoming payments.</span>}
                       <button
-                        className="rounded border p-2"
-                        disabled={busy || (p.method !== 'own_rider' && !isSuperAdmin) || r.riderId === actorId || (r.maker === actorId && !isSuperAdmin)}
-                        onClick={() =>
-                          void send({
-                            jobId: p.id,
-                            version: p.version,
-                            action: 'approve_remittance',
-                            cashRecordId: r.id,
-                            note: 'Staff verified remittance evidence.',
-                          })
-                        }
-                      >
-                        Approve remittance
-                      </button>
-                      <button
-                        className="rounded border p-2"
+                        className="min-h-11 rounded border p-2"
                         disabled={busy || (p.method !== 'own_rider' && !isSuperAdmin) || r.riderId === actorId || (r.maker === actorId && !isSuperAdmin)}
                         onClick={() =>
                           void send({
@@ -205,7 +206,7 @@ export function ParcelControls({
                         <span>Super Admin confirmation required.</span>
                       ) : r.riderId === actorId || (r.maker === actorId && !isSuperAdmin) ? (
                         <span>
-                          Another staff member must review this record.
+                          Access is restricted for the person who submitted or collected this cash.
                         </span>
                       ) : null}
                     </div>
@@ -220,7 +221,7 @@ export function ParcelControls({
                   className="rounded-lg border border-dashed p-3 text-sm"
                 >
                   <p>
-                    Simulated rider compensation · {entry.outcome} ·{' '}
+                    Historical simulated delivery compensation · {entry.outcome} ·{' '}
                     {money(entry.amountPaisa)} · {entry.status}
                   </p>
                   <p>
@@ -249,10 +250,14 @@ function ParcelForm({
   parcel: p,
   busy,
   send,
+  recordFailureReason,
+  cancellationCause,
 }: {
   parcel: Parcel;
   isSuperAdmin: boolean;
   busy: boolean;
+  recordFailureReason: boolean;
+  cancellationCause?: CancellationCause | null;
   send: (body: Record<string, unknown>) => Promise<{ response: Response; code?: string; confirmed: boolean } | null>;
 }) {
   const [action, setAction] = useState('assign');
@@ -289,6 +294,8 @@ function ParcelForm({
       trackingCode: value('trackingCode'),
       trackingUrl: value('trackingUrl'),
       reference: value('reference'),
+      ...(action === 'cancel' && value('cause') ? { cause: value('cause') } : {}),
+      ...(action === 'fail' && recordFailureReason ? { failureReason: value('failureReason') } : {}),
       ...(amount ? { amountPaisa: Math.round(Number(amount) * 100) } : {}),
       ...configured,
     };
@@ -320,7 +327,7 @@ function ParcelForm({
         Action
         <select
           id={field('action')}
-          className="mt-1 block w-full rounded border bg-background p-2"
+          className="mt-1 block min-h-11 w-full rounded border bg-background p-2"
           value={action}
           onChange={(e) => setAction(e.target.value)}
         >
@@ -345,6 +352,8 @@ function ParcelForm({
           ))}
         </select>
       </label>
+      {action === 'fail' && recordFailureReason ? <DeliveryFailureReasonField /> : null}
+      {action === 'cancel' && cancellationCause !== undefined ? <CancellationCauseField inferred={cancellationCause} /> : null}
       {action === 'assign' ? (
         <>
           <label htmlFor={field('method')}>
@@ -354,12 +363,10 @@ function ParcelForm({
               id={field('method')}
               className="mt-1 block w-full rounded border bg-background p-2"
             >
-              {isSuperAdmin ? <option value="own_rider">Own rider</option> : null}
               <option value="courier">Courier</option>
             </select>
           </label>
           {[
-            ...(isSuperAdmin ? [['riderEmail', 'Registered rider email']] : []),
             ['courierName', 'Courier company'],
             ['trackingCode', 'Tracking / handover reference'],
             ['trackingUrl', 'Optional HTTPS tracking link'],
@@ -416,7 +423,7 @@ function ParcelForm({
       {catalog.config ? <div className="sm:col-span-2"><ConfiguredFields config={catalog.config} baseKeys={BASE_KEYS} /></div> : null}
       {!catalog.canSubmit ? <output aria-live="polite" className="sm:col-span-2 text-sm">{catalog.message || 'Form configuration is loading.'}</output> : null}
       {attemptPresent ? <p className="sm:col-span-2 text-xs text-muted-foreground">A prior parcel action may have succeeded. Retry only identical details, or check the parcel before starting a new attempt.</p> : null}
-      {attemptPresent ? <button type="button" disabled={busy} className="rounded border p-2 text-sm"
+      {attemptPresent ? <button type="button" disabled={busy} className="min-h-11 rounded border p-2 text-sm"
         onClick={() => { if (window.confirm('A parcel action may already have succeeded. Check the parcel first. Start a new request reference?')) {
           clearSessionAttempt(attemptKey); setAttemptRevision((revision) => revision + 1); fingerprint.current = null; setLocalError('');
           if (catalog.status === 'stale') catalog.refresh();
@@ -424,7 +431,7 @@ function ParcelForm({
       {localError ? <p role="alert" className="sm:col-span-2 text-sm text-destructive">{localError}</p> : null}
       <button
         disabled={busy || !catalog.canSubmit}
-        className="rounded-lg bg-primary p-3 text-primary-foreground"
+        className="min-h-11 rounded-lg bg-primary p-3 text-primary-foreground"
       >
         Save parcel action
       </button>

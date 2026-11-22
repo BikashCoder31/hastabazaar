@@ -15,9 +15,9 @@ export default async function WishlistPage() {
   return (
     <div>
       <AccountHeading
-        eyebrow="Worth coming back for"
-        title="Your favourite finds."
-        description="Keep a little inspiration close. Saving an item doesn’t reserve its stock or price."
+        eyebrow="Your account"
+        title="Saved items"
+        description="Find the items you saved. Prices and availability may change."
       />
       {items.length ? (
         <>

@@ -1,7 +1,415 @@
 {
+  "requiredExactChecks": {
+    "marketplace_fee_waiver_control.revision": "revision BETWEEN 0 AND 9007199254740991",
+    "marketplace_fee_waiver_campaigns.revision": "revision BETWEEN 1 AND 9007199254740991",
+    "marketplace_fee_waiver_campaigns.created_at": "created_at BETWEEN 0 AND 9007199254740991",
+    "marketplace_fee_waiver_campaigns.updated_at": "updated_at BETWEEN 0 AND 9007199254740991",
+    "marketplace_fee_waiver_revisions.revision": "revision BETWEEN 1 AND 9007199254740991",
+    "marketplace_fee_waiver_revisions.starts_at": "starts_at BETWEEN 0 AND 9007199254740991",
+    "marketplace_fee_waiver_revisions.ends_at": "ends_at BETWEEN 1 AND 9007199254740991 AND ends_at > starts_at",
+    "marketplace_fee_waiver_revisions.created_at": "created_at BETWEEN 0 AND 9007199254740991",
+    "marketplace_fee_waiver_requests.created_at": "created_at BETWEEN 0 AND 9007199254740991",
+    "order_item_marketplace_fees.base_paisa": "base_paisa BETWEEN 0 AND 9007199254740991",
+    "order_item_marketplace_fees.standard_paisa": "standard_paisa BETWEEN 0 AND 9007199254740991",
+    "order_item_marketplace_fees.waived_paisa": "waived_paisa BETWEEN 0 AND 9007199254740991",
+    "order_item_marketplace_fees.net_paisa": "net_paisa BETWEEN 0 AND 9007199254740991",
+    "order_item_marketplace_fees.created_at": "created_at BETWEEN 0 AND 9007199254740991",
+    "marketplace_fee_waiver_control.id": "id = 'default'",
+    "marketplace_fee_waiver_revisions.state": "state IN ('draft','published','paused','ended')",
+    "marketplace_fee_waiver_revisions.name": "CHAR_LENGTH(TRIM(name)) BETWEEN 1 AND 100",
+    "marketplace_fee_waiver_revisions.description": "CHAR_LENGTH(description) <= 1000",
+    "marketplace_fee_waiver_requests.request_id": "CHAR_LENGTH(request_id) BETWEEN 1 AND 191",
+    "marketplace_fee_waiver_requests.command_json": "JSON_VALID(command_json) AND JSON_TYPE(command_json) = 'OBJECT'",
+    "marketplace_fee_waiver_requests.response_json": "JSON_VALID(response_json) AND JSON_TYPE(response_json) = 'OBJECT'",
+    "order_item_marketplace_fees.standard_bps": "standard_bps BETWEEN 0 AND 10000",
+    "order_item_marketplace_fees.marketplace_fee_reconciled": "standard_paisa - waived_paisa = net_paisa",
+    "order_item_marketplace_fees.marketplace_fee_full_waiver": "campaign_id IS NULL AND campaign_revision IS NULL AND waived_paisa = 0 OR campaign_id IS NOT NULL AND campaign_revision IS NOT NULL AND waived_paisa = standard_paisa AND net_paisa = 0",
+    "customer_fee_waiver_control.revision": "revision BETWEEN 0 AND 9007199254740991",
+    "customer_fee_waiver_campaigns.revision": "revision BETWEEN 1 AND 9007199254740991",
+    "customer_fee_waiver_campaigns.created_at": "created_at BETWEEN 0 AND 9007199254740991",
+    "customer_fee_waiver_campaigns.updated_at": "updated_at BETWEEN 0 AND 9007199254740991",
+    "customer_fee_waiver_revisions.revision": "revision BETWEEN 1 AND 9007199254740991",
+    "customer_fee_waiver_revisions.starts_at": "starts_at BETWEEN 0 AND 9007199254740991",
+    "customer_fee_waiver_revisions.ends_at": "ends_at BETWEEN 1 AND 9007199254740991 AND ends_at > starts_at",
+    "customer_fee_waiver_revisions.created_at": "created_at BETWEEN 0 AND 9007199254740991",
+    "customer_fee_waiver_requests.created_at": "created_at BETWEEN 0 AND 9007199254740991",
+    "order_customer_service_fees.standard_paisa": "standard_paisa BETWEEN 0 AND 9007199254740991",
+    "order_customer_service_fees.waived_paisa": "waived_paisa BETWEEN 0 AND 9007199254740991",
+    "order_customer_service_fees.net_paisa": "net_paisa BETWEEN 0 AND 9007199254740991",
+    "order_customer_service_fees.created_at": "created_at BETWEEN 0 AND 9007199254740991",
+    "customer_fee_waiver_control.id": "id = 'default'",
+    "customer_fee_waiver_revisions.state": "state IN ('draft','published','paused','ended')",
+    "customer_fee_waiver_revisions.name": "CHAR_LENGTH(TRIM(name)) BETWEEN 1 AND 100",
+    "customer_fee_waiver_revisions.description": "CHAR_LENGTH(description) <= 1000",
+    "customer_fee_waiver_requests.request_id": "CHAR_LENGTH(request_id) BETWEEN 1 AND 191",
+    "customer_fee_waiver_requests.command_json": "JSON_VALID(command_json) AND JSON_TYPE(command_json) = 'OBJECT'",
+    "customer_fee_waiver_requests.response_json": "JSON_VALID(response_json) AND JSON_TYPE(response_json) = 'OBJECT'",
+    "order_customer_service_fees.policy_enabled": "policy_enabled IN (0,1)",
+    "order_customer_service_fees.policy_amount_paisa": "policy_amount_paisa BETWEEN 0 AND 100000",
+    "order_customer_service_fees.campaign_revision": "campaign_revision IS NULL OR campaign_revision BETWEEN 1 AND 9007199254740991",
+    "order_customer_service_fees.customer_fee_policy_standard": "policy_enabled = 1 AND standard_paisa = policy_amount_paisa OR policy_enabled = 0 AND standard_paisa = 0",
+    "order_customer_service_fees.customer_fee_reconciled": "standard_paisa - waived_paisa = net_paisa",
+    "order_customer_service_fees.customer_fee_full_waiver": "campaign_id IS NULL AND campaign_revision IS NULL AND waived_paisa = 0 OR campaign_id IS NOT NULL AND campaign_revision IS NOT NULL AND standard_paisa > 0 AND waived_paisa = standard_paisa AND net_paisa = 0",
+    "commission_continuity_operations.continuity_operation_rate": "basis_points = 900",
+    "commission_continuity_operations.continuity_operation_interval": "ends_at = 1794334500000 AND started_at < ends_at",
+    "commission_continuity_operations.continuity_operation_recorded": "recorded_at = started_at",
+    "commission_continuity_settings.continuity_setting_key": "setting_key IN ('independent_seller_commission_bps','managed_sale_linked_platform_retention_bps')"
+  },
+  "requiredForeignKeys": {
+    "marketplace_fee_waiver_revisions.fee_revision_campaign_fk": {
+      "columns": [
+        "campaign_id"
+      ],
+      "referencedTable": "marketplace_fee_waiver_campaigns",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "marketplace_fee_waiver_revisions.fee_revision_actor_fk": {
+      "columns": [
+        "created_by"
+      ],
+      "referencedTable": "users",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "marketplace_fee_waiver_requests.fee_request_actor_fk": {
+      "columns": [
+        "actor_id"
+      ],
+      "referencedTable": "users",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "order_item_marketplace_fees.fee_evidence_item_fk": {
+      "columns": [
+        "order_item_id"
+      ],
+      "referencedTable": "order_items",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "order_item_marketplace_fees.fee_evidence_revision_fk": {
+      "columns": [
+        "campaign_id",
+        "campaign_revision"
+      ],
+      "referencedTable": "marketplace_fee_waiver_revisions",
+      "referencedColumns": [
+        "campaign_id",
+        "revision"
+      ]
+    },
+    "customer_fee_waiver_revisions.customer_fee_revision_campaign_fk": {
+      "columns": [
+        "campaign_id"
+      ],
+      "referencedTable": "customer_fee_waiver_campaigns",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "customer_fee_waiver_revisions.customer_fee_revision_actor_fk": {
+      "columns": [
+        "created_by"
+      ],
+      "referencedTable": "users",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "customer_fee_waiver_requests.customer_fee_request_actor_fk": {
+      "columns": [
+        "actor_id"
+      ],
+      "referencedTable": "users",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "order_customer_service_fees.customer_fee_evidence_order_fk": {
+      "columns": [
+        "order_id"
+      ],
+      "referencedTable": "orders",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "order_customer_service_fees.customer_fee_evidence_revision_fk": {
+      "columns": [
+        "campaign_id",
+        "campaign_revision"
+      ],
+      "referencedTable": "customer_fee_waiver_revisions",
+      "referencedColumns": [
+        "campaign_id",
+        "revision"
+      ]
+    },
+    "commission_continuity_operations.continuity_operation_actor_fk": {
+      "columns": [
+        "actor_id"
+      ],
+      "referencedTable": "users",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "commission_continuity_settings.continuity_setting_operation_fk": {
+      "columns": [
+        "operation_id"
+      ],
+      "referencedTable": "commission_continuity_operations",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "commission_continuity_settings.continuity_setting_current_fk": {
+      "columns": [
+        "setting_id"
+      ],
+      "referencedTable": "business_setting_versions",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "commission_continuity_settings.continuity_setting_successor_fk": {
+      "columns": [
+        "successor_id"
+      ],
+      "referencedTable": "business_setting_versions",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "commission_continuity_sellers.continuity_seller_operation_fk": {
+      "columns": [
+        "operation_id"
+      ],
+      "referencedTable": "commission_continuity_operations",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "commission_continuity_sellers.continuity_seller_setting_fk": {
+      "columns": [
+        "setting_id"
+      ],
+      "referencedTable": "commission_continuity_settings",
+      "referencedColumns": [
+        "setting_id"
+      ]
+    },
+    "commission_continuity_sellers.continuity_seller_profile_fk": {
+      "columns": [
+        "seller_id"
+      ],
+      "referencedTable": "seller_profiles",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "commission_continuity_sellers.continuity_seller_owner_fk": {
+      "columns": [
+        "owner_id"
+      ],
+      "referencedTable": "users",
+      "referencedColumns": [
+        "id"
+      ]
+    },
+    "commission_continuity_sellers.continuity_seller_audit_fk": {
+      "columns": [
+        "audit_id"
+      ],
+      "referencedTable": "audit_logs",
+      "referencedColumns": [
+        "id"
+      ]
+    }
+  },
+  "requiredTriggerShapes": {
+    "marketplace_fee_waiver_revisions_no_update": {
+      "table": "marketplace_fee_waiver_revisions",
+      "event": "UPDATE",
+      "timing": "BEFORE"
+    },
+    "marketplace_fee_waiver_revisions_no_delete": {
+      "table": "marketplace_fee_waiver_revisions",
+      "event": "DELETE",
+      "timing": "BEFORE"
+    },
+    "marketplace_fee_waiver_requests_no_update": {
+      "table": "marketplace_fee_waiver_requests",
+      "event": "UPDATE",
+      "timing": "BEFORE"
+    },
+    "marketplace_fee_waiver_requests_no_delete": {
+      "table": "marketplace_fee_waiver_requests",
+      "event": "DELETE",
+      "timing": "BEFORE"
+    },
+    "marketplace_fee_waiver_campaigns_no_delete": {
+      "table": "marketplace_fee_waiver_campaigns",
+      "event": "DELETE",
+      "timing": "BEFORE"
+    },
+    "order_item_marketplace_fees_no_update": {
+      "table": "order_item_marketplace_fees",
+      "event": "UPDATE",
+      "timing": "BEFORE"
+    },
+    "order_item_marketplace_fees_no_delete": {
+      "table": "order_item_marketplace_fees",
+      "event": "DELETE",
+      "timing": "BEFORE"
+    },
+    "customer_fee_waiver_revisions_no_replace": {
+      "table": "customer_fee_waiver_revisions",
+      "event": "INSERT",
+      "timing": "BEFORE"
+    },
+    "customer_fee_waiver_requests_no_replace": {
+      "table": "customer_fee_waiver_requests",
+      "event": "INSERT",
+      "timing": "BEFORE"
+    },
+    "order_customer_service_fees_no_replace": {
+      "table": "order_customer_service_fees",
+      "event": "INSERT",
+      "timing": "BEFORE"
+    },
+    "customer_fee_waiver_revisions_no_update": {
+      "table": "customer_fee_waiver_revisions",
+      "event": "UPDATE",
+      "timing": "BEFORE"
+    },
+    "customer_fee_waiver_revisions_no_delete": {
+      "table": "customer_fee_waiver_revisions",
+      "event": "DELETE",
+      "timing": "BEFORE"
+    },
+    "customer_fee_waiver_requests_no_update": {
+      "table": "customer_fee_waiver_requests",
+      "event": "UPDATE",
+      "timing": "BEFORE"
+    },
+    "customer_fee_waiver_requests_no_delete": {
+      "table": "customer_fee_waiver_requests",
+      "event": "DELETE",
+      "timing": "BEFORE"
+    },
+    "customer_fee_waiver_campaigns_no_delete": {
+      "table": "customer_fee_waiver_campaigns",
+      "event": "DELETE",
+      "timing": "BEFORE"
+    },
+    "order_customer_service_fees_no_update": {
+      "table": "order_customer_service_fees",
+      "event": "UPDATE",
+      "timing": "BEFORE"
+    },
+    "order_customer_service_fees_no_delete": {
+      "table": "order_customer_service_fees",
+      "event": "DELETE",
+      "timing": "BEFORE"
+    },
+    "order_customer_service_fees_match_order": {
+      "table": "order_customer_service_fees",
+      "event": "INSERT",
+      "timing": "BEFORE"
+    },
+    "orders_preserve_customer_service_fee": {
+      "table": "orders",
+      "event": "UPDATE",
+      "timing": "BEFORE"
+    }
+  },
+  "requiredExactTriggerDefinitions": {
+    "customer_fee_waiver_revisions_no_replace": "BEGIN IF EXISTS(SELECT 1 FROM customer_fee_waiver_revisions WHERE (campaign_id=NEW.campaign_id AND revision=NEW.revision) OR request_id=NEW.request_id) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_waiver_revision_immutable'; END IF; END",
+    "customer_fee_waiver_requests_no_replace": "BEGIN IF EXISTS(SELECT 1 FROM customer_fee_waiver_requests WHERE request_id=NEW.request_id) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_waiver_request_immutable'; END IF; END",
+    "order_customer_service_fees_no_replace": "BEGIN IF EXISTS(SELECT 1 FROM order_customer_service_fees WHERE order_id=NEW.order_id) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_snapshot_immutable'; END IF; END",
+    "customer_fee_waiver_revisions_no_update": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_waiver_revision_immutable'",
+    "customer_fee_waiver_revisions_no_delete": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_waiver_revision_immutable'",
+    "customer_fee_waiver_requests_no_update": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_waiver_request_immutable'",
+    "customer_fee_waiver_requests_no_delete": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_waiver_request_immutable'",
+    "customer_fee_waiver_campaigns_no_delete": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_waiver_campaign_retained'",
+    "order_customer_service_fees_no_update": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_snapshot_immutable'",
+    "order_customer_service_fees_no_delete": "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_snapshot_immutable'",
+    "order_customer_service_fees_match_order": "BEGIN IF NOT EXISTS(SELECT 1 FROM orders WHERE id=NEW.order_id AND buyer_platform_fee_paisa=NEW.net_paisa) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_order_mismatch'; END IF; END",
+    "orders_preserve_customer_service_fee": "BEGIN IF EXISTS(SELECT 1 FROM order_customer_service_fees WHERE order_id=OLD.id AND (NEW.id<>OLD.id OR net_paisa<>NEW.buyer_platform_fee_paisa)) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='customer_fee_order_mismatch'; END IF; END"
+  },
   "requiredUniqueIndexes": {
+    "commission_continuity_operations.PRIMARY": [
+      "id"
+    ],
+    "commission_continuity_settings.PRIMARY": [
+      "setting_id"
+    ],
+    "commission_continuity_settings.continuity_setting_successor": [
+      "successor_id"
+    ],
+    "commission_continuity_settings.continuity_operation_key": [
+      "operation_id",
+      "setting_key"
+    ],
+    "commission_continuity_sellers.PRIMARY": [
+      "id"
+    ],
+    "commission_continuity_sellers.continuity_seller_identity": [
+      "seller_id"
+    ],
+    "commission_continuity_sellers.continuity_seller_audit": [
+      "audit_id"
+    ],
+    "commission_continuity_sellers.continuity_operation_seller": [
+      "operation_id",
+      "seller_id"
+    ],
+    "customer_fee_waiver_control.PRIMARY": [
+      "id"
+    ],
+    "customer_fee_waiver_campaigns.PRIMARY": [
+      "id"
+    ],
+    "customer_fee_waiver_revisions.PRIMARY": [
+      "campaign_id",
+      "revision"
+    ],
+    "customer_fee_waiver_revisions.request_id": [
+      "request_id"
+    ],
+    "customer_fee_waiver_requests.PRIMARY": [
+      "request_id"
+    ],
+    "order_customer_service_fees.PRIMARY": [
+      "order_id"
+    ],
     "managed_payout_allocations.managed_allocation_one_reservation": [
       "reserved_entitlement_key"
+    ],
+    "marketplace_fee_waiver_control.PRIMARY": [
+      "id"
+    ],
+    "marketplace_fee_waiver_campaigns.PRIMARY": [
+      "id"
+    ],
+    "marketplace_fee_waiver_revisions.PRIMARY": [
+      "campaign_id",
+      "revision"
+    ],
+    "marketplace_fee_waiver_revisions.request_id": [
+      "request_id"
+    ],
+    "marketplace_fee_waiver_requests.PRIMARY": [
+      "request_id"
+    ],
+    "order_item_marketplace_fees.PRIMARY": [
+      "order_item_id"
     ]
   },
   "requiredGeneratedColumns": {
@@ -10,7 +418,36 @@
     ]
   },
   "requiredColumnCollations": {
-    "managed_payout_allocations.reserved_entitlement_key": "utf8mb4_unicode_ci"
+    "commission_continuity_operations.request_json": "utf8mb4_bin",
+    "commission_continuity_operations.source_release": "utf8mb4_bin",
+    "commission_continuity_operations.source_commit": "utf8mb4_bin",
+    "commission_continuity_operations.capture_sha256": "utf8mb4_bin",
+    "commission_continuity_operations.selection_sha256": "utf8mb4_bin",
+    "commission_continuity_settings.setting_key": "utf8mb4_bin",
+    "commission_continuity_settings.current_json": "utf8mb4_bin",
+    "commission_continuity_settings.successor_json": "utf8mb4_bin",
+    "commission_continuity_sellers.agreement_version": "utf8mb4_bin",
+    "commission_continuity_sellers.audit_json": "utf8mb4_bin",
+    "customer_fee_waiver_campaigns.id": "utf8mb4_bin",
+    "customer_fee_waiver_revisions.campaign_id": "utf8mb4_bin",
+    "customer_fee_waiver_revisions.request_id": "utf8mb4_bin",
+    "customer_fee_waiver_requests.request_id": "utf8mb4_bin",
+    "order_customer_service_fees.campaign_id": "utf8mb4_bin",
+    "customer_fee_waiver_revisions.created_by": "utf8mb4_unicode_ci",
+    "customer_fee_waiver_requests.actor_id": "utf8mb4_unicode_ci",
+    "order_customer_service_fees.order_id": "utf8mb4_unicode_ci",
+    "orders.id": "utf8mb4_unicode_ci",
+    "managed_payout_allocations.reserved_entitlement_key": "utf8mb4_unicode_ci",
+    "marketplace_fee_waiver_campaigns.id": "utf8mb4_bin",
+    "marketplace_fee_waiver_revisions.campaign_id": "utf8mb4_bin",
+    "marketplace_fee_waiver_revisions.request_id": "utf8mb4_bin",
+    "marketplace_fee_waiver_requests.request_id": "utf8mb4_bin",
+    "order_item_marketplace_fees.campaign_id": "utf8mb4_bin",
+    "marketplace_fee_waiver_revisions.created_by": "utf8mb4_unicode_ci",
+    "marketplace_fee_waiver_requests.actor_id": "utf8mb4_unicode_ci",
+    "order_item_marketplace_fees.order_item_id": "utf8mb4_unicode_ci",
+    "users.id": "utf8mb4_unicode_ci",
+    "order_items.id": "utf8mb4_unicode_ci"
   },
   "requiredChecks": {
     "managed_payout_allocations.amount_paisa": [
@@ -98,6 +535,215 @@
       "between",
       "-9007199254740991",
       "9007199254740991"
+    ],
+    "marketplace_fee_waiver_control.revision": [
+      "revision",
+      "between",
+      "9007199254740991"
+    ],
+    "marketplace_fee_waiver_campaigns.revision": [
+      "revision",
+      "between",
+      "9007199254740991"
+    ],
+    "marketplace_fee_waiver_campaigns.created_at": [
+      "created_at",
+      "between",
+      "9007199254740991"
+    ],
+    "marketplace_fee_waiver_campaigns.updated_at": [
+      "updated_at",
+      "between",
+      "9007199254740991"
+    ],
+    "marketplace_fee_waiver_revisions.revision": [
+      "revision",
+      "between",
+      "9007199254740991"
+    ],
+    "marketplace_fee_waiver_revisions.starts_at": [
+      "starts_at",
+      "between",
+      "9007199254740991"
+    ],
+    "marketplace_fee_waiver_revisions.ends_at": [
+      "ends_at",
+      "between",
+      "9007199254740991",
+      "starts_at",
+      ">"
+    ],
+    "marketplace_fee_waiver_revisions.created_at": [
+      "created_at",
+      "between",
+      "9007199254740991"
+    ],
+    "marketplace_fee_waiver_requests.created_at": [
+      "created_at",
+      "between",
+      "9007199254740991"
+    ],
+    "order_item_marketplace_fees.base_paisa": [
+      "base_paisa",
+      "between",
+      "9007199254740991"
+    ],
+    "order_item_marketplace_fees.standard_paisa": [
+      "standard_paisa",
+      "between",
+      "9007199254740991"
+    ],
+    "order_item_marketplace_fees.waived_paisa": [
+      "waived_paisa",
+      "between",
+      "9007199254740991"
+    ],
+    "order_item_marketplace_fees.net_paisa": [
+      "net_paisa",
+      "between",
+      "9007199254740991"
+    ],
+    "order_item_marketplace_fees.created_at": [
+      "created_at",
+      "between",
+      "9007199254740991"
+    ],
+    "marketplace_fee_waiver_control.id": [
+      "id",
+      "default"
+    ],
+    "marketplace_fee_waiver_revisions.state": [
+      "state",
+      "draft",
+      "published",
+      "paused",
+      "ended"
+    ],
+    "marketplace_fee_waiver_revisions.name": [
+      "name",
+      "char_length",
+      "trim",
+      "100"
+    ],
+    "marketplace_fee_waiver_revisions.description": [
+      "description",
+      "char_length",
+      "1000"
+    ],
+    "marketplace_fee_waiver_requests.request_id": [
+      "request_id",
+      "char_length",
+      "191"
+    ],
+    "marketplace_fee_waiver_requests.command_json": [
+      "json_valid",
+      "json_type",
+      "command_json",
+      "object"
+    ],
+    "marketplace_fee_waiver_requests.response_json": [
+      "json_valid",
+      "json_type",
+      "response_json",
+      "object"
+    ],
+    "order_item_marketplace_fees.standard_bps": [
+      "standard_bps",
+      "between",
+      "10000"
+    ],
+    "order_item_marketplace_fees.marketplace_fee_reconciled": [
+      "standard_paisa",
+      "waived_paisa",
+      "net_paisa",
+      "-"
+    ],
+    "order_item_marketplace_fees.marketplace_fee_full_waiver": [
+      "campaign_id",
+      "campaign_revision",
+      "is null",
+      "is not null",
+      "waived_paisa",
+      "standard_paisa",
+      "net_paisa"
+    ],
+    "customer_fee_waiver_control.revision": [
+      "revision between 0 and 9007199254740991"
+    ],
+    "customer_fee_waiver_campaigns.revision": [
+      "revision between 1 and 9007199254740991"
+    ],
+    "customer_fee_waiver_campaigns.created_at": [
+      "created_at between 0 and 9007199254740991"
+    ],
+    "customer_fee_waiver_campaigns.updated_at": [
+      "updated_at between 0 and 9007199254740991"
+    ],
+    "customer_fee_waiver_revisions.revision": [
+      "revision between 1 and 9007199254740991"
+    ],
+    "customer_fee_waiver_revisions.starts_at": [
+      "starts_at between 0 and 9007199254740991"
+    ],
+    "customer_fee_waiver_revisions.ends_at": [
+      "ends_at between 1 and 9007199254740991 and ends_at > starts_at"
+    ],
+    "customer_fee_waiver_revisions.created_at": [
+      "created_at between 0 and 9007199254740991"
+    ],
+    "customer_fee_waiver_requests.created_at": [
+      "created_at between 0 and 9007199254740991"
+    ],
+    "order_customer_service_fees.standard_paisa": [
+      "standard_paisa between 0 and 9007199254740991"
+    ],
+    "order_customer_service_fees.waived_paisa": [
+      "waived_paisa between 0 and 9007199254740991"
+    ],
+    "order_customer_service_fees.net_paisa": [
+      "net_paisa between 0 and 9007199254740991"
+    ],
+    "order_customer_service_fees.created_at": [
+      "created_at between 0 and 9007199254740991"
+    ],
+    "customer_fee_waiver_control.id": [
+      "id = 'default'"
+    ],
+    "customer_fee_waiver_revisions.state": [
+      "state in ('draft','published','paused','ended')"
+    ],
+    "customer_fee_waiver_revisions.name": [
+      "char_length(trim(name)) between 1 and 100"
+    ],
+    "customer_fee_waiver_revisions.description": [
+      "char_length(description) <= 1000"
+    ],
+    "customer_fee_waiver_requests.request_id": [
+      "char_length(request_id) between 1 and 191"
+    ],
+    "customer_fee_waiver_requests.command_json": [
+      "json_valid(command_json) and json_type(command_json) = 'object'"
+    ],
+    "customer_fee_waiver_requests.response_json": [
+      "json_valid(response_json) and json_type(response_json) = 'object'"
+    ],
+    "order_customer_service_fees.policy_enabled": [
+      "policy_enabled in (0,1)"
+    ],
+    "order_customer_service_fees.policy_amount_paisa": [
+      "policy_amount_paisa between 0 and 100000"
+    ],
+    "order_customer_service_fees.campaign_revision": [
+      "campaign_revision is null or campaign_revision between 1 and 9007199254740991"
+    ],
+    "order_customer_service_fees.customer_fee_policy_standard": [
+      "policy_enabled = 1 and standard_paisa = policy_amount_paisa or policy_enabled = 0 and standard_paisa = 0"
+    ],
+    "order_customer_service_fees.customer_fee_reconciled": [
+      "standard_paisa - waived_paisa = net_paisa"
+    ],
+    "order_customer_service_fees.customer_fee_full_waiver": [
+      "campaign_id is null and campaign_revision is null and waived_paisa = 0 or campaign_id is not null and campaign_revision is not null and standard_paisa > 0 and waived_paisa = standard_paisa and net_paisa = 0"
     ]
   },
   "release": "local-unversioned-candidate",
@@ -107,7 +753,7 @@
   "migrations": [
     {
       "path": "deployment/babal/mariadb-schema.sql",
-      "sha256": "d8ab2f9938ae5b4a554981870b257a2510f79cade60bfb22d5e02dfe4f0a0ab1",
+      "sha256": "439ac47ed3cbd6ce9cf9860c4a08d67af034c86072a5b7cd70b86325f8434b70",
       "usage": "empty-database-only"
     },
     {
@@ -369,6 +1015,387 @@
       "path": "deployment/babal/mariadb-loyalty-scheduled-changes.sql",
       "sha256": "f415cd9ea6ca1c46ea2fcb0d35a1fc305142a39f0529f53b09c4e53e3b6a4515",
       "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-marketplace-fee-waivers.sql",
+      "sha256": "c9399f9a217f29913d62da0fed502735dffb55083ed29f34c208fe6536bdb9b9",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-customer-service-fee-waivers.sql",
+      "sha256": "a0959007fe16cd1d3691ecc78fd1a5f552512e273929609f98f7d0c9773dfb16",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-commission-continuity.sql",
+      "sha256": "8ba92036e85f3d6a02f7d830880a4ab4a5804c222138ea7016ad849b4dcd445c",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-seller-application-drafts.sql",
+      "sha256": "9ac63b8fc504e0048a7b7a8bf9b07ff8deb88afc743384000c6721fe285f204a",
+      "usage": "additive-maintenance"
+    },
+    {
+      "path": "deployment/babal/mariadb-seller-registration-intakes.sql",
+      "sha256": "9b4f30426115aed223f2f989614eb75346aef1655167d4e0d61053721445c2be",
+      "usage": "additive-maintenance"
+    }
+  ],
+  "ownerAppliedMigrations": [
+    {
+      "path": "deployment/babal/mariadb-customer-cod-confirmation.sql",
+      "sha256": "9152b8784462e6123765f472d192adc71134bad457e21a10394633fe3071bdfa",
+      "usage": "owner-applied",
+      "d1": {
+        "path": "drizzle/0164_customer_cod_confirmation.sql",
+        "sha256": "84b5c2fb33325eda23696b198d3d34c65f59f88ae5651fcaa8a5bbf9fe8ea87d"
+      },
+      "requiresWriterPause": true,
+      "requiredTables": {
+        "first_cod_reviews": [
+          "hold_source"
+        ],
+        "users": [
+          "cod_confirmation_required"
+        ]
+      },
+      "requiredChecks": {
+        "first_cod_reviews.chk_first_cod_hold_source": "HEX(hold_source) IN (HEX('first_order'), HEX('customer_flag'))",
+        "first_cod_reviews.chk_first_cod_hold_total": "total_paisa BETWEEN 0 AND 9007199254740991 AND (hold_source='customer_flag' OR total_paisa>=500000)"
+      },
+      "requiredTriggerShapes": {
+        "first_cod_review_immutable": {
+          "timing": "BEFORE",
+          "event": "UPDATE",
+          "table": "first_cod_reviews"
+        }
+      },
+      "requiredExactTriggerDefinitions": {
+        "first_cod_review_immutable": "BEGIN\n  IF OLD.status='confirmed' OR NEW.order_id<>OLD.order_id OR NEW.customer_id<>OLD.customer_id\n    OR NEW.total_paisa<>OLD.total_paisa OR NEW.created_at<>OLD.created_at OR NEW.hold_source<>OLD.hold_source\n  THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='COD confirmation evidence is immutable'; END IF;\nEND"
+      }
+    },
+    {
+      "path": "deployment/babal/mariadb-delivery-failure-reasons.sql",
+      "sha256": "a82f4029fec81570628c646c352ec9be5df16f0d109738aa382ebc07f5069d21",
+      "usage": "owner-applied",
+      "d1": {
+        "path": "drizzle/0165_delivery_failure_reasons.sql",
+        "sha256": "e45cc2fe6f923b55e29b2d820b9b754cd172160d1ba069774a8855d99930de90"
+      },
+      "requiresWriterPause": false,
+      "requiredTables": {
+        "shipping_jobs": [
+          "delivery_failure_reason"
+        ]
+      },
+      "requiredChecks": {
+        "shipping_jobs.chk_shipping_job_delivery_failure_reason": "delivery_failure_reason IN ('refused', 'not_reached', 'wrong_address', 'courier_problem', 'other')"
+      },
+      "requiredTriggerShapes": {},
+      "requiredExactTriggerDefinitions": {}
+    },
+    {
+      "path": "deployment/babal/mariadb-seller-staff-notes.sql",
+      "sha256": "58d7f9ec8323c674e3f7491379d043584bc46d817479058de95fac988d24f137",
+      "usage": "owner-applied",
+      "d1": {
+        "path": "drizzle/0166_seller_staff_notes.sql",
+        "sha256": "430f3cf76106101008138365fa7857fffd98856c4853117876187841919c8207"
+      },
+      "requiresWriterPause": false,
+      "requiredTables": {
+        "seller_staff_notes": [
+          "id",
+          "seller_id",
+          "author_user_id",
+          "body",
+          "created_at",
+          "pinned"
+        ]
+      },
+      "requiredChecks": {},
+      "requiredTriggerShapes": {},
+      "requiredExactTriggerDefinitions": {}
+    },
+    {
+      "path": "deployment/babal/mariadb-cancellation-cause.sql",
+      "sha256": "f52bfc837f2c0c77901e133117fdf42c6f669ffcf463d3c3e0ff9624d0b8f2af",
+      "usage": "owner-applied",
+      "d1": {
+        "path": "drizzle/0167_cancellation_cause.sql",
+        "sha256": "e42bf00c75b022ad9d02b1698268187e331d2f64cffb16c145fcb2855215171f"
+      },
+      "requiresWriterPause": false,
+      "requiredTables": {
+        "order_cancellation_events": [
+          "cause"
+        ],
+        "order_cancellation_reviews": [
+          "cause"
+        ]
+      },
+      "requiredChecks": {
+        "order_cancellation_events.chk_cancellation_event_cause": "cause IN ('seller', 'customer', 'courier', 'hastabazaar', 'payment')",
+        "order_cancellation_reviews.chk_cancellation_review_cause": "cause IN ('seller', 'customer', 'courier', 'hastabazaar', 'payment')"
+      },
+      "requiredTriggerShapes": {},
+      "requiredExactTriggerDefinitions": {}
+    },
+    {
+      "path": "deployment/babal/mariadb-packed-parcel-weight.sql",
+      "sha256": "349cf9c17da9ba38eafe6d1e42ef4831dc7690484f72165110be9c4ea4d9ad5c",
+      "usage": "owner-applied",
+      "d1": {
+        "path": "drizzle/0168_packed_parcel_weight.sql",
+        "sha256": "24c1f125738571513acace2f9421ba82893affda2701543f363aff229d89359e"
+      },
+      "requiresWriterPause": false,
+      "requiredTables": {
+        "seller_parcel_weights": [
+          "order_id",
+          "seller_id",
+          "weight_grams",
+          "item_count",
+          "recorded_by",
+          "request_id",
+          "recorded_at"
+        ],
+        "products": [
+          "packed_weight_grams"
+        ]
+      },
+      "requiredChecks": {
+        "products.products_packed_weight_grams_range": "packed_weight_grams IS NULL OR packed_weight_grams BETWEEN 50 AND 30000"
+      },
+      "requiredTriggerShapes": {},
+      "requiredExactTriggerDefinitions": {}
+    },
+    {
+      "path": "deployment/babal/mariadb-occasion-discovery.sql",
+      "sha256": "3ce15ba24f3fd9740fa5fbb08de2280c7e3698c1bcecac25b4eef185270db0f2",
+      "usage": "owner-applied",
+      "d1": {
+        "path": "drizzle/0169_occasion_discovery.sql",
+        "sha256": "fbf822f1edff39a93413fd74b30dc53bc868c3fa5efba98d766e97f38c0fb9b6"
+      },
+      "requiresWriterPause": false,
+      "requiredTables": {
+        "occasion_discovery": [
+          "occasion_id",
+          "group_name",
+          "group_sort_order",
+          "season_starts_at",
+          "season_ends_at"
+        ]
+      },
+      "requiredChecks": {
+        "occasion_discovery.occasion_discovery_window": "(season_starts_at IS NULL AND season_ends_at IS NULL) OR\n    (season_starts_at IS NOT NULL AND season_ends_at IS NOT NULL AND season_starts_at>=0 AND season_ends_at>season_starts_at)"
+      },
+      "requiredTriggerShapes": {},
+      "requiredExactTriggerDefinitions": {}
+    },
+    {
+      "path": "deployment/babal/mariadb-occasion-images.sql",
+      "sha256": "45ee85704bbb5f43b883b5efe633d90147bdf212bb0b827b30c78491c184d80f",
+      "usage": "owner-applied",
+      "d1": {
+        "path": "drizzle/0170_occasion_images.sql",
+        "sha256": "38ec3d8481b93d386ef56934af8a23aacbc6f28c8df04554e9521c1468e971e8"
+      },
+      "requiresWriterPause": false,
+      "requiredTables": {
+        "occasion_media": [
+          "id",
+          "occasion_id",
+          "object_key",
+          "original_name",
+          "mime_type",
+          "size_bytes",
+          "width",
+          "height",
+          "content_hash",
+          "created_by",
+          "request_id",
+          "created_at"
+        ],
+        "occasion_image_assignments": [
+          "occasion_id",
+          "media_id",
+          "updated_by",
+          "updated_at"
+        ]
+      },
+      "requiredChecks": {
+        "occasion_media.occasion_media_size": "`size_bytes`>0 AND `size_bytes`<=5242880",
+        "occasion_media.occasion_media_dimensions": "`width`>0 AND `width`<=2400 AND `height`>0 AND `height`<=1600",
+        "occasion_media.occasion_media_mime": "`mime_type`='image/webp'",
+        "occasion_media.occasion_media_hash": "CHAR_LENGTH(`content_hash`)=64"
+      },
+      "requiredTriggerShapes": {},
+      "requiredExactTriggerDefinitions": {}
+    },
+    {
+      "path": "deployment/babal/mariadb-delivery-partners.sql",
+      "sha256": "abe01e232dfa66032036098223c4d8df102341074b4049eb419058d361f30e39",
+      "usage": "owner-applied",
+      "d1": {
+        "path": "drizzle/0171_delivery_partners.sql",
+        "sha256": "48b254a7c6cf0ed83be05526f361228aad1031d9456d98918a0c187da3472fe1"
+      },
+      "requiresWriterPause": false,
+      "requiredTables": {
+        "delivery_partners": [
+          "id",
+          "name",
+          "status",
+          "booking_mode",
+          "collects_cod",
+          "tracking_pattern",
+          "default_slot",
+          "revision",
+          "created_at",
+          "updated_at"
+        ],
+        "shipping_parcels": [
+          "delivery_partner_id"
+        ]
+      },
+      "requiredChecks": {
+        "delivery_partners.delivery_partner_name": "CHAR_LENGTH(TRIM(name)) BETWEEN 2 AND 120",
+        "delivery_partners.delivery_partner_status": "status IN ('in_use','setting_up','not_in_use')",
+        "delivery_partners.delivery_partner_mode": "booking_mode IN ('manual','api')",
+        "delivery_partners.delivery_partner_collects_cod": "collects_cod IN (0,1)",
+        "delivery_partners.delivery_partner_revision": "revision>=1",
+        "delivery_partners.delivery_partner_default": "default_slot IS NULL OR (default_slot=1 AND status='in_use' AND booking_mode='manual')"
+      },
+      "requiredTriggerShapes": {},
+      "requiredExactTriggerDefinitions": {}
+    },
+    {
+      "path": "deployment/babal/mariadb-ncm-api.sql",
+      "sha256": "164e20afaba8485b8eb47f48aeb33d7a7eb460adb5bf6768c8983acadb81fed3",
+      "usage": "owner-applied",
+      "d1": {
+        "path": "drizzle/0172_ncm_api.sql",
+        "sha256": "b49645b96c4c0c60f384b04cbb5e63888af338faf9e760534ddd8ac9165305dd"
+      },
+      "requiresWriterPause": false,
+      "requiredTables": {
+        "ncm_partner_settings": [
+          "partner_id",
+          "connection_fingerprint",
+          "assigned_branches_json",
+          "branches_json",
+          "branches_checked_at",
+          "refresh_started_at",
+          "connected_at",
+          "delivery_type",
+          "package_name",
+          "revision",
+          "updated_at",
+          "last_check_at",
+          "check_started_at"
+        ],
+        "ncm_pickup_branches": [
+          "pickup_address_id",
+          "partner_id",
+          "address_updated_at",
+          "branch",
+          "updated_at"
+        ],
+        "ncm_bookings": [
+          "job_id",
+          "partner_id",
+          "actor_id",
+          "vendor_reference",
+          "ncm_order_id",
+          "state",
+          "request_id",
+          "started_at",
+          "updated_at",
+          "response_json",
+          "label_json",
+          "cod_reported_paisa",
+          "delivery_charge_paisa",
+          "return_charge_paisa",
+          "last_status"
+        ],
+        "ncm_api_daily_usage": [
+          "usage_day",
+          "bucket",
+          "used"
+        ],
+        "ncm_webhook_events": [
+          "id",
+          "kind",
+          "event",
+          "payload_json",
+          "received_at",
+          "processed_at",
+          "attempts",
+          "next_attempt_at",
+          "claimed_at"
+        ],
+        "ncm_courier_notes": [
+          "ncm_order_id",
+          "comment_id",
+          "job_id",
+          "kind",
+          "comment",
+          "created_at"
+        ]
+      },
+      "requiredChecks": {
+        "ncm_partner_settings.ncm_settings_assigned_json": "JSON_VALID(assigned_branches_json) AND JSON_TYPE(assigned_branches_json)='ARRAY'",
+        "ncm_partner_settings.ncm_settings_branches_json": "JSON_VALID(branches_json) AND JSON_TYPE(branches_json)='ARRAY'",
+        "ncm_partner_settings.ncm_settings_type": "delivery_type IN ('Door2Door','Branch2Door','Branch2Branch','Door2Branch')",
+        "ncm_partner_settings.ncm_settings_revision": "revision>=1",
+        "ncm_bookings.ncm_booking_reference": "CHAR_LENGTH(vendor_reference) BETWEEN 1 AND 20",
+        "ncm_bookings.ncm_booking_state": "state IN ('booking','needs_review','rejected','booked')",
+        "ncm_bookings.ncm_booking_response_json": "response_json IS NULL OR JSON_VALID(response_json)",
+        "ncm_bookings.ncm_booking_label_json": "label_json IS NULL OR JSON_VALID(label_json)",
+        "ncm_api_daily_usage.ncm_usage_day": "usage_day REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'",
+        "ncm_api_daily_usage.ncm_usage_bucket": "bucket IN ('create','view')",
+        "ncm_api_daily_usage.ncm_usage_nonnegative": "used>=0",
+        "ncm_webhook_events.ncm_webhook_kind": "kind IN ('delivery','comments')",
+        "ncm_webhook_events.ncm_webhook_payload_json": "JSON_VALID(payload_json)",
+        "ncm_webhook_events.ncm_webhook_attempts": "attempts>=0",
+        "ncm_courier_notes.ncm_note_kind": "kind IN ('Info','Action')"
+      },
+      "requiredTriggerShapes": {},
+      "requiredExactTriggerDefinitions": {},
+      "requiredUniqueIndexes": {
+        "ncm_partner_settings.PRIMARY": [
+          "partner_id"
+        ],
+        "ncm_pickup_branches.PRIMARY": [
+          "pickup_address_id"
+        ],
+        "ncm_bookings.PRIMARY": [
+          "job_id"
+        ],
+        "ncm_bookings.idx_ncm_booking_reference": [
+          "vendor_reference"
+        ],
+        "ncm_bookings.idx_ncm_booking_order": [
+          "ncm_order_id"
+        ],
+        "ncm_bookings.idx_ncm_booking_request": [
+          "request_id"
+        ],
+        "ncm_api_daily_usage.PRIMARY": [
+          "usage_day",
+          "bucket"
+        ],
+        "ncm_webhook_events.PRIMARY": [
+          "id"
+        ],
+        "ncm_courier_notes.PRIMARY": [
+          "ncm_order_id",
+          "comment_id"
+        ]
+      }
     }
   ],
   "requiredTables": {
@@ -2022,6 +3049,121 @@
       "reserved_entitlement_key",
       "terminal_at"
     ],
+    "marketplace_fee_waiver_control": [
+      "id",
+      "revision"
+    ],
+    "marketplace_fee_waiver_campaigns": [
+      "created_at",
+      "id",
+      "revision",
+      "updated_at"
+    ],
+    "marketplace_fee_waiver_revisions": [
+      "campaign_id",
+      "created_at",
+      "created_by",
+      "description",
+      "ends_at",
+      "name",
+      "request_id",
+      "revision",
+      "starts_at",
+      "state"
+    ],
+    "marketplace_fee_waiver_requests": [
+      "actor_id",
+      "auth_subject",
+      "command_json",
+      "created_at",
+      "request_id",
+      "response_json"
+    ],
+    "order_item_marketplace_fees": [
+      "base_paisa",
+      "campaign_id",
+      "campaign_revision",
+      "created_at",
+      "net_paisa",
+      "order_item_id",
+      "standard_bps",
+      "standard_paisa",
+      "waived_paisa"
+    ],
+    "customer_fee_waiver_control": [
+      "id",
+      "revision"
+    ],
+    "customer_fee_waiver_campaigns": [
+      "created_at",
+      "id",
+      "revision",
+      "updated_at"
+    ],
+    "customer_fee_waiver_revisions": [
+      "campaign_id",
+      "created_at",
+      "created_by",
+      "description",
+      "ends_at",
+      "name",
+      "request_id",
+      "revision",
+      "starts_at",
+      "state"
+    ],
+    "customer_fee_waiver_requests": [
+      "actor_id",
+      "auth_subject",
+      "command_json",
+      "created_at",
+      "request_id",
+      "response_json"
+    ],
+    "order_customer_service_fees": [
+      "campaign_id",
+      "campaign_revision",
+      "created_at",
+      "net_paisa",
+      "order_id",
+      "policy_amount_paisa",
+      "policy_enabled",
+      "policy_version_id",
+      "standard_paisa",
+      "waived_paisa"
+    ],
+    "commission_continuity_operations": [
+      "actor_id",
+      "basis_points",
+      "capture_sha256",
+      "ends_at",
+      "id",
+      "recorded_at",
+      "request_json",
+      "selection_sha256",
+      "source_commit",
+      "source_release",
+      "started_at"
+    ],
+    "commission_continuity_settings": [
+      "current_json",
+      "operation_id",
+      "setting_id",
+      "setting_key",
+      "successor_id",
+      "successor_json"
+    ],
+    "commission_continuity_sellers": [
+      "accepted_at",
+      "agreement_version",
+      "audit_id",
+      "audit_json",
+      "id",
+      "operation_id",
+      "owner_id",
+      "seller_id",
+      "setting_id"
+    ],
     "user_credentials": [
       "created_at",
       "password_hash",
@@ -2093,6 +3235,32 @@
       "request_id",
       "status",
       "total_paisa"
+    ],
+    "seller_application_drafts": [
+      "answers_json",
+      "attempt_id",
+      "expires_at",
+      "files_json",
+      "form_version",
+      "revision",
+      "updated_at",
+      "user_id"
+    ],
+    "seller_application_draft_uploads": [
+      "expires_at",
+      "id",
+      "object_key",
+      "status",
+      "user_id"
+    ],
+    "seller_registration_intakes": [
+      "answers_json",
+      "documents_json",
+      "review_ready",
+      "seller_id",
+      "updated_at",
+      "user_id",
+      "version"
     ],
     "referral_campaign": [
       "enabled",
@@ -2419,6 +3587,152 @@
       "scheduled_for",
       "new.created_at",
       "loyalty_scheduled_rules_due"
+    ],
+    "marketplace_fee_waiver_revisions_no_update": [
+      "signal sqlstate",
+      "45000",
+      "fee_waiver_revision_immutable"
+    ],
+    "marketplace_fee_waiver_revisions_no_delete": [
+      "signal sqlstate",
+      "45000",
+      "fee_waiver_revision_immutable"
+    ],
+    "marketplace_fee_waiver_requests_no_update": [
+      "signal sqlstate",
+      "45000",
+      "fee_waiver_request_immutable"
+    ],
+    "marketplace_fee_waiver_requests_no_delete": [
+      "signal sqlstate",
+      "45000",
+      "fee_waiver_request_immutable"
+    ],
+    "marketplace_fee_waiver_campaigns_no_delete": [
+      "signal sqlstate",
+      "45000",
+      "fee_waiver_campaign_retained"
+    ],
+    "order_item_marketplace_fees_no_update": [
+      "signal sqlstate",
+      "45000",
+      "marketplace_fee_snapshot_immutable"
+    ],
+    "order_item_marketplace_fees_no_delete": [
+      "signal sqlstate",
+      "45000",
+      "marketplace_fee_snapshot_immutable"
+    ],
+    "customer_fee_waiver_revisions_no_replace": [
+      "signal sqlstate",
+      "45000",
+      "customer_fee_waiver_revision_immutable"
+    ],
+    "customer_fee_waiver_requests_no_replace": [
+      "signal sqlstate",
+      "45000",
+      "customer_fee_waiver_request_immutable"
+    ],
+    "order_customer_service_fees_no_replace": [
+      "signal sqlstate",
+      "45000",
+      "customer_fee_snapshot_immutable"
+    ],
+    "customer_fee_waiver_revisions_no_update": [
+      "signal sqlstate",
+      "45000",
+      "customer_fee_waiver_revision_immutable"
+    ],
+    "customer_fee_waiver_revisions_no_delete": [
+      "signal sqlstate",
+      "45000",
+      "customer_fee_waiver_revision_immutable"
+    ],
+    "customer_fee_waiver_requests_no_update": [
+      "signal sqlstate",
+      "45000",
+      "customer_fee_waiver_request_immutable"
+    ],
+    "customer_fee_waiver_requests_no_delete": [
+      "signal sqlstate",
+      "45000",
+      "customer_fee_waiver_request_immutable"
+    ],
+    "customer_fee_waiver_campaigns_no_delete": [
+      "signal sqlstate",
+      "45000",
+      "customer_fee_waiver_campaign_retained"
+    ],
+    "order_customer_service_fees_no_update": [
+      "signal sqlstate",
+      "45000",
+      "customer_fee_snapshot_immutable"
+    ],
+    "order_customer_service_fees_no_delete": [
+      "signal sqlstate",
+      "45000",
+      "customer_fee_snapshot_immutable"
+    ],
+    "order_customer_service_fees_match_order": [
+      "signal sqlstate",
+      "45000",
+      "customer_fee_order_mismatch"
+    ],
+    "orders_preserve_customer_service_fee": [
+      "signal sqlstate",
+      "45000",
+      "customer_fee_order_mismatch"
+    ],
+    "commission_continuity_operations_no_update": [
+      "signal sqlstate",
+      "45000",
+      "continuity_immutable"
+    ],
+    "commission_continuity_operations_no_delete": [
+      "signal sqlstate",
+      "45000",
+      "continuity_immutable"
+    ],
+    "commission_continuity_operations_no_replace": [
+      "signal sqlstate",
+      "45000",
+      "continuity_immutable",
+      "if exists",
+      "new."
+    ],
+    "commission_continuity_settings_no_update": [
+      "signal sqlstate",
+      "45000",
+      "continuity_immutable"
+    ],
+    "commission_continuity_settings_no_delete": [
+      "signal sqlstate",
+      "45000",
+      "continuity_immutable"
+    ],
+    "commission_continuity_settings_no_replace": [
+      "signal sqlstate",
+      "45000",
+      "continuity_immutable",
+      "if exists",
+      "new."
+    ],
+    "commission_continuity_sellers_no_update": [
+      "signal sqlstate",
+      "45000",
+      "continuity_immutable"
+    ],
+    "commission_continuity_sellers_no_delete": [
+      "signal sqlstate",
+      "45000",
+      "continuity_immutable"
+    ],
+    "commission_continuity_sellers_no_replace": [
+      "signal sqlstate",
+      "45000",
+      "continuity_immutable",
+      "if exists",
+      "new."
     ],
     "payouts_single_sa_insert": [],
     "payouts_single_sa_update": [],

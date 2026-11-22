@@ -1,4 +1,6 @@
 'use client';
+import {useCommercialScope,CommercialRecovery} from '@/components/admin/commercial-recovery';
+import {FinanceAccessNotice} from '@/components/admin/finance-access-notice';
 
 import { FormGuide } from '@/components/forms/form-guide';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
@@ -20,7 +22,7 @@ import {
   configuredJsonPayload,
   digestFormRequest,
   readConfiguredSubmission,
-} from '@/lib/forms/submission';
+} from '@/lib/forms/client-submission';
 import {
   clearVersionedSessionAttempt,
   getOrCreateVersionedSessionAttempt,
@@ -419,6 +421,7 @@ function AuthorizedLoyaltyManager({
   ownerId: string;
   initialState: LoyaltyState;
 }) {
+  const commercial=useCommercialScope(ownerId);
   const router = useRouter();
   const published = usePublishedFormConfig(formId);
   const [state, setState] = useState(initialState);
@@ -429,6 +432,7 @@ function AuthorizedLoyaltyManager({
   const [notice, setNotice] = useState('');
   const [setup,setSetup]=useState<LoyaltySetupAssessment|null>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
+  const accessNoticeRef = useRef<HTMLDivElement>(null);
   const pendingRef = useRef(false);
   const generation = useRef(0);
   const alive = useRef(true);
@@ -451,8 +455,10 @@ function AuthorizedLoyaltyManager({
     }
   }
   useEffect(() => {
-    if (error || recoveryError) errorRef.current?.focus();
-  }, [error, recoveryError]);
+    // Revoked access replaces the editor, so its error paragraph is unmounted.
+    if (commercial.accessDenied) accessNoticeRef.current?.focus();
+    else if (error || recoveryError) errorRef.current?.focus();
+  }, [commercial.accessDenied, error, recoveryError]);
   useEffect(() => {
     const currentAlive = alive;
     const currentGeneration = generation;
@@ -587,10 +593,11 @@ function AuthorizedLoyaltyManager({
       notifyAttempt();
       const response = await fetch('/api/admin/loyalty', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json',...commercial.headers },
         body: JSON.stringify({ ...body, requestId: reference.requestId }),
       });
       const result: unknown = await response.json().catch(() => null);
+      if(!commercial.current())return;commercial.observe(response);
       if (!alive.current) return;
       const decoded =
         result && typeof result === 'object'
@@ -673,9 +680,9 @@ function AuthorizedLoyaltyManager({
     setLoading(true);
     setError('');
     try {
-      const response = await fetch('/api/admin/loyalty', { cache: 'no-store' });
-      const result: unknown = await response.json();
-      if (!alive.current || token !== generation.current) return;
+      const response = await fetch('/api/admin/loyalty', { cache: 'no-store',headers:commercial.headers });
+      const result: unknown = await response.json().catch(() => null);
+      if (!commercial.current() || !alive.current || token !== generation.current) return;commercial.observe(response);
       if (!response.ok || !validState(result))
         throw new Error('Latest loyalty settings could not be loaded.');
       setState(result);
@@ -715,8 +722,11 @@ function AuthorizedLoyaltyManager({
       );
     }
   }
+  const recovery=<CommercialRecovery actorId={ownerId} kind="loyalty" attemptKey={key} onDenied={commercial.deny} onReauthorized={commercial.reauthorize} onRecovered={()=>{clearVersionedSessionAttempt(key);sessionStorage.removeItem(key+':intent');notifyAttempt();setNotice('Original committed loyalty operation confirmed. Review its current source before another action.');void refresh();}}/>;
+  if(commercial.accessDenied)return <div className="space-y-3"><FinanceAccessNotice message={error} alertRef={accessNoticeRef}/>{recovery}</div>;
   return (
     <div className="grid min-w-0 gap-6">
+      {attempt?recovery:null}
       <section
         aria-label="Loyalty state"
         className="grid min-w-0 gap-4 rounded-xl border bg-background p-4 text-sm sm:p-5"
@@ -740,8 +750,9 @@ function AuthorizedLoyaltyManager({
             </div>
           </div>
           <Button
+            size="workspace"
             type="button"
-            variant="outline"
+            variant="workspace-outline"
             disabled={pending}
             onClick={() => void refresh()}
           >
@@ -764,7 +775,7 @@ function AuthorizedLoyaltyManager({
           open={unsupportedExposure}
           className="rounded-lg border bg-muted/20 p-3"
         >
-          <summary className="cursor-pointer font-medium">
+          <summary className="min-h-11 content-center cursor-pointer font-medium">
             Administrative details and recorded exposure
           </summary>
           <div className="mt-3 grid gap-2 text-muted-foreground">
@@ -864,7 +875,7 @@ function AuthorizedLoyaltyManager({
           <h3 className="font-semibold">Prepare now, start when you are ready</h3>
           <ol className="list-decimal space-y-1 pl-5"><li>Fill the start, end and shared points limits below.</li><li>To allow earning after publication, select Enable daily earning when published.</li><li>Add a reason and any required form answers, then Save draft.</li><li>Review the saved draft, then Publish draft. A future start keeps current rules until that Nepal-time date.</li></ol>
           <p className="font-medium">{setup?.ready?'The earning details are ready for a draft. Saving still keeps current earning unchanged.':'Complete the highlighted details before saving a draft.'}</p>
-          {setup&&!setup.ready?<ul className="list-disc space-y-1 pl-5">{Object.entries(setup.issues).map(([field,issue])=><li key={field}><a className="underline" href={`#loyalty-${field.startsWith('weeklyPoints.')?`weeklyPoints-${Number(field.split('.')[1])+1}`:field}`}>{issue}</a></li>)}</ul>:null}
+          {setup&&!setup.ready?<ul className="list-disc space-y-1 pl-5">{Object.entries(setup.issues).map(([field,issue])=><li key={field}><a className="section-link underline" href={`#loyalty-${field.startsWith('weeklyPoints.')?`weeklyPoints-${Number(field.split('.')[1])+1}`:field}`}>{issue}</a></li>)}</ul>:null}
           {setup?.terms&&!sameTerms(setup.terms,state.terms)?<p>Unsaved changes: use Save draft to record this setup.</p>:null}
         </section>
         <LoyaltyTermsEditor
@@ -931,9 +942,11 @@ function AuthorizedLoyaltyManager({
             details are below.
           </p>
         ) : null}
-        {attempt?.action==='publish'?<details className="rounded-lg border p-4 text-sm"><summary className="cursor-pointer font-medium">Original saved rules for this retained publication</summary><div className="mt-3"><LoyaltyRuleReview terms={attempt.expectedTerms}/></div></details>:null}
+        {attempt?.action==='publish'?<details className="rounded-lg border p-4 text-sm"><summary className="min-h-11 content-center cursor-pointer font-medium">Original saved rules for this retained publication</summary><div className="mt-3"><LoyaltyRuleReview terms={attempt.expectedTerms}/></div></details>:null}
         <div className="flex flex-wrap gap-3 border-t pt-5">
           <Button
+            variant="workspace-primary"
+            size="workspace"
             type="submit"
             name="action"
             value="draft"
@@ -942,10 +955,11 @@ function AuthorizedLoyaltyManager({
             Save draft
           </Button>
           <Button
+            size="workspace"
             type="submit"
             name="action"
             value="publish"
-            variant="outline"
+            variant="workspace-decision"
             disabled={
               pending ||
               !published.canSubmit ||
@@ -958,12 +972,13 @@ function AuthorizedLoyaltyManager({
           >
             Publish draft
           </Button>
-          {state.scheduledRevision!==null||attempt?.action==='cancel_schedule'?<Button type="submit" name="action" value="cancel_schedule" variant="outline" disabled={pending||!published.canSubmit}>Cancel scheduled change</Button>:null}
+          {state.scheduledRevision!==null||attempt?.action==='cancel_schedule'?<Button size="workspace" type="submit" name="action" value="cancel_schedule" variant="workspace-destructive" disabled={pending||!published.canSubmit}>Cancel scheduled change</Button>:null}
           <Button
+            size="workspace"
             type="submit"
             name="action"
             value="pause"
-            variant="outline"
+            variant="workspace-outline"
             disabled={pending || !published.canSubmit}
           >
             Pause earning
@@ -973,7 +988,7 @@ function AuthorizedLoyaltyManager({
           open={Boolean(attempt) || Boolean(recoveryError)}
           className="rounded-lg border p-4 text-sm"
         >
-          <summary className="cursor-pointer font-medium">
+          <summary className="min-h-11 content-center cursor-pointer font-medium">
             Form and attempt recovery
           </summary>
           <div className="mt-3 space-y-3 text-muted-foreground">
@@ -998,16 +1013,18 @@ function AuthorizedLoyaltyManager({
             </p>
             <div className="flex flex-wrap gap-3">
               <Button
+                size="workspace"
                 type="button"
-                variant="outline"
+                variant="workspace-outline"
                 disabled={pending}
                 onClick={reset}
               >
                 Start a new attempt
               </Button>
               <Button
+                size="workspace"
                 type="button"
-                variant="outline"
+                variant="workspace-outline"
                 disabled={pending}
                 onClick={published.refresh}
               >

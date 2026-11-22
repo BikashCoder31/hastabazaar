@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { categoryMediaDb } from './helpers/category-media-db';
+import { installFixtureCustomerCodSchema } from './helpers/customer-cod-fixture';
 async function implementation() {
   assert.ok(
     existsSync(new URL('../lib/orders/first-cod-review.ts', import.meta.url)),
@@ -15,9 +16,10 @@ async function implementation() {
   );
   return import('../lib/orders/first-cod-review');
 }
-async function fixture() {
+async function fixture(applied = false) {
   const m = await implementation(),
     f = await categoryMediaDb();
+  if (applied) installFixtureCustomerCodSchema(f.sqlite);
   for (const [id, role] of [
     ['buyer', 'customer'],
     ['seller', 'seller'],
@@ -77,6 +79,7 @@ async function fixture() {
             orderId: id,
             totalPaisa: total,
             now: 100,
+            customerFlagAvailable: applied,
           })
         : []),
       ...tail,
@@ -94,6 +97,31 @@ async function fixture() {
   }
   return { ...f, ...m, place, item };
 }
+void test('flagged repeat buyers enter the existing COD hold at their exact order total and release on confirmation', async () => {
+  const f = await fixture(true);
+  try {
+    await f.place('previous-delivery', 90000, 'delivered');
+    await f.place('flag-off', 90000);
+    assert.equal(await f.getFirstCodReview(f.db, 'flag-off'), null);
+    f.sqlite.exec("UPDATE users SET cod_confirmation_required=1 WHERE id='buyer'");
+    await f.place('online', 90000, 'confirmed', 'bank_transfer');
+    assert.equal(await f.getFirstCodReview(f.db, 'online'), null);
+    await f.place('awaiting-call', 90000);
+    await f.item('call-item', 'awaiting-call');
+    const review = await f.getFirstCodReview(f.db, 'awaiting-call');
+    assert.equal(review?.status, 'pending');
+    assert.equal(review?.totalPaisa, 90000);
+    await assert.rejects(() => f.assertFirstCodFulfillmentAllowed(f.db, 'awaiting-call'), /awaiting.*confirmation/);
+    await f.confirmFirstCodReview(f.db, {
+      orderId: 'awaiting-call', actorId: 'super', reason: 'Customer confirmed the order by phone.',
+      requestId: 'fixture-confirm-by-phone', now: 101,
+    });
+    await f.assertFirstCodFulfillmentAllowed(f.db, 'awaiting-call');
+    assert.ok(f.sqlite.prepare("SELECT 1 FROM order_response_items WHERE order_item_id='call-item'").get());
+  } finally {
+    f.dispose();
+  }
+});
 void test('threshold is inclusive, only COD with no delivered buyer history is held, pending or cancelled history does not waive', async () => {
   const f = await fixture();
   try {

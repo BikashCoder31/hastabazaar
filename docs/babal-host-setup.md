@@ -109,6 +109,56 @@ Do not share database passwords, account passwords, private keys, or session coo
 
 Validate login/logout, owner access, seller applications, private document access, product uploads, cart, COD checkout, order management, and the cPanel backup/restore process. Monitor cPanel CPU, memory, entry-process, and error statistics during representative activity. The Starter plan is a valid launch environment, but its 1 GB RAM and process limits still need real traffic measurement.
 
+## Schedule the email sender
+
+Start with the isolated hosted staging app at `https://staging.hastabazaar.com`. Use its approved QA mailbox and exact staging recipient allowlist. Set up the production job at `https://hastabazaar.com` after the staging run and QA inbox check pass.
+
+1. In the protected Node application environment for each target, set `ORDER_EMAIL_JOB_SECRET` to a distinct, privately generated 32–512 character value. Set `EMAIL_AUTOMATION_EXPECTED_SINCE` to the actual enablement time in Unix milliseconds and restart that app. Keep this original time when restarting or resuming a job. Use `<SECRET>` and `<ENABLEMENT_EPOCH_MS>` as placeholders in any shared notes.
+2. Create `/home2/hastabaz/hastabazaar-email/staging` outside both document roots with directory permissions 0700. Copy the reviewed `scripts/run-email-automation.mjs` and its import `scripts/email-automation-watchdog.mjs` into it. In that same directory, create `sender.env` with `ORDER_EMAIL_JOB_SECRET=<SAME_STAGING_SECRET_AS_THE_APP>`, a `sender.json` using the staging mapping below, and a private `sender.jsonl` log. Restrict the env file, config and log to 0600. Use the matching `production` directory and production secret for the production setup.
+3. Confirm the account allows one-minute jobs and has Node 22.13+ and Linux util-linux `flock` with `--no-fork`, `--nonblock` and `--conflict-exit-code`. Use the absolute Node executable shown by `command -v node` after activating the app's Node environment in cPanel. The existing launcher holds the mapped OS lock, skips an overlapping invocation and caps the request at 55 seconds. The app keeps its 45-second job budget.
+4. In **cPanel → Cron Jobs**, set Minute, Hour, Day, Month and Weekday to `*`. Paste the staging command after the five stars into **Command**, replacing `/ABSOLUTE/PATH/TO/NODE` with the confirmed binary. Configure one job per environment. [cPanel Cron Jobs instructions](https://docs.cpanel.net/cpanel/advanced/cron-jobs/)
+5. After two ticks, open **Settings → Email delivery** and look for **Sending normally** and a last run under a minute ago. On staging, place an authorized QA order and confirm the correct order email arrives in the approved QA inbox. Check that the waiting queue progresses.
+6. To stop a target, delete its entry under **Current Cron Jobs** and set `"enabled": false` in its private `sender.json`. Leave the queued messages and run history in place. An existing invocation finishes within the existing bounds.
+
+Before enabling staging, get the exact `POST /api/jobs/order-emails` route to the app with its Bearer authorization header intact. Staging's browser Basic authentication cannot share the header with the sender. Have the host review a pass-through restricted to this method and path. Keep the app's existing bearer check and the rest of staging's browser authentication. Verify a request without the job credential still receives 401. The historical staging gateway allowlist does not yet recognize the two email automation bindings. Review the gateway configuration separately before using it with those protected values.
+
+### Private sender mappings
+
+Use the scoped review reference from your own host check in `mappingReference`. The staging app currently reports the `production` runtime name, so the mapping uses that exact name while targeting its separate HTTPS origin and QA queue.
+
+```json
+{
+  "version": 1,
+  "enabled": true,
+  "environment": "production",
+  "jobUrl": "https://staging.hastabazaar.com/api/jobs/order-emails",
+  "allowedAppOrigin": "https://staging.hastabazaar.com",
+  "hostMappingReviewed": true,
+  "mappingReference": "REPLACE-WITH-STAGING-REVIEW",
+  "lockPath": "/home2/hastabaz/hastabazaar-email/staging/sender.lock"
+}
+```
+
+```json
+{
+  "version": 1,
+  "enabled": true,
+  "environment": "production",
+  "jobUrl": "https://hastabazaar.com/api/jobs/order-emails",
+  "allowedAppOrigin": "https://hastabazaar.com",
+  "hostMappingReviewed": true,
+  "mappingReference": "REPLACE-WITH-PRODUCTION-REVIEW",
+  "lockPath": "/home2/hastabaz/hastabazaar-email/production/sender.lock"
+}
+```
+
+```cron
+* * * * * /usr/bin/env PATH=/usr/local/bin:/usr/bin:/bin /ABSOLUTE/PATH/TO/NODE --env-file=/home2/hastabaz/hastabazaar-email/staging/sender.env /home2/hastabaz/hastabazaar-email/staging/run-email-automation.mjs --config /home2/hastabaz/hastabazaar-email/staging/sender.json --execute >> /home2/hastabaz/hastabazaar-email/staging/sender.jsonl 2>&1
+* * * * * /usr/bin/env PATH=/usr/local/bin:/usr/bin:/bin /ABSOLUTE/PATH/TO/NODE --env-file=/home2/hastabaz/hastabazaar-email/production/sender.env /home2/hastabaz/hastabazaar-email/production/run-email-automation.mjs --config /home2/hastabaz/hastabazaar-email/production/sender.json --execute >> /home2/hastabaz/hastabazaar-email/production/sender.jsonl 2>&1
+```
+
+The launcher logs only its environment, outcome and observation time or a safe error code. Keep the secrets in the protected app environment and owner-only env files. The separate-host watchdog is optional for launch. The Emails page and Today warning read the app's sender records.
+
 ## References
 
 - Babal.Host Node setup: https://babal.host/blog/how-to-setup-install-and-deploy-your-node-js-application-with-babal-host/

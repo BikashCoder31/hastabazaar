@@ -1,23 +1,14 @@
+import { EDITABLE_FORM_IDS } from './catalog-policy';
 import type { FormDefinition } from './types';
 import { formGuide } from './plain-language';
+import { coreFormContract } from './core-contracts';
 
-// This policy affects the administration catalog only. Registry and runtime
-// configuration readers retain every form and its previously published config.
-const universalFormIds: ReadonlySet<string> = new Set([
-  'account.profile', 'account.address', 'account.daily-reward', 'account.points-redemption',
-  'commerce.add-to-cart', 'commerce.order-tracking', 'commerce.promo-quote', 'commerce.gift-card-redeem',
-  'system.local-testing-role', 'staff.staff-invitation', 'staff.staff-permission-1', 'staff.staff-permission-2',
-  'rider.code-verify', 'staff.homepage-hero-manager', 'staff.homepage-occasion-manager',
-  'staff.homepage-visibility', 'staff.business-settings-manager', 'staff.delivery-rate',
-  'staff.promo-code', 'staff.loyalty-settings', 'staff.referral-settings',
-  'staff.commission-schedule', 'staff.commission-cancel',
-]);
-
+// Placement changes neither the runtime registry nor historical publications.
 export function isFormCatalogEditable(form: FormDefinition): boolean {
-  return form.mode !== 'query' && !form.id.startsWith('identity.') && !universalFormIds.has(form.id);
+  return EDITABLE_FORM_IDS.has(form.id);
 }
 
-export const FORM_CATALOG_UNAVAILABLE_MESSAGE = 'This form is managed by its existing feature and is unavailable for editing in the Form catalog.';
+export const FORM_CATALOG_UNAVAILABLE_MESSAGE = 'This form is managed by its existing feature and is unavailable for editing in the Form Management.';
 
 export const FORM_CATALOG_CATEGORIES = [
   'Applications & business profiles', 'Products & inventory', 'Orders & customer care',
@@ -105,12 +96,15 @@ export interface FormCatalogRow {
   draftVersion: number;
   lastChangedAt?: number;
   lastEditor?: string;
+  availability?: 'checked' | 'core' | 'unavailable';
+  availabilityReason?: string;
 }
 export type CatalogStatusFilter = 'all' | 'published' | 'draft' | 'unpublished' | 'attention';
 export interface FormCatalogFilters { query?: string; audience?: string; category?: string; status?: CatalogStatusFilter }
 export function hasUnpublishedDraft(row: FormCatalogRow): boolean { return row.draftVersion > row.publishedVersion; }
 export function catalogNeedsAttention(row: FormCatalogRow): boolean {
-  return hasUnpublishedDraft(row) || row.publishedVersion === 0 || row.form.adapterId.startsWith('pending:');
+  return row.availability === 'unavailable' ||
+    (row.publishedVersion === 0 && !coreFormContract(row.form.id)) || row.form.adapterId.startsWith('pending:');
 }
 export function filterFormCatalog(rows: readonly FormCatalogRow[], filters: FormCatalogFilters): FormCatalogRow[] {
   const words = filters.query?.trim().toLowerCase().split(/\s+/).filter(Boolean) ?? [];

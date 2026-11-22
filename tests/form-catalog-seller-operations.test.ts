@@ -1,3 +1,4 @@
+import {payoutRequestBankFixture} from './helpers/payout-request-bank-fixture';
 import { registerTransitionFixture,registeredTransitionFixtureInput,submitRegisteredTransitionFixture as submitRegisteredSellerTransition } from './helpers/registered-transition-fixture';
 import assert from 'node:assert/strict';
 import { readdir, readFile } from 'node:fs/promises';
@@ -281,6 +282,7 @@ void test('overlapping exact shipping requests and pickup actions commit one dom
 void test('payout request records context with the protected balance snapshot and exact replay', async () => {
   const { sqlite, database } = await fixture();
   try {
+    await payoutRequestBankFixture(sqlite,database,'seller-one');
     publish(sqlite, 'seller.payout-request');
     sqlite.prepare(`INSERT INTO seller_ledger_entries(id,seller_id,order_item_id,type,amount_paisa,available_at,description,created_at)
       VALUES ('earned-one','seller-one','item-one','sale',50000,1,'Fictional earned balance',1)`).run();
@@ -339,11 +341,27 @@ void test('seller reply links context to one pending reply and cannot replay ont
     assert.equal((sqlite.prepare("SELECT COUNT(*) AS n FROM review_replies WHERE review_id='review-one'").get() as { n: number }).n, 1);
     const absent = await fixture();
     try {
-      const unavailable = await send('review-one', { ...body, idempotencyKey: 'reply-unavailable' });
+      absent.sqlite.prepare(`INSERT INTO product_reviews(id,product_id,customer_id,order_item_id,rating,title,body,status,created_at,updated_at)
+        VALUES ('review-core','product-one','buyer','item-one',5,'Fictional review','A fictional customer review.','published',1,1)`).run();
+      const coreBody={...body,idempotencyKey:'reply-core',customAnswers:[]};
+      const core=await send('review-core',coreBody);
+      assert.equal(core.status,200,await core.clone().text());
+      assert.equal((await send('review-core',coreBody)).status,200);
+      assert.equal(absent.sqlite.prepare("SELECT COUNT(*) n FROM review_replies WHERE review_id='review-core'").get()?.n,1);
+      assert.equal(absent.sqlite.prepare("SELECT COUNT(*) n FROM audit_logs WHERE action='form.core_answers'").get()?.n,1);
+      assert.equal(absent.sqlite.prepare('SELECT COUNT(*) n FROM form_answer_sets').get()?.n,0);
+      // A genuinely unreadable source is different from an absent optional publication.
+      // This fresh DB wrapper has no cached verified definition to recover.
+      const unreadable=new Database(absent.sqlite);
+      const prepare=unreadable.prepare.bind(unreadable);
+      unreadable.prepare=(sql:string)=>{if(sql.includes('form_config_versions'))throw new Error('Fictional configuration read failure');return prepare(sql);};
+      globalThis.sellerOperationDb=unreadable as unknown as D1Database;
+      const unavailable = await send('review-core', { ...coreBody, idempotencyKey: 'reply-unavailable' });
       assert.equal(unavailable.status, 503);
+      assert.equal(absent.sqlite.prepare("SELECT COUNT(*) n FROM review_replies WHERE review_id='review-core'").get()?.n,1);
       const unavailableJson = await unavailable.json() as { error: string; code: string };
       assert.equal(unavailableJson.code, 'config_unavailable');
-      assert.match(unavailableJson.error, /unavailable/i);
+      assert.match(unavailableJson.error, /^Form configuration read failed/);
     } finally { absent.sqlite.close(); }
   } finally { sqlite.close(); }
 });
@@ -428,7 +446,7 @@ void test('five synchronous seller operation forms render context and link to th
       supplies: [], transitions: [] },
   });
   const payout = await renderSellerOperation('components/seller/payout-request-form.tsx', 'PayoutRequestForm', {
-    availablePaisa: 50000, hasOpenRequest: false, sellerId: 'seller-one',
+    availablePaisa: 50000, hasOpenRequest: false, sellerId: 'seller-one', actorId:'seller-user',readiness:{ready:true,maskedBeneficiary:'Fictional bank · •••• 0001',blocker:null},
   });
   const reply = await renderSellerOperation('components/seller/review-reply-form.tsx', 'ReviewReplyForm', {
     reviewId: 'review-one', version: 0, initialBody: '', status: undefined, sellerId: 'seller-one',
@@ -461,6 +479,7 @@ void test('seller action answers resolve ownership from six parent records and e
     const pickup = sqlite.prepare("SELECT id FROM shipping_job_events WHERE request_id='owner-pickup'").get() as { id: string };
     sqlite.prepare(`INSERT INTO seller_ledger_entries(id,seller_id,order_item_id,type,amount_paisa,available_at,description,created_at)
       VALUES ('owner-earned','seller-one','item-one','sale',50000,1,'Fictional earned balance',1)`).run();
+    await payoutRequestBankFixture(sqlite,database,'seller-one');
     const payout = await requestSellerPayout(database, { sellerId: 'seller-one', actorId: 'seller-user',
       note: 'Please review this payout.', requestId: 'owner-payout', now: 20 });
     sqlite.prepare(`INSERT INTO product_reviews(id,product_id,customer_id,order_item_id,rating,title,body,status,created_at,updated_at)

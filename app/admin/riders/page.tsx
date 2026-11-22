@@ -1,3 +1,4 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -9,11 +10,14 @@ import {
   RiderPolicyForm,
 } from '@/components/admin/rider-controls';
 export const dynamic = 'force-dynamic';
-export default async function RidersPage() {
+export default async function RidersPage({ searchParams }: {
+  searchParams?: Promise<{ view?: string }>;
+} = {}) {
   const staff = await requireStaffPage('/admin/riders', 'order.manage');
   if (staff.role !== 'super_admin') notFound();
   const db = requireDatabase(env as unknown as { DB?: D1Database });
   const superAdmin = true;
+  const readOnly = (await searchParams)?.view === 'records';
   const people = superAdmin
     ? (
         await db
@@ -38,7 +42,9 @@ export default async function RidersPage() {
   const reports = await listRiderReports(db);
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-semibold">Rider operations</h1>
+      {readOnly ? <Link className="section-link" href="/admin/not-in-use">Back to Not in use yet</Link> : null}
+      <AdminPageTitle><h1 className="text-3xl font-semibold">{readOnly ? 'Rider applications & reports' : 'Rider operations'}</h1></AdminPageTitle>
+      {readOnly ? <p className="font-medium">Historical records · Read only</p> : null}
       <p>
         Only Super Admin can review rider identity, assignments and evidence.
         Rider applications and self-service are currently on hold. Delivery,
@@ -48,6 +54,7 @@ export default async function RidersPage() {
         Open order assignments
       </Link>
       <nav aria-label="Rider form answer history" className="flex flex-wrap gap-4 text-sm">
+        {readOnly ? <Link className="underline" href="/admin/forms/rider.application">Application form history</Link> : null}
         {superAdmin ? <Link className="underline" href="/admin/riders/form-history?kind=application">Application answers</Link> : null}
         <Link className="underline" href="/admin/riders/form-history?kind=report">Report answers</Link>
         <Link className="underline" href="/admin/riders/form-history?kind=code">Code-verification context</Link>
@@ -55,7 +62,7 @@ export default async function RidersPage() {
       </nav>
       {superAdmin ? (
         <>
-          <RiderPolicyForm policy={await riderPolicy(db)} />
+          {readOnly ? null : <RiderPolicyForm policy={await riderPolicy(db)} />}
           <section className="space-y-3">
             <h2 className="text-2xl font-semibold">Rider applications</h2>
             {people.map((p) => (
@@ -81,12 +88,12 @@ export default async function RidersPage() {
                 >
                   Review private identity document
                 </a>
-                <RiderAdminAction
+                {readOnly ? null : <RiderAdminAction
                   action="review"
                   fields={{ userId: p.id, version: p.version }}
                   label="Record Super Admin decision"
-                />
-                {p.status === 'approved' ? (
+                />}
+                {!readOnly && p.status === 'approved' ? (
                   <RiderAdminAction
                     action="open_box_eligibility"
                     fields={{
@@ -137,7 +144,7 @@ export default async function RidersPage() {
               </a>
             ) : null}
             {r.reviewNote ? <p>Review: {r.reviewNote}</p> : null}
-            {r.status === 'pending' ? (
+            {!readOnly && r.status === 'pending' ? (
               <>
                 <RiderAdminAction
                   action="confirm"

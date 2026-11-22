@@ -1,8 +1,12 @@
+import { AdminPageTitle } from '@/components/admin/page-help';
+import {ReviewBackLink} from '@/components/admin/review-back-link';
+import {safeAdminReturnTo,withAdminReturnTo} from '@/lib/admin/return-context';
+import {AftercareFollowupActions} from '@/components/admin/aftercare-followup-actions';
 import { StaffFormHistoryLinks } from '@/components/admin/staff-form-history-links';
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, History } from 'lucide-react';
+import { History } from 'lucide-react';
 import { ComplaintCaseActions } from '@/components/admin/complaint-case-actions';
 import { AnswerDetails } from '@/components/forms/answer-details';
 import { requireStaffPage } from '@/lib/auth/staff';
@@ -17,7 +21,7 @@ export default async function AdminComplaintPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ historyKind?: string; historyAt?: string; historyId?: string }>;
+  searchParams?: Promise<{ historyKind?: string; historyAt?: string; historyId?: string;returnTo?:string }>;
 }) {
   const { id } = await params;
   const staff = await requireStaffPage(`/admin/cases/complaints/${id}`, 'support.manage');
@@ -25,10 +29,13 @@ export default async function AdminComplaintPage({
   const item = await getOperationsComplaintDetail(db, id);
   if (!item) notFound();
   const query = await searchParams;
+  const returnTo=safeAdminReturnTo(query?.returnTo,'/admin/cases');
   const kind = query?.historyKind === 'seller' ? 'seller' : 'customer';
   const at = query?.historyAt ? Number(query.historyAt) : NaN;
   const after = Number.isSafeInteger(at) && at >= 0 && query?.historyId && query.historyId.length <= 191
     ? { createdAt: at, id: query.historyId } : undefined;
+  const detailParams=new URLSearchParams({historyKind:kind});if(after){detailParams.set('historyAt',String(after.createdAt));detailParams.set('historyId',after.id);}
+  const detailHref=withAdminReturnTo(`/admin/cases/complaints/${encodeURIComponent(id)}?${detailParams}`,returnTo);
   const history = await listFormAnswersForSubjectPage(db, { subjectType: 'complaint',
     subjectId: item.id, formId: kind === 'seller' ? 'seller.case-complaint-response' : 'commerce.complaint', after });
   const allowed = await Promise.all(history.answers.map((answer) =>
@@ -36,17 +43,11 @@ export default async function AdminComplaintPage({
   if (allowed.some((value) => !value)) notFound();
   return (
     <div>
-      <Link
-        href="/admin/cases"
-        className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" />
-        Back to cases
-      </Link>
+      <ReviewBackLink returnTo={returnTo} actorId={staff.id}/>
       <div className="mt-6 flex flex-wrap justify-between gap-4">
         <div>
-          <p className="eyebrow">{item.referenceNumber}</p>
-          <h1 className="mt-2 font-heading text-4xl">{item.subject}</h1>
+          <AdminPageTitle><h1 className="font-heading text-4xl">{item.subject}</h1></AdminPageTitle>
+          <p className="mt-2 text-sm text-muted-foreground">{item.referenceNumber}</p>
           <p className="mt-2 text-sm text-muted-foreground">
             Order {item.orderNumber} · {item.category} · {item.priority}{' '}
             priority
@@ -56,17 +57,17 @@ export default async function AdminComplaintPage({
           {item.status.replaceAll('_', ' ')}
         </span>
       </div>
-      <StaffFormHistoryLinks entries={[{kind:'complaint-case-action',subjectId:id,label:'Staff decision answers'}]} />
+      <StaffFormHistoryLinks returnTo={detailHref} entries={[{kind:'complaint-case-action',subjectId:id,label:'Staff decision answers'}]} />
       <div className="mt-8 grid gap-6 2xl:grid-cols-[minmax(0,1fr)_23rem]">
         <div className="space-y-6">
           <section className="space-y-4 rounded-2xl border bg-card p-6" aria-label="Complaint form answer history">
             <h2 className="font-heading text-2xl">Form answer history</h2>
-            <nav className="flex gap-4 text-sm"><Link className="underline" href={`/admin/cases/complaints/${encodeURIComponent(id)}`}>Customer request</Link>
-              <Link className="underline" href={`/admin/cases/complaints/${encodeURIComponent(id)}?historyKind=seller`}>Seller response</Link></nav>
+            <nav className="flex gap-4 text-sm"><Link className="underline" href={withAdminReturnTo(`/admin/cases/complaints/${encodeURIComponent(id)}`,returnTo)}>Customer request</Link>
+              <Link className="underline" href={withAdminReturnTo(`/admin/cases/complaints/${encodeURIComponent(id)}?historyKind=seller`,returnTo)}>Seller response</Link></nav>
             {history.answers.length ? history.answers.map((answer) => <AnswerDetails key={answer.id} answer={answer} />)
               : <p>No saved answers for this action.</p>}
             {history.nextCursor ? <Link className="underline" href={
-              `/admin/cases/complaints/${encodeURIComponent(id)}?historyKind=${kind}&historyAt=${history.nextCursor.createdAt}&historyId=${encodeURIComponent(history.nextCursor.id)}`
+              withAdminReturnTo(`/admin/cases/complaints/${encodeURIComponent(id)}?historyKind=${kind}&historyAt=${history.nextCursor.createdAt}&historyId=${encodeURIComponent(history.nextCursor.id)}`,returnTo)
             }>Next 50 answers</Link> : null}
           </section>
           <section className="rounded-2xl border bg-card p-6">
@@ -128,7 +129,8 @@ export default async function AdminComplaintPage({
             recorded in the immutable timeline.
           </p>
           <div className="mt-5">
-            <ComplaintCaseActions id={item.id} status={item.status} />
+            {item.staffFollowup?<AftercareFollowupActions sourceType='complaint' source={item.staffFollowup} actorId={staff.id}/>:null}
+            <ComplaintCaseActions actorId={staff.id} id={item.id} status={item.status} />
           </div>
         </aside>
       </div>

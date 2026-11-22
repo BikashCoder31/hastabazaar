@@ -1,230 +1,222 @@
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
-import { ArrowRight, Banknote, ShieldCheck } from 'lucide-react';
-
-import {
-  AccrueEarningsButton,
-  PreparePayoutButton,
-} from '@/components/admin/payout-actions';
-import { StatusBadge } from '@/components/admin/status-badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { notFound } from 'next/navigation';
+import type { ReactNode } from 'react';
+import { AdminPageTitle } from '@/components/admin/page-help';
+import { AccrueEarningsButton, ApprovePreparedPayoutButton, PreparePayoutButton } from '@/components/admin/payout-actions';
+import { PayoutHoldButton } from '@/components/admin/payout-hold-button';
+import { PayoutRequestActions } from '@/components/admin/payout-request-actions';
+import { PayoutWorkspace } from '@/components/admin/payout-workspace';
+import { readPayoutRequestFinanceScope } from '@/lib/admin/finance-work-items';
+import { safeAdminReturnTo, withAdminReturnTo } from '@/lib/admin/return-context';
 import { requireStaffPage } from '@/lib/auth/staff';
 import { requireDatabase } from '@/lib/db/d1';
+import { getEffectiveBusinessSetting } from '@/lib/db/repositories/business-settings';
+import { listPayoutCandidates, listPayoutRequests, listPayoutsForOperations } from '@/lib/db/repositories/payouts';
+import { can } from '@/lib/marketplace/permissions';
+import { sellerPayoutRequestReadiness } from '@/lib/payments/payout-request-readiness';
 import {
-  listPayoutCandidates,
-  listPayoutsForOperations,
-  listPayoutRequests,
-} from '@/lib/db/repositories/payouts';
-import { PayoutRequestActions } from '@/components/admin/payout-request-actions';
+  matchingPayouts, payoutAmount, payoutBoardGroups, payoutDate, payoutMonth, payoutStages,
+  type PayoutBoardRow, type PayoutFilters, type PayoutStage,
+} from './workspace-data';
+import { PayoutDetailPanel, readHeldEarnings, readPayoutBankCheck, readPayoutLines, readUnallocatedPayoutLines } from './workspace-detail';
 
 export const dynamic = 'force-dynamic';
-const money = (paisa: number) =>
-  new Intl.NumberFormat('en-NP', { style: 'currency', currency: 'NPR' }).format(
-    paisa / 100,
-  );
-const date = (value: number) =>
-  new Intl.DateTimeFormat('en-NP', {
-    dateStyle: 'medium',
-    timeZone: 'Asia/Kathmandu',
-  }).format(new Date(value));
-const mask = (value: string) =>
-  value.length <= 4 ? '••••' : `•••• ${value.slice(-4)}`;
 
-export default async function PayoutsPage() {
-  const staff = await requireStaffPage('/admin/payouts', 'payout.prepare');
+type PayoutQuery = {
+  sellerId?: string;
+  request?: string;
+  returnTo?: string;
+  stage?: string;
+  selected?: string;
+  q?: string;
+  seller?: string;
+  month?: string;
+  minimum?: string;
+};
+
+const monthPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
+const minimumPattern = /^\d{1,9}(?:\.\d{1,2})?$/;
+const actionLink = 'inline-flex min-h-11 w-fit max-w-full items-center text-sm font-semibold underline underline-offset-4';
+
+export default async function PayoutsPage({ searchParams }: { searchParams?: Promise<PayoutQuery> } = {}) {
+  const staff = await requireStaffPage('/admin/payouts', ['payout.prepare', 'payout.view']);
+  const canPrepare = can(staff, 'payout.prepare');
   const database = requireDatabase(env as unknown as { DB?: D1Database });
-  const [candidates, payouts, requests] = await Promise.all([
-    listPayoutCandidates(database),
-    listPayoutsForOperations(database),
-    listPayoutRequests(database),
+  const query = await searchParams ?? {};
+  if (query.sellerId !== undefined && typeof query.sellerId !== 'string') notFound();
+  const sellerId = query.sellerId?.slice(0, 100);
+  const returnTo = safeAdminReturnTo(query.returnTo);
+
+  if (query.request !== undefined) {
+    const request = await readPayoutRequestFinanceScope(database, staff.id, query.request, { allowReadOnly: true });
+    if (!request || (sellerId && request.sellerId !== sellerId)) notFound();
+    const requestHref = '/admin/payouts?request=' + encodeURIComponent(request.id);
+    return (
+      <div id={'payout-request-' + request.id} className="min-w-0 space-y-4 break-words">
+        <Link className={actionLink} href={returnTo}>Back to previous view</Link>
+        <AdminPageTitle><h1 className="font-heading text-3xl">Original seller payout request</h1></AdminPageTitle>
+        <p>{request.tradingName} · {request.status}</p>
+        <p>Originally submitted {payoutDate(request.createdAt, true)}{request.firstFinanceDueAt !== null ? ' · Original Finance review target ' + payoutDate(request.firstFinanceDueAt, true) : ' · Original target needs reconciliation'}</p>
+        {request.sellerNote ? <p>Submitted request note · {request.sellerNote}</p> : null}
+        {request.processingNote ? <p>Recorded decision note · {request.processingNote}</p> : null}
+        {canPrepare && request.status === 'submitted' ? <PayoutRequestActions id={request.id} actorId={staff.id} role={staff.role} /> : null}
+        {request.payoutId ? <Link className={actionLink} href={canPrepare
+          ? withAdminReturnTo('/admin/payments/payouts?model=registered&payout=' + encodeURIComponent(request.payoutId), requestHref)
+          : '/admin/payouts/' + encodeURIComponent(request.payoutId)}>{canPrepare ? 'Open exact original payout instruction' : 'Open payout record'}</Link> : null}
+      </div>
+    );
+  }
+
+  const stage = payoutStages.find(item => item.id === query.stage)?.id ?? 'ready';
+  const filters: PayoutFilters = {
+    q: typeof query.q === 'string' ? query.q.trim().slice(0, 100) : '',
+    seller: typeof query.seller === 'string' ? query.seller.slice(0, 191) : '',
+    month: typeof query.month === 'string' && monthPattern.test(query.month) ? query.month : '',
+    minimum: typeof query.minimum === 'string' && minimumPattern.test(query.minimum) ? query.minimum : '',
+  };
+  const now = new Date().getTime();
+  const [candidates, payouts, requests, held, hold] = await Promise.all([
+    listPayoutCandidates(database, now, sellerId),
+    listPayoutsForOperations(database, sellerId),
+    listPayoutRequests(database, sellerId),
+    readHeldEarnings(database, now, sellerId),
+    getEffectiveBusinessSetting(database, 'seller_delivery_hold_days', now),
   ]);
+  const { groups, history, approved } = payoutBoardGroups({ candidates, payouts, requests, held, now });
+  const requestSellers = requests.map(request => ({ id: request.sellerId, name: request.tradingName }));
+  const sellers = [...new Map([
+    ...Object.values(groups).flat().concat(history).map(row => [row.sellerId, { id: row.sellerId, name: row.sellerName }] as const),
+    ...requestSellers.map(seller => [seller.id, seller] as const),
+  ]).values()].sort((a, b) => a.name.localeCompare(b.name));
+  const months = [...new Set([
+    payoutMonth(now), ...history.flatMap(row => row.at === null ? [] : [payoutMonth(row.at)]),
+    ...requests.map(request => payoutMonth(request.createdAt)), ...(filters.month ? [filters.month] : []),
+  ])].sort().reverse();
+  const rows = matchingPayouts(groups[stage], filters);
+  const approvedRows = stage === 'sent' ? matchingPayouts(approved, filters) : [];
+  const visible = [...rows, ...approvedRows];
+  const selected = visible.find(row => row.id === query.selected) ?? visible[0];
+  const metrics = Object.fromEntries(payoutStages.map(({ id }) => [id, {
+    count: groups[id].length, total: groups[id].reduce((total, row) => total + row.amountPaisa, 0),
+  }])) as Record<PayoutStage, { count: number; total: number }>;
+
+  const baseQuery = new URLSearchParams();
+  if (sellerId) baseQuery.set('sellerId', sellerId);
+  if (query.returnTo) baseQuery.set('returnTo', returnTo);
+  const backQuery = new URLSearchParams(baseQuery);
+  backQuery.set('stage', stage);
+  for (const [key, value] of Object.entries(filters)) if (value) backQuery.set(key, value);
+  if (selected) backQuery.set('selected', selected.id);
+  const boardHref = '/admin/payouts?' + backQuery;
+  const canViewOrders = can(staff, 'order.manage');
+
+  async function selectedPanel(row: PayoutBoardRow) {
+    const recordId = row.id.slice(row.id.indexOf(':') + 1);
+    const base = { row, canViewOrders };
+    if (row.status === 'earning') {
+      const hasRequest = requests.some(request => request.status === 'submitted' && request.sellerId === row.sellerId);
+      const candidate = hasRequest ? null : candidates.find(item => item.sellerId === row.sellerId);
+      const heldBalance = held.find(item => item.sellerId === row.sellerId);
+      const [bank, lines] = await Promise.all([
+        readPayoutBankCheck(database, row.sellerId, now),
+        readUnallocatedPayoutLines(database, row.sellerId, now, candidate ? (heldBalance ? 'both' : 'available') : 'held'),
+      ]);
+      return <PayoutDetailPanel {...base} bank={bank} lines={lines}
+        actions={canPrepare && candidate ? <PreparePayoutButton sellerId={candidate.sellerId} sellerName={candidate.tradingName} amount={payoutAmount(candidate.amountPaisa)} role={staff.role} /> : null} />;
+    }
+
+    if (row.status === 'submitted') {
+      const request = await readPayoutRequestFinanceScope(database, staff.id, recordId, { allowReadOnly: true });
+      if (!request || request.status !== 'submitted') return null;
+      const candidate = candidates.find(item => item.sellerId === row.sellerId);
+      const [bank, readiness, currentLines] = await Promise.all([
+        readPayoutBankCheck(database, row.sellerId, now),
+        sellerPayoutRequestReadiness(database, row.sellerId, now),
+        candidate ? readUnallocatedPayoutLines(database, row.sellerId, now, 'available') : [],
+      ]);
+      const balanceChanged = Boolean(candidate && currentLines.reduce((total, line) => total + line.amountPaisa, 0) !== row.amountPaisa);
+      const blocked = !candidate || !readiness.ready || Boolean(bank?.pendingChange) || balanceChanged;
+      const originalHref = withAdminReturnTo('/admin/payouts?request=' + encodeURIComponent(request.id), boardHref);
+      const approving = !blocked && can(staff, 'payout.approve');
+      const displayRow = { ...row, badge: approving ? 'Ready' : row.badge };
+      const verifiedBank = bank && readiness.maskedBeneficiary ? { ...bank, title: readiness.maskedBeneficiary } : bank;
+      return <PayoutDetailPanel {...base} row={displayRow} bank={verifiedBank} request={request} lines={balanceChanged ? [] : currentLines} blocked={blocked}
+        actions={<>
+          {approving ? <PayoutRequestActions id={request.id} actorId={staff.id} role={staff.role} approvalAmount={payoutAmount(row.amountPaisa)} /> : null}
+          {staff.role === 'super_admin' ? <PayoutHoldButton bankChange={bank?.pendingChange} /> : null}
+          {!approving ? <Link className={actionLink} href={originalHref}>Open request record</Link> : null}
+        </>} finalApproval={approving}
+        historyHref={approving ? originalHref : undefined} />;
+    }
+
+    const payout = payouts.find(item => item.id === recordId);
+    if (!payout) return null;
+    const origin = requests.find(request => request.payoutId === payout.id);
+    const [bank, lines] = await Promise.all([
+      readPayoutBankCheck(database, payout.sellerId, now, payout.destinationReference),
+      readPayoutLines(database, payout.id),
+    ]);
+    const canApprove = can(staff, 'payout.approve');
+    const canProcess = can(staff, 'payout.mark_paid');
+    const approvalStage = ['prepared', 'scheduled'].includes(payout.status);
+    const approving = approvalStage && canApprove && !bank?.pendingChange;
+    const historyHref = '/admin/payouts/' + encodeURIComponent(payout.id);
+    const transferHref = withAdminReturnTo('/admin/payments/payouts?model=registered&payout=' + encodeURIComponent(payout.id), boardHref);
+    let actions: ReactNode;
+    if (approvalStage && canApprove) {
+      actions = <>
+        {approving ? <ApprovePreparedPayoutButton payoutId={payout.id} status={payout.status} isPreparer={payout.preparedBy === staff.id}
+          canApprove={canApprove} canProcess={canProcess} amount={payoutAmount(payout.amountPaisa)} /> : null}
+        <PayoutHoldButton bankChange={bank?.pendingChange} />
+      </>;
+    } else if (canProcess && ['approved', 'processing'].includes(payout.status)) {
+      actions = <Link className="admin-primary" href={transferHref}>{payout.status === 'approved' ? 'Open bank transfer' : 'Review bank outcome'}</Link>;
+    }
+    return <PayoutDetailPanel {...base} payout={payout} row={row} lines={lines} bank={bank}
+      request={origin ? { ...origin, sellerNote: '' } : null} actions={actions} historyHref={historyHref} finalApproval={approving} />;
+  }
+
+  const detail = selected ? await selectedPanel(selected) : null;
+  const filteredHistory = matchingPayouts(history, filters);
+  const filteredRequests = requests.filter(request => matchingPayouts([{
+    id: request.id, sellerId: request.sellerId, sellerName: request.tradingName, reference: 'Seller request',
+    amountPaisa: request.availableAmountSnapshotPaisa, at: request.createdAt, status: request.status, badge: '',
+  }], filters).length);
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <div>
-          <p className="eyebrow">Seller settlements</p>
-          <h1 className="mt-2 font-heading text-4xl tracking-tight">
-            Payout control
-          </h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-            {staff.role==='super_admin'?'Your eligible payout is approved when saved. Payment processing and recording remain separate actions.':'Admins prepare eligible balances. A Super Admin approves them before any payment can be recorded.'}
-          </p>
+    <div className="min-w-0 space-y-[18px]">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <AdminPageTitle><h1 className="font-heading text-3xl tracking-tight">Money</h1></AdminPageTitle>
+        {query.returnTo ? <Link className={actionLink} href={returnTo}>Back to previous view</Link> : null}
+      </div>
+      {sellerId ? <p className="break-words text-sm text-muted-foreground">Showing records for one seller. <Link className={actionLink} href="/admin/payouts">All sellers</Link></p> : null}
+      <PayoutWorkspace stage={stage} selected={selected?.id ?? null} filters={filters} sellers={sellers} months={months}
+        metrics={metrics} rows={rows} approvedRows={approvedRows} baseQuery={baseQuery.toString()} observedAt={now}
+        holdDays={hold.value} canExport={canPrepare} detail={detail} />
+      <details className="rounded-xl border border-border bg-[#FFFCF7] px-4">
+        <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold">Payout history and tools</summary>
+        <div className="grid min-w-0 gap-4 pb-4">
+          {canPrepare ? <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <Link className={actionLink} href={withAdminReturnTo('/admin/payments/payouts', boardHref)}>Verified funding and bank transfers</Link>
+            <AccrueEarningsButton />
+          </div> : null}
+          <section className="min-w-0" aria-label="Payout history">
+            <h2 className="font-semibold">Payout history</h2>
+            {filteredHistory.length ? <ul className="divide-y">{filteredHistory.map(row => <li key={row.id} className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 py-1">
+              <Link className={actionLink + ' break-words'} href={'/admin/payouts/' + encodeURIComponent(row.id.slice('payout:'.length))}>{row.reference} · {row.sellerName}</Link>
+              <span className="text-sm text-muted-foreground">{row.badge} · {payoutAmount(row.amountPaisa)}</span>
+            </li>)}</ul> : <p className="text-sm text-muted-foreground">No payout history to display.</p>}
+          </section>
+          <section className="min-w-0" aria-label="Seller payout requests">
+            <h2 className="font-semibold">Seller payout requests</h2>
+            {filteredRequests.length ? <ul className="divide-y">{filteredRequests.map(request => <li key={request.id} className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 py-1">
+              <Link className={actionLink + ' break-words'} href={withAdminReturnTo('/admin/payouts?request=' + encodeURIComponent(request.id), boardHref)}>{request.tradingName} · {payoutDate(request.createdAt)}</Link>
+              <span className="text-sm text-muted-foreground">{request.status === 'submitted' ? 'Requested' : request.status === 'prepared' ? 'Payout created' : 'Rejected'}</span>
+            </li>)}</ul> : <p className="text-sm text-muted-foreground">No seller payout requests to display.</p>}
+          </section>
+          {payouts.length >= 150 || requests.length >= 150 ? <p className="text-sm text-muted-foreground">This view shows up to 150 payouts and 150 payout requests.</p> : null}
         </div>
-        <AccrueEarningsButton />
-      </div>
-      <Card><CardHeader><CardTitle>How a payout moves forward</CardTitle></CardHeader><CardContent>
-        <ol className="grid list-decimal gap-4 pl-5 text-sm leading-6 md:grid-cols-3">
-          <li><strong>Check eligibility.</strong> Earnings become payable only after the sale is paid, delivered and eligible under its recorded hold, reserve and adjustment rules.</li>
-          <li><strong>Review and prepare.</strong> Check the verified receiving account and available balance. {staff.role === 'super_admin' ? 'Your eligible payout is approved when saved.' : 'Super Admin reviews a prepared payout.'}</li>
-          <li><strong>Process, then record.</strong> An approval does not send money. Process the payment separately and record the actual payment reference or failure.</li>
-        </ol>
-      </CardContent></Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Seller payout requests</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {requests.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No seller payout requests.
-            </p>
-          ) : (
-            requests.map((request) => (
-              <div key={request.id} className="border-b py-3 text-sm">
-                <div className="flex flex-wrap justify-between gap-3">
-                  <span>
-                    <strong>{request.tradingName}</strong> ·{' '}
-                    {request.sellerNote}
-                  </span>
-                  <span className="capitalize">{request.status}</span>
-                </div>
-                {request.status === 'submitted' ? (
-                  <PayoutRequestActions id={request.id} role={staff.role} />
-                ) : null}
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Banknote className="size-5 text-primary" /> Eligible sellers
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="font-heading text-4xl">{candidates.length}</p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Positive available balances with a verified payout destination
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ShieldCheck className="size-5 text-primary" /> Pending
-              payout decisions
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="font-heading text-4xl">
-              {
-                payouts.filter(
-                  (payout) =>
-                    payout.status === 'prepared' ||
-                    payout.status === 'scheduled',
-                ).length
-              }
-            </p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Among the loaded history · existing prepared payouts awaiting a decision
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>Balances ready to prepare</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {candidates.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No verified seller currently has a positive available payout balance.
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Seller</TableHead>
-                  <TableHead>Ledger entries</TableHead>
-                  <TableHead>Destination</TableHead>
-                  <TableHead>Available</TableHead>
-                  <TableHead>Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {candidates.map((candidate) => (
-                  <TableRow key={candidate.sellerId}>
-                    <TableCell className="font-semibold">
-                      {candidate.tradingName}
-                    </TableCell>
-                    <TableCell>{candidate.entryCount}</TableCell>
-                    <TableCell>
-                      {mask(candidate.destinationReference)}
-                    </TableCell>
-                    <TableCell>{money(candidate.amountPaisa)}</TableCell>
-                    <TableCell>
-                      <PreparePayoutButton
-                        sellerId={candidate.sellerId}
-                        sellerName={candidate.tradingName}
-                        amount={money(candidate.amountPaisa)}
-                        role={staff.role}
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Payout history</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {payouts.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No payouts have been prepared.
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Payout</TableHead>
-                  <TableHead>Seller</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Prepared</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {payouts.map((payout) => (
-                  <TableRow key={payout.id}>
-                    <TableCell className="font-semibold">
-                      {payout.payoutNumber}
-                    </TableCell>
-                    <TableCell>{payout.tradingName}</TableCell>
-                    <TableCell>
-                      <StatusBadge status={payout.status} />
-                    </TableCell>
-                    <TableCell>{money(payout.amountPaisa)}</TableCell>
-                    <TableCell>{date(payout.createdAt)}</TableCell>
-                    <TableCell>
-                      <Link
-                        href={`/admin/payouts/${payout.id}`}
-                        className="inline-flex items-center gap-1 font-semibold text-primary hover:underline"
-                      >
-                        Review <ArrowRight className="size-4" />
-                      </Link>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      </details>
     </div>
   );
 }

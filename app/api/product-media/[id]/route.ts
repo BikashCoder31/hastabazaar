@@ -8,6 +8,7 @@ import { requireDatabase, requireMediaBucket } from '@/lib/db/d1';
 import { getProductMediaObject } from '@/lib/db/repositories/products';
 import { matchesIfRange, parseByteRange } from '@/lib/media/byte-range';
 import { getManagedMakerAuthority, ManagedMakerAuthorizationError } from '@/lib/managed-commerce/maker-authority';
+import {observedFileBucket} from '@/lib/operations/file-access-health';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,15 +71,15 @@ export async function GET(
     }
   }
 
+  const bucket=observedFileBucket(database,requireMediaBucket(bindings),isPublic?'public':'private');
   if (['image/jpeg', 'image/png', 'image/webp'].includes(media.mimeType)) {
     try {
       const setting = await getEffectiveBusinessSetting(database, 'product_photo_watermark', Date.now());
-      return productPhotoResponse({ bucket: requireMediaBucket(bindings), mediaId: id,
+      return productPhotoResponse({ bucket, mediaId: id,
         objectKey: media.objectKey, mimeType: media.mimeType, policy: setting.value,
         policyVersion: setting.versionId ?? 'default' });
     } catch { return productPhotoUnavailable(); }
   }
-  const bucket = requireMediaBucket(bindings);
   if (media.mimeType === 'video/mp4' && request.headers.has('Range')) {
     const metadata = await bucket.head(media.objectKey);
     if (!metadata) return notFound();
