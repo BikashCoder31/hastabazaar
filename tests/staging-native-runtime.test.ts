@@ -113,10 +113,22 @@ void test('MariaDB maker acceptance retains exact private ownership and replay',
   const offer=(await getManagedTermsOffers(db,seller,now)).current;
   const input={sellerId:seller,actorId:'owner-'+seller,offerId:offer.id,context:offer.context,language:'en' as const,requestId:'native-terms-renewal',now:now+1,form:{versionId:managedTermsFormId+'-v1',answers:{formId:managedTermsFormId,version:1,answers:[]}}};
   const receipt=await acceptManagedTerms(db,input);assert.deepEqual(await acceptManagedTerms(db,input),receipt);
-  const publicRow=()=>db.prepare(`SELECT s.id FROM seller_profiles s WHERE s.id=? AND EXISTS(SELECT 1 ${currentManagedSaleEvidence('s.id','s.user_id',now)})`).bind(seller).first();
+  const publicRow=()=>db.prepare(`SELECT s.id FROM seller_profiles s WHERE s.id=? AND EXISTS(SELECT 1 ${currentManagedSaleEvidence('s.id','s.user_id',now+2)})`).bind(seller).first();
   assert.ok(await publicRow());
+  const originalDocument=managedIdentityDocument(seller).id;
   for(const key of [`PRIVATE/seller-documents/${seller}/file`,`private/seller-documents/${seller}-suffix/file`,`archive/private/seller-documents/${seller}/file`,`private/seller-documents/foreign/file`]){
-    await db.prepare('UPDATE seller_documents SET object_key=? WHERE id=?').bind(key,managedIdentityDocument(seller).id).run();
+    await assert.rejects(db.prepare('UPDATE seller_documents SET object_key=? WHERE id=?').bind(key,originalDocument).run(),/seller_document_version_immutable/);
+    // Insert separate historical evidence so the read guards face the malformed path.
+    const documentId=crypto.randomUUID();
+    await db.prepare(`INSERT INTO seller_documents(id,seller_id,kind,object_key,original_name,mime_type,size_bytes,status,uploaded_at)
+      SELECT ?,seller_id,kind,?,original_name,mime_type,size_bytes,'pending',uploaded_at FROM seller_documents WHERE id=?`)
+      .bind(documentId,key,originalDocument).run();
+    await db.prepare(`INSERT INTO managed_maker_application_details(id,seller_id,identity_document_id,government_id_type,agreement_version,
+      agreement_snapshot_json,agreement_accepted_at,agreement_accepted_by,created_at,agreement_language,agreement_form_version_id,government_id_description,personal_pan)
+      SELECT ?,seller_id,?,government_id_type,agreement_version,agreement_snapshot_json,agreement_accepted_at,agreement_accepted_by,
+        created_at,agreement_language,agreement_form_version_id,government_id_description,personal_pan FROM managed_maker_application_details WHERE id=?`)
+      .bind(crypto.randomUUID(),documentId,receipt.detailId).run();
+    await db.prepare("UPDATE seller_documents SET status='rejected' WHERE id=?").bind(originalDocument).run();
     assert.equal(await getAcceptedManagedTerms(db,seller,now+2),null);assert.equal(await publicRow(),null);
   }
 });
@@ -126,7 +138,11 @@ void test('MariaDB allocation history permits re-reservation and blocks double r
   await db.prepare(`INSERT INTO managed_commercial_snapshots(id,order_item_id,seller_id,participation_route,commercial_model,legal_seller_reference,invoice_issuer_reference,payout_beneficiary_reference,agreement_version,agreement_language,product_value_paisa,eligible_base_paisa,platform_retention_bps,platform_retained_paisa,maker_entitlement_paisa,simulation_label,created_at)
     VALUES('allocation-snapshot','allocation-item','seller','managed_maker','managed_sale_linked_v1','Fictional company','Fictional company','Fictional maker','fictional-v1','en',10000,10000,900,900,9100,'SIMULATED',1)`).run();
   await db.prepare("INSERT INTO managed_entitlements(id,snapshot_id,seller_id,status,calculated_paisa,created_at,updated_at) VALUES('entitlement','allocation-snapshot','seller','earned',9100,1,1)").run();
-  for(const id of ['payout-one','payout-two'])await db.prepare(`INSERT INTO managed_payouts(id,seller_id,payout_number,amount_paisa,status,destination_reference,simulation_label,prepared_by,scheduled_for,request_id,created_at,updated_at) VALUES(?,'seller',?,9100,'prepared','Fictional destination','SIMULATED','super',1,?,1,1)`).bind(id,id,id).run();
+  // The second payout models a paid record retained from before execution packets.
+  await db.prepare(`INSERT INTO managed_payouts(id,seller_id,payout_number,amount_paisa,status,destination_reference,
+    simulation_label,prepared_by,scheduled_for,request_id,created_at,updated_at,paid_at,provider_reference)
+    VALUES('payout-one','seller','payout-one',9100,'prepared','Fictional destination','SIMULATED','super',1,'payout-one',1,1,NULL,NULL),
+          ('payout-two','seller','payout-two',9100,'paid','Fictional destination','SIMULATED','super',1,'payout-two',1,1,3,'SIMULATED')`).run();
   const reserve=(id:string,entitlement='entitlement')=>db.prepare("INSERT INTO managed_payout_allocations(payout_id,entitlement_id,amount_paisa,disposition,created_at,request_id,actor_id) VALUES(?,?,9100,'reserved',1,?,'super')").bind(id,entitlement,id).run();
   await reserve('payout-one');await assert.rejects(reserve('payout-two','ENTITLEMENT'),/UNIQUE/);
   await assert.rejects(reserve('payout-two'),/UNIQUE/);
@@ -137,6 +153,6 @@ void test('MariaDB allocation history permits re-reservation and blocks double r
   await assert.rejects(db.prepare("UPDATE managed_payouts SET destination_reference='changed' WHERE id='payout-one'").run(),/immutable/);
   await db.prepare("UPDATE managed_payout_allocations SET disposition='paid',terminal_at=3 WHERE payout_id='payout-two'").run();
   await assert.rejects(db.prepare("UPDATE managed_payout_allocations SET disposition='released',terminal_at=4 WHERE payout_id='payout-two'").run(),/immutable/);
-  await db.prepare("UPDATE managed_payouts SET status='paid',paid_at=3,provider_reference='SIMULATED' WHERE id='payout-two'").run();
+  await assert.rejects(db.prepare("UPDATE managed_payouts SET status='paid',paid_at=3,provider_reference='SIMULATED' WHERE id='payout-one'").run(),/managed_payout_requires_actual_execution_packet/);
   await assert.rejects(db.prepare("UPDATE managed_payouts SET status='prepared' WHERE id='payout-two'").run(),/immutable/);
 });
