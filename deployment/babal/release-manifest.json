@@ -1047,6 +1047,11 @@
       "path": "deployment/babal/mariadb-occasion-images.sql",
       "sha256": "45ee85704bbb5f43b883b5efe633d90147bdf212bb0b827b30c78491c184d80f",
       "usage": "owner-applied"
+    },
+    {
+      "path": "deployment/babal/mariadb-delivery-partners.sql",
+      "sha256": "abe01e232dfa66032036098223c4d8df102341074b4049eb419058d361f30e39",
+      "usage": "owner-applied"
     }
   ],
   "requiredTables": {

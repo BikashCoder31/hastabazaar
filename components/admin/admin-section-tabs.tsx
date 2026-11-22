@@ -14,6 +14,7 @@ export function AdminSectionTabs({ role, permissions, bankTransfers }: AdminStaf
   const { section, tab: active } = current;
   const pageTitlesSection = (pathname === '/admin/orders' && active.href === '/admin/orders')
     || pathname === '/admin/orders/dispatch'
+    || pathname === '/admin/orders/delivery-partners'
     || pathname === '/admin/shipping'
     || pathname === '/admin/customers'
     || pathname === '/admin/products/intakes'

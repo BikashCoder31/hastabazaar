@@ -16,7 +16,7 @@ const areaRoutes: readonly [AdminArea, readonly string[]][] = [
   ['Overview & work queue', ['/admin', '/admin/notifications', '/admin/progress', '/admin/analytics', '/admin/exceptions']],
   ['Sellers', ['/admin/sellers']],
   ['Products & storefront', ['/admin/products/publications', '/admin/products/intakes', '/admin/products', '/admin/catalog', '/admin/homepage', '/admin/reviews']],
-  ['Orders & customer care', ['/admin/orders', '/admin/orders/dispatch', '/admin/shipping', '/admin/cases', '/admin/customers', '/admin/privacy', '/admin/riders', '/admin/feedback', '/admin/delivery-rates']],
+  ['Orders & customer care', ['/admin/orders', '/admin/orders/dispatch', '/admin/shipping', '/admin/orders/delivery-partners', '/admin/cases', '/admin/customers', '/admin/privacy', '/admin/riders', '/admin/feedback', '/admin/delivery-rates']],
   ['Finance & payments', ['/admin/payments', '/admin/payouts', '/admin/payouts/run', '/admin/payments/refunds', '/admin/payments/recoveries', '/admin/accounting']],
   ['Fees, programs & promotions', ['/admin/fees', '/admin/offers', '/admin/referrals', '/admin/promo-codes', '/admin/fee-waivers', '/admin/loyalty', '/admin/commission', '/admin/programs', '/admin/gift-cards']],
   ['Team & business policies', ['/security', '/admin/team', '/admin/business-settings', '/admin/legal-policies', '/admin/legal-policies/active', '/admin/not-in-use']],
@@ -199,6 +199,7 @@ const destinations: readonly {
     permission: 'order.manage',
   },
   { href: '/admin/orders/dispatch', label: 'Dispatch', icon: 'shipping', permission: 'order.manage' },
+  { href: '/admin/orders/delivery-partners', label: 'Delivery partners', icon: 'shipping', permission: 'order.manage', role: 'super_admin' },
   {
     href: '/admin/shipping',
     label: 'Parcel problems',

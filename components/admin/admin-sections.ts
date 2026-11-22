@@ -30,6 +30,7 @@ const definitions = [
     { href: '/admin/orders/dispatch', label: 'Dispatch' },
     { href: '/admin/shipping', label: 'Parcel problems' },
     { href: '/admin/delivery-rates', label: 'Delivery rates' },
+    { href: '/admin/orders/delivery-partners', label: 'Delivery partners', superAdmin: true },
     { href: '/admin/order-emails', label: 'Order emails' },
     { href: '/admin/orders?workspace=answers', label: 'Seller answers', access: '/admin/orders',
       routes: ['/admin/order-responses'] },

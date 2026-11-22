@@ -17,6 +17,9 @@ export const SELLER_DASHBOARD_FORM_CONTRACTS: Readonly<Record<string, FormDefini
     ['sellerId', 'revision', 'reference', 'reason'], 'Only Super Admin can record independent bank verification against the current evidence.'),
   'staff.seller-checklist-request': fixed('staff.seller-checklist-request', 'super_admin', '/api/admin/sellers/:id/checklist',
     ['sellerId', 'actorId', 'itemId', 'note', 'remind', 'requestId'], 'Super Admin queues an audited message about one current checklist item.'),
+  'staff.delivery-partner': fixed('staff.delivery-partner', 'super_admin', '/api/admin/delivery-partners',
+    ['id', 'name', 'status', 'bookingMode', 'collectsCod', 'trackingPattern', 'makeDefault', 'expectedRevision', 'requestId'],
+    'Super Admin records configuration for a manual delivery partner.'),
   'seller.products-description': fixed('seller.products-description', 'seller', '/api/seller/products-description',
     ['businessDescription', 'productCategories', 'expectedVersion', 'requestId'], 'An applicant may update the product description without public product approval.'),
 });

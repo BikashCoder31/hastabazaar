@@ -53,7 +53,7 @@ void test('all eight approved admin areas retain existing destinations and curre
   const superAdmin = adminNavigation('super_admin');
   const newDestinations = ['/admin/not-in-use', '/admin/orders/dispatch', '/admin/customers', '/admin/products/intakes',
     '/admin/payments/refunds', '/admin/payments/recoveries', '/admin/payouts/run', '/admin/offers',
-    '/admin/system-health/incidents'];
+    '/admin/system-health/incidents', '/admin/orders/delivery-partners'];
   const paths = new Set(superAdmin.map(link => link.href));
   assert.equal(paths.size, 43 + newDestinations.length);
   for (const path of newDestinations) assert.ok(paths.has(path), path);
@@ -81,6 +81,8 @@ void test('Phase 1 exposes nine ordered hubs and preserves every original menu d
     [href, ...related.map(link => link.href), ...routes].map(value => value.split(/[?#]/)[0]))));
   for (const { href } of adminNavigation('super_admin')) assert.ok(destinations.has(href), href);
   assert.equal(activeAdminSection(sections, '/admin/products/publications/p-1')?.tab.label, 'Publishing');
+  assert.equal(activeAdminSection(sections, '/admin/orders/delivery-partners')?.tab.label, 'Delivery partners');
+  assert.ok(!adminSections('admin', ['order.manage']).flatMap(({ tabs }) => tabs).some(tab => tab.label === 'Delivery partners'));
   assert.equal(activeAdminSection(sections, '/admin/governance')?.section.label, 'Settings');
   assert.equal(activeAdminSection(sections, '/admin/backup-transfer')?.tab.label, 'System health & backups');
   assert.equal(activeAdminSection(adminSections('admin', ['system.incidents.manage']), '/admin/system-health/incidents')?.tab.label, 'Incidents');
