@@ -5,10 +5,12 @@ The candidate starts from `admin-redesign` at `f7110503`. The fetched `origin/ma
 | Task | Owner | Status | Checks |
 | --- | --- | --- | --- |
 | G1 · Prepare the branch | Main | Done | Typecheck, lint, 100 focused tests, additional readiness and byte-lock checks, the nine migration pairs and the Linux package passed. The full suite recorded 5,855 passes, 38 skips and two early SQL byte-lock failures. Both failures passed after the line-ending fix. |
-| G2 · Push and open the pull request | Main | In progress | Owner approved the first push. GitHub received `d0ceda5d`. The workflow changes passed 38 focused tests. |
+| G2 · Push and open the pull request | Main | In progress | Owner approved the first push. GitHub received `d0ceda5d`, then the workflow fix at `f92e443c`. PR #19 is open. The workflow changes passed 38 focused tests. |
 | G3 · Hand over | Main | Pending | Record the pull request, run and each job result after CI. |
 
 ## For the owner
+
+- [Pull request #19](https://github.com/BikashCoder31/hastabazaar/pull/19) targets `main`. [First Verify and Package run](https://github.com/BikashCoder31/hastabazaar/actions/runs/45029876215) built the archive and pulled the pinned image. The historical native gate failed on a collation mismatch in its disposable database. Its fixture now uses the reviewed schema’s `utf8mb4_unicode_ci` for both initial creation and recreation. The historical assertions are unchanged, and 16 focused tests passed.
 
 - First push approval covers `origin/main..redesign-release-20261122`, starting after `1addd7e9`. The delivery branch adds 119 commits and changes 3,476 files against the fetched base. It contains the 117 source commits, the reviewed SQL byte fix and this board.
 - The pre-push scan covered the tip tree and incoming Git history. It found zero restricted file paths and zero matching credential patterns. The full suite finished before this approval checkpoint. The two pre-fix source-byte failures passed in the focused reruns, and the package rebuilt from the committed fix.

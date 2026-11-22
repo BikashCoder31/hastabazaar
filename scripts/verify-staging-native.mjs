@@ -83,7 +83,7 @@ async function load(path, override){
 async function create(label){
   const database='native_'+run+'_'+label;
   assert.match(database,/^native_\d+_[a-z]+$/);
-  await connection.query('CREATE DATABASE `'+database+'` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci');
+  await connection.query('CREATE DATABASE `'+database+'` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
   await connection.query('USE `'+database+'`');
   return database;
 }
@@ -180,8 +180,7 @@ try {
       // container. Never accept a name/host from the caller or reuse saved data.
       owned();await connection.query('USE information_schema');
       await connection.query('DROP DATABASE `native_'+run+'_fresh`');
-      await connection.query('CREATE DATABASE `native_'+run+'_fresh` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci');
-      await connection.query('USE `native_'+run+'_fresh`');
+      await create('fresh');
       await load('deployment/babal/mariadb-schema.sql');
       for(const migration of manifest.migrations.filter(m=>m.usage==='additive-maintenance'))await load(migration.path);
       nativeTests([file],exactFeeCounts[file]);

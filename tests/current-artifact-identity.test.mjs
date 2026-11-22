@@ -45,7 +45,15 @@ void test('historical mode is exclusive and retains every historical native asse
   for(const args of [['--unknown'],['--historical-only','--local-recovery'],['--historical-only','--historical-only'],['saved-db']])assert.throws(()=>stagingNativeMode(args));
   const source=(await readFile(new URL('../scripts/verify-staging-native.mjs',import.meta.url),'utf8')).replaceAll('\r\n','\n');
   const historical=source.slice(source.indexOf('try{'),source.indexOf('  if(!localRecovery'));
-  assert.equal(createHash('sha256').update(historical).digest('hex'),'801f876ef9bf9ae6136b7e8a080b3824a99c814516ce139950db4654c0c682dc','Historical assertion body changed; review it separately');
+  assert.match(source,/async function create\(label\)[\s\S]*?CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci/);
+  assert.match(historical,/DROP DATABASE[^\n]+\n\s*await create\('fresh'\)/);
+  const originalFixtureBlock = historical
+    .replace('CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci', 'CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci')
+    .replace(
+      "      await create('fresh');",
+      "      await connection.query('CREATE DATABASE `native_'+run+'_fresh` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci');\n      await connection.query('USE `native_'+run+'_fresh`');",
+    );
+  assert.equal(createHash('sha256').update(originalFixtureBlock).digest('hex'),'801f876ef9bf9ae6136b7e8a080b3824a99c814516ce139950db4654c0c682dc','Historical assertion body changed; review it separately');
   assert.match(source,/if\(!localRecovery&&!historicalOnly\)await check/);
   assert.match(source,/if\(!historicalOnly\)await check\(localRecovery/);
 });
