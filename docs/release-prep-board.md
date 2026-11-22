@@ -15,8 +15,8 @@ Repeated R2, R3 and R4 on `admin-redesign` after NCM API finished at `8b406d68`.
 
 | Task | Owner | Status | Commit | Checks |
 | --- | --- | --- | --- | --- |
-| R2 · Release manifest and MariaDB rehearsal | Main | Done | `Release prep: Release manifest and MariaDB rehearsal` | Regression failed before adding unique keys to the inventory and passed after generation. MariaDB 10.11.19 applied 0164–0172. The pre-NCM build started and its storefront read the upgraded database. |
-| R3 · Read-only production schema check | Main | In progress | | Added NCM booking and receipt keys to the metadata report. |
+| R2 · Release manifest and MariaDB rehearsal | Main | Done | `c491df66` | Regression failed before adding unique keys to the inventory and passed after generation. MariaDB 10.11.19 applied 0164–0172. The pre-NCM build started and its storefront read the upgraded database. |
+| R3 · Read-only production schema check | Main | Done | `Release prep: Read-only production schema check` | MariaDB reported 0172 as Missing before installation, Partial after an incomplete install and Present after installation. The final report detected a missing booking key and passed again after restoration. |
 | R4 · Release notes and local final check | Main | In progress | | Full suite running, and production package verification pending. |
 
 ## R1 reconciliation
@@ -63,6 +63,7 @@ mariadb --host='<PRODUCTION_HOST>' --user='<PRODUCTION_REVIEW_USER>' --password 
 - The detail rows name the table, column, trigger, check or index to investigate. Verify the review account can see the relevant metadata, including triggers. Limited visibility can look the same as a missing object.
 - The report reads only MariaDB's schema metadata. Check application health and the smoke list separately, including runtime security and settings.
 - For 0172, verify the core and 0171 rows first. A missing NCM booking key appears under Migration 0172 even when all six tables exist. Resolve each detail row before turning on API booking.
+- The post-NCM report checks 81 requirements for 0172, including the primary and unique keys that prevent duplicate bookings and repeated webhook and comment records. On the rehearsal database, removing only the vendor reference key produced `PARTIAL` and named that key. Restoring it produced `PRESENT`; omitting the database produced `SELECT A DATABASE`.
 
 ### MariaDB review and apply commands
 

@@ -30,6 +30,13 @@ void test('production schema check is current and has only one metadata query', 
       migration === '0164' && kind === 'check-exact' && table === 'first_cod_reviews' && name === 'chk_first_cod_hold_total'));
     assert.ok(expected.some(([migration, kind, table, name]) =>
       migration === '0172' && kind === 'check-exact' && table === 'ncm_bookings' && name === 'ncm_booking_state'));
+    assert.deepEqual(expected.filter(([migration, kind]) => migration === '0172' && kind === 'unique-index')
+      .map(([, , table, name]) => table + '.' + name), [
+      'ncm_partner_settings.PRIMARY', 'ncm_pickup_branches.PRIMARY',
+      'ncm_bookings.PRIMARY', 'ncm_bookings.idx_ncm_booking_reference',
+      'ncm_bookings.idx_ncm_booking_order', 'ncm_bookings.idx_ncm_booking_request',
+      'ncm_api_daily_usage.PRIMARY', 'ncm_webhook_events.PRIMARY', 'ncm_courier_notes.PRIMARY',
+    ]);
   } finally {
     await rm(folder, { recursive: true, force: true });
   }
