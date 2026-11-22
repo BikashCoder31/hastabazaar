@@ -6,3 +6,38 @@
 *.jpg binary
 *.png binary
 *.webp binary
+
+# Preserve exact reviewed bytes for historical SQL locked by the release contracts.
+deployment/babal/mariadb-delivery-locations.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+deployment/babal/mariadb-guest-business-notifications.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+deployment/babal/mariadb-parcel-operations.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+deployment/babal/mariadb-product-deletions.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0026_product_deletions.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0027_delivery_locations.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0028_identity_purchase_security.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0029_parcel_operations.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0036_gift_cards.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0092_product_intake_workspace.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0093_product_publication_versions.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0094_product_availability.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0095_product_legacy_observations.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0096_product_priority_concerns.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0098_manual_payment_allocations.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0099_order_response_scope.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0100_cancellation_scope_holds.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0102_return_physical_handling.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0103_aftercare_followups.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0105_refund_execution_sources.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0106_original_delivery_allocations.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0110_refund_original_deadlines.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0115_managed_actual_execution.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0116_seller_recovery_cases.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0123_recovery_liability_corrections.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0124_recovery_response_cycles.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0130_recovery_carrier_reimbursements.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0133_recovery_payout_returns.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0134_recovery_carrier_unpaid.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0141_recovery_repayment_attributions.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0143_receipt_return_bank_satisfactions.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0149_team_governance.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+drizzle/0153_complete_version_legacy_transitions.sql -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
