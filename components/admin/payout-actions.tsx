@@ -212,7 +212,7 @@ const explanations: Record<PayoutOperation, string> = {
 export function ApprovePreparedPayoutButton({ amount, ...props }: React.ComponentProps<typeof PayoutWorkflowActions> & { amount: string }) {
   return (
     <Dialog>
-      <DialogTrigger type="button" className="admin-decision max-w-full">Approve {amount}</DialogTrigger>
+      <DialogTrigger type="button" data-desk-action={props.desk?"approve":undefined} className="admin-decision max-w-full">{props.desk?"Approve payout":"Approve "+amount}</DialogTrigger>
       <DialogContent className="max-h-[90dvh] overflow-y-auto border border-[#E3D8C7] bg-white p-5 text-[#14213D] sm:max-w-md" showCloseButton={false}>
         <DialogTitle className="text-xl">Approve prepared payout</DialogTitle>
         <DialogDescription>Review the prepared balance and record your decision.</DialogDescription>
@@ -229,8 +229,9 @@ export function PayoutWorkflowActions({
   canApprove,
   canProcess,
   isPreparer,
-  decisionOnly,
+  decisionOnly, desk,
 }: {
+  desk?: boolean;
   payoutId: string;
   status: PayoutStatus;
   canApprove: boolean;
@@ -388,7 +389,7 @@ export function PayoutWorkflowActions({
               if (result?.code === 'stale_version') catalog.handleSubmissionResponse(response, result.code);
               if (!response.ok) throw new Error(result?.error ?? 'Payout action failed. Retry the same request.');
               if (result?.ok !== true) throw new Error('The response could not confirm this action. Retry the same request.');
-              clearSessionAttempt(attemptKey); setRetry(false); setConfirm(false); setNote(''); setReference(''); setConfigured(null); router.refresh();
+              clearSessionAttempt(attemptKey); setRetry(false); setConfirm(false); setNote(''); setReference(''); setConfigured(null); if(desk)window.dispatchEvent(new Event('seller-desk-decided')); router.refresh();
             } catch (cause) { setError(cause instanceof Error ? cause.message : 'Payout action failed.'); }
             finally { setPending(false); }
           })();

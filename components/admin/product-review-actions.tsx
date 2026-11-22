@@ -39,7 +39,7 @@ const definitions = {
 
 type Definition = (typeof definitions)[keyof typeof definitions] & { action: ProductReviewAction };
 
-export function ProductReviewActions({ productId, status, canUnpublish = false, canPublish = false }: { productId: string; status: string; canUnpublish?: boolean; canPublish?: boolean }) {
+export function ProductReviewActions({ productId, status, desk, canUnpublish = false, canPublish = false }: { desk?: boolean; productId: string; status: string; canUnpublish?: boolean; canPublish?: boolean }) {
   const router = useRouter();
   const catalog = usePublishedFormConfig(FORM_ID);
   const formRef = useRef<HTMLFormElement>(null);
@@ -103,6 +103,7 @@ export function ProductReviewActions({ productId, status, canUnpublish = false, 
       clearSessionAttempt(attemptKey); setAttemptRevision((revision) => revision + 1); fingerprint.current = null;
       setSelected(null);
       setReason('');
+      if(desk && selected.action !== 'start_review') window.dispatchEvent(new Event('seller-desk-decided'));
       router.refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Product review failed.');
@@ -128,7 +129,7 @@ export function ProductReviewActions({ productId, status, canUnpublish = false, 
         } }}>Start a new attempt</Button> : null}
       {error ? <p role="alert" className="text-sm font-medium text-destructive">{error}</p> : null}
       <div className="flex flex-wrap gap-2">
-        {actions.map((action) => { const definition = definitions[action]; const Icon = definition.icon; return <Button key={action} type="button" variant={definition.variant} className="h-auto min-h-11 max-w-full whitespace-normal" disabled={pending || !catalog.canSubmit} onClick={() => prepare(action)}><Icon />{definition.label}</Button>; })}
+        {actions.map((action) => { const definition = definitions[action]; const Icon = definition.icon; return <Button key={action} type="button" data-desk-action={desk?(action==='approve'||action==='publish'?'approve':action==='request_changes'?'change':undefined):undefined} variant={definition.variant} className="h-auto min-h-11 max-w-full whitespace-normal" disabled={pending || !catalog.canSubmit} onClick={() => prepare(action)}><Icon />{definition.label}</Button>; })}
       </div>
       <AlertDialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
         <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{selected?.title}</AlertDialogTitle><AlertDialogDescription>{selected?.description}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel><AlertDialogAction variant={selected?.variant === 'destructive' ? 'destructive' : 'default'} disabled={pending || !catalog.canSubmit} onClick={submit}>{pending ? 'Saving…' : selected?.label}</AlertDialogAction></AlertDialogFooter></AlertDialogContent>

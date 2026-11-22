@@ -43,6 +43,7 @@ const definitions = [
     { href: '/admin/privacy', label: 'Privacy requests' },
   ] },
   { id: 'sellers', label: 'Sellers', tabs: [
+    { href: '/admin/sellers/desk', label: 'Seller desk', access: '/admin/sellers', superAdmin: true },
     { href: '/admin/sellers?reviewType=seller_application', label: 'Applications', access: '/admin/sellers', routes: ['/admin/sellers'] },
     { href: '/admin/sellers?workspace=directory', label: 'All sellers', access: '/admin/sellers',
       detailRoutes: ['/admin/sellers'] },

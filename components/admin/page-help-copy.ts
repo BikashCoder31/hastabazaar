@@ -70,6 +70,13 @@ const returnsHelp: HelpCopy = {
 };
 
 const workflowHelp: Readonly<Record<string, HelpCopy>> = {
+  '/admin/sellers/desk': {
+    title: 'How to use the seller desk',
+    sentences: [
+      'Choose a seller request to see the evidence and available decisions.',
+      'After you record a decision, the next item in your queue opens.',
+    ],
+  },
   '/admin/cases': returnsHelp,
   '/admin/cases/returns': returnsHelp,
   '/admin/cases/complaints': {

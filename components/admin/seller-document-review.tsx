@@ -12,13 +12,13 @@ import {useSessionReference,notifySessionReference} from '@/hooks/use-session-re
 import {useDenyStaffReview} from './staff-review-access-boundary';
 
 type Action='review'|'permission';
-type Props={actorId:string;action:Action;sourceId:string;url:string;fields:Record<string,string|null>;options:readonly [string,string][];canDecide:boolean;canSetDeadline?:boolean;problemNote?:string;initialDeadline?:PayoutFixDeadline};
+type Props={desk?:boolean;actorId:string;action:Action;sourceId:string;url:string;fields:Record<string,string|null>;options:readonly [string,string][];canDecide:boolean;canSetDeadline?:boolean;problemNote?:string;initialDeadline?:PayoutFixDeadline};
 type Attempt={id:string;wire:string;decision:string;uncertain:boolean};
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const object=(value:unknown):value is Record<string,unknown>=>!!value&&typeof value==='object'&&!Array.isArray(value);
 
 function DocumentDecisionForm(props:Props){return <OwnedDecision key={JSON.stringify([props.actorId,props.action,props.sourceId])} {...props}/>;}
-function OwnedDecision({actorId,action,sourceId,url,fields,options,canDecide,canSetDeadline,problemNote,initialDeadline}:Props){
+function OwnedDecision({desk,actorId,action,sourceId,url,fields,options,canDecide,canSetDeadline,problemNote,initialDeadline}:Props){
  const router=useRouter(),denyParent=useDenyStaffReview(),scope=useOwnedFormScope(JSON.stringify([actorId,action,sourceId]));
  const reasonId=useId();
  const key=sessionAttemptKey('staff.document.'+action,JSON.stringify([actorId,sourceId])),stored=useSessionReference(key);
@@ -45,7 +45,7 @@ function OwnedDecision({actorId,action,sourceId,url,fields,options,canDecide,can
  }
  function finish(id:string){
   if(!scope.isCurrent())return;
-  clearExact(id);setAttempt(null);setConfirmed(true);
+  clearExact(id);setAttempt(null);setConfirmed(true);if(desk)window.dispatchEvent(new Event('seller-desk-decided'));
   setMessage('The original decision is recorded. Review the refreshed evidence and current permissions before another action.');router.refresh();
  }
  async function send(value:Attempt){
@@ -96,7 +96,7 @@ function OwnedDecision({actorId,action,sourceId,url,fields,options,canDecide,can
       <fieldset className="flex min-w-0 flex-wrap gap-2">
         <legend className="sr-only">Document decision</legend>
         {options.map(([value, label]) => (
-          <Button key={value} type="button" aria-pressed={decision === value} variant="outline"
+          <Button key={value} type="button" data-desk-action={desk&&decision!==value?(value==='verify'?'approve':value==='request_correction'?'change':undefined):undefined} aria-pressed={decision === value} variant="outline"
             className={'min-h-11 max-w-full flex-1 whitespace-normal ' +
               (decision === value ? value === 'verify' ? 'border-[#236548] bg-[#DFECE4] text-[#236548]' : 'border-[#A8232E] bg-[#F8E1DE] text-[#6E1219]' : '')}
             onClick={() => {
@@ -131,7 +131,7 @@ function OwnedDecision({actorId,action,sourceId,url,fields,options,canDecide,can
     ) : <label htmlFor={reasonId} className="block space-y-2 text-sm">Reason shown to the seller<Input id={reasonId} name="reason" value={reason} onChange={event=>setReason(event.target.value)} required minLength={8} maxLength={1000} className="min-h-11"/></label>}
    </fieldset>
    {changed&&!requestId?<div className="space-y-2"><p>The evidence or review history changed. Inspect the current version before using your retained note.</p><Button type="button" variant="outline" onClick={()=>{setReviewedRevision(revision);setConfirmed(false);}}>Use reviewed current evidence</Button></div>:null}
-   <Button type="submit" className="min-h-11" disabled={busy||blocked||!!requestId||changed||confirmed||!canDecide}>{busy?'Saving…':'Record decision'}</Button>
+   <Button type="submit" data-desk-action={desk?(decision==='verify'||decision==='approve'?'approve':decision==='request_correction'?'change':undefined):undefined} className="min-h-11" disabled={busy||blocked||!!requestId||changed||confirmed||!canDecide}>{busy?'Saving…':'Record decision'}</Button>
   </form>:null}
   <div className="flex flex-wrap gap-2">
    {attempt?<Button type="button" variant="outline" disabled={busy||blocked} onClick={()=>void send(attempt)}>Retry exact original decision</Button>:null}
@@ -145,17 +145,17 @@ function OwnedDecision({actorId,action,sourceId,url,fields,options,canDecide,can
 }
 
 export function SellerDocumentReview({
- actorId,sellerId,documentId,expectedReviewId=null,canDecide=true,canSetDeadline,bankProblemOnly,needsReplacement,problemNote,initialDeadline,
+ desk,clearFix,actorId,sellerId,documentId,expectedReviewId=null,canDecide=true,canSetDeadline,bankProblemOnly,needsReplacement,problemNote,initialDeadline,
 }:{
- actorId:string;sellerId:string;documentId:string;expectedReviewId?:string|null;canDecide?:boolean;canSetDeadline?:boolean;
+ desk?:boolean;clearFix?:boolean;actorId:string;sellerId:string;documentId:string;expectedReviewId?:string|null;canDecide?:boolean;canSetDeadline?:boolean;
  bankProblemOnly?:boolean;needsReplacement?:boolean;problemNote?:string;initialDeadline?:PayoutFixDeadline;
 }){
- const options: [string,string][] = bankProblemOnly ? [['request_correction','Problem']]
-   : [['request_correction','Problem'],['reject','Reject document']];
- if (!bankProblemOnly && !needsReplacement) options.unshift(['verify','Matches']);
- return <DocumentDecisionForm actorId={actorId} action="review" sourceId={documentId} url={`/api/admin/seller-documents/${encodeURIComponent(documentId)}/review`}
+ const options: [string,string][] = bankProblemOnly ? [['request_correction',desk?'Still wrong · ask again':'Problem']]
+   : [['request_correction',desk?'Still wrong · ask again':'Problem'],['reject','Reject document']];
+ if (!bankProblemOnly && !needsReplacement) options.unshift(['verify',desk&&clearFix?'Matches · clear the hold':'Matches']);
+ return <DocumentDecisionForm desk={desk} actorId={actorId} action="review" sourceId={documentId} url={`/api/admin/seller-documents/${encodeURIComponent(documentId)}/review`}
    fields={{sellerId,expectedReviewId}} canDecide={canDecide} canSetDeadline={canSetDeadline} problemNote={problemNote} initialDeadline={initialDeadline} options={options}/>;
 }
-export function DocumentChangeReview({actorId,requestId,expectedOperationId,canDecide=true}:{actorId:string;requestId:string;expectedOperationId:string|null;canDecide?:boolean}){
- return <DocumentDecisionForm actorId={actorId} action="permission" sourceId={requestId} url={`/api/admin/seller-document-change-requests/${encodeURIComponent(requestId)}`} fields={{expectedOperationId}} canDecide={canDecide} options={[["approve","Permit this document replacement"],["reject","Reject this change request"]]}/>;
+export function DocumentChangeReview({desk,actorId,requestId,expectedOperationId,canDecide=true}:{desk?:boolean;actorId:string;requestId:string;expectedOperationId:string|null;canDecide?:boolean}){
+ return <DocumentDecisionForm desk={desk} actorId={actorId} action="permission" sourceId={requestId} url={`/api/admin/seller-document-change-requests/${encodeURIComponent(requestId)}`} fields={{expectedOperationId}} canDecide={canDecide} options={[["approve","Permit this document replacement"],["reject","Reject this change request"]]}/>;
 }

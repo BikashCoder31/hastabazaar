@@ -6,7 +6,7 @@ import {useOwnedFormScope} from '@/components/forms/use-owned-form-scope';
 import {sessionAttemptKey} from '@/lib/forms/client-attempt';
 import {ACTOR_INTENT_HEADER} from '@/lib/http/actor-intent';
 import {useSessionReference,notifySessionReference} from '@/hooks/use-session-reference';
-import {useDenyStaffReview} from './staff-review-access-boundary';
+import {useDenyStaffReview,useStaffDeskReview} from './staff-review-access-boundary';
 import type {ProtectedAdminAction} from '@/lib/sellers/protected-admin-recovery';
 type Props={actorId:string;action:ProtectedAdminAction;sourceId:string;revision:string;canDecide?:boolean;title:string;submitLabel:string;children:ReactNode;makePayload:(form:FormData)=>Record<string,unknown>;description?:ReactNode};
 type Attempt={id:string;wire:string;decision:string;uncertain:boolean};
@@ -16,6 +16,7 @@ const decisions:Record<ProtectedAdminAction,readonly string[]>={permission:['per
 function decisionOf(action:ProtectedAdminAction,payload:Record<string,unknown>){return action==='permission'?String(payload.decision):action==='verify-identity'?'identity_verified':action==='bank-details'?'verify':payload.action==='revalidate_bank'?'bank_revalidated':payload.action==='retire_packet'?'packet_retired':String(payload.action);}
 export function ProtectedReviewForm(props:Props){return <OwnedForm key={JSON.stringify([props.actorId,props.action,props.sourceId])} {...props}/>;}
 function OwnedForm({actorId,action,sourceId,revision,canDecide=true,title,submitLabel,children,makePayload,description}:Props){
+ const desk=useStaffDeskReview();
  const router=useRouter(),denyParent=useDenyStaffReview(),scope=useOwnedFormScope(JSON.stringify([actorId,action,sourceId])),flight=useRef(false),formRef=useRef<HTMLFormElement>(null);
  const key=sessionAttemptKey('staff.protected.'+action,JSON.stringify([actorId,sourceId])),stored=useSessionReference(key);
  const [attempt,setAttempt]=useState<Attempt|null>(null),[reviewedRevision,setReviewedRevision]=useState(revision),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[denied,setDenied]=useState(false),[confirmed,setConfirmed]=useState(false);
@@ -26,7 +27,7 @@ function OwnedForm({actorId,action,sourceId,revision,canDecide=true,title,submit
  function retain(id:string){const current=sessionStorage.getItem(key);if(current!==null&&current!==id)throw Error('Another original action reference is retained. Check it before another decision.');sessionStorage.setItem(key,id);if(sessionStorage.getItem(key)!==id)throw Error('The original action reference could not be retained. No decision was sent.');notifySessionReference(key);}
  function clear(id:string){try{if(sessionStorage.getItem(key)===id){sessionStorage.removeItem(key);notifySessionReference(key);}}catch{/* A confirmed result stays true while its opaque reference remains recoverable. */}}
  function matches(value:unknown,id:string,decision?:string){return object(value)&&value.recorded===true&&value.actorId===actorId&&value.action===action&&value.sourceId===sourceId&&value.requestId===id&&typeof value.decision==='string'&&decisions[action].includes(value.decision)&&(decision===undefined||value.decision===decision);}
- function finish(id:string){if(!scope.isCurrent())return;clear(id);setAttempt(null);setConfirmed(true);setMessage('The original decision is recorded. Review current evidence, permissions and independent holds before another action.');router.refresh();}
+ function finish(id:string){if(!scope.isCurrent())return;clear(id);setAttempt(null);setConfirmed(true);if(desk)window.dispatchEvent(new Event('seller-desk-decided'));setMessage('The original decision is recorded. Review current evidence, permissions and independent holds before another action.');router.refresh();}
  async function send(value:Attempt){
   if(flight.current||!scope.isCurrent()||denied)return;flight.current=true;setBusy(true);setMessage('');
   try{
@@ -60,7 +61,7 @@ function OwnedForm({actorId,action,sourceId,revision,canDecide=true,title,submit
  if(!canDecide&&!requestId&&!message)return null;
  return <section data-protected-action={action} className="space-y-3 rounded-xl border p-4"><h3 className="font-semibold">{title}</h3>
   {canDecide||attempt?<form ref={formRef} data-form-id={action==='bank-details'?'staff.seller-bank-review':action==='permission'?'staff.protected-change-permission':action==='verify-identity'?'staff.protected-identity-review':'staff.protected-change-disposition'} onSubmit={submit} className="space-y-3"><fieldset disabled={busy||!!requestId||confirmed||changed} className="space-y-3">{children}</fieldset>
-   {description}<Button type="submit" disabled={busy||blocked||!!requestId||changed||confirmed||!canDecide}>{busy?'Saving…':submitLabel}</Button>
+   {description}<Button type="submit" className="min-h-11" data-desk-action={desk&&(action==='verify-identity'||action==='bank-details')?'approve':undefined} disabled={busy||blocked||!!requestId||changed||confirmed||!canDecide}>{busy?'Saving…':submitLabel}</Button>
   </form>:null}
   {changed&&!requestId?<div className="space-y-2"><p>The evidence or review history changed. Inspect its current version and confirm the evidence again; your notes are retained.</p><Button type="button" variant="outline" disabled={busy} onClick={reviewCurrent}>Use reviewed current evidence</Button></div>:null}
   <div className="flex flex-wrap gap-2">{attempt?<Button type="button" variant="outline" disabled={busy||blocked} onClick={()=>void send(attempt)}>Retry exact original decision</Button>:null}

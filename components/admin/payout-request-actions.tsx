@@ -14,11 +14,11 @@ import { configuredJsonPayload, readConfiguredSubmission } from '@/lib/forms/cli
 import {ACTOR_INTENT_HEADER} from '@/lib/http/actor-intent';
 import {FinanceAccessNotice} from './finance-access-notice';
 const BASE_KEYS=['action','note','requestId'];
-type PayoutRequestActionProps={id:string;actorId:string;role?:'admin'|'super_admin';approvalAmount?:string};
+type PayoutRequestActionProps={desk?:boolean;id:string;actorId:string;role?:'admin'|'super_admin';approvalAmount?:string};
 export function PayoutRequestActions(props:PayoutRequestActionProps){
   return <PayoutRequestActionScope key={JSON.stringify([props.actorId,props.id])} {...props}/>;
 }
-function PayoutRequestActionScope({ id, actorId, role = 'admin', approvalAmount }: PayoutRequestActionProps) {
+function PayoutRequestActionScope({ id, actorId, role = 'admin', approvalAmount, desk }: PayoutRequestActionProps) {
   const router=useRouter();
   const active=useRef(true);useLayoutEffect(()=>{active.current=true;return()=>{active.current=false;};},[]);
   const [pending,setPending]=useState(false),[error,setError]=useState(''),[retryPending,setRetryPending]=useState(false),[accessDenied,setAccessDenied]=useState(false),[retained,setRetained]=useState<Record<string,unknown>|null>(null);
@@ -40,7 +40,7 @@ function PayoutRequestActionScope({ id, actorId, role = 'admin', approvalAmount 
       if(response.status===401||response.status===403)setAccessDenied(true);
       if(!response.ok){if(response.status===409&&result?.code==='stale_version')catalog.handleSubmissionResponse(response,result.code);throw new Error(result?.error||'The payout decision could not be saved.');}
       if(result?.ok!==true)throw new Error('The response could not be verified. Retry with the same request.');
-      clearSessionAttempt(attemptKey);setRetryPending(false);setOpen(false);router.refresh();
+      clearSessionAttempt(attemptKey);setRetryPending(false);setOpen(false);if(desk)window.dispatchEvent(new Event('seller-desk-decided'));router.refresh();
     }catch(cause){if(active.current)setError(cause instanceof Error?cause.message:'The payout decision could not be saved.');}
     finally{if(active.current)setPending(false);}
   }
@@ -50,7 +50,7 @@ function PayoutRequestActionScope({ id, actorId, role = 'admin', approvalAmount 
       const response=await fetch('/api/admin/payout-requests/'+encodeURIComponent(id)+'?attempt='+encodeURIComponent(attempt),{headers:{[ACTOR_INTENT_HEADER]:actorId}}),result=await response.json() as {outcome?:{id:string}|null;currentStatus?:string;error?:string};
       if(!active.current)return;if(!response.ok)throw new Error(result.error??'The original outcome could not be checked.');
       if(!Object.hasOwn(result,'outcome')||!['submitted','prepared','rejected'].includes(result.currentStatus??'')||result.outcome&&result.outcome.id!==id)throw new Error('The original outcome could not be verified.');
-      setAccessDenied(false);if(result.outcome){clearSessionAttempt(attemptKey);setRetryPending(false);setRetained(null);router.refresh();}else if(result.currentStatus!=='submitted'){setError('The original request already has a recorded decision. Review its current history.');router.refresh();}else setError('No original decision is recorded yet. Review the retained same-actor fields before retrying.');
+      setAccessDenied(false);if(result.outcome){clearSessionAttempt(attemptKey);setRetryPending(false);setRetained(null);if(desk)window.dispatchEvent(new Event('seller-desk-decided'));router.refresh();}else if(result.currentStatus!=='submitted'){setError('The original request already has a recorded decision. Review its current history.');router.refresh();}else setError('No original decision is recorded yet. Review the retained same-actor fields before retrying.');
     }catch(cause){if(active.current)setError(cause instanceof Error?cause.message:'The original outcome could not be checked.');}finally{if(active.current)setPending(false);}
   }
   if(accessDenied)return <FinanceAccessNotice message={error} busy={pending} onCheck={()=>void checkOriginal()}/>;
@@ -122,7 +122,7 @@ function PayoutRequestActionScope({ id, actorId, role = 'admin', approvalAmount 
   if (!approvalAmount) return form;
   return (
     <Dialog open={open} onOpenChange={next => { if (!pending) setOpen(next); }}>
-      <DialogTrigger type="button" className="admin-decision max-w-full">Approve available balance</DialogTrigger>
+      <DialogTrigger type="button" data-desk-action={desk?"approve":undefined} className="admin-decision max-w-full">{desk?"Approve payout":"Approve available balance"}</DialogTrigger>
       <DialogContent className="max-h-[90dvh] overflow-y-auto border border-[#E3D8C7] bg-white p-5 text-[#14213D] sm:max-w-md" showCloseButton={false}>
         <DialogTitle className="text-xl">Approve seller payout</DialogTitle>
         <DialogDescription>The current eligible balance is {approvalAmount}. The final amount is checked when you approve. Record why you are approving the payout.</DialogDescription>

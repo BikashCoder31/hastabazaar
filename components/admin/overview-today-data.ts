@@ -1,3 +1,5 @@
+import { sellerDeskTaskKey } from '@/lib/admin/seller-desk';
+import { deskHref } from './seller-desk-navigation';
 import { countOrdersForOperations } from '@/lib/db/repositories/orders';
 import { listNotifications } from '@/lib/db/repositories/operations';
 import { canViewStaffNotification } from '@/lib/operations/notification-links';
@@ -146,7 +148,11 @@ export async function readTodaySources({
     actor.role === 'super_admin' ? listSellerPayoutFixes(db, actor.id).catch(() => null) : [],
   ]);
   const completedTasks = new Map(native.filter(task => task.status === 'completed').map(task => [task.id, task]));
-  const rows = open.map(task => todayReviewTask(task, returnTo, names.get(task.ownerId ?? '') ?? null, handoffs.copy.get(task.id)));
+  const rows = open.map(task => {
+    const row = todayReviewTask(task, returnTo, names.get(task.ownerId ?? '') ?? null, handoffs.copy.get(task.id));
+    const key = actor.role === 'super_admin' ? sellerDeskTaskKey(task) : null;
+    return key ? { ...row, href: deskHref(key, 'all', returnTo) } : row;
+  });
   const workRows = new Map(open.map((task, index) => [task.sourceType + ':' + task.sourceId, index]));
   for (const fix of payoutFixes ?? []) {
     const waiting = fix.waitingFor === 'seller';
@@ -161,7 +167,8 @@ export async function readTodaySources({
       state: waiting ? 'waiting' : 'action',
       ownerId: existing?.ownerId ?? null, ownerName: existing?.ownerName ?? null,
       assignment: waiting ? null : existing?.assignment ?? null,
-      href: withAdminReturnTo(fix.staffHref, returnTo),
+      href: waiting ? withAdminReturnTo(fix.staffHref, returnTo) :
+        deskHref(fix.protectedCaseId ? 'protected_change:' + fix.protectedCaseId : 'seller_document:' + fix.documentId, 'all', returnTo),
       action: waiting ? 'Open document' : 'Recheck document',
     };
     if (index === undefined) rows.push(row);

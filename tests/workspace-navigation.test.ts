@@ -74,7 +74,7 @@ void test('Phase 1 exposes nine ordered hubs and preserves every original menu d
     'Today', 'Orders', 'Care', 'Sellers', 'Catalog', 'Money', 'Growth', 'Reports', 'Settings',
   ]);
   assert.deepEqual(sections.map(({ tabs }) => tabs[0].href), [
-    '/admin', '/admin/orders', '/admin/cases', '/admin/sellers?reviewType=seller_application',
+    '/admin', '/admin/orders', '/admin/cases', '/admin/sellers/desk',
     '/admin/products', '/admin/payments', '/admin/offers', '/admin/analytics', '/admin/team',
   ]);
   const destinations = new Set(sections.flatMap(({ tabs }) => tabs.flatMap(({ href, related, routes }) =>

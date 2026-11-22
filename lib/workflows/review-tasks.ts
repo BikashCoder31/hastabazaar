@@ -240,11 +240,15 @@ function reviewTaskStatus(current:Source,revision:string){
   return current.status==='draft'?'not_submitted':'completed';
 }
 
-export async function listReviewTasks(db: D1Database, actorId: string, sellerId?:string,options:{limit?:number;reference?:string;fromAt?:number;beforeAt?:number}={}) {
+export async function listReviewTasks(db: D1Database, actorId: string, sellerId?:string,options:{limit?:number;reference?:string;fromAt?:number;beforeAt?:number;sourceTypes?:readonly SourceType[]}={}) {
   const reader=await staffMutationGuard(db,actorId,'account.self.manage',ReviewTaskConflict);
   const permissions=new Map<string,D1PreparedStatement[]>(),sourceGuards:D1PreparedStatement[]=[];
   if(options.limit!==undefined&&(!Number.isSafeInteger(options.limit)||options.limit<1||options.limit>1000))throw new ReviewTaskConflict('Choose a bounded review-task source scan.');
   const scope:string[]=[],queryValues:(string|number)[]=[];
+  if (options.sourceTypes) {
+    scope.push(options.sourceTypes.length ? 'source_type IN (' + options.sourceTypes.map(() => '?').join(',') + ')' : '1=0');
+    queryValues.push(...options.sourceTypes);
+  }
   if(options.reference){scope.push('id=?');queryValues.push(options.reference);}
   if(options.fromAt!==undefined){scope.push('started_at>=?');queryValues.push(options.fromAt);}
   if(options.beforeAt!==undefined){scope.push('started_at<?');queryValues.push(options.beforeAt);}
