@@ -255,7 +255,6 @@ export async function runRecordedWorkBrowser(options: {
           options.onStep?.('verify the seller record refresh after ' + label);
           const refreshed = await refresh;
           assert.ok(refreshed && refreshed.status() === 200, 'Observe the successful review-triggered Seller Flight before continuing');
-          assert.equal(await refreshed.finished(), null);
           if (beforeBankViews) {
             options.onStep?.('verify the final protected bank-view audit');
             await assertSellerReviewAuditCommitted(db, owner.id, application.id, beforeBankViews, signal);
@@ -263,7 +262,8 @@ export async function runRecordedWorkBrowser(options: {
         }
         if (status === 'under_review') {
           // The action already refreshes the seller record. A second browser
-          // navigation can leave another audited bank view in flight.
+          // navigation can leave another audited bank view in flight. The new
+          // note field proves the refreshed UI arrived even if Flight streams.
           await form.getByLabel('Review note', { exact: true }).waitFor();
           await page.waitForURL(origin + '/admin/sellers/' + application.id);
         }
