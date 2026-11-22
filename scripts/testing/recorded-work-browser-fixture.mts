@@ -243,7 +243,7 @@ export async function runRecordedWorkBrowser(options: {
         const beforeBankViews = page === ownerPage && status === 'needs_changes'
           ? new Set(await sellerBankViewIds(db, owner.id, application.id))
           : null;
-        const refresh = beforeBankViews ? waitForSellerReviewRefresh(page, sellerUrl, reviewUrl) : null;
+        const refresh = page === ownerPage ? waitForSellerReviewRefresh(page, sellerUrl, reviewUrl) : null;
         const request = page.waitForResponse(response => response.request().method() === 'POST' && response.url() === reviewUrl);
         await page.getByRole('alertdialog').getByRole('button', { name: label, exact: true }).click();
         const response = await request;
@@ -251,19 +251,21 @@ export async function runRecordedWorkBrowser(options: {
         assert.equal((await response.json()).status, status);
         const [profiles] = await db.query<RowDataPacket[]>('SELECT status FROM seller_profiles WHERE id=?', [application.id]);
         assert.equal(profiles[0]?.status, status, 'The real source application must retain the transition');
-        if (refresh && beforeBankViews) {
-          options.onStep?.('verify the final review refresh and protected bank-view audit');
+        if (refresh) {
+          options.onStep?.('verify the seller record refresh after ' + label);
           const refreshed = await refresh;
-          assert.equal(refreshed?.status(), 200, 'Observe the successful review-triggered Seller Flight before the read-only inventory');
-          // The Flight can keep streaming after the application writes the protected view audit.
-          await assertSellerReviewAuditCommitted(db, owner.id, application.id, beforeBankViews, signal);
+          assert.ok(refreshed && refreshed.status() === 200, 'Observe the successful review-triggered Seller Flight before continuing');
+          assert.equal(await refreshed.finished(), null);
+          if (beforeBankViews) {
+            options.onStep?.('verify the final protected bank-view audit');
+            await assertSellerReviewAuditCommitted(db, owner.id, application.id, beforeBankViews, signal);
+          }
         }
         if (status === 'under_review') {
           // The action already refreshes the seller record. A second browser
           // navigation can leave another audited bank view in flight.
           await form.getByLabel('Review note', { exact: true }).waitFor();
           await page.waitForURL(origin + '/admin/sellers/' + application.id);
-          await page.waitForLoadState('networkidle');
         }
       }
     }
@@ -285,8 +287,10 @@ export async function runRecordedWorkBrowser(options: {
     // Leave the review pages before starting the read-only window. A protected
     // seller render from the final review is allowed to finish writing its audit.
     options.onStep?.('finish review-page requests before the read-only inventory');
-    await ownPage.goto(origin + progress, { waitUntil: 'networkidle' });
-    await ownerPage.goto(origin + activity, { waitUntil: 'networkidle' });
+    await ownPage.goto(origin + progress);
+    await ownPage.getByRole('heading', { name: 'Your recorded work', exact: true }).waitFor();
+    await ownerPage.goto(origin + activity);
+    await ownerPage.getByRole('heading', { name: 'Business activity', exact: true }).waitFor();
     const { formLoads: beforeLoads, ...beforeRead } = await readOnlyInventory(db, selectedViews);
     const auditBefore = await auditActionCounts(db);
 
