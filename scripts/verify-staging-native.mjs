@@ -113,20 +113,28 @@ try {
   });
   await create('legacy');
   await check('populated pre-weekly schema upgrades conserve every original value',async()=>{
+    const customerFeeCompanion='deployment/babal/mariadb-customer-service-fee-waivers.sql';
+    const customerFeeSource=(await readFile(resolve(project,customerFeeCompanion),'utf8')).replace(/\r\n/g,'\n').trim();
+    const [historicalSource,laterSchema,...duplicates]=schema.split(customerFeeSource);
+    assert.ok(historicalSource && laterSchema && duplicates.length===0,'The 0074 boundary must appear exactly once');
+    const maintenance=manifest.migrations.filter(m=>m.usage==='additive-maintenance');
+    const customerFeeIndex=maintenance.findIndex(m=>m.path===customerFeeCompanion);
+    assert.ok(customerFeeIndex>=0,'0074 must be listed in maintained migration order');
+    const historicalSchema=historicalSource+customerFeeSource;
     const loyalty=(await readFile(resolve(project,'deployment/babal/mariadb-loyalty-points.sql'),'utf8')).replace(/\r\n/g,'\n');
     assert.equal(loyalty.split('-- Weekly loyalty cycle extension').length,2);
     // SQL contains $' sequences; use a callback so replacement strings cannot
     // reinterpret them as JavaScript replacement patterns.
-    let legacy=schema.replace(loyalty.trim(),()=>loyalty.split('-- Weekly loyalty cycle extension')[0].trim());
+    let legacy=historicalSchema.replace(loyalty.trim(),()=>loyalty.split('-- Weekly loyalty cycle extension')[0].trim());
     for(const companion of companions){
       const source=(await readFile(resolve(project,'deployment/babal',companion),'utf8')).replace(/\r\n/g,'\n').trim();
       assert.equal(legacy.split(source).length,2,'Each maintained companion must be removed exactly once');
       legacy=legacy.replace(source,'');
     }
-    assert.notEqual(legacy,schema);
+    assert.notEqual(legacy,historicalSchema);
     await load('fixture-pre-weekly-bootstrap',legacy);
     // These four companions plus the weekly loyalty extension are absent.
-    for(const migration of manifest.migrations.filter(m=>m.usage==='additive-maintenance'&&!companions.some(n=>m.path.endsWith(n))&&!m.path.endsWith('mariadb-loyalty-points.sql')))await load(migration.path);
+    for(const migration of maintenance.slice(0,customerFeeIndex).filter(m=>!companions.some(n=>m.path.endsWith(n))&&!m.path.endsWith('mariadb-loyalty-points.sql')))await load(migration.path);
     // Earlier wallet companions replace their kind CHECK. Restore the actual
     // pre-weekly loyalty base last, as the old hosted release does.
     await load('fixture-pre-weekly-loyalty',loyalty.split('-- Weekly loyalty cycle extension')[0]);
@@ -168,6 +176,9 @@ try {
     for(const {n} of tables){const [rows]=await connection.query('SELECT * FROM `'+n+'` ORDER BY 1');before[n]={rows,columns:(await connection.query('SHOW COLUMNS FROM `'+n+'`'))[0].map(c=>c.Field)};}
     const preserved=async()=>{for(const [table,{rows,columns}]of Object.entries(before))assert.deepEqual((await connection.query('SELECT '+columns.map(c=>'`'+c+'`').join(',')+' FROM `'+table+'` ORDER BY 1'))[0],rows,table);};
     for(let repeat=0;repeat<2;repeat++)for(const step of upgrade.steps){await load('reviewed-staging-delta/'+step.name,step.sql);await preserved();}
+    // Later views and triggers depend on tables introduced by the historical upgrade.
+    await load('fixture-post-0074-bootstrap',laterSchema);
+    for(const migration of maintenance.slice(customerFeeIndex+1))await load(migration.path);
     assert.deepEqual(await inspectReadiness(adapter),{ready:true,missing:[]});
     assert.deepEqual((await connection.query('SELECT scheduled_revision,scheduled_for,scheduled_unpause,paused,current_revision,draft_revision,issued_points,redeemed_points,credited_paisa FROM loyalty_config'))[0][0],{scheduled_revision:null,scheduled_for:null,scheduled_unpause:0,paused:1,current_revision:1,draft_revision:2,issued_points:100,redeemed_points:100,credited_paisa:1000});
     for(const table of ['seller_participation_profiles','managed_commercial_snapshots'])assert.equal((await connection.query('SELECT COUNT(*) n FROM '+table+' WHERE accepted_managed_detail_id IS NOT NULL'))[0][0].n,0);

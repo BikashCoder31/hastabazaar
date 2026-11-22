@@ -47,7 +47,15 @@ void test('historical mode is exclusive and retains every historical native asse
   const historical=source.slice(source.indexOf('try{'),source.indexOf('  if(!localRecovery'));
   assert.match(source,/async function create\(label\)[\s\S]*?CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci/);
   assert.match(historical,/DROP DATABASE[^\n]+\n\s*await create\('fresh'\)/);
+  assert.match(historical,/await preserved\(\);\}\n[^\n]+\n\s*await load\('fixture-post-0074-bootstrap',laterSchema\);/);
+  assert.match(historical,/maintenance\.slice\(0,customerFeeIndex\)/);
+  assert.match(historical,/maintenance\.slice\(customerFeeIndex\+1\)/);
   const originalFixtureBlock = historical
+    .replace(/^    const customerFeeCompanion=[\s\S]*?^    const historicalSchema=historicalSource\+customerFeeSource;\n/m, '')
+    .replace('let legacy=historicalSchema.replace', 'let legacy=schema.replace')
+    .replace('assert.notEqual(legacy,historicalSchema);', 'assert.notEqual(legacy,schema);')
+    .replace('maintenance.slice(0,customerFeeIndex).filter(m=>!', "manifest.migrations.filter(m=>m.usage==='additive-maintenance'&&!")
+    .replace(/^    \/\/ Later views and triggers[^\n]*\n[^\n]*\n[^\n]*\n/m, '')
     .replace('CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci', 'CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci')
     .replace(
       "      await create('fresh');",
