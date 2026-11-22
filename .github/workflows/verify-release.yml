@@ -1,4 +1,4 @@
-name: Artifact Verification Preparation (Deployment Held)
+name: Verify and Package
 
 on:
   push:
@@ -61,7 +61,7 @@ jobs:
       - run: node --import tsx --test --test-concurrency=1 --test-shard=${{ matrix.shard }}/4 tests/*.test.ts tests/seller-registration-browser.test.mjs tests/prepare-release-schema-input.test.mjs
 
   native:
-    # Historical and selected-artifact gates are separate; whole release readiness remains held.
+    # Both the historical and selected-artifact gates must finish before packaging.
     name: Artifact Build, Historical and Selected Native Gates
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -87,12 +87,24 @@ jobs:
         run: node scripts/prepare-release-schema-input.mjs --output-directory=".test-artifacts/t35/ci-schema-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --expected-sha256=aa248443d0f54096a83a11c74c6b3cda66774431417cd64be9cd127af98a3493
       - run: npm run build:babal -- --schema-input="$GITHUB_WORKSPACE/.test-artifacts/t35/ci-schema-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/mariadb-schema.sql"
       - run: npm run package:babal:ci -- "$HASTABAZAAR_RELEASE_ID"
+      - name: Pull reviewed MariaDB image
+        id: mariadb
+        run: |
+          set -euo pipefail
+          # The Linux x64 manifest of the reviewed MariaDB 10.11 index
+          # sha256:7f22313fc130a377a44999965bcb0a08dd5b21e8502824c1b864f792f9bc66ab.
+          image='docker.io/library/mariadb@sha256:5ae7fc7b20f8e07c0ee169ff24617b39cb99b4bfc147555cea758baa69834d9e'
+          docker pull --platform linux/amd64 "$image"
+          docker image tag "$image" mariadb:10.11
+          read -r platform image_id <<< "$(docker image inspect mariadb:10.11 --format '{{.Os}}/{{.Architecture}} {{.Id}}')"
+          test "$platform" = linux/amd64
+          [[ "$image_id" =~ ^sha256:[a-f0-9]{64}$ ]]
+          printf 'image_id=%s\n' "$image_id" >> "$GITHUB_OUTPUT"
       - name: Require preserved historical bootstrap and upgrade native gate
         run: node --import tsx scripts/verify-staging-native.mjs --historical-only
       - name: Require selected artifact native journeys, browsers and isolated recovery
-        # Fail closed unless the reviewed image is already cached; never pull here.
         env:
-          HASTABAZAAR_REVIEWED_MARIADB_IMAGE_ID: ${{ vars.HASTABAZAAR_REVIEWED_MARIADB_IMAGE_ID }}
+          HASTABAZAAR_REVIEWED_MARIADB_IMAGE_ID: ${{ steps.mariadb.outputs.image_id }}
         run: HASTABAZAAR_NATIVE_ARTIFACT_DIRECTORY="$GITHUB_WORKSPACE/outputs/$HASTABAZAAR_RELEASE_ID" node --import tsx scripts/testing/verify-current-artifact-native.mjs
       - name: Retain enumerated non-secret browser acceptance evidence
         if: always()
@@ -142,7 +154,7 @@ jobs:
         with:
           name: native-verified-${{ env.HASTABAZAAR_RELEASE_ID }}
           path: outputs/${{ env.HASTABAZAAR_RELEASE_ID }}/
-      - name: Verify retained artifact checksums (readiness remains incomplete)
+      - name: Verify retained artifact checksums
         working-directory: outputs/${{ env.HASTABAZAAR_RELEASE_ID }}
         run: sha256sum --check SHA256SUMS
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -154,16 +166,13 @@ jobs:
           compression-level: 0
       - name: Release summary
         run: |
-          printf '### Artifact package — release readiness incomplete\n\nRelease: `%s`\n\nSource: `%s`\n\nDeployment remains held. Legacy native, hosted runtime and target acceptance require separate review. No hosting credentials were used.\n' "$HASTABAZAAR_RELEASE_ID" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          printf '### Verified Linux artifact\n\nRelease: `%s`\n\nSource: `%s`\n\nStaging deployment is eligible only on a push to main. Production promotion requires a separate review.\n' "$HASTABAZAAR_RELEASE_ID" "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
           cat "outputs/$HASTABAZAAR_RELEASE_ID/SHA256SUMS" >> "$GITHUB_STEP_SUMMARY"
 
   staging:
     name: Deploy Isolated Staging
     needs: [package]
-    # DEPLOYMENT HOLD: retain the historical source below for review only.
-    # Later deployment requires explicit user authorization and a reviewed source
-    # change plus resolved target/runtime/native gates. No trigger or input enables it.
-    if: ${{ false }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     concurrency:

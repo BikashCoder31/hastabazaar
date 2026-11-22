@@ -75,18 +75,20 @@ void test('schema generation cannot target canonical assets, an ancestor, or a d
   }
 });
 
-void test('all workflow triggers leave staging unreachable and artifact jobs have no deployment credentials', async () => {
+void test('only pushes to main can deploy staging and verification jobs have no deployment credentials', async () => {
   // GitHub owns workflow scheduling; it cannot be exercised locally without dispatch.
   // Inspect the job-level YAML scalars, rather than running any retained SSH step.
   const source = await readFile(resolve(root, '.github/workflows/verify-release.yml'), 'utf8');
   const jobs = [...source.matchAll(/^  ([a-z][a-z0-9_-]*):\r?\n([\s\S]*?)(?=^  [a-z][a-z0-9_-]*:\r?$|(?![\s\S]))/gm)];
   const staging = jobs.find(job => job[1] === 'staging');
-  assert.ok(staging, 'Retain the held historical staging job for review');
+  assert.ok(staging, 'Retain the restricted staging deployment job');
+  assert.match(source, /^name: Verify and Package$/m);
   const conditions = [...staging[2].matchAll(/^    if: (.+)\r?$/gm)];
   assert.equal(conditions.length, 1, 'Exactly one job-level deployment condition');
   const expression = conditions[0][1].trim().match(/^\$\{\{\s*(.*?)\s*\}\}$/)?.[1];
-  assert.ok(expression !== undefined, 'The job must have an explicit constant hold expression');
-  assert.equal(JSON.parse(expression), false, 'A literal false cannot be enabled by a trigger, ref, secret or manual input');
+  assert.equal(expression, "github.event_name == 'push' && github.ref == 'refs/heads/main'");
+  assert.deepEqual([...staging[2].matchAll(/secrets\.([A-Z_]+)/g)].map((match) => match[1]), ['BABAL_STAGING_SSH_KEY']);
+  assert.match(staging[2], /node scripts\/deployment\/send-staging\.mjs verified-release/);
   for (const job of jobs.filter(job => job[1] !== 'staging')) {
     assert.doesNotMatch(job[2], /secrets\.|STAGING_(?:KEY|KNOWN_HOSTS)|send-staging|\bssh(?:-agent|-add|-keyscan)?\b|\bscp\b/i, job[1]);
   }

@@ -49,15 +49,23 @@ void test('historical mode is exclusive and retains every historical native asse
   assert.match(source,/if\(!localRecovery&&!historicalOnly\)await check/);
   assert.match(source,/if\(!historicalOnly\)await check\(localRecovery/);
 });
-void test('workflow requires historical gate then current package gate and keeps deployment held',async()=>{
+void test('workflow supplies the pinned MariaDB image before both required native gates',async()=>{
   const workflow=await readFile(new URL('../.github/workflows/verify-release.yml',import.meta.url),'utf8');
+  const pull=workflow.indexOf('      - name: Pull reviewed MariaDB image');
   const start=workflow.indexOf('      - name: Require preserved historical');
   const end=workflow.indexOf('      - name: Retain enumerated',start);
-  assert.ok(start>0&&end>start);
+  assert.ok(pull>0&&start>pull&&end>start);
+  const image=workflow.slice(pull,start);
+  assert.match(image,/id: mariadb\b/);
+  assert.match(image,/docker\.io\/library\/mariadb@sha256:5ae7fc7b20f8e07c0ee169ff24617b39cb99b4bfc147555cea758baa69834d9e/);
+  assert.match(image,/docker pull --platform linux\/amd64 "\$image"/);
+  assert.match(image,/docker image tag "\$image" mariadb:10\.11/);
+  assert.match(image,/image_id=%s[^\n]+GITHUB_OUTPUT/);
   const gates=workflow.slice(start,end);
   assert.match(gates,/node --import tsx scripts\/verify-staging-native\.mjs --historical-only/);
+  assert.match(gates,/HASTABAZAAR_REVIEWED_MARIADB_IMAGE_ID: \$\{\{ steps\.mariadb\.outputs\.image_id \}\}/);
   assert.match(gates,/node --import tsx scripts\/testing\/verify-current-artifact-native\.mjs/);
   assert.doesNotMatch(gates,/continue-on-error:|\bif:|\|\|/);
-  assert.match(workflow,/if: \$\{\{ false \}\}/);
+  assert.doesNotMatch(workflow,/vars\.HASTABAZAAR_REVIEWED_MARIADB_IMAGE_ID/);
   assert.match(workflow,/reviewed NUL schema source/);
 });
