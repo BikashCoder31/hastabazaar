@@ -47,15 +47,15 @@ void test('historical mode is exclusive and retains every historical native asse
   const historical=source.slice(source.indexOf('try{'),source.indexOf('  if(!localRecovery'));
   assert.match(source,/async function create\(label\)[\s\S]*?CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci/);
   assert.match(historical,/DROP DATABASE[^\n]+\n\s*await create\('fresh'\)/);
-  assert.match(historical,/await preserved\(\);\}\n[^\n]+\n\s*await load\('fixture-post-0074-bootstrap',laterSchema\);/);
+  assert.match(historical,/await preserved\(\);\}\n(?:\s*\/\/[^\n]+\n)+\s*await load\('fixture-post-0074-bootstrap',laterSchema\);/);
   assert.match(historical,/maintenance\.slice\(0,customerFeeIndex\)/);
-  assert.match(historical,/await load\('fixture-post-0074-bootstrap',laterSchema\);\n\s*for\(const migration of maintenance\)await load\(migration.path\);/);
+  assert.match(historical,/await load\('fixture-post-0074-bootstrap',laterSchema\);\n\s*await load\('deployment\/babal\/mariadb-seller-governance.sql'\);\n\s*for\(const migration of maintenance\.slice\(customerFeeIndex\+1\)\)await load\(migration.path\);/);
   const originalFixtureBlock = historical
     .replace(/^    const customerFeeCompanion=[\s\S]*?^    const historicalSchema=historicalSource\+customerFeeSource;\n/m, '')
     .replace('let legacy=historicalSchema.replace', 'let legacy=schema.replace')
     .replace('assert.notEqual(legacy,historicalSchema);', 'assert.notEqual(legacy,schema);')
     .replace('maintenance.slice(0,customerFeeIndex).filter(m=>!', "manifest.migrations.filter(m=>m.usage==='additive-maintenance'&&!")
-    .replace(/^    \/\/ Later views need[^\n]*\n[^\n]*\n[^\n]*\n/m, '')
+    .replace(/^    \/\/ Later views need[^\n]*\n(?:[^\n]*\n){4}/m, '')
     .replace('CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci', 'CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci')
     .replace(
       "      await create('fresh');",
