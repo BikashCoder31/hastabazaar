@@ -5,12 +5,12 @@
 Repository: https://github.com/BikashCoder31/hastabazaar (private).
 
 1. Make changes on a short branch, commit and push it; open a pull request to `main`.
-2. GitHub runs lint, TypeScript and the test suite in four isolated Linux jobs. Native MariaDB opt-in fixtures and Windows-only checks are not represented as Linux coverage.
-3. After integration into `main`, GitHub builds a Node 22.23.2 Linux x64 package, inventories every file, verifies its extracted contents, tests native Sharp and starts the extracted app without database/provider credentials.
+2. GitHub runs lint, TypeScript, eight isolated Linux test shards and the historical and packaged MariaDB checks. The test shards retain the existing opt-in skips and platform requirements.
+3. GitHub builds a Node 22.23.2 Linux x64 package, inventories its files, verifies the extracted app and runs the packaged gates. The package job checks the retained archive’s hashes before making it available for deployment.
 4. A successful package goes to **staging only** using the restricted `BABAL_STAGING_SSH_KEY` secret. Review https://staging.hastabazaar.com over HTTPS.
 5. Production promotion remains a separately authorized operation. No production deployment key or production database password is stored in GitHub.
 
-The workflow is `Verify and Package`; artifacts expire after 14 days. A manual run builds the selected branch; only `main` can deploy staging. Each artifact records its exact source commit, release ID, archive checksum and file inventory. Failed checks do not deploy.
+The workflow is `Verify and Package`. Artifacts expire after 14 days. A manual run builds the selected branch. Staging deployment requires a successful push run on `main`. Each artifact records its exact source commit, release ID, archive checksum and file inventory.
 
 Active `main` runs are not cancelled by a newer push. Staging retries use the package job's actual release ID, and an already-uploaded release is reused only after exact file verification. Never overwrite an existing release or rebuild an artifact during deployment.
 
