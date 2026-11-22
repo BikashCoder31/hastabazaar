@@ -19,7 +19,15 @@ import { promisify } from 'node:util';
 interface Manifest {
   release: string;
   migrations: { path: string; usage: string; sha256: string }[];
-  ownerAppliedMigrations?: { path: string; usage: string; sha256: string }[];
+  ownerAppliedMigrations: {
+    path: string; usage: string; sha256: string;
+    d1: { path: string; sha256: string };
+    requiresWriterPause: boolean;
+    requiredChecks: Record<string, string>;
+    requiredExactTriggerDefinitions: Record<string, string>;
+    requiredTables: Record<string, string[]>;
+    requiredTriggerShapes: Record<string, { timing: string; event: string; table: string }>;
+  }[];
   requiredTables: Record<string, string[]>;
   requiredTriggers: Record<string, string[]>;
 }
@@ -36,14 +44,14 @@ const orderRefundOptIn = new Set([
   'mariadb-priced-order-acceptance-lock.sql',
 ]);
 const ownerAppliedMigrations = [
-  'mariadb-cancellation-cause.sql',
   'mariadb-customer-cod-confirmation.sql',
   'mariadb-delivery-failure-reasons.sql',
-  'mariadb-delivery-partners.sql',
+  'mariadb-seller-staff-notes.sql',
+  'mariadb-cancellation-cause.sql',
+  'mariadb-packed-parcel-weight.sql',
   'mariadb-occasion-discovery.sql',
   'mariadb-occasion-images.sql',
-  'mariadb-packed-parcel-weight.sql',
-  'mariadb-seller-staff-notes.sql',
+  'mariadb-delivery-partners.sql',
 ];
 
 // Omitting a maintained companion must fail even if the checked-in manifest
@@ -54,7 +62,7 @@ void test('historical release generation covers its maintained non-reset SQL inv
   );
   const sqlNames = (await readdir(sqlRoot, { recursive: true }))
     .map((name) => name.split(sep).join('/'))
-    .filter((name) => name.endsWith('.sql'))
+    .filter((name) => name.endsWith('.sql') && name !== 'check-production-schema.sql')
     .sort();
   const root = await mkdtemp(join(tmpdir(), 'hb-manifest-completeness-'));
   const release = 'fixture-manifest-completeness';
@@ -126,12 +134,47 @@ void test('historical release generation covers its maintained non-reset SQL inv
         assert.ok(sqlNames.includes(name), `${name} must be available for the owner`);
         assert.ok(!names.includes('deployment/babal/' + name), `${name} requires owner application`);
       }
-      const expected = await Promise.all(['mariadb-occasion-images.sql', 'mariadb-delivery-partners.sql'].map(async name => {
-        const path = 'deployment/babal/' + name;
-        const sql = await readFile(join(root, path));
-        return { path, usage: 'owner-applied', sha256: createHash('sha256').update(sql).digest('hex') };
-      }));
-      assert.deepEqual(manifest.ownerAppliedMigrations, expected);
+      const entries = manifest.ownerAppliedMigrations;
+      assert.deepEqual(entries.map(entry => entry.path), ownerAppliedMigrations.map(name => 'deployment/babal/' + name));
+      const tracked = JSON.parse(await readFile(new URL('../deployment/babal/release-manifest.json', import.meta.url), 'utf8'));
+      assert.deepEqual(tracked.ownerAppliedMigrations, entries);
+      const required = [
+        { first_cod_reviews: ['hold_source'], users: ['cod_confirmation_required'] },
+        { shipping_jobs: ['delivery_failure_reason'] },
+        { seller_staff_notes: ['id', 'seller_id', 'author_user_id', 'body', 'created_at', 'pinned'] },
+        { order_cancellation_events: ['cause'], order_cancellation_reviews: ['cause'] },
+        { products: ['packed_weight_grams'], seller_parcel_weights: ['order_id', 'seller_id', 'weight_grams', 'item_count', 'recorded_by', 'request_id', 'recorded_at'] },
+        { occasion_discovery: ['occasion_id', 'group_name', 'group_sort_order', 'season_starts_at', 'season_ends_at'] },
+        { occasion_media: ['id', 'occasion_id', 'object_key', 'original_name', 'mime_type', 'size_bytes', 'width', 'height', 'content_hash', 'created_by', 'request_id', 'created_at'],
+          occasion_image_assignments: ['occasion_id', 'media_id', 'updated_by', 'updated_at'] },
+        { delivery_partners: ['id', 'name', 'status', 'booking_mode', 'collects_cod', 'tracking_pattern', 'default_slot', 'revision', 'created_at', 'updated_at'],
+          shipping_parcels: ['delivery_partner_id'] },
+      ];
+      for (const [index, entry] of entries.entries()) {
+        assert.equal(entry.usage, 'owner-applied');
+        assert.equal(entry.requiresWriterPause, index === 0);
+        const slug = ownerAppliedMigrations[index].slice('mariadb-'.length).replaceAll('-', '_');
+        assert.equal(entry.d1.path, 'drizzle/0' + (164 + index) + '_' + slug);
+        for (const { path, sha256 } of [entry, entry.d1]) {
+          const bytes = await readFile(join(root, path));
+          assert.equal(sha256, createHash('sha256').update(bytes).digest('hex'), path);
+        }
+        assert.equal(Object.keys(entry.requiredChecks).length, [2, 1, 0, 2, 1, 1, 4, 6][index]);
+        assert.deepEqual(Object.keys(entry.requiredExactTriggerDefinitions), Object.keys(entry.requiredTriggerShapes));
+        if (index === 0) {
+          assert.deepEqual(entry.requiredChecks, {
+            'first_cod_reviews.chk_first_cod_hold_source': "HEX(hold_source) IN (HEX('first_order'), HEX('customer_flag'))",
+            'first_cod_reviews.chk_first_cod_hold_total': "total_paisa BETWEEN 0 AND 9007199254740991 AND (hold_source='customer_flag' OR total_paisa>=500000)",
+          });
+          const sql = await readFile(join(root, entry.path), 'utf8');
+          const body = sql.slice(sql.indexOf('FOR EACH ROW ') + 'FOR EACH ROW '.length, sql.indexOf('END$$') + 3);
+          assert.equal(entry.requiredExactTriggerDefinitions.first_cod_review_immutable, body);
+        }
+        assert.deepEqual(entry.requiredTables, required[index]);
+        assert.deepEqual(entry.requiredTriggerShapes, index === 0 ? {
+          first_cod_review_immutable: { timing: 'BEFORE', event: 'UPDATE', table: 'first_cod_reviews' },
+        } : {});
+      }
     });
 
     await t.test('prerequisites precede their companions', () => {

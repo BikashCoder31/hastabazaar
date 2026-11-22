@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import {extractCreateTables,extractTriggerEvents} from '../lib/operations/sql-schema-inventory.mjs';
+import {extractCreateTables,extractTriggerEvents,schemaTokens} from '../lib/operations/sql-schema-inventory.mjs';
 import { customerFeeMariaMigration, customerFeeRequiredTables, customerFeeTriggerDefinitions,
   customerFeeRequiredExactChecks, customerFeeRequiredForeignKeys,
   customerFeeRequiredUniqueIndexes, customerFeeRequiredColumnCollations, sameFeeSqlDefinition } from '../lib/operations/fee-schema-readiness.mjs';
@@ -13,6 +13,7 @@ const release = (
 const { values: options, tokens } = parseArgs({
   options: {
     'schema-input': { type: 'string' },
+    'refresh-owner-inventory': { type: 'boolean' },
     'asset-root': { type: 'string' },
     output: { type: 'string' },
     'include-order-refund-migrations': { type: 'boolean' },
@@ -31,18 +32,85 @@ const {
 const sourceRoot = includeOrderRefund ? fileURLToPath(new URL('../', import.meta.url)) : process.cwd();
 const readSource = (path, options) => readFile(resolve(sourceRoot, path), options);
 // Guarded features have an owner-reviewed companion, outside automated maintenance.
-const ownerAppliedMigrations = (await Promise.all([
-  'deployment/babal/mariadb-occasion-images.sql',
-  'deployment/babal/mariadb-delivery-partners.sql',
-].map(async path => {
-  try {
-    const source = await readSource(path);
-    return { path, sha256: createHash('sha256').update(source).digest('hex'), usage: 'owner-applied' };
-  } catch (error) {
-    if (error.code === 'ENOENT') return null;
-    throw error;
+const ownerCompanions = [
+  '0164_customer_cod_confirmation', '0165_delivery_failure_reasons',
+  '0166_seller_staff_notes', '0167_cancellation_cause',
+  '0168_packed_parcel_weight', '0169_occasion_discovery',
+  '0170_occasion_images', '0171_delivery_partners',
+];
+const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
+function ownerNamedChecks(sql) {
+  const tokens = schemaTokens(sql);
+  const checks = {};
+  const keyword = index => tokens[index]?.kind === 'word' && !tokens[index].quoted
+    ? tokens[index].value.toUpperCase() : undefined;
+  let table;
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i].kind === 'symbol' && tokens[i].value === ';') table = undefined;
+    if (['CREATE', 'ALTER'].includes(keyword(i)) && keyword(i + 1) === 'TABLE') {
+      const at = keyword(i + 2) === 'IF' ? i + 5 : i + 2;
+      table = tokens[at]?.kind === 'word' ? tokens[at].value : undefined;
+    }
+    if (keyword(i) !== 'CONSTRAINT' || keyword(i + 2) !== 'CHECK') continue;
+    const name = tokens[i + 1];
+    const open = tokens[i + 3];
+    if (!table || name?.kind !== 'word' || open?.value !== '(') throw new Error('Unsupported owner CHECK definition');
+    let depth = 1;
+    let end = i + 4;
+    while (end < tokens.length && depth > 0) {
+      const token = tokens[end++];
+      if (token.kind === 'symbol' && token.value === '(') depth++;
+      if (token.kind === 'symbol' && token.value === ')') depth--;
+    }
+    if (depth) throw new Error('Unclosed owner CHECK ' + name.value);
+    const key = table + '.' + name.value;
+    if (Object.hasOwn(checks, key)) throw new Error('Duplicate owner CHECK ' + key);
+    checks[key] = sql.slice(open.end, tokens[end - 1].start).trim();
+    i = end - 1;
   }
-}))).filter(Boolean);
+  return checks;
+}
+const ownerAppliedMigrations = await Promise.all(ownerCompanions.map(async companion => {
+  const path = 'deployment/babal/mariadb-' + companion.slice(5).replaceAll('_', '-') + '.sql';
+  const d1Path = 'drizzle/' + companion + '.sql';
+  const [source, d1Source] = await Promise.all([readSource(path), readSource(d1Path)]);
+  const sql = source.toString('utf8');
+  const requiredTables = Object.fromEntries(extractCreateTables(sql).map(
+    table => [table.name, table.columns.map(column => column.name)],
+  ));
+  for (const [, table, changes] of sql.matchAll(/ALTER TABLE\s+`?(\w+)`?\s+([\s\S]*?);/gi)) {
+    for (const [, column] of changes.matchAll(/\bADD COLUMN(?: IF NOT EXISTS)?\s+`?(\w+)`?/gi)) {
+      (requiredTables[table] ??= []).push(column);
+    }
+  }
+  const requiredTriggerShapes = {};
+  const requiredExactTriggerDefinitions = {};
+  for (const trigger of extractTriggerEvents(sql)) {
+    if (trigger.action === 'DROP') {
+      delete requiredTriggerShapes[trigger.name];
+      delete requiredExactTriggerDefinitions[trigger.name];
+      continue;
+    }
+    const shape = /^CREATE(?: OR REPLACE)? TRIGGER (?:IF NOT EXISTS )?`?\w+`?\s+(BEFORE|AFTER)\s+(INSERT|UPDATE|DELETE)\s+ON\s+`?(\w+)`?\s+FOR\s+EACH\s+ROW\s+(BEGIN\b[\s\S]*?\bEND)\$\$[ \t]*\r?\n[ \t]*DELIMITER[ \t]+;/i.exec(sql.slice(trigger.start));
+    if (!shape) throw new Error('Unsupported owner trigger definition in ' + path);
+    requiredExactTriggerDefinitions[trigger.name] = shape[4];
+    requiredTriggerShapes[trigger.name] = { timing: shape[1].toUpperCase(), event: shape[2].toUpperCase(), table: shape[3] };
+  }
+  return {
+    path, sha256: sha256(source), usage: 'owner-applied',
+    d1: { path: d1Path, sha256: sha256(d1Source) },
+    requiresWriterPause: companion === '0164_customer_cod_confirmation',
+    requiredTables, requiredChecks: ownerNamedChecks(sql), requiredTriggerShapes, requiredExactTriggerDefinitions,
+  };
+}));
+if (options['refresh-owner-inventory']) {
+  if (tokens.length !== 1) throw new Error('--refresh-owner-inventory updates only the historical manifest and takes no other options.');
+  const path = 'deployment/babal/release-manifest.json';
+  const historical = JSON.parse(await readSource(path, 'utf8'));
+  historical.ownerAppliedMigrations = ownerAppliedMigrations;
+  await writeFile(path, JSON.stringify(historical, null, 2) + '\n');
+  process.exit(0);
+}
 if (assetRoot && explicitOutput) throw new Error('--asset-root requires a new directory and cannot be combined with --output.');
 if (includeOrderRefund && (!explicitSchemaInput || !(assetRoot || explicitOutput))) {
   throw new Error('--include-order-refund-migrations requires --schema-input and --asset-root or --output for new scratch output.');

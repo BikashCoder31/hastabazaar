@@ -1,26 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtempSync, mkdirSync, copyFileSync, cpSync, readFileSync, rmSync } from 'node:fs';
+import { copyReleaseManifestInputs } from './helpers/copy-release-manifest-inputs';
+import { mkdtempSync, cpSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
-void test('hosted release checks require all seller registration tables and additive upgrades', () => {
+void test('hosted release checks require all seller registration tables and additive upgrades', async () => {
   const root = mkdtempSync(join(tmpdir(), 'seller-release-'));
   try {
-    mkdirSync(join(root, 'scripts'), { recursive: true });
-    mkdirSync(join(root, 'lib/operations'), { recursive: true });
-    copyFileSync('scripts/generate-release-manifest.mjs', join(root, 'scripts/generate-release-manifest.mjs'));
-    for (const name of [
-      'fee-schema-readiness.mjs',
-      'sql-schema-inventory.mjs',
-      'bootstrap-completion-contract.json',
-      'check-parity-contract.json',
-      'text-length-parity-contract.json',
-    ]) {
-      const path = `lib/operations/${name}`;
-      copyFileSync(path, join(root, path));
-    }
+    await copyReleaseManifestInputs(root);
     cpSync('deployment/babal', join(root, 'deployment/babal'), { recursive: true });
     execFileSync(process.execPath, ['scripts/generate-release-manifest.mjs'], { cwd: root, stdio: 'pipe' });
     const manifest = JSON.parse(readFileSync(join(root, 'deployment/babal/release-manifest.json'), 'utf8'));

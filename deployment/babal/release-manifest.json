@@ -1044,14 +1044,233 @@
   ],
   "ownerAppliedMigrations": [
     {
+      "path": "deployment/babal/mariadb-customer-cod-confirmation.sql",
+      "sha256": "9152b8784462e6123765f472d192adc71134bad457e21a10394633fe3071bdfa",
+      "usage": "owner-applied",
+      "d1": {
+        "path": "drizzle/0164_customer_cod_confirmation.sql",
+        "sha256": "84b5c2fb33325eda23696b198d3d34c65f59f88ae5651fcaa8a5bbf9fe8ea87d"
+      },
+      "requiresWriterPause": true,
+      "requiredTables": {
+        "first_cod_reviews": [
+          "hold_source"
+        ],
+        "users": [
+          "cod_confirmation_required"
+        ]
+      },
+      "requiredChecks": {
+        "first_cod_reviews.chk_first_cod_hold_source": "HEX(hold_source) IN (HEX('first_order'), HEX('customer_flag'))",
+        "first_cod_reviews.chk_first_cod_hold_total": "total_paisa BETWEEN 0 AND 9007199254740991 AND (hold_source='customer_flag' OR total_paisa>=500000)"
+      },
+      "requiredTriggerShapes": {
+        "first_cod_review_immutable": {
+          "timing": "BEFORE",
+          "event": "UPDATE",
+          "table": "first_cod_reviews"
+        }
+      },
+      "requiredExactTriggerDefinitions": {
+        "first_cod_review_immutable": "BEGIN\n  IF OLD.status='confirmed' OR NEW.order_id<>OLD.order_id OR NEW.customer_id<>OLD.customer_id\n    OR NEW.total_paisa<>OLD.total_paisa OR NEW.created_at<>OLD.created_at OR NEW.hold_source<>OLD.hold_source\n  THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='COD confirmation evidence is immutable'; END IF;\nEND"
+      }
+    },
+    {
+      "path": "deployment/babal/mariadb-delivery-failure-reasons.sql",
+      "sha256": "a82f4029fec81570628c646c352ec9be5df16f0d109738aa382ebc07f5069d21",
+      "usage": "owner-applied",
+      "d1": {
+        "path": "drizzle/0165_delivery_failure_reasons.sql",
+        "sha256": "e45cc2fe6f923b55e29b2d820b9b754cd172160d1ba069774a8855d99930de90"
+      },
+      "requiresWriterPause": false,
+      "requiredTables": {
+        "shipping_jobs": [
+          "delivery_failure_reason"
+        ]
+      },
+      "requiredChecks": {
+        "shipping_jobs.chk_shipping_job_delivery_failure_reason": "delivery_failure_reason IN ('refused', 'not_reached', 'wrong_address', 'courier_problem', 'other')"
+      },
+      "requiredTriggerShapes": {},
+      "requiredExactTriggerDefinitions": {}
+    },
+    {
+      "path": "deployment/babal/mariadb-seller-staff-notes.sql",
+      "sha256": "58d7f9ec8323c674e3f7491379d043584bc46d817479058de95fac988d24f137",
+      "usage": "owner-applied",
+      "d1": {
+        "path": "drizzle/0166_seller_staff_notes.sql",
+        "sha256": "430f3cf76106101008138365fa7857fffd98856c4853117876187841919c8207"
+      },
+      "requiresWriterPause": false,
+      "requiredTables": {
+        "seller_staff_notes": [
+          "id",
+          "seller_id",
+          "author_user_id",
+          "body",
+          "created_at",
+          "pinned"
+        ]
+      },
+      "requiredChecks": {},
+      "requiredTriggerShapes": {},
+      "requiredExactTriggerDefinitions": {}
+    },
+    {
+      "path": "deployment/babal/mariadb-cancellation-cause.sql",
+      "sha256": "f52bfc837f2c0c77901e133117fdf42c6f669ffcf463d3c3e0ff9624d0b8f2af",
+      "usage": "owner-applied",
+      "d1": {
+        "path": "drizzle/0167_cancellation_cause.sql",
+        "sha256": "e42bf00c75b022ad9d02b1698268187e331d2f64cffb16c145fcb2855215171f"
+      },
+      "requiresWriterPause": false,
+      "requiredTables": {
+        "order_cancellation_events": [
+          "cause"
+        ],
+        "order_cancellation_reviews": [
+          "cause"
+        ]
+      },
+      "requiredChecks": {
+        "order_cancellation_events.chk_cancellation_event_cause": "cause IN ('seller', 'customer', 'courier', 'hastabazaar', 'payment')",
+        "order_cancellation_reviews.chk_cancellation_review_cause": "cause IN ('seller', 'customer', 'courier', 'hastabazaar', 'payment')"
+      },
+      "requiredTriggerShapes": {},
+      "requiredExactTriggerDefinitions": {}
+    },
+    {
+      "path": "deployment/babal/mariadb-packed-parcel-weight.sql",
+      "sha256": "349cf9c17da9ba38eafe6d1e42ef4831dc7690484f72165110be9c4ea4d9ad5c",
+      "usage": "owner-applied",
+      "d1": {
+        "path": "drizzle/0168_packed_parcel_weight.sql",
+        "sha256": "24c1f125738571513acace2f9421ba82893affda2701543f363aff229d89359e"
+      },
+      "requiresWriterPause": false,
+      "requiredTables": {
+        "seller_parcel_weights": [
+          "order_id",
+          "seller_id",
+          "weight_grams",
+          "item_count",
+          "recorded_by",
+          "request_id",
+          "recorded_at"
+        ],
+        "products": [
+          "packed_weight_grams"
+        ]
+      },
+      "requiredChecks": {
+        "products.products_packed_weight_grams_range": "packed_weight_grams IS NULL OR packed_weight_grams BETWEEN 50 AND 30000"
+      },
+      "requiredTriggerShapes": {},
+      "requiredExactTriggerDefinitions": {}
+    },
+    {
+      "path": "deployment/babal/mariadb-occasion-discovery.sql",
+      "sha256": "3ce15ba24f3fd9740fa5fbb08de2280c7e3698c1bcecac25b4eef185270db0f2",
+      "usage": "owner-applied",
+      "d1": {
+        "path": "drizzle/0169_occasion_discovery.sql",
+        "sha256": "fbf822f1edff39a93413fd74b30dc53bc868c3fa5efba98d766e97f38c0fb9b6"
+      },
+      "requiresWriterPause": false,
+      "requiredTables": {
+        "occasion_discovery": [
+          "occasion_id",
+          "group_name",
+          "group_sort_order",
+          "season_starts_at",
+          "season_ends_at"
+        ]
+      },
+      "requiredChecks": {
+        "occasion_discovery.occasion_discovery_window": "(season_starts_at IS NULL AND season_ends_at IS NULL) OR\n    (season_starts_at IS NOT NULL AND season_ends_at IS NOT NULL AND season_starts_at>=0 AND season_ends_at>season_starts_at)"
+      },
+      "requiredTriggerShapes": {},
+      "requiredExactTriggerDefinitions": {}
+    },
+    {
       "path": "deployment/babal/mariadb-occasion-images.sql",
       "sha256": "45ee85704bbb5f43b883b5efe633d90147bdf212bb0b827b30c78491c184d80f",
-      "usage": "owner-applied"
+      "usage": "owner-applied",
+      "d1": {
+        "path": "drizzle/0170_occasion_images.sql",
+        "sha256": "38ec3d8481b93d386ef56934af8a23aacbc6f28c8df04554e9521c1468e971e8"
+      },
+      "requiresWriterPause": false,
+      "requiredTables": {
+        "occasion_media": [
+          "id",
+          "occasion_id",
+          "object_key",
+          "original_name",
+          "mime_type",
+          "size_bytes",
+          "width",
+          "height",
+          "content_hash",
+          "created_by",
+          "request_id",
+          "created_at"
+        ],
+        "occasion_image_assignments": [
+          "occasion_id",
+          "media_id",
+          "updated_by",
+          "updated_at"
+        ]
+      },
+      "requiredChecks": {
+        "occasion_media.occasion_media_size": "`size_bytes`>0 AND `size_bytes`<=5242880",
+        "occasion_media.occasion_media_dimensions": "`width`>0 AND `width`<=2400 AND `height`>0 AND `height`<=1600",
+        "occasion_media.occasion_media_mime": "`mime_type`='image/webp'",
+        "occasion_media.occasion_media_hash": "CHAR_LENGTH(`content_hash`)=64"
+      },
+      "requiredTriggerShapes": {},
+      "requiredExactTriggerDefinitions": {}
     },
     {
       "path": "deployment/babal/mariadb-delivery-partners.sql",
       "sha256": "abe01e232dfa66032036098223c4d8df102341074b4049eb419058d361f30e39",
-      "usage": "owner-applied"
+      "usage": "owner-applied",
+      "d1": {
+        "path": "drizzle/0171_delivery_partners.sql",
+        "sha256": "48b254a7c6cf0ed83be05526f361228aad1031d9456d98918a0c187da3472fe1"
+      },
+      "requiresWriterPause": false,
+      "requiredTables": {
+        "delivery_partners": [
+          "id",
+          "name",
+          "status",
+          "booking_mode",
+          "collects_cod",
+          "tracking_pattern",
+          "default_slot",
+          "revision",
+          "created_at",
+          "updated_at"
+        ],
+        "shipping_parcels": [
+          "delivery_partner_id"
+        ]
+      },
+      "requiredChecks": {
+        "delivery_partners.delivery_partner_name": "CHAR_LENGTH(TRIM(name)) BETWEEN 2 AND 120",
+        "delivery_partners.delivery_partner_status": "status IN ('in_use','setting_up','not_in_use')",
+        "delivery_partners.delivery_partner_mode": "booking_mode IN ('manual','api')",
+        "delivery_partners.delivery_partner_collects_cod": "collects_cod IN (0,1)",
+        "delivery_partners.delivery_partner_revision": "revision>=1",
+        "delivery_partners.delivery_partner_default": "default_slot IS NULL OR (default_slot=1 AND status='in_use' AND booking_mode='manual')"
+      },
+      "requiredTriggerShapes": {},
+      "requiredExactTriggerDefinitions": {}
     }
   ],
   "requiredTables": {

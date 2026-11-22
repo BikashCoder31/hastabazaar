@@ -48,6 +48,8 @@ void test('selected schema bytes, readiness and manifest travel together without
     assert.equal(generated.status, 0, generated.stderr);
     assert.deepEqual(await readFile(join(bundle, schemaPath)), selected, 'the bundle must contain the selected bytes, including line endings');
     const manifest = JSON.parse(await readFile(join(bundle, manifestPath), 'utf8'));
+    const historicalManifest = JSON.parse(await readFile(join(repository, manifestPath), 'utf8'));
+    assert.deepEqual(manifest.ownerAppliedMigrations, historicalManifest.ownerAppliedMigrations);
     assert.equal(manifest.migrations[0].path, schemaPath);
     assert.equal(manifest.migrations[0].sha256, sha256(selected));
     assert.deepEqual(manifest.requiredTables.selected_candidate, ['id', 'proof']);

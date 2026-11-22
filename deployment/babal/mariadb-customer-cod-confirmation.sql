@@ -1,7 +1,8 @@
 -- Apply only to an approved copy with application writers stopped.
 -- Existing review rows retain the historical rule and all evidence.
 ALTER TABLE first_cod_reviews
-  DROP CONSTRAINT total_paisa,
+  -- MariaDB attaches the old minimum to the column, so replace it in this ALTER.
+  MODIFY COLUMN total_paisa BIGINT NOT NULL,
   ADD COLUMN hold_source VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'first_order',
   ADD CONSTRAINT chk_first_cod_hold_source CHECK (HEX(hold_source) IN (HEX('first_order'), HEX('customer_flag'))),
   ADD CONSTRAINT chk_first_cod_hold_total CHECK (
