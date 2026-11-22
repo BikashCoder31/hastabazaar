@@ -17,7 +17,7 @@ void test('bell preserves input and unread count through an outage, shares confi
       <label>Unfinished work<input defaultValue="Keep my draft" /></label>
       <NotificationBell workspace="seller" accountId="fixture-owner" />
       <div id="inbox"><NotificationList workspace="seller" accountId="fixture-owner" initial={[${JSON.stringify(notice)}]} /></div>
-      <SellerNavigationView pathname="/seller" tradingName="Fictional applicant" sellerId={null} />
+      <SellerNavigationView pathname="/seller" tradingName="Fictional applicant" sellerId={null} canReplyToReviews={false} />
     </>);
   ` }, bundle: true, write: false, platform: 'browser', format: 'iife', define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'isolated-workspace-links', setup(builder) {
@@ -63,7 +63,7 @@ void test('bell preserves input and unread count through an outage, shares confi
     await menu.focus();
     await page.keyboard.press('Enter');
     await dialog.waitFor();
-    assert.equal(await dialog.getByRole('link', { name: 'Earnings & bank' }).count(), 1);
+    assert.equal(await dialog.getByRole('link', { name: 'Earnings', exact: true }).count(), 1);
     await page.keyboard.press('Escape');
     await dialog.waitFor({ state: 'hidden' });
     assert.equal(await menu.evaluate((element: Element) => element === document.activeElement), true);

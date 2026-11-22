@@ -26,14 +26,20 @@ void test('Seller Center requires an owned registration or explicit start; acces
   } finally { f.dispose(); }
 });
 
-void test('seven seller sections keep old record links in the correct workspace without confusing applicant products with registration', () => {
-  assert.deepEqual(sellerWorkspaceSections.map(section => section.label), ['Home', 'Shop & profile', 'Registration & documents',
-    'Products & stock', 'Orders & delivery', 'Earnings & bank', 'Requests & help']);
+void test('Seller Studio places each old route in its current section', () => {
+  assert.deepEqual(sellerWorkspaceSections.map(section => section.label), [
+    'Today', 'Orders', 'Returns', 'Products', 'Earnings',
+    'Shop profile', 'Reviews', 'Documents & agreement', 'Shipping', 'Requests & help',
+  ]);
   for (const [path, section] of [
-    ['/seller/shipping/parcel-1', 'orders'], ['/seller/cases/returns/case-1', 'orders'],
+    ['/seller/shipping/parcel-1', 'shipping'], ['/seller/cases/returns/case-1', 'returns'],
+    ['/seller/order-responses/answer', 'orders'], ['/seller/analytics', 'products'],
     ['/seller/products/product-1/edit', 'products'], ['/sell/application/products/draft-1/edit', 'products'],
     ['/sell/application', 'documents'], ['/seller/registration?document=pan', 'documents'],
-    ['/seller/notifications', 'requests'], ['/seller/reviews', 'shop'], ['/seller/finance', 'earnings'],
+    ['/seller#managed-program', 'documents'], ['/seller/form-history', 'documents'],
+    ['/seller/notifications', 'requests'], ['/seller/reminders/example', 'requests'],
+    ['/seller/reviews', 'reviews'], ['/seller/finance/recoveries', 'earnings'],
+    ['/seller/financial-notices/refund/example', 'earnings'],
   ]) assert.equal(sellerWorkspaceSection(path)?.id, section, path);
   assert.equal(sellerWorkspaceSection('/seller'), sellerWorkspaceSections[0]);
   assert.equal(sellerWorkspaceSection('/admin/sellers'), undefined);

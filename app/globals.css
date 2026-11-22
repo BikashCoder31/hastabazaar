@@ -1994,7 +1994,7 @@
 }
 
 @media (min-width: 64rem) {
-  .seller-mobile-toolbar { min-height: 5rem; }
+  .seller-mobile-toolbar { min-height: 3.75rem; }
 }
 
 .seller-mobile-toolbar [aria-label^='Notifications'] { min-width: 2.75rem; min-height: 2.75rem; }

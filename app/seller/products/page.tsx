@@ -136,9 +136,10 @@ export default async function SellerProductsPage({
           <h1 className="font-heading text-[1.75rem] font-semibold leading-tight">Products</h1>
           <span className="text-sm text-[#46536F]">{products.length} {products.length === 1 ? 'product' : 'products'}</span>
         </div>
-        <div className="hidden flex-wrap items-center gap-2 md:flex">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href="/seller/analytics" className="section-link">Sales &amp; inventory</Link>
           {publicShop ? <Link className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold hover:bg-[#EBE2D0]" href={`/makers/${publicShop.id}`}><Eye className="size-4" /> View shop</Link> : null}
-          <Button nativeButton={false} className="min-h-11 bg-[#A8232E] text-white hover:bg-[#8D1D27]" render={<Link href="/seller/products/new" />}><PackagePlus /> Add product</Button>
+          <Button nativeButton={false} className="hidden min-h-11 bg-[#A8232E] text-white hover:bg-[#8D1D27] md:inline-flex" render={<Link href="/seller/products/new" />}><PackagePlus /> Add product</Button>
         </div>
       </header>
 

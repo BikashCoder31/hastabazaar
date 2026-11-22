@@ -1,31 +1,35 @@
 export interface SellerWorkspaceSection {
-  id: string; label: string; href: string;
-  icon: 'home'|'shop'|'documents'|'products'|'orders'|'earnings'|'requests';
+  id: string;
+  label: string;
+  href: string;
+  icon: 'home' | 'orders' | 'returns' | 'products' | 'earnings' | 'shop' | 'reviews' | 'documents' | 'shipping' | 'requests';
+  shop?: boolean;
   aliases: readonly string[];
-  links: readonly { href: string; label: string }[];
 }
+
+export const sellerSupportHref = '/contact-us?topic=seller-support#contact-form-heading';
+
 export const sellerWorkspaceSections: readonly SellerWorkspaceSection[] = [
-  { id: 'home', label: 'Home', href: '/seller', icon: 'home', aliases: [], links: [] },
-  { id: 'shop', label: 'Shop & profile', href: '/seller/profile', icon: 'shop', aliases: [], links: [
-    { href: '/seller/reviews', label: 'Customer reviews' },
-  ] },
-  { id: 'documents', label: 'Registration & documents', href: '/seller/registration', icon: 'documents', aliases: ['/sell/application'], links: [
-    { href: '/seller#managed-program', label: 'Program & agreements' },
-  ] },
-  { id: 'products', label: 'Products & stock', href: '/seller/products', icon: 'products', aliases: ['/sell/application/products'], links: [
-    { href: '/seller/analytics', label: 'Sales & inventory' },
-  ] },
-  { id: 'orders', label: 'Orders & delivery', href: '/seller/orders', icon: 'orders', aliases: [], links: [
-    { href: '/seller/shipping', label: 'Shipping' }, { href: '/seller/cases', label: 'Returns & complaints' },
-  ] },
-  { id: 'earnings', label: 'Earnings & bank', href: '/seller/finance', icon: 'earnings', aliases: [], links: [{href:'/seller/finance/recoveries',label:'Recovery statements'}] },
-  { id: 'requests', label: 'Requests & help', href: '/seller/requests', icon: 'requests', aliases: [], links: [
-    { href: '/seller/notifications', label: 'Notifications' }, { href: '/help', label: 'Seller help' },
-  ] },
+  { id: 'home', label: 'Today', href: '/seller', icon: 'home', aliases: [] },
+  { id: 'orders', label: 'Orders', href: '/seller/orders', icon: 'orders', aliases: ['/seller/order-responses'] },
+  { id: 'returns', label: 'Returns', href: '/seller/cases', icon: 'returns', aliases: [] },
+  { id: 'products', label: 'Products', href: '/seller/products', icon: 'products', aliases: ['/seller/analytics', '/sell/application/products'] },
+  { id: 'earnings', label: 'Earnings', href: '/seller/finance', icon: 'earnings', aliases: ['/seller/financial-notices'] },
+  { id: 'shop', label: 'Shop profile', href: '/seller/profile', icon: 'shop', shop: true, aliases: [] },
+  { id: 'reviews', label: 'Reviews', href: '/seller/reviews', icon: 'reviews', shop: true, aliases: [] },
+  { id: 'documents', label: 'Documents & agreement', href: '/seller/registration', icon: 'documents', shop: true,
+    aliases: ['/sell/application', '/seller/form-history'] },
+  { id: 'shipping', label: 'Shipping', href: '/seller/shipping', icon: 'shipping', shop: true, aliases: [] },
+  { id: 'requests', label: 'Requests & help', href: '/seller/requests', icon: 'requests', shop: true,
+    aliases: ['/seller/notifications', '/seller/reminders'] },
 ];
+
 export function sellerWorkspaceSection(pathname: string): SellerWorkspaceSection | undefined {
   const path = pathname.split(/[?#]/, 1)[0];
-  return sellerWorkspaceSections.flatMap(section => [section.href, ...section.aliases, ...section.links.map(link => link.href)]
+  if (path === '/seller' && pathname.endsWith('#managed-program')) {
+    return sellerWorkspaceSections.find(section => section.id === 'documents');
+  }
+  return sellerWorkspaceSections.flatMap(section => [section.href, ...section.aliases]
     .filter(prefix => path === prefix || (prefix !== '/seller' && path.startsWith(prefix + '/')))
     .map(prefix => ({ section, length: prefix.length })))
     .sort((left, right) => right.length - left.length)[0]?.section;

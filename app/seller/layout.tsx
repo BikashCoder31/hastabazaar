@@ -1,7 +1,6 @@
 import Image from 'next/image';
 import {SellerAccessBoundary} from '@/components/seller/seller-access-boundary';
 import Link from 'next/link';
-import { ArrowUpRight, Plus } from 'lucide-react';
 import { signOutPath } from '@/app/auth';
 import { BrandWordmark } from '@/components/layout/brand-wordmark';
 import { SellerNavigation } from '@/components/seller/seller-navigation';
@@ -9,6 +8,7 @@ import { NotificationBell } from '@/components/account/notification-bell';
 import { WorkspaceRefresh } from '@/components/ui/workspace-refresh';
 import { requireSellerCenterPage } from '@/lib/auth/seller-center';
 import { getPublicMakerProfile } from '@/lib/db/repositories/customers';
+import { getReviewedPublicProfileExtras } from '@/lib/sellers/public-profile-media';
 import { getSellerWorkSummary } from '@/lib/db/repositories/seller-workspace';
 import { env } from 'cloudflare:workers';
 import { requireDatabase } from '@/lib/db/d1';
@@ -39,25 +39,28 @@ export default async function SellerLayout({
   const participation = seller.sellerId ? await database.prepare('SELECT participation_route AS route FROM seller_participation_profiles WHERE seller_id=?').bind(seller.sellerId).first<{route:string}>() : null;
   const notices = !seller.approvedSeller || !seller.sellerId || participation?.route === 'managed_maker' ? [] : await getSellerCommissionNotices(database, seller.sellerId);
   const feeOffers = !seller.approvedSeller || !seller.sellerId || participation?.route === 'managed_maker' ? null : await currentRegisteredFeeOffers(database,seller.sellerId);
-  const publicShop = seller.sellerId ? await getPublicMakerProfile(database, seller.sellerId) : null;
+  const [publicShop, profileExtras, sellerWork] = await Promise.all([
+    seller.sellerId ? getPublicMakerProfile(database, seller.sellerId) : null,
+    seller.sellerId ? getReviewedPublicProfileExtras(database, seller.sellerId).catch(() => null) : null,
+    seller.approvedSeller && seller.sellerId ? getSellerWorkSummary(database, seller.sellerId).catch(() => null) : null,
+  ]);
+  const shopPhoto = profileExtras?.media.find(media => media.kind === 'profile_image');
   const addProductHref = seller.sellerId
     ? seller.approvedSeller ? '/seller/products/new' : '/sell/application/products/new'
     : '/seller/registration';
-  const sellerWork = seller.approvedSeller && seller.sellerId
-    ? await getSellerWorkSummary(database, seller.sellerId).catch(() => null)
-    : null;
   const navigation = {
     tradingName: seller.tradingName,
     sellerId: seller.sellerId,
     canReplyToReviews: seller.approvedSeller,
     publicShopHref: publicShop ? `/makers/${publicShop.id}` : null,
+    shopLive: Boolean(publicShop?.productCount),
     addProductHref,
     openOrderCount: sellerWork?.toPack,
   };
   const signOut = signOutPath('/');
   const feeTermsNeedReview = feeOffers && (!feeOffers.current.accepted || feeOffers.upcoming.some(offer => !offer.accepted));
   return (
-    <div className="seller-shell">
+    <div className="seller-shell lg:grid lg:grid-cols-[15.5rem_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:[&>#main-content]:col-start-2">
       {mfaEnabled ? <AccountSessionActivity accountLabel="seller" returnTo="/seller" /> : null}
       <a
         href="#main-content"
@@ -65,44 +68,31 @@ export default async function SellerLayout({
       >
         Skip to workspace
       </a>
-      <SellerNavigation {...navigation} mode="mobile" signOut={signOut}
-        brand={<Image src="/brand/hastabazaar-mark-96.png" alt="" width={30} height={30} sizes="30px" priority
-          data-media-mode="contain" className={mediaObjectClass('contain', 'size-[30px] shrink-0 rounded-md')} />}
-        notifications={<>
-          <WorkspaceRefresh key={seller.userId} />
-          <NotificationBell workspace="seller" accountId={seller.userId} />
-        </>}
-        desktopBrand={
-          <Link href="/seller" className="flex w-fit items-center gap-3 rounded-xl">
-            <Image data-media-mode="contain" src="/brand/hastabazaar-mark-96.png" alt=""
-              width={44} height={44} sizes="44px" priority className={mediaObjectClass('contain', 'size-11')} />
-            <span><BrandWordmark className="block text-xl" /><span className="block text-xs font-semibold text-[#A8232E]">Seller Studio</span></span>
-          </Link>
-        }
-        desktopActions={<>
-          <div className="flex min-w-0 items-center gap-1">
-            <p className="max-w-48 wrap-anywhere text-xs font-semibold text-[#465573]">
-              Seller Studio{seller.tradingName ? ' · ' + seller.tradingName : ''}
-            </p>
-            <Link href="/account" prefetch={false} className="header-action shrink-0">Switch to customer dashboard</Link>
-          </div>
-          <Link href="/shop" className="header-action">
-            Marketplace <ArrowUpRight className="size-4" aria-hidden="true" />
-          </Link>
-          <Link href={addProductHref} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#A8232E] px-4 text-sm font-semibold text-white">
-            <Plus className="size-4" aria-hidden="true" />Add product
-          </Link>
-          <form data-form-id="identity.logout" method="POST" action={signOut} target="_top">
-            <button type="submit" className="inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-semibold hover:bg-muted">Sign out</button>
-          </form>
-        </>}
-      />
+      <div className="sticky top-0 z-30 min-w-0 lg:col-start-2 lg:row-start-1">
+        <SellerNavigation {...navigation} mode="toolbar" signOut={signOut}
+          brand={<Image src="/brand/hastabazaar-mark-96.png" alt="" width={30} height={30} sizes="30px" priority
+            data-media-mode="contain" className={mediaObjectClass('contain', 'size-[30px] shrink-0 rounded-md')} />}
+          notifications={<>
+            <WorkspaceRefresh key={seller.userId} />
+            <NotificationBell workspace="seller" accountId={seller.userId} />
+          </>}
+        />
+      </div>
       <SellerAccessBoundary actorId={seller.userId}>
-      <div className="shell grid items-start gap-6 py-6 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-6 lg:py-8 xl:grid-cols-[15rem_minmax(0,1fr)] xl:gap-8">
-        <aside className="sticky top-28 hidden min-w-0 lg:block">
-          <SellerNavigation {...navigation} mode="desktop" />
+        <aside className="hidden min-w-0 border-e bg-[#FFFCF7] lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:block">
+          <SellerNavigation {...navigation} mode="sidebar"
+            shopPhoto={shopPhoto ? <Image src={`/api/profile-media/${encodeURIComponent(shopPhoto.id)}`} alt="" width={40} height={40}
+              unoptimized data-media-mode="cover" className={mediaObjectClass('cover', 'size-10 shrink-0 rounded-lg')} /> : null}
+            desktopBrand={
+              <Link href="/seller" className="flex min-h-11 w-fit items-center gap-2 rounded-xl">
+                <Image data-media-mode="contain" src="/brand/hastabazaar-mark-96.png" alt=""
+                  width={44} height={44} sizes="44px" priority className={mediaObjectClass('contain', 'size-11')} />
+                <span><BrandWordmark className="block text-xl" /><span className="block text-xs font-semibold text-[#A8232E]">Seller Studio</span></span>
+              </Link>
+            }
+          />
         </aside>
-        <main tabIndex={-1} id="main-content" className="seller-main min-w-0">
+        <main tabIndex={-1} id="main-content" className="seller-main mx-auto w-full min-w-0 max-w-[1400px] px-3 pt-6 sm:px-5 lg:row-start-2 lg:px-7">
           {feeOffers && feeTermsNeedReview ? <CommonFeeTerms offers={feeOffers} /> : null}
           {notices.map(notice => <CommissionFeeNotice key={notice.id} notice={notice} agreementAccepted={seller.sellerAgreementVersion === notice.agreementVersion} />)}
           {children}
@@ -111,7 +101,6 @@ export default async function SellerLayout({
             <CommonFeeTerms offers={feeOffers} />
           </details> : null}
         </main>
-      </div>
       </SellerAccessBoundary>
     </div>
   );

@@ -5,6 +5,7 @@ import { requireDatabase } from '@/lib/db/d1';
 import {readSellerWorkspaceTasks,type SellerWorkspaceTasks} from '@/lib/seller/workspace-tasks';
 import {SellerWorkspaceTaskList} from '@/components/seller/workspace-task-list';
 import { buttonVariants } from '@/components/ui/button';
+import { sellerSupportHref } from '@/lib/sellers/workspace-navigation';
 
 export const dynamic = 'force-dynamic';
 export default async function SellerRequestsPage({searchParams}:{searchParams?:Promise<{cursor?:string;view?:string}>}) {
@@ -15,7 +16,7 @@ export default async function SellerRequestsPage({searchParams}:{searchParams?:P
   const askQuestion = (
     <Link
       className={buttonVariants({ variant: 'workspace-primary', size: 'workspace', className: 'w-full md:w-auto' })}
-      href="/contact-us?topic=seller-support#contact-form-heading"
+      href={sellerSupportHref}
     >
       Ask a question
     </Link>

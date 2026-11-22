@@ -25,10 +25,11 @@ export default async function SellerRegistrationPage() {
   return <div className="min-w-0 space-y-7 text-[#14213D]">
     {applicant ? <SellerRegistrationApplicationOverview db={db} viewer={viewer} record={record} documents={documents} /> : (
       <header>
-        <h1 className="section-title">Registration &amp; documents</h1>
+        <h1 className="section-title">Documents &amp; agreement</h1>
         <p className="mt-3 text-[#465573]">Complete registration and send documents for review. Payouts require completed registration and verified receiving details.</p>
       </header>
     )}
+    {viewer.approvedSeller ? <Link className="section-link" href="/seller#managed-program">Program &amp; agreements</Link> : null}
     {!viewer.sellerId ? <RegistrationGuide /> : null}
     <section className="space-y-4" aria-labelledby="seller-registration-details">
       {applicant ? <header>

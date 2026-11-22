@@ -186,3 +186,20 @@ The Seller testing account showed the trading name from its approved profile. Th
 - `tests/account-role-navigation.test.ts`
 
 Account polish complete — ready for your review
+
+## Seller frame
+
+The refreshed 22 November references were present. Work started from `8736c1d` on `admin-redesign`.
+
+| Task | Status | Commit | Checks |
+| --- | --- | --- | --- |
+| S1 · The Seller Studio frame | Done | This task commit | Typecheck and lint passed. Focused tests passed. Chrome checked 17 route states at 390, 768, 1024 and 1440 px. |
+| S2 · Getting started | Pending | | |
+| S3 · Approve now, fix before the first payout | Pending | | |
+| S4 · Final check | Pending | | |
+
+S1 moved navigation into the full-height sidebar and compact toolbar. Existing sidebar destinations are accessible from the new menu, the notification bell, or links on the relevant page. Both account menus switched to Customer account and back in Chrome. At 390 px the phone menu controls measured at least 44 px, and content cleared the bottom tabs.
+
+### For the owner
+
+- The toolbar shows the existing refresh control. Seller Studio has no search field, so the area to the left of the desktop actions is empty.

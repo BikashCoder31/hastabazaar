@@ -60,6 +60,7 @@ void test('mobile navigation shows daily links and retains all pages in the menu
       publicShopHref: '/makers/owned-shop',
       addProductHref: '/seller/products/new',
       openOrderCount: 3,
+      shopLive: true,
     }),
   );
   const quick = html.match(
@@ -77,13 +78,13 @@ void test('mobile navigation shows daily links and retains all pages in the menu
     '/seller/finance',
   ])
     assert.ok(quick.includes(`href="${href}"`));
+  assert.match(html, /Shop is live/);
+  assert.doesNotMatch(html, /Seller reference:/);
   assert.match(html, /<dialog[\s\S]*All seller pages[\s\S]*Shipping/);
-  assert.match(html, /href="\/seller\/shipping"[^>]*aria-current="page"/);
+  assert.match(html, /href="\/seller\/shipping"[^>]*aria-current="location"/);
   for (const href of [
     '/seller/reviews',
     '/seller/cases',
-    '/seller/analytics',
-    '/seller/notifications',
     '/seller/profile',
     '/seller/finance',
     '/seller/registration',
@@ -98,8 +99,8 @@ void test('seller navigation does not invent a public shop destination for an ap
   const { SellerNavigationView } = await import('../components/seller/seller-navigation');
   const html = renderToStaticMarkup(createElement(SellerNavigationView, { pathname: '/seller/registration', tradingName: 'Unpublished fixture', sellerId: 'private-seller',canReplyToReviews:false }));
   assert.doesNotMatch(html, /href="\/makers\//);
-  assert.match(html, /Your shop is not public yet/);
-  assert.match(html, /Registration &amp; documents/);
+  assert.match(html, /Not live yet/);
+  assert.match(html, /Documents &amp; agreement/);
 });
 
 void test('review navigation follows actual approved Seller authority rather than active Maker participation',async()=>{
@@ -112,7 +113,7 @@ void test('review navigation follows actual approved Seller authority rather tha
   const makerAccess=await getSellerCenterAccess(maker.db,'navigation-maker-subject');assert.ok(makerAccess);assert.equal(maker.liveEligibility.enabled,true);assert.equal(makerAccess.status,'under_review');assert.equal(makerAccess.approvedSeller,false);
   assert.equal(maker.sqlite.prepare("SELECT COUNT(*)n FROM user_roles WHERE user_id=? AND role='seller'").get(owner)!.n,0);
   const render=(access:NonNullable<typeof makerAccess>)=>renderToStaticMarkup(createElement(SellerNavigationView,{pathname:'/seller/profile',tradingName:access.tradingName,sellerId:access.sellerId,canReplyToReviews:access.approvedSeller}));
-  const makerHtml=render(makerAccess);assert.doesNotMatch(makerHtml,/href="\/seller\/reviews"/);assert.match(makerHtml,/Public customer-review replies are not available for this account/);assert.match(makerHtml,/href="\/seller\/requests"/);
+  const makerHtml=render(makerAccess);assert.doesNotMatch(makerHtml,/href="\/seller\/reviews"/);assert.match(makerHtml,/href="\/seller\/requests"/);
   const sellerAccess=await getSellerCenterAccess(registered.db,'registered-owner');assert.ok(sellerAccess);assert.equal(sellerAccess.approvedSeller,true);assert.match(render(sellerAccess),/href="\/seller\/reviews"/);
   registered.sqlite.exec("UPDATE user_roles SET role='customer' WHERE user_id='registered-owner' AND role='seller'");const revoked=await getSellerCenterAccess(registered.db,'registered-owner');assert.ok(revoked);assert.equal(revoked.approvedSeller,false);assert.doesNotMatch(render(revoked),/href="\/seller\/reviews"/);
  }finally{maker.dispose();registered.dispose();}
