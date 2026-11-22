@@ -259,12 +259,11 @@ export async function runRecordedWorkBrowser(options: {
           await assertSellerReviewAuditCommitted(db, owner.id, application.id, beforeBankViews, signal);
         }
         if (status === 'under_review') {
-          const confirmation = form.getByText('Review started. Check the documents and record the next decision.', { exact: true });
-          const note = form.getByLabel('Review note', { exact: true });
-          await confirmation.or(note).first().waitFor();
-          await page.reload({ waitUntil: 'domcontentloaded' });
+          // The action already refreshes the seller record. A second browser
+          // navigation can leave another audited bank view in flight.
+          await form.getByLabel('Review note', { exact: true }).waitFor();
           await page.waitForURL(origin + '/admin/sellers/' + application.id);
-          await note.waitFor();
+          await page.waitForLoadState('networkidle');
         }
       }
     }
