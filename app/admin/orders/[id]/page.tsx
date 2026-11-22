@@ -47,6 +47,7 @@ import {
 } from '../order-queue-presentation';
 import { OrderDetailTabs, OrderMore } from './order-details-tabs';
 import { OrderProgress } from './order-progress';
+import { NcmOrderTimeline } from './ncm-order-timeline';
 import { OrderOverview } from './order-overview';
 import { readOrderProgress } from './read-order-progress';
 import {
@@ -58,6 +59,7 @@ import { requireDatabase } from '@/lib/db/d1';
 import { getOperationsOrderDetail } from '@/lib/db/repositories/fulfillment';
 import { listManagedInvoiceGroupsForOrder } from '@/lib/db/repositories/managed-documents';
 import { getEffectiveBusinessSetting } from '@/lib/db/repositories/business-settings';
+import { readNcmOrderTimeline } from '@/lib/delivery/ncm-health';
 import { can } from '@/lib/marketplace/permissions';
 import { readOrderMarketplaceFeeViews } from '@/lib/db/repositories/fee-waivers';
 import { OrderMarketplaceFees } from '@/components/seller/order-marketplace-fees';
@@ -216,9 +218,10 @@ export default async function AdminOrderPage({
         )
       ).value
     : [];
-  const [delivery, progress, manualReview] = await Promise.all([
+  const [delivery, progress, ncmTimeline, manualReview] = await Promise.all([
     getDelivery(db, id).then(publicDelivery),
     readOrderProgress(db, order, isSuperAdmin, can(staff, 'payout.prepare')),
+    readNcmOrderTimeline(db, id, isSuperAdmin),
     order.paymentMode === 'prepaid' && order.status === 'pending_payment'
       ? getPaidManualReleaseReview(db, staff.id, id).catch((error) => {
           if (error instanceof ManualPaymentError && error.status === 404)
@@ -576,6 +579,7 @@ export default async function AdminOrderPage({
           facts={{ ...progress, confirmedAt: codReview?.confirmedAt, late }}
           codPending={codPending}
         />
+        <NcmOrderTimeline parcels={ncmTimeline} sellerNames={sellerById} reviewActorId={isSuperAdmin ? staff.id : null} />
 
         <OrderDetailTabs
           defaultTab={defaultTab}

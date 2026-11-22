@@ -137,6 +137,8 @@ function ParcelGroups({
               <div className="min-w-0">
                 {detailHref ? <Link href={detailHref} className={referenceClass + ' hover:underline'}>{reference}</Link>
                   : <span className={referenceClass}>{reference}</span>}
+                {parcel.courierName?.trim().toLowerCase() === 'nepal can move' ?
+                  <p className="text-xs text-muted-foreground">Delivered, cash not yet received</p> : null}
                 {parcel.correctionHeld ? <p className="text-xs font-semibold text-destructive">Bank correction under review</p> : null}
                 {parcel.personalInterest ? <p className="text-xs text-muted-foreground">Another eligible Super Admin can match this parcel.</p> : null}
               </div>

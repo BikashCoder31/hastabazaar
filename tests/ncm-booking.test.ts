@@ -4,8 +4,11 @@ import test from 'node:test';
 import { readDispatchParcels } from '../app/admin/orders/dispatch/read-dispatch';
 import { bookWithNcm, getNcmBookingDraft, ncmVendorReference, recoverNcmBooking } from '../lib/delivery/ncm-booking';
 import { getNcmLabel } from '../lib/delivery/ncm-booked-actions';
+import { applyConfirmedNcmProgress, completeNcmReview, recordNcmComment } from '../lib/delivery/ncm-progress';
 import { validateSellerFormSubmission } from '../lib/forms/submission';
-import { ncmApiConfiguration, ncmConnectionFingerprint } from '../lib/shipping/nepal-can-move';
+import { readCourierCashWorkspace } from '../lib/payments/manual-payment-workspace';
+import { createNcmClient, ncmApiConfiguration, ncmConnectionFingerprint } from '../lib/shipping/nepal-can-move';
+import { listReviewTasks } from '../lib/workflows/review-tasks';
 import { installFixtureTables } from './helpers/delivery-partner-fixture';
 import { manualOrderFixture } from './helpers/manual-payment-fixture';
 import { installNcmFixtureTables } from './helpers/ncm-fixture-tables';
@@ -26,6 +29,7 @@ async function fakeBooking(kind: 'ok'|'timeout'|'rejected') {
   installFixtureTables(f.sqlite);
   installNcmFixtureTables(f.sqlite);
   f.sqlite.exec(`ALTER TABLE products ADD COLUMN packed_weight_grams INTEGER;
+    ALTER TABLE shipping_jobs ADD COLUMN delivery_failure_reason TEXT;
     CREATE TABLE seller_parcel_weights (order_id TEXT,seller_id TEXT,weight_grams INTEGER,
     item_count INTEGER,recorded_by TEXT,recorded_at INTEGER,request_id TEXT,PRIMARY KEY(order_id,seller_id));
     INSERT INTO delivery_partners(id,name,status,booking_mode,collects_cod,created_at,updated_at)
@@ -50,6 +54,10 @@ async function fakeBooking(kind: 'ok'|'timeout'|'rejected') {
   const server = createServer((req,res) => {
     res.setHeader('Content-Type','application/json');
     if (req.url?.startsWith('/api/v1/shipping-rate?')) { res.end(JSON.stringify({charge:'110.25'})); return; }
+    if (req.url === '/api/v1/order?id=747') {
+      res.end(JSON.stringify({cod_charge:f.order.grandTotalPaisa/100,delivery_charge:'110.25',last_delivery_status:'Delivered'}));
+      return;
+    }
     if (req.url === '/api/v2/vendor/order/label/747') {
       res.end(JSON.stringify({orderid:747,from_branch:'KATHMANDU',to_branch:'GODAWARI',receiver:{name:'Test Receiver'},
         description:{vendor_orderid:posted?.vref_id,package:'Fixture art'}}));
@@ -95,6 +103,45 @@ async function fakeBooking(kind: 'ok'|'timeout'|'rejected') {
       assert.equal(after.lane,'booked');
       assert.equal(after.trackingNumber,'747');
       assert.equal((await getNcmLabel(f.db,runtime,after.jobId!)).description,'Fixture art');
+      const jobId = after.jobId!;
+      const booking = {jobId,actorId:'reviewer',partnerId:'ncm',ncmOrderId:'747'};
+      const client = createNcmClient(ncmApiConfiguration(runtime)!);
+      const update = (status: string, event?:string,payload:Record<string,unknown> = {}) => applyConfirmedNcmProgress(f.db,{
+        booking,status,client,now:Date.now(),...(event ? {webhookEvent:{id:'a-fixture-event',event,payload}} : {}),
+      });
+      await update('future status','delivery_completed',{cod_charge:1,delivery_charge:1});
+      assert.equal(f.sqlite.prepare('SELECT status FROM shipping_jobs WHERE id=?').get(jobId)?.status,after.state);
+      await update('Pickup Complete');
+      await update('Dispatched');
+      await update('Sent for Delivery');
+      await update('Returned to Warehouse','returned_to_warehouse',{returnReason:'Customer could not be reached'});
+      const failed = f.sqlite.prepare('SELECT status,delivery_failure_reason AS reason FROM shipping_jobs WHERE id=?').get(jobId);
+      assert.deepEqual({...failed},{status:'delivery_failed',reason:'not_reached'});
+      await update('Sent for Delivery');
+      await update('Delivered','delivery_completed',{cod_charge:1,delivery_charge:1});
+      await update('Delivered');
+      assert.equal(f.sqlite.prepare('SELECT status FROM shipping_jobs WHERE id=?').get(jobId)?.status,'delivered');
+      assert.deepEqual({...f.sqlite.prepare('SELECT cod_reported_paisa AS cod,delivery_charge_paisa AS fee FROM ncm_bookings').get()},
+        {cod:f.order.grandTotalPaisa,fee:11_025});
+      assert.equal(f.sqlite.prepare('SELECT remitted_paisa AS value FROM shipping_parcels WHERE shipping_job_id=?').get(jobId)?.value,0);
+      const cash = await readCourierCashWorkspace(f.db,'reviewer');
+      assert.ok(cash.parcels.some(parcel => parcel.id === jobId && parcel.courierName === 'Nepal Can Move' && parcel.remainingPaisa === f.order.grandTotalPaisa));
+      const comment = (id:string,kind:string) => recordNcmComment(f.db,{
+        booking,eventId:'comment-fixture-'+id,payload:{comment_id:id,comment_type:kind,comment:'Fixture carrier comment'},now:Date.now(),
+      });
+      await comment('1','Info');
+      await comment('2','Action');
+      await comment('2','Action');
+      await update('Refund Initiated','refund_initiated',{refund_order:{order_id:748}});
+      await update('Refund Initiated');
+      await update('Exchange Initiated','exchange_initiated',{exchange_order:{order_id:749}});
+      assert.equal(f.sqlite.prepare('SELECT COUNT(*) AS n FROM ncm_courier_notes').get()?.n,2);
+      assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS n FROM review_tasks WHERE source_type='ncm_action'").get()?.n,3);
+      const ncmTasks = await listReviewTasks(f.db,'reviewer',undefined,{sourceTypes:['ncm_action']});
+      assert.ok(ncmTasks.every(task=>task.status === 'awaiting_review' && task.orderId === f.orderId));
+      await completeNcmReview(f.db,'reviewer',ncmTasks[0].sourceId,'review-ncm-test');
+      assert.equal((await listReviewTasks(f.db,'reviewer',undefined,{sourceTypes:['ncm_action']}))
+        .filter(task=>task.status === 'completed').length,1);
     } else if (kind === 'timeout') {
       await assert.rejects(book,{state:'needs_review'});
       await assert.rejects(book,{state:'needs_review'});

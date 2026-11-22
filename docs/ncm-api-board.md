@@ -5,9 +5,9 @@ Started on `admin-redesign` at `4acd0f9a` with the owner's go-ahead.
 | Task | Owner | Status | Commit | Checks |
 | --- | --- | --- | --- | --- |
 | N1 · NCM connection and settings | Main and UI/schema helpers | Done | `93ddd677` | Typecheck, lint and 32 focused tests passed. Playwright verified the guarded preview and connected UI fixture at 390, 768, 1024 and 1440 px. Controls measured at least 44 px. |
-| N2 · Book with NCM from Dispatch | Main and UI helper | Done | `NCM API: Book from Dispatch` | Typecheck and lint passed for N2. Loopback NCM tests covered the reviewed payload, success, ambiguity, verified recovery and field errors. Playwright passed four widths for hand booking, NCM review and recovery. |
-| N3 · Parcel progress from NCM | Main | Pending | | Verified webhook events, scheduled recovery, courier costs and health. |
-| N4 · Final check | Main | Pending | | Full suite, fake courier walk and owner handoff. |
+| N2 · Book with NCM from Dispatch | Main and UI helper | Done | `ced23f16` | Typecheck and lint passed for N2. Loopback NCM tests covered the reviewed payload, success, ambiguity, verified recovery and field errors. Playwright passed four widths for hand booking, NCM review and recovery. |
+| N3 · Parcel progress from NCM | Main and progress helpers | Done | `NCM API: Verified parcel updates` | Typecheck, lint and 22 focused tests passed. Fake NCM delivery created a Courier cash entry with zero remitted. Verified comments and refund or exchange requests created review tasks once. Chromium checked the health warning, staff timeline and customer tracking at all four widths. |
+| N4 · Final check | Main | In progress | | Full suite, checked preview and owner handoff. |
 
 ## Implementation plan
 
@@ -23,3 +23,4 @@ Started on `admin-redesign` at `4acd0f9a` with the owner's go-ahead.
 - The existing database rule makes the default courier a partner booked by hand. An API-enabled Nepal Can Move partner is available as a separate choice in Dispatch.
 - Early test invocations loaded 0172 into disposable in-memory SQLite fixtures through their existing migration loader. Those fixtures were discarded. The checked database and MariaDB copies were untouched. The verification runs use a fixture guard and explicit in-memory test table definitions.
 - A split order uses a distinct HB courier reference for each seller parcel. The check panel shows the original order number as well. The app caps direct bookings at 500 requests per Nepal calendar day to leave room under the documented limit.
+- A confirmed delivery with the same COD amount as the parcel records collection under Nepal Can Move. Staff still match the actual transfer in Courier cash. A reported amount that differs is kept on the order timeline for review. The returned-parcel charge is shown as reported evidence, since NCM's order details guide only specifies the outbound fee.

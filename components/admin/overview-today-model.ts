@@ -90,6 +90,7 @@ const presentation: Record<ReviewQueueTask['sourceType'], readonly [TodaySection
   return_request: ['Care', 'Returns', 'Open case'],
   complaint: ['Care', 'Complaints', 'Open case'],
   cancellation_review: ['Orders', 'Cancellation', 'Open order'],
+  ncm_action: ['Orders', 'Nepal Can Move', 'Open order'],
   order_response: ['Orders', 'Preparation', 'Review response'],
   payment_claim: ['Money', 'Payments', 'Review payment'],
   payment_exception: ['Money', 'Payments', 'Open exception'],

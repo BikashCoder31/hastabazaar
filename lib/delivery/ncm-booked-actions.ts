@@ -10,7 +10,7 @@ const booked = `SELECT b.partner_id AS partnerId,b.ncm_order_id AS tracking,
   FROM ncm_bookings b JOIN shipping_jobs j ON j.id=b.job_id
   JOIN shipping_parcels p ON p.shipping_job_id=j.id
   JOIN orders o ON o.id=j.order_id
-  WHERE b.job_id=? AND b.state='booked' AND p.delivery_partner_id=b.partner_id AND j.tracking_code=b.ncm_order_id`;
+  WHERE b.job_id=? AND b.state='booked' AND p.delivery_partner_id=b.partner_id AND HEX(j.tracking_code)=HEX(b.ncm_order_id)`;
 type ConfirmedBooking = {partnerId:string; tracking:string; vendorReference:string; labelJson:string|null; orderNumber:string};
 const clean = (value: unknown, limit = 500) => typeof value === 'string' ? value.replace(/\p{Cc}/gu,' ').trim().slice(0,limit) : '';
 const object = (value: unknown): Record<string,unknown> =>

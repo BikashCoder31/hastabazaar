@@ -16,6 +16,8 @@ import {readSystemHealthWorkspace} from '@/lib/operations/system-health-workspac
 import {readEmailDeliveryOverview,readEmailHealthRuntimeConfig} from '@/lib/operations/email-delivery-overview';
 import {emailDeliveryWarning,emailSenderStatus,readAdminMessages} from '@/lib/operations/admin-message-history';
 import {EmailWarning} from '@/components/admin/email-delivery-view';
+import { NcmHealthWarningCard } from '@/components/admin/ncm-health-warning';
+import { readNcmHealthWarning } from '@/lib/delivery/ncm-health';
 import {ReviewTaskConflict} from '@/lib/workflows/review-tasks';
 import {staffMutationGuard} from '@/lib/db/repositories/staff-mutation-guard';
 import { can, isMoneyViewOnly } from '@/lib/marketplace/permissions';
@@ -80,6 +82,7 @@ export default async function AdminDashboardPage({ searchParams }: {
   const today = params?.workspace === 'reviews' || legacyReview ? null : await readTodaySources({
     db: database, actor: staff, now, returnTo, tasks: workItems, financeDecisions: finance?.recentDecisions ?? [],
   });
+  const ncmWarning = today ? await readNcmHealthWarning(database, staff, now).catch(() => null) : null;
   const queues = [
     {
       label: 'Seller applications',
@@ -346,6 +349,7 @@ export default async function AdminDashboardPage({ searchParams }: {
         returnTo={returnTo} tasks={today.rows} partialSources={[...partialSources, ...today.partial]}
         metrics={<>
           {emailWarning && <EmailWarning warning={emailWarning} />}
+          {ncmWarning && <NcmHealthWarningCard warning={ncmWarning} superAdmin={staff.role === 'super_admin'} />}
           <TodayWorkSummaries orders={today.orders} courierCash={today.courierCash} cases={cases} checks={checks}/>
         </>}
         sidebar={<aside className="today-sidebar" aria-label="Operations updates">

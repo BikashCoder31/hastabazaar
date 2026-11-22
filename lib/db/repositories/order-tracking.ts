@@ -35,7 +35,7 @@ export async function findOrderTracking(
  WHERE order_id=? GROUP BY to_status ORDER BY MIN(created_at) ASC`)
     .bind(order.id)
     .all<{ status: string; occurredAt: number }>(), getFirstCodReview(db, order.id),
-    readCustomerOrderParcels(db, [order.id], { withItems: false, withCash: false }),
+    readCustomerOrderParcels(db, [order.id], { withItems: false, withCash: false, withNcmProgress: true }),
   ]);
   const codPending =
     codReview?.status === 'pending' && order.status !== 'cancelled';

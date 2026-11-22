@@ -11,6 +11,7 @@ export function reviewTaskHref(task:ReviewQueueTask,returnTo:string){
  else if(task.sourceType==='return_request')destination='/admin/cases/returns/'+encodeURIComponent(task.sourceId);
  else if(task.sourceType==='complaint')destination='/admin/cases/complaints/'+encodeURIComponent(task.sourceId);
  else if(task.sourceType==='cancellation_review')destination='/admin/orders/'+encodeURIComponent(task.orderId!);
+ else if(task.sourceType==='ncm_action')destination='/admin/orders/'+encodeURIComponent(task.orderId!)+'#ncm-timeline';
  else if(task.sourceType==='order_response')destination='/admin/order-responses/'+encodeURIComponent(task.sourceId);
  else if(task.sourceType==='payment_exception')destination='/admin/payments/exceptions/'+encodeURIComponent(task.sourceId);
  else if(task.sourceType==='payment_claim')destination='/admin/payments'+(task.orderId?'?order='+encodeURIComponent(task.orderId):'')+'#'+encodeURIComponent(task.sourceId);

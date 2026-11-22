@@ -5,7 +5,7 @@ import type { Permission } from '../marketplace/permissions';
 import { commandReceipt, type CommandContext } from './contracts';
 import { calculateServiceDueAt, CONTINUOUS_CALENDAR_VERSION } from './service-clock';
 
-type SourceType = 'team_governance'|'system_incident'|'recovery_claim' | 'recovery_review' | 'recovery_contact' | 'return_request' | 'complaint' | 'cancellation_review' | 'order_response' | 'payment_claim' | 'payment_exception' | 'product_priority' | 'commission_terms' | 'company_account' | 'seller_application' | 'seller_document' | 'document_change' | 'product_review' | 'product_intake_help' | 'product_intake_review' | 'protected_change' | 'public_profile' | 'public_profile_correction';
+type SourceType = 'ncm_action' | 'team_governance'|'system_incident'|'recovery_claim' | 'recovery_review' | 'recovery_contact' | 'return_request' | 'complaint' | 'cancellation_review' | 'order_response' | 'payment_claim' | 'payment_exception' | 'product_priority' | 'commission_terms' | 'company_account' | 'seller_application' | 'seller_document' | 'document_change' | 'product_review' | 'product_intake_help' | 'product_intake_review' | 'protected_change' | 'public_profile' | 'public_profile_correction';
 interface Source {deadlineStartedAt?:number;recordTitle?:string|null;allowedStaffIds?:string[];assigneeOnlyId?:string|null;orderId?:string;dueAt?:number;reviewHours?:number;initialReviewerId?:string|null;priority?:boolean;backupId?:string|null; alternativePermission?:Permission;conflictIds?:string[];hasDeadline?:boolean;sellerId?:string;sellerName?:string;nextUpdateAt?:number|null; revision: string; ownerId: string; startedAt: number; status: string; permission: Permission; reserved: boolean; predicate: string; values: unknown[]; hasHolds?:number;triagedAt?:number|null;needsAction?:boolean;nextActor?:string }
 export class ReviewTaskConflict extends Error {}
 
@@ -17,6 +17,18 @@ export function currentProductReviewOwnerSql(productIdExpression:string){
 
 /** Whitelisted source adapters prevent client-chosen permissions, clocks or completion. */
 async function source(db: D1Database, type: SourceType, id: string, now=Date.now()): Promise<Source> {
+  if (type === 'ncm_action') {
+    const doneSql = "EXISTS(SELECT 1 FROM audit_logs a WHERE a.action='ncm.review_completed' AND a.subject_type='parcel_operation' AND a.subject_id=e.id)";
+    const row = await db.prepare(`SELECT e.order_id AS orderId,e.note AS recordTitle,e.created_at AS startedAt,
+      e.actor_id AS reviewerId,${doneSql} AS done FROM parcel_operation_events e WHERE e.id=? AND e.action='ncm_attention'`)
+      .bind(id).first<{orderId:string;recordTitle:string;startedAt:number;reviewerId:string;done:number}>();
+    if (!row) throw new ReviewTaskConflict('The original NCM request is unavailable.');
+    return {...row,revision:id,ownerId:'',initialReviewerId:row.reviewerId,status:row.done?'reviewed':'open',
+      startedAt:Number(row.startedAt),hasDeadline:false,permission:'order.manage',reserved:true,
+      needsAction:!row.done,nextActor:'Hastabazaar',
+      predicate:`EXISTS(SELECT 1 FROM parcel_operation_events e WHERE e.id=? AND e.action='ncm_attention' AND ${doneSql}=?)`,
+      values:[id,Number(row.done)]};
+  }
   if(type==='team_governance')return (await import('../operations/team-governance-tasks')).teamReviewSource(db,id,now);
   if(type==='system_incident')return (await import('../operations/incident-review')).incidentReviewSource(db,id,now);
   if(type==='recovery_claim')return (await import('../payments/recovery-repayments')).recoveryRepaymentReviewSource(db,id);

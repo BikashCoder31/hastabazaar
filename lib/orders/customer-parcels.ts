@@ -4,6 +4,7 @@ import { readUnbookedSellerParcelCash } from '../operations/parcels';
 import { withOrderOfferSnapshots } from '../products/offer-order-contract';
 import { currentProductMediaOrder, currentProductMediaSql } from '../products/publication-media';
 import { publicTrackingReferenceSql } from '../riders/public-tracking';
+import { ncmSchemaAvailable } from '../delivery/ncm-settings';
 import type { CustomerParcelStage } from '@/components/storefront/customer-parcel-progress';
 
 export type CustomerParcelItem = {
@@ -41,7 +42,7 @@ type ParcelSource = {
   courierName: string | null; trackingReference: string | null; trackingUrl: string | null; failureReason: string | null;
 };
 
-const handed = new Set(['dispatched', 'delivery_failed', 'return_to_origin', 'returning', 'returned', 'delivered']);
+const handed = new Set(['dispatched', 'picked_up', 'in_transit', 'out_for_delivery', 'delivery_failed', 'return_to_origin', 'returning', 'returned', 'delivered']);
 
 function displayStatus(items: readonly ItemSource[], booked: ParcelSource | undefined, order: OrderSource) {
   if (order.status === 'cancelled' || items.every(item => item.status === 'cancelled')) return 'cancelled';
@@ -64,11 +65,18 @@ function firstTime(items: readonly ItemSource[], key: 'preparingAt' | 'packedAt'
 }
 
 /** Call with IDs already authorized by a receipt, owned orders, or the tracking proof. */
-export async function readCustomerOrderParcels(db: D1Database, orderIds: readonly string[], options: { withItems?: boolean; withCash?: boolean } = {}) {
+export async function readCustomerOrderParcels(db: D1Database, orderIds: readonly string[], options: { withItems?: boolean; withCash?: boolean; withNcmProgress?: boolean } = {}) {
   const ids = [...new Set(orderIds)];
   const result = new Map<string, CustomerOrderParcel[]>();
   if (!ids.length) return result;
-  const hasFailureReason = await deliveryFailureSchemaAvailable(db);
+  const [hasFailureReason, hasNcmProgress] = await Promise.all([
+    deliveryFailureSchemaAvailable(db), options.withNcmProgress && ncmSchemaAvailable(db),
+  ]);
+  const parcelStatusSql = hasNcmProgress
+    ? "CASE WHEN j.status='dispatched' AND ncm.last_status IN ('picked_up','in_transit','out_for_delivery') THEN ncm.last_status ELSE j.status END"
+    : 'j.status';
+  const ncmProgressJoin = hasNcmProgress ? `LEFT JOIN ncm_bookings ncm ON ncm.job_id=j.id AND ncm.state='booked'
+    AND ncm.ncm_order_id=j.tracking_code AND ncm.partner_id=p.delivery_partner_id AND p.method='courier' AND p.rider_user_id IS NULL` : '';
   for (let offset = 0; offset < ids.length; offset += 40) {
     const chunk = ids.slice(offset, offset + 40), parameters = chunk.map(() => '?').join(',');
     const [orders, itemRows, parcels] = await Promise.all([
@@ -89,12 +97,13 @@ export async function readCustomerOrderParcels(db: D1Database, orderIds: readonl
         (SELECT MIN(e.created_at) FROM order_item_status_events e WHERE e.order_item_id=i.id AND e.to_status='dispatched') AS dispatchedAt,
         (SELECT MIN(e.created_at) FROM order_item_status_events e WHERE e.order_item_id=i.id AND e.to_status='delivered') AS deliveredAt
         FROM order_items i WHERE i.order_id IN (${parameters}) ORDER BY i.order_id,i.seller_id,i.created_at,i.id`).bind(...chunk).all<ItemSource>(),
-      db.prepare(`SELECT j.order_id AS orderId,j.seller_id AS sellerId,j.status,p.cod_due_paisa AS codPaisa,p.delivered_at AS deliveredAt,
+      db.prepare(`SELECT j.order_id AS orderId,j.seller_id AS sellerId,${parcelStatusSql} AS status,p.cod_due_paisa AS codPaisa,p.delivered_at AS deliveredAt,
         CASE WHEN p.method='courier' AND p.rider_user_id IS NULL THEN p.courier_name END AS courierName,
         CASE WHEN p.method='courier' AND p.rider_user_id IS NULL THEN j.tracking_code END AS trackingReference,
         CASE WHEN p.method='courier' AND p.rider_user_id IS NULL THEN p.tracking_url END AS trackingUrl,
         ${hasFailureReason ? "CASE WHEN p.method='courier' AND p.rider_user_id IS NULL THEN j.delivery_failure_reason END" : 'NULL'} AS failureReason
-        FROM shipping_jobs j JOIN shipping_parcels p ON p.shipping_job_id=j.id WHERE j.direction='outbound' AND j.order_id IN (${parameters})`).bind(...chunk).all<ParcelSource>(),
+        FROM shipping_jobs j JOIN shipping_parcels p ON p.shipping_job_id=j.id ${ncmProgressJoin}
+        WHERE j.direction='outbound' AND j.order_id IN (${parameters})`).bind(...chunk).all<ParcelSource>(),
     ]);
     const itemsWithMedia = options.withItems === false ? [] : await withOrderOfferSnapshots(db, itemRows.results, row => row.id);
     const media = new Map(itemsWithMedia.map(row => [row.id, row.offerSnapshot?.mediaId ?? row.mediaId]));

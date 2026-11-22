@@ -22,6 +22,9 @@ export function customerParcelState({ status, proposedDate = false, bankDue = fa
     case 'return_to_origin':
     case 'returning': return { actor: 'courier', stage: 'with-courier', condition: 'problem', label: 'Going back to the seller' };
     case 'delivery_failed': return { actor: 'hastabazaar', stage: 'with-courier', condition: 'problem', label: 'Delivery missed' };
+    case 'picked_up': return { actor: 'courier', stage: 'with-courier', label: 'Picked up by the courier' };
+    case 'in_transit': return { actor: 'courier', stage: 'with-courier', label: 'On the way' };
+    case 'out_for_delivery': return { actor: 'courier', stage: 'with-courier', label: 'Out for delivery' };
     case 'dispatched': return { actor: 'courier', stage: 'with-courier', label: 'With the courier' };
   }
   if (bankDue) return { actor: 'you', stage: 'placed', condition: 'waiting', label: 'Waiting for your bank transfer' };

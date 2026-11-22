@@ -546,8 +546,10 @@ export interface ParcelOperation {
 export async function operateParcel(
   db: D1Database,
   o: ParcelOperation,
-  ncmBooking?: { requestId: string; orderId: string },
+  ncm?: { requestId: string; orderId: string } | { partnerId: string; ncmOrderId: string; fingerprint: string },
 ) {
+  const ncmBooking = ncm && 'requestId' in ncm ? ncm : undefined;
+  const ncmProgress = ncm && 'partnerId' in ncm ? ncm : undefined;
   const authority = await staffMutationGuard(
     db,
     o.actorId,
@@ -657,6 +659,19 @@ export async function operateParcel(
       [o.jobId, o.requestId, o.version + 1],
     ),
   ];
+  if (ncmProgress) {
+    statements.push(
+      db.prepare('UPDATE delivery_partners SET revision=revision WHERE id=?').bind(ncmProgress.partnerId),
+      ...assertion(db, `EXISTS(SELECT 1 FROM ncm_bookings n JOIN shipping_jobs j ON j.id=n.job_id
+        JOIN shipping_parcels p ON p.shipping_job_id=j.id JOIN delivery_partners c ON c.id=n.partner_id
+        JOIN ncm_partner_settings s ON s.partner_id=c.id
+        WHERE n.job_id=? AND n.ncm_order_id=? AND n.state='booked' AND n.actor_id=? AND c.id=?
+          AND c.status='in_use' AND c.booking_mode='api' AND s.connection_fingerprint=? AND s.connected_at IS NOT NULL
+          AND p.delivery_partner_id=c.id AND p.method='courier' AND p.rider_user_id IS NULL
+          AND j.direction='outbound' AND HEX(j.tracking_code)=HEX(n.ncm_order_id))`,
+        [o.jobId,ncmProgress.ncmOrderId,o.actorId,ncmProgress.partnerId,ncmProgress.fingerprint]),
+    );
+  }
   if (o.action === 'record_cost') {
     const amount = o.amountPaisa,
       reference = (o.reference ?? '').trim();
@@ -1163,7 +1178,7 @@ export async function operateParcel(
       deliver: { from: ['dispatched'], to: 'delivered' },
       fail: { from: ['dispatched'], to: 'delivery_failed' },
       retry: { from: ['delivery_failed', 'returning'], to: 'dispatched' },
-      return_to_origin: { from: ['delivery_failed'], to: 'returning' },
+      return_to_origin: { from: ncmProgress ? ['dispatched','delivery_failed'] : ['delivery_failed'], to: 'returning' },
       receive_return: { from: ['returning'], to: 'returned' },
     };
     const t = transitions[o.action];
