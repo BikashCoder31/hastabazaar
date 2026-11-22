@@ -6,7 +6,7 @@ const definitions=[
  ['specifications','Specifications and compatibility',[['specifications','Distinguishing specifications'],['dimensions','Dimensions with units'],['colour','Colour'],['variations','Other descriptive options'],['compatibility','Compatibility'],['power','Power, plug or battery information'],['activeDevice','Is this an active electronic device?']]],
  ['care','Care and safe use',[['careInstructions','Care instructions'],['safetyInformation','Safe-use information']]],
  ['warranty','Warranty and aftercare',[['warrantyOffered','Is a warranty offered?'],['warrantyProvider','Who provides the warranty?'],['warrantyDuration','Warranty duration'],['warrantyTerms','How to claim the warranty'],['returnEligible','Seller-stated return eligibility'],['returnConditions','Additional return information']]],
- ['preparation','Preparation and applicable dates',[['madeToOrder','Made to order'],['preparationDays','Preparation days'],['manufacturedAt','Manufacture date'],['expiresAt','Expiry date']]],
+ ['preparation','Preparation and applicable dates',[['madeToOrder','Made to order'],['preparationDays','Preparation days'],['packageSize','Package size'],['manufacturedAt','Manufacture date'],['expiresAt','Expiry date']]],
  ['presentation','Photos and discovery',[['coverImage','Product photos'],['occasionIds','Gift occasions']]],
  ['offer','Price and draft availability',[['price','Selling price (NPR)'],['compareAtPrice','Original price (NPR)'],['inventoryQuantity','Draft available quantity']]],
 ] as const;

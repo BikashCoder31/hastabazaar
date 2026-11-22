@@ -10,7 +10,7 @@ void test('public help provides accurate written seller guidance and native task
  assert.match(html,/id="seller-guide"/);
  for(const href of ['/sell/apply','/seller/registration','/seller/products/new','/seller/products/intakes','/seller/requests','/seller/finance'])assert.ok(html.includes('href="'+href+'"'),href);
  for(const href of ['/track','/account/orders','/account/refunds'])assert.ok(html.includes('href="'+href+'"'),href);
- assert.match(html,/Get help with this product/);assert.match(html,/verified/i);assert.match(html,/Request a document change/i);assert.match(html,/lang="ne"/);assert.match(html,/Save progress/);
+ assert.match(html,/Ask Hastabazaar to help finish it/);assert.match(html,/verified/i);assert.match(html,/Request a document change/i);assert.match(html,/lang="ne"/);assert.match(html,/Save progress/);
  assert.doesNotMatch(html,/<(?:video|audio)\b/,'Written help remains available without loading deferred media');
 });
 
@@ -58,7 +58,7 @@ void test('a Managed Maker can open Seller Center and resume a private product d
     assert.match(draftHome, /href="\/seller\/products\/new\?draftId=fictional-first-product"/);
     assert.match(draftHome, /Next step:[^<]*Send your first product for review/);
     assert.match(draftHome, /Continue saved draft/);
-    assert.match(draftHome, /Send product information/);
+    assert.match(draftHome, /Add photos and details in five short steps, then press “Send for review”/);
     assert.match(draftHome, /Payouts need a verified bank account/);
   } finally { f.dispose(); }
 });

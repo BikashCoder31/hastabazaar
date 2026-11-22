@@ -5,6 +5,7 @@ import {readBoundedJsonObject} from '@/lib/http/form-json-body';
 import {isTrustedMutationRequest} from '@/lib/http/request-security';
 import {CategoryContractError,getCategoryDetailGroups} from '@/lib/products/category-contracts';
 import {confirmProductIntakeProposal,getProductWorkspace,saveProductWorkspace,submitProductIntake} from '@/lib/products/intake-workspace';
+import {copySellerIntakeProduct} from '@/lib/products/intake-starter';
 import {closedIntakeFields,intakeCommand,intakeFailure,intakeId,intakeQuery,intakeReply,intakeActor} from '@/lib/products/intake-http';
 const failure=(error:unknown)=>error instanceof SellerCenterAuthorizationError?intakeReply({error:error.message},error.status):intakeFailure(error);
 export async function GET(request:Request){try{
@@ -21,6 +22,11 @@ export async function POST(request:Request){
  if(!isTrustedMutationRequest(request))return intakeReply({error:'Cross-site requests are not allowed.'},403);
  try{const owner=await requireSellerCenterApi();if(!owner.sellerId)throw new CategoryContractError('Save the registration information you have first so this private draft has its owner reference.');
  const body=await readBoundedJsonObject(request),ctx=intakeCommand(body,owner.userId,request),db=requireDatabase(env as unknown as {DB?:D1Database});
+ if(body.action==='copy'){
+  closedIntakeFields(body,['action','requestId','expectedRevision','productId']);
+  if(!intakeId(body.productId))throw new CategoryContractError('Choose a published product from your own shop.',400);
+  return intakeReply(await copySellerIntakeProduct(db,ctx,owner.sellerId,body.productId));
+ }
  if(body.action==='save'){
   closedIntakeFields(body,['action','requestId','expectedRevision','draftId','categoryId','answers','offers','mediaIds','privateReview','formContext','packedWeightGrams']);
   if(!(body.draftId===null||intakeId(body.draftId))||!(body.categoryId===null||typeof body.categoryId==='string'&&body.categoryId.length<=160)||!Array.isArray(body.mediaIds))throw new CategoryContractError('Use the saved draft and supported category/media references.',400);

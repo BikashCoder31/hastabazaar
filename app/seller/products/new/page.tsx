@@ -1,9 +1,11 @@
 import { env } from 'cloudflare:workers';
 import Link from 'next/link';
+import { ProductIntakeStart } from '@/components/seller/product-intake-start';
 import { ProductIntakeWorkspace } from '@/components/seller/product-intake-workspace';
 import { requireSellerCenterPage } from '@/lib/auth/seller-center';
 import { requireDatabase } from '@/lib/db/d1';
 import { getProductWorkspace } from '@/lib/products/intake-workspace';
+import { listSellerIntakeStarter } from '@/lib/products/intake-starter';
 import { getCategoryDetailGroups } from '@/lib/products/category-contracts';
 import { listActiveCategories, listActiveOccasions } from '@/lib/db/repositories/products';
 import { getSellerCommissionTerms } from '@/lib/db/repositories/commission-rates';
@@ -12,6 +14,7 @@ import { getManagedTermsOffers } from '@/lib/managed-commerce/accepted-terms';
 import { getProductMaterialSuggestions } from '@/lib/products/material-settings';
 import type { PriceScenario } from '@/lib/products/price-guidance';
 import { packedWeightSchemaAvailable } from '@/lib/shipping/packed-weight-storage';
+import { phaseOneMarketplacePolicy } from '@/lib/marketplace/policy';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +37,7 @@ async function currentPricing(database: D1Database, sellerId: string): Promise<P
 }
 
 export default async function NewProductPage({ searchParams }: {
-  searchParams: Promise<{ draftId?: string; offer?: string }>;
+  searchParams: Promise<{ draftId?: string; offer?: string; start?: string }>;
 }) {
   const owner = await requireSellerCenterPage('/seller/products/new');
   if (!owner.sellerId) return <div className="space-y-4">
@@ -43,7 +46,11 @@ export default async function NewProductPage({ searchParams }: {
     <Link href="/seller/registration" className="section-link">Open registration</Link>
   </div>;
   const database = requireDatabase(env as unknown as { DB?: D1Database });
-  const { draftId, offer } = await searchParams;
+  const { draftId, offer, start } = await searchParams;
+  if (!draftId && !offer && start !== 'new') {
+    const starter = await listSellerIntakeStarter(database, owner.userId, owner.sellerId);
+    return <ProductIntakeStart actorId={owner.userId} {...starter} />;
+  }
   const [initial, categories, occasions, materialSuggestions, pricing, packedWeightAvailable] = await Promise.all([
     draftId ? getProductWorkspace(database, owner.userId, draftId) : null,
     listActiveCategories(database),
@@ -53,8 +60,11 @@ export default async function NewProductPage({ searchParams }: {
     packedWeightSchemaAvailable(database),
   ]);
   const initialCategoryModel = initial?.category ?? await getCategoryDetailGroups(database, null);
+  const guided = !initial?.legacy && !initial?.publication && !initial?.case;
+  const returnPolicy = phaseOneMarketplacePolicy.value.returns;
   return <ProductIntakeWorkspace actorId={owner.userId} key={owner.userId + ':' + (initial?.id ?? 'new')}
     categories={categories} occasions={occasions} materialSuggestions={materialSuggestions} initial={initial}
-    initialOfferId={offer} initialCategoryModel={initialCategoryModel} studio
+    initialOfferId={offer} initialCategoryModel={initialCategoryModel} studio guided={guided}
+    returnWindowDays={returnPolicy.generalRequestWindowDays} returnPolicyEnabled={returnPolicy.changeOfMindEnabled}
     pricing={pricing} tradingName={owner.tradingName} packedWeightAvailable={packedWeightAvailable} />;
 }

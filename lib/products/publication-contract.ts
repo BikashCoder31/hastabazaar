@@ -20,7 +20,7 @@ export function compileProductPublication(input:{snapshot:IntakeSnapshot;categor
  if(!readiness.publicationReady)throw new OfferError(readiness.publication.map(issue=>issue.reason).join(' '));
  // Default new public facts to review-required, but never publish editor-only
  // stock, duplicate price inputs, arbitrary custom questions or private evidence.
- const omitted=new Set(['inventoryQuantity','price','compareAtPrice','coverImage','occasionIds']);
+ const omitted=new Set(['inventoryQuantity','price','compareAtPrice','coverImage','occasionIds','packageSize']);
  const details:ProductDetailAnswers={};
  for(const [key,value] of Object.entries(snapshot.answers))if(productDetailKeys.has(key)&&!omitted.has(key))details[key as keyof ProductDetailAnswers]=structuredClone(value);
  const rawOccasions=snapshot.answers.occasionIds;

@@ -149,7 +149,7 @@ function checklist(scope: Scope | null, product: ProductMilestone | null | undef
   } else if (readiness?.submitProducts) {
     add('send', sendTitle, 'Pending',
       owner ? (product?.state === 'draft' ? 'Your saved draft hasn’t been sent. ' : '') +
-        'Add product details and a cover photo. In Review, choose “Review information to send”, then “Send product information”. Use “Get help with this product” if you’re missing details.'
+        'Add photos and details in five short steps, then press “Send for review”. If you’re missing details, choose “Ask Hastabazaar to help finish it”.'
         : 'The seller can submit products now. Wait for the seller to send their first product.',
       sellerAction(draftHref, product?.state === 'draft' ? 'Continue saved draft' : 'Add your first product'));
   } else {

@@ -16,7 +16,7 @@ const groups = [
 ] as const;
 const groupedFields = new Set<string>(groups.flatMap(group => group.fields));
 
-export function readinessChecks(snapshot: IntakeSnapshot, category: CategoryDetailModel, saved: ProductWorkspace | null, unchanged: boolean) {
+export function productReadinessIssues(snapshot: IntakeSnapshot, category: CategoryDetailModel, saved: ProductWorkspace | null, unchanged: boolean) {
   const first = snapshot.offers.offers.find(row => row.included);
   const photos = new Set(saved?.uploads.filter(file => file.state === 'ready' && file.mimeType.startsWith('image/')).map(file => file.id));
   const coverImage = snapshot.mediaIds.find(id => photos.has(id)) ?? '';
@@ -36,6 +36,11 @@ export function readinessChecks(snapshot: IntakeSnapshot, category: CategoryDeta
       currentIssues.push({ field: 'offers', reason: 'Choose an attached photo for this offer.', code: 'invalid' });
     }
   }
+  return currentIssues;
+}
+
+export function readinessChecks(snapshot: IntakeSnapshot, category: CategoryDetailModel, saved: ProductWorkspace | null, unchanged: boolean) {
+  const currentIssues = productReadinessIssues(snapshot, category, saved, unchanged);
   const unknownCategory: ReadinessIssue = {
     field: 'categoryId', reason: 'Choose a reviewed category to see which details it requires.', code: 'policy',
   };
