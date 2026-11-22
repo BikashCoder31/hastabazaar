@@ -285,6 +285,10 @@
     outline-offset: 2px;
   }
 }
+@media (width < 20rem) {
+  .admin-toolbar { flex-wrap: wrap; }
+  .admin-toolbar .admin-brand-mobile { flex-basis: 100%; }
+}
 @media (min-width: 48rem) {
   .admin-mobile-nav { display: none; }
 }
