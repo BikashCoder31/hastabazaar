@@ -230,7 +230,7 @@ export async function runRecordedWorkBrowser(options: {
       options.onStep?.('open the seller record for application ' + (index + 1));
       await page.goto(sellerUrl);
       const form = page.locator('form[data-form-id="staff.seller-review-action"]');
-      for (const [label, status] of [['Start review', 'under_review'], ['Ask seller to fix details', 'needs_changes']]) {
+      for (const [label, status] of [['Start review', 'under_review'], ['Hold, ask to fix first', 'needs_changes']]) {
         options.onStep?.(label + ' on application ' + (index + 1));
         if (status === 'needs_changes') await form.getByLabel('Review note', { exact: true }).fill('Fictional test review requests more business details.');
         await form.getByRole('button', { name: label, exact: true }).click();
