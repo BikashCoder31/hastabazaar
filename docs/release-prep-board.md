@@ -6,8 +6,8 @@ Started on `admin-redesign` at `650b3aad` after the Seller tools completion mark
 | --- | --- | --- | --- | --- |
 | R1 · Readiness branch reconciliation | Main | Done | `0df90d83` | All nine corrections are present. Typecheck and lint passed. Focused suite reported 50 passed and seven native-only skips. The Unicode filename and Vite pin checks passed. |
 | R2 · Release manifest and MariaDB rehearsal | Manifest and rehearsal helpers, main | Done | `df516ea6` | Regression test failed on the prior inventory and passes with all eight pairs. MariaDB 10.11.19 applied the full set. All existing counts matched. The old application started and served its storefront. |
-| R3 · Read-only production schema check | Main | Done | `Release prep: Read-only production schema check` | Generator tests passed. On MariaDB 10.11, all eight migrations changed from Missing to Present. A partially applied 0164 fixture reported Partial. With no database selected, the script reported that condition alone. |
-| R4 · Release notes and local final check | Main | Pending | | Release notes, full suite, local package and production guards. |
+| R3 · Read-only production schema check | Main | Done | `25ac9f41` | Generator tests passed. On MariaDB 10.11, all eight migrations changed from Missing to Present. A partially applied 0164 fixture reported Partial. With no database selected, the script reported that condition alone. |
+| R4 · Release notes and local final check | Main | Done | `Release prep: Release notes and local final check` | Typecheck, lint, local preview preflight and Linux package checks passed. The full suite finished, and its sole failed test passed after a fixture fix. |
 
 ## R1 reconciliation
 
@@ -26,6 +26,15 @@ The old commit includes the application snapshot alongside the corrections. The 
 | Patched Vite and lockfile | Present | `package.json` and `package-lock.json` both pin `8.2.4`, the version in `5176420`. |
 
 ## For the owner
+
+### Local package and production guards
+
+- The Linux x64 standalone package built and passed its extracted-package smoke test with Node 22.23.2. It used the reviewed schema source and source commit `df516ea6`. SHA-256 of the rehearsed archive is `b2bed0053c9b5a45c86abd72838999b65683a767345bd52a277afcb5c93dfd40`. The package lists all eight owner migrations.
+- The archive has zero `.env*` paths. In the extracted production build, both local testing pages and the local decoder returned HTTP 404 even with the local flags set. The role switch returned HTTP 404 for both POST and DELETE and issued no cookie. A local Super Admin cookie still led to sign-in on `/admin`. The focused production-mode test also confirmed staff verification remains active.
+- The preview preflight passed all 107 form checks and the sign-in readiness check. The work used the existing checked localhost preview and disposable fixtures.
+- The full 1,070-file run finished with 5,818 passes, 38 skips and one category migration test failure. The test was missing a copy of the owner migration files in its scratch directory. After the fixture fix, it passed both on its own and in the 54-test focused run.
+- Six additional archival tests outside the npm and CI suite require the original 0152, 0153, 0155 or bootstrap SQL evidence under `.test-artifacts`. Those artifacts are absent from this checkout, so those six checks remain unverified. The separate mocked Windows fixture tests now pass from the Mac checkout path, which contains a space.
+- Before release, confirm the settings and run the three-role smoke checks on an approved environment. [Release notes and smoke checks](release-notes-redesign.md)
 
 ### Read the production schema report
 
@@ -50,7 +59,7 @@ The rehearsal used the reviewed production-equivalent schema, the release's 0157
 
 The rehearsal found that MariaDB treats the original `first_cod_reviews.total_paisa` check as part of the column definition. The 0164 companion now replaces that column definition and adds the two intended checks in the same statement. Use the updated file.
 
-Run the schema report on the intended database first and review the individual findings. The commands below are for an owner-approved database that already has the core release prerequisites. Run only the applicable lines in order. If a file appears partially applied or the core schema differs, resolve the findings before continuing. MariaDB DDL can commit between statements. Leave writers stopped if 0164 fails, capture the error and inspect the resulting schema before retrying.
+Run the schema report on the intended database first and review the individual findings. The commands below are for an owner-approved database that already has the core release prerequisites. Run each applicable line separately, in order, and stop at the first error. If a file appears partially applied or the core schema differs, resolve the findings before continuing. MariaDB DDL can commit between statements. Leave writers stopped if 0164 fails, capture the error and inspect the resulting schema before retrying.
 
 **0164 requires a writer pause.** Stop the web app, jobs and other writers before that file, and verify the flag, both new checks and the replacement trigger before resuming. The other files use additive changes and have no specific writer-stop requirement. Assess operational lock time before changing a busy database.
 
@@ -98,3 +107,12 @@ apply_production deployment/babal/mariadb-occasion-discovery.sql
 apply_production deployment/babal/mariadb-occasion-images.sql
 apply_production deployment/babal/mariadb-delivery-partners.sql
 ```
+
+### Files changed in release prep
+
+- Release assets and checks. `deployment/babal/release-manifest.json`, `deployment/babal/mariadb-customer-cod-confirmation.sql`, `deployment/babal/check-production-schema.sql`
+- Generators. `scripts/generate-release-manifest.mjs`, `scripts/generate-production-schema-check.mjs`
+- Owner documentation. `docs/release-prep-board.md`, `docs/release-notes-redesign.md`
+- Tests and fixture setup. `tests/backend-script-quality.test.mjs`, `tests/category-images-deployment.test.ts`, `tests/helpers/copy-release-manifest-inputs.ts`, `tests/production-schema-check.test.ts`, `tests/promo-schema.test.ts`, `tests/release-manifest-completeness.test.ts`, `tests/release-schema-assets.test.ts`, `tests/seller-registration-release.test.ts`
+
+Release prep complete — ready for your review

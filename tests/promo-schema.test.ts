@@ -14,6 +14,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 import { copyMariaDbGeneratorInputs } from './helpers/copy-mariadb-generator-inputs';
+import { copyReleaseManifestInputs } from './helpers/copy-release-manifest-inputs';
 import { seedVerifiedCheckoutContact } from './helpers/checkout-contact';
 import { executeFixtureRefund } from './helpers/execute-fixture-refund';
 import {
@@ -961,10 +962,7 @@ void test('MariaDB generator ships promo tables after canonical prerequisites an
       { recursive: true },
     );
     await copyMariaDbGeneratorInputs(root);
-    await cp(
-      new URL('../scripts/generate-release-manifest.mjs', import.meta.url),
-      join(root, 'scripts/generate-release-manifest.mjs'),
-    );
+    await copyReleaseManifestInputs(root);
     await run(
       process.execPath,
       [join(root, 'scripts', 'generate-mariadb-schema.mjs')],

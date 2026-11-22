@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {join,resolve} from 'node:path';
+import {join,parse,resolve} from 'node:path';
 import ts from 'typescript';
 import {compileFunction} from 'node:vm';
 
@@ -13,7 +13,10 @@ const stop=fixtureSource.indexOf('\nexport function splitFixtureSql',start);
 assert.ok(start>=0&&stop>start);
 const fixtureFunction=fixtureSource.slice(start,stop).replace('export ','');
 async function harness(options={}){
- const state={root:resolve('test-artifacts/mocked-only'),logs:resolve('test-artifacts/mocked-only/logs'),server:resolve('test-artifacts/mocked-only/mariadbd.exe'),data:resolve('test-artifacts/mocked-only/data'),tmp:resolve('test-artifacts/mocked-only/tmp'),basedir:resolve('test-artifacts/mocked-only/runtime'),password:'fictional-password'};
+ // The fixture rejects paths that need shell quoting. All I/O is mocked, so
+ // use a synthetic path independent of spaces in the checkout directory.
+ const root=join(parse(process.cwd()).root,'test-artifacts','mocked-only');
+ const state={root,logs:join(root,'logs'),server:join(root,'mariadbd.exe'),data:join(root,'data'),tmp:join(root,'tmp'),basedir:join(root,'runtime'),password:'fictional-password'};
  const pid=4242,port=33061,writes=new Map(),liveFixtures=new WeakSet();let running=true,ended=0,forced=0,queries=0,activeFixture;
  const connection={query:async sql=>{queries++;if(sql==='SHUTDOWN'){if(!options.force)running=false;if(options.shutdownError)throw options.shutdownError;return[];}return[[{version:'10.11.19',dataDirectory:state.data,port,bindAddress:'127.0.0.1',skipNameResolve:1,logBin:0,eventScheduler:'OFF',localInfile:0,pidFile:join(state.root,'server.pid')}]];},end:async()=>{ended++;}};
  const deps={assert,join,resolve,randomUUID:()=> 'fictional',readOwnedState:async()=>state,freeLoopbackPort:async()=>port,

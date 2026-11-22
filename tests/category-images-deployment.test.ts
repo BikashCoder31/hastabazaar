@@ -15,6 +15,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { copyMariaDbGeneratorInputs } from './helpers/copy-mariadb-generator-inputs';
+import { copyReleaseManifestInputs } from './helpers/copy-release-manifest-inputs';
 
 void test('release generators include category schema, hash inventory, checks and safe parent ordering', async () => {
   const root = await mkdtemp(join(tmpdir(), 'hb-category-deployment-'));
@@ -30,10 +31,7 @@ void test('release generators include category schema, hash inventory, checks an
       await copyFile(join(sqlRoot, name), target);
     }
     await copyMariaDbGeneratorInputs(root);
-    await copyFile(
-      join(project, 'scripts/generate-release-manifest.mjs'),
-      join(root, 'scripts/generate-release-manifest.mjs'),
-    );
+    await copyReleaseManifestInputs(root);
     const run = (name: string) =>
       promisify(execFile)(process.execPath, [join(root, 'scripts', name)], {
         cwd: root,
