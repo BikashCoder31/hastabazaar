@@ -213,7 +213,9 @@ async function main() {
           await owned();
           for(let attempt=0;attempt<60;attempt++){
             await cancel.checkpoint();
-            try{connection=await connectOwnedDatabase(config=>mysql.createConnection(config),{host:env.DB_HOST,port:13329,user:'root',password,connectTimeout:5000},{cancellation:cancel,timeoutMs:5000});break;}
+            // Keep the connection attempt short. The owned connection applies
+            // its operation deadline to bootstrap DDL and readiness queries too.
+            try{connection=await connectOwnedDatabase(config=>mysql.createConnection(config),{host:env.DB_HOST,port:13329,user:'root',password,connectTimeout:5000},{cancellation:cancel});break;}
             catch(error){if(error instanceof AggregateError)throw error;await cancel.checkpoint();await new Promise(resolve=>setTimeout(resolve,1000));}
           }
           assert.ok(connection,'Owned database did not become ready');
