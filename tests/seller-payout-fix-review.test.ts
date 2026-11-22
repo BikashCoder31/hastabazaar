@@ -64,6 +64,14 @@ void test('approval retains an open fix, sends exactly one note via each seller 
     });
     await replace(id,replacementId,now+2);
     assert.equal((await open())[0].waitingFor, 'staff');
+    const uploadNotices = sqlite.prepare(`SELECT channel,recipient_user_id,subject_en FROM notification_messages
+      WHERE template_key='business.seller.document.review' AND related_id=? ORDER BY recipient_user_id,channel`).all(replacementId);
+    assert.deepEqual(uploadNotices.map(row => [row.recipient_user_id, row.channel, row.subject_en]), [
+      ['registered-owner', 'email', 'We received your replacement document'],
+      ['registered-owner', 'in_app', 'We received your replacement document'],
+      ['reviewer', 'email', 'A seller re-uploaded a document'],
+      ['reviewer', 'in_app', 'A seller re-uploaded a document'],
+    ]);
     await reviewSellerDocument(db,{ ...problem,documentId:replacementId,reason:replacementNote,neededBefore:undefined,now:now+3 });
     assert.deepEqual((await open()).map((row: { note: string; waitingFor: string }) => [row.note,row.waitingFor]), [[replacementNote,'seller']]);
     const correctionNotices = sqlite.prepare(`SELECT subject_en,body_en FROM notification_messages WHERE related_id=?
@@ -75,6 +83,20 @@ void test('approval retains an open fix, sends exactly one note via each seller 
     await replace(replacementId,correctedId,now+5);
     await verify(correctedId,now+6);
     assert.deepEqual(await open(),[]);
+  } finally { f.dispose(); }
+});
+
+void test('holding the application publishes the saved fix note to the applicant through both channels', async () => {
+  const f = await fixture();
+  try {
+    await reviewSellerDocument(f.db, { sellerId:'registered', documentId:id, actorId:'reviewer',
+      decision:'request_correction', reason:note, now:f.now, neededBefore:'approval' });
+    await reviewSellerApplication(f.db, { sellerId:'registered', actorId:'reviewer', action:'request_changes',
+      reason:'The applicant must fix the recorded document problem.', now:f.now+1, requestId:'hold-for-saved-fix' });
+    const notices = f.sqlite.prepare(`SELECT channel,recipient_user_id,body_en FROM notification_messages
+      WHERE template_key='business.seller_application.result' AND related_id='registered' AND audience_role<>'staff' ORDER BY channel`).all();
+    assert.deepEqual(notices.map(row => [row.recipient_user_id, row.channel]), [['registered-owner','email'],['registered-owner','in_app']]);
+    assert.ok(notices.every(row => String(row.body_en).includes(note)));
   } finally { f.dispose(); }
 });
 

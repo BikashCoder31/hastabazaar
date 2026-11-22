@@ -1,4 +1,5 @@
 import { emailDate, emailMoney, type EmailActor, type EmailFact, type EmailLayout } from './message-layout';
+import { reviewMessages } from '../operations/message-event-catalog';
 
 export interface BusinessEmailData {
   template?: string;
@@ -130,6 +131,10 @@ export function businessEmailLayout(data: BusinessEmailData, link: URL): EmailLa
           ...(data.courier?.trackingCode ? [['Tracking', data.courier.trackingCode] as const] : []),
         ] });
   }
+  if (customer && data.template === 'business.parcel.customer_courier_booked') {
+    return layout('Courier', data.subject, 'A courier is booked for your parcel',
+      data.body, 'View your order', { url: data.guestOrderId ? link : orderPath(), rows: data.courier ? [['Courier', data.courier.name]] : [] });
+  }
   if (seller && data.template === 'business.parcel.courier_booked') {
     return layout('Courier', 'Courier pickup booked', data.courier ? data.courier.name + ' will collect your parcel' : 'Your courier pickup is booked',
       'Have the packed parcel ready at your pickup address.', 'View the order',
@@ -138,8 +143,8 @@ export function businessEmailLayout(data: BusinessEmailData, link: URL): EmailLa
         ...(data.courier?.pickupAt != null ? [['Pickup', emailDate(data.courier.pickupAt, true)] as const] : []),
       ] });
   }
-  if (seller && data.template === 'business.order.response' && data.subject === 'New preparation work') {
-    return layout('Your turn', 'New order to prepare', 'You have a new order',
+  if (seller && data.template === 'business.order.response' && ['New preparation work', reviewMessages.newSellerOrder].includes(data.subject)) {
+    return layout('Your turn', reviewMessages.newSellerOrder, 'You have a new order',
       'Your items are ready to prepare. Once they’re packed, mark the parcel ready for pickup.',
       'Start preparing', { nepali: 'prepare',
         rows: [...(data.itemNames ? [['Items', data.itemNames] as const] : []), ['Your earnings', 'Shown in Seller Studio']] });
@@ -156,12 +161,13 @@ export function businessEmailLayout(data: BusinessEmailData, link: URL): EmailLa
         data.body, 'Open Seller Center', { nepali: 'approved' });
     }
     if (data.subject === 'Seller application needs changes') {
+      const [paragraph, ...fixes] = data.body.split('\n');
       return layout('Your turn', 'Changes requested', 'Your application needs an update',
-        'Hastabazaar requested changes. Review the request and add the requested document or reply.', 'Open your application',
-        { nepali: 'changes', rows: [['Where', 'Seller Studio · Your application']] });
+        fixes.length ? paragraph : 'Hastabazaar requested changes. Review the request and add the requested document or reply.', 'Open your application',
+        { nepali: 'changes', rows: [['Where', 'Seller Studio · Your application'], ...fixes.map(fix => ['Fix requested', fix] as const)] });
     }
   }
-  if (seller && data.template === 'business.seller.document.review' && data.subject.startsWith('Please fix your ')) {
+  if (seller && ['business.seller.document.review', 'business.seller.document.change'].includes(data.template ?? '') && data.subject.startsWith('Please fix your ')) {
     return layout('Your turn', data.subject, data.subject, data.body, 'Open the document');
   }
   if (customer && data.template === 'business.finance.refund' && data.currentStatus === 'packet_paid') {
@@ -186,7 +192,7 @@ export function businessEmailLayout(data: BusinessEmailData, link: URL): EmailLa
     }
     if (customer) {
       return layout(data.currentStatus === 'needs_customer_changes' ? 'Your turn' : 'Hastabazaar',
-        'Help request update', 'Your help request has an update', data.body, 'See your request', { navy: true });
+        data.subject, data.subject, data.body, 'See your request', { navy: true });
     }
   }
   if (customer && data.template === 'business.cancellation.updated') {

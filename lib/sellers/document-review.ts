@@ -161,7 +161,7 @@ export async function requestDocumentChange(db:D1Database,input:{sellerId:string
     documentChangeTaskInsert(db, requestId, input.now),
     ...documentProtectedCaseStatements(db,requestId,input.now),
     protectedChangeEvent(db,{actorId:input.actorId,requestId:input.commandId??eventId,now:input.now},requestId,'requested',reason,{documentId:input.documentId}),
-    ...await operationalBusinessNotificationStatements(db,{kind:'seller.document.change',sourceId:requestId,eventId,actorId:input.actorId,now:input.now}),
+    ...await operationalBusinessNotificationStatements(db,{kind:'seller.document.change',sourceId:requestId,eventId,actorId:input.actorId,now:input.now,status:'requested'}),
     db.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(guard),
   ], requestId);
 }
@@ -206,7 +206,7 @@ export async function reviewDocumentChange(db:D1Database,input:{requestId:string
     db.prepare(`UPDATE seller_protected_change_cases SET status=?,version=version+1,reviewed_by=?,reviewed_at=?,review_reason=?,operation_request_id=?,updated_at=? WHERE source_request_id=?`)
       .bind(input.decision==='approve'?'open':'rejected',input.actorId,input.now,reason,eventId,input.now,input.requestId),
     protectedChangeEvent(db,{actorId:input.actorId,requestId:input.commandId??eventId,now:input.now},input.requestId,input.decision==='approve'?'permit':'reject',reason,{permissionId:input.decision==='approve'?grantId:null}),
-    ...await operationalBusinessNotificationStatements(db,{kind:'seller.document.change',sourceId:input.requestId,eventId,actorId:input.actorId,now:input.now}),
+    ...await operationalBusinessNotificationStatements(db,{kind:'seller.document.change',sourceId:input.requestId,eventId,actorId:input.actorId,now:input.now,status}),
     db.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(guard),
   ], input.requestId);
 }
@@ -302,7 +302,8 @@ export async function reviewSellerDocument(db: D1Database, input: { sellerId: st
     ...(applicationProblem ? [] : await operationalBusinessNotificationStatements(db,{
       kind:linked&&!existingPayoutFix?'seller.document.change':'seller.document.review',
       sourceId:linked&&!existingPayoutFix?linked.id:input.documentId,eventId,actorId:input.actorId,now:input.now,
-      ...(input.decision==='request_correction' && (!linked || existingPayoutFix) ? {
+      status:linked&&!existingPayoutFix ? action.replaceAll('_',' ') : payoutFixDocumentNames[current.kind].en + ' was ' + action.replaceAll('_',' '),
+      ...(input.decision==='request_correction' ? {
         correctionDocument: {...payoutFixDocumentNames[current.kind], bank: bankProblem, note: reason},
       } : {}),
     })),
@@ -362,7 +363,7 @@ export async function submitDocumentReplacement(db: D1Database, input: {
     db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,next_json,created_at)
       VALUES(?,?,'seller.document.replacement_submitted','seller_document_change_request',?,'Permitted replacement submitted for fresh verification',?,?)`)
       .bind(crypto.randomUUID(), input.actorId, input.requestId, JSON.stringify({ sellerId: input.sellerId, documentId: document.id }), input.now),
-    ...await operationalBusinessNotificationStatements(db,{kind:'seller.document.change',sourceId:input.requestId,eventId,actorId:input.actorId,now:input.now}),
+    ...await operationalBusinessNotificationStatements(db,{kind:'seller.document.change',sourceId:input.requestId,eventId,actorId:input.actorId,now:input.now,status:'replacement_submitted'}),
     db.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(guard),
   ], document.id);
 }
@@ -387,7 +388,7 @@ export async function submitUnverifiedDocumentCorrection(db:D1Database,input:{se
     db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,next_json,created_at)
       VALUES(?,?,'seller.document.correction_submitted','seller_document',?,'Owner supplied a correction to unverified evidence',?,?)`)
       .bind(eventId,input.actorId,document.id,JSON.stringify({sellerId:input.sellerId,previousDocumentId:input.documentId}),input.now),
-    ...await operationalBusinessNotificationStatements(db,{kind:'seller.document.review',sourceId:document.id,eventId,actorId:input.actorId,now:input.now}),
+    ...await operationalBusinessNotificationStatements(db,{kind:'seller.document.review',sourceId:document.id,eventId,actorId:input.actorId,now:input.now,status:'replacement_submitted'}),
     db.prepare('DELETE FROM operation_transaction_guards WHERE id=?').bind(guard),
   ],document.id);
 }

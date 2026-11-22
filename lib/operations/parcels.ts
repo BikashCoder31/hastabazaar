@@ -36,7 +36,8 @@ import type { OrderDocumentSnapshot } from '../db/repositories/orders';
 import { receiptNumberStatements,withLiveInvoiceReferences } from '../db/repositories/billing-documents';
 import { getEffectiveBusinessSetting } from '../db/repositories/business-settings';
 import { deliveryFailureSchemaAvailable, readDeliveryFailureReason } from '../shipping/delivery-failure';
-import { courierBookedTemplate, courierEmailNoticeStatements, missedDeliveryTemplate } from './courier-email-notices';
+import { courierBookedTemplate, courierEmailNoticeStatements, customerCourierBookedTemplate, missedDeliveryTemplate, parcelProblemTemplate } from './courier-email-notices';
+import { orderMessageStatements } from './order-message-statements';
 import {
   addKathmanduBusinessDays,
   buildRiderAssignmentPolicySnapshot,
@@ -1281,11 +1282,16 @@ export async function operateParcel(db: D1Database, o: ParcelOperation) {
         o.now,
       ),
   );
-  const courierNotice = o.action === 'assign' && o.method === 'courier' ? courierBookedTemplate
-    : o.action === 'fail' && p.method === 'courier' && !o.riderReportId ? missedDeliveryTemplate : null;
-  if (courierNotice) {
+  const courierNotices = o.action === 'assign' && o.method === 'courier' ? [courierBookedTemplate, customerCourierBookedTemplate]
+    : o.action === 'fail' && p.method === 'courier' && !o.riderReportId ? [missedDeliveryTemplate, parcelProblemTemplate] : [];
+  for (const courierNotice of courierNotices) {
     statements.push(...await courierEmailNoticeStatements(db, {
       orderId: p.orderId, eventId: o.requestId, now: o.now, template: courierNotice,
+    }));
+  }
+  if (o.action === 'dispatch' || o.action === 'deliver') {
+    statements.push(...orderMessageStatements(db, {
+      orderId: p.orderId, event: o.action === 'dispatch' ? 'dispatched' : 'delivered', now: o.now,
     }));
   }
   const returnCause = trackCause && o.action === 'receive_return' ? await readReturnCancellationCause(db, o.jobId) : undefined;

@@ -11,9 +11,12 @@ import { completeVersionFixture } from './helpers/complete-version-fixture';
 const reasons = ['refused', 'not_reached', 'wrong_address', 'courier_problem', 'other'] as const;
 type Fixture = Awaited<ReturnType<typeof completeVersionFixture>>;
 
-function installTestColumn(f: Fixture) {
+function setTestColumn(f: Fixture, installed: boolean) {
   assert.ok(f.sqlite.prepare('PRAGMA database_list').all().every(row => row.file === ''));
-  f.sqlite.exec('ALTER TABLE shipping_jobs ADD COLUMN delivery_failure_reason TEXT DEFAULT NULL');
+  const present = f.sqlite.prepare('PRAGMA table_info(shipping_jobs)').all()
+    .some(column => column.name === 'delivery_failure_reason');
+  if (installed && !present) f.sqlite.exec('ALTER TABLE shipping_jobs ADD COLUMN delivery_failure_reason TEXT DEFAULT NULL');
+  if (!installed && present) f.sqlite.exec('ALTER TABLE shipping_jobs DROP COLUMN delivery_failure_reason');
 }
 
 function addParcel(f: Fixture, id: string, { status = 'dispatched', payment = 'cod' } = {}) {
@@ -37,7 +40,7 @@ function addParcel(f: Fixture, id: string, { status = 'dispatched', payment = 'c
 async function fixture(installed: boolean) {
   const f = await completeVersionFixture();
   try {
-    if (installed) installTestColumn(f);
+    setTestColumn(f, installed);
     f.sqlite.exec(`DELETE FROM seller_restrictions WHERE seller_id='registered';
       INSERT INTO categories(id,slug,name_en,is_active,created_at,updated_at)
       VALUES('failure-test-category','failure-test-category','Fictional parcels',1,1,1);
@@ -87,6 +90,14 @@ void test('native courier operations queue current, scoped emails and matching n
       assert.deepEqual(f.sqlite.prepare('SELECT channel,audience_role FROM notification_messages WHERE related_id=? AND template_key=? ORDER BY channel')
         .all(id, template).map(row => [row.channel, row.audience_role]), [['email', audience], ['in_app', audience]]);
     }
+    for (const [id, template, audience, userId] of [
+      [booked.orderId, 'business.parcel.customer_courier_booked', 'customer', 'customer'],
+      [missed.orderId, 'business.parcel.problem', 'staff', 'reviewer'],
+    ]) {
+      assert.deepEqual(f.sqlite.prepare('SELECT channel,audience_role,recipient_user_id FROM notification_messages WHERE related_id=? AND template_key=? ORDER BY channel')
+        .all(id, template).map(row => [row.channel, row.audience_role, row.recipient_user_id]),
+      [['email', audience, userId], ['in_app', audience, userId]]);
+    }
     const messages: Array<{ to: string; text: string; subject: string }> = [];
     await deliverBusinessEmails(f.db, {
       transport: 'capture', transportKey: 'fictional-courier-capture', handoffAware: true,
@@ -100,11 +111,16 @@ void test('native courier operations queue current, scoped emails and matching n
     assert.ok(pickup);
     assert.match(pickup.text, /Fictional courier/);
     assert.match(pickup.text, /\/seller\/orders\/booked-email-order/);
+    const buyerBooking = messages.find(m => m.subject === 'Hastabazaar · Courier booked for your order · FIX-booked-email');
+    assert.equal(buyerBooking?.to, 'customer@local.hastabazaar.test');
+    assert.match(buyerBooking.text, /\/orders\/FIX-booked-email/);
     const delivery = messages.find(m => m.subject === 'Hastabazaar · Delivery missed · FIX-missed-email');
     assert.ok(delivery);
     assert.match(delivery.text, /Customer could not be reached/);
     assert.match(delivery.text, /\/orders\/FIX-missed-email/);
     assert.doesNotMatch(delivery.text, /Fictional courier explained this delivery attempt/);
+    const staffIssues = messages.filter(m => m.subject.includes('Parcel delivery needs attention') && m.text.includes('/admin/orders/missed-email-order'));
+    assert.deepEqual(staffIssues.map(m => m.to), ['reviewer@local.hastabazaar.test']);
     const guestDelivery = messages.find(m => m.to === 'guest-courier@example.test');
     assert.ok(guestDelivery);
     assert.match(guestDelivery.text, /\/track\?order=FIX-guest-missed-email/);

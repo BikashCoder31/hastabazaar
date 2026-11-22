@@ -109,7 +109,7 @@ void test('only the verified seller email receives seller notices and the sign-i
     const mail = fakeProviderMail({ async send(message) { sent.push(message); } });
     await deliverBusinessEmails(f.db, mail, origin, { now: Date.now() + 1 });
     assert.ok(sent.some(message => message.to === selectedEmail && message.text.includes('Seller application submitted')));
-    assert.ok(sent.some(message => message.to === 'reviewer@local.hastabazaar.test' && message.text.includes('Seller application review needed')));
+    assert.ok(sent.some(message => message.to === 'reviewer@local.hastabazaar.test' && message.text.includes('Review a new seller application')));
     assert.ok(sent.every(message => message.to !== actor.email));
 
     const localOrigin = 'http://localhost:3018';

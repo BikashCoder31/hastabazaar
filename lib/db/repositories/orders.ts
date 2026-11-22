@@ -9,6 +9,7 @@ import {prepareInitialResponseNotices} from '../../orders/response-notifications
 import {prepareOrderResponseRelease} from '../../orders/response-workflow';
 import {processManualPaymentWindows} from '../../payments/payment-maintenance';
 import {operationalBusinessNotificationStatements} from '../../operations/business-notifications';
+import { orderMessageStatements } from '../../operations/order-message-statements';
 import {prepareNewCompanyPaymentInstruction} from '../../payments/company-accounts';
 import {calculateServiceDueAt} from '../../workflows/service-clock';
 import {checkoutCurrentPolicyGuards} from '../../checkout/commit-policy-guards';
@@ -1117,32 +1118,10 @@ async function createCodOrderAttempt(
       ),
   );
 
-  if (customerId&&!bank) {
-    for (const channel of ['in_app', 'email', 'sms'] as const) {
-      statements.push(
-        database
-          .prepare(
-            `INSERT INTO notification_messages (
-            id, recipient_user_id, audience_role, channel, template_key, subject_en, subject_ne,
-            body_en, body_ne, related_type, related_id, status, provider_reference,
-            failure_reason, request_id, created_at, sent_at, read_at
-          ) VALUES (?, ?, 'customer', ?, 'order.received', 'Order received', 'अर्डर प्राप्त भयो', ?, ?,
-            'order', ?, 'queued', NULL, NULL, ?, ?, NULL, NULL)`,
-          )
-          .bind(
-            crypto.randomUUID(),
-            customerId,
-            channel,
-            `Your cash-on-delivery order ${number} has been received. Check order details for confirmation and delivery progress.`,
-            `तपाईंको क्यास अन डेलिभरी अर्डर ${number} प्राप्त भएको छ। पुष्टि र डेलिभरीको प्रगतिको लागि अर्डर विवरण हेर्नुहोस्।`,
-            id,
-            `${input.idempotencyKey}:customer:${channel}`,
-            now,
-          ),
-      );
-    }
-  }
-
+  statements.push(...orderMessageStatements(database, {
+    orderId: id, event: bank ? 'placed' : 'checkoutCod', now,
+    checkoutRequestId: input.idempotencyKey, orderNumber: number,
+  }));
 
   statements.push(
     database

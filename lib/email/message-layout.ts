@@ -47,9 +47,10 @@ function escape(value: string) {
   })[char]!);
 }
 
-export function marketplaceSubject(headline: string, reference?: string | null) {
+export function marketplaceSubject(headline: string, reference?: string | null, brandLast = false) {
   if (/[\r\n]/.test(headline + (reference ?? ''))) throw new Error('Invalid email subject.');
-  return [companyDetails.brandName, headline, reference].filter(Boolean).join(' · ');
+  return (brandLast ? [headline, reference, companyDetails.brandName] : [companyDetails.brandName, headline, reference])
+    .filter(Boolean).join(' · ');
 }
 
 export function renderMarketplaceEmail(layout: EmailLayout) {

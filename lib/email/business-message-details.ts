@@ -2,6 +2,7 @@ import { readCustomerDelayQuestions } from '../orders/customer-delay-answer';
 import { responseScopeContains } from '../orders/response-sql';
 import { isCourierNoticeTemplate, readCourierEmailNoticeSource } from '../operations/courier-email-notices';
 import type { BusinessEmailData } from './business-message';
+import { reviewMessages } from '../operations/message-event-catalog';
 
 export async function addBusinessEmailDetails(
   db: D1Database,
@@ -47,7 +48,7 @@ export async function addBusinessEmailDetails(
         row.question = { id: question.id, sellerName: question.sellerName, readyAt: question.proposedReadyAt,
           itemNames: items.map(item => item.name).join(', ') || undefined };
       }
-    } else if (row.template === 'business.order.response' && row.subject === 'New preparation work') {
+    } else if (row.template === 'business.order.response' && ['New preparation work', reviewMessages.newSellerOrder].includes(row.subject)) {
       const items = await db.prepare(`SELECT i.product_name_snapshot AS name,i.quantity FROM order_response_events e
         JOIN order_response_portions p ON p.id=e.portion_id JOIN seller_profiles s ON s.id=p.seller_id
         JOIN order_items i ON i.order_id=e.order_id AND i.seller_id=p.seller_id

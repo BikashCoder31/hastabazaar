@@ -2,6 +2,7 @@ import { publicTrackingReferenceSql } from '../riders/public-tracking';
 import {emailApplicationOrigin} from './origin';
 import { payableOrderTotalSql } from '../db/repositories/platform-service-fee';
 import { orderProgress } from '../orders/progress';
+import { orderStatusMessages } from '../operations/message-event-catalog';
 import { emailDate, emailMoney, marketplaceSubject, renderMarketplaceEmail, type EmailActor, type EmailFact } from './message-layout';
 import { emailRetryDelayMs, maximumEmailAttempts } from './retry-policy';
 import { accountedDeliveryAttemptsSql, deliverDurably, eligibleDeliverySql, fenceLegacyDeliveryGap, fenceLegacyDeliveryQueue, recordUnstartedDeliveryAttempt, recoverDeliveryReceipts, validMailRecipient, type DeliveryMailService } from './delivery-attempts';
@@ -43,15 +44,16 @@ const orderCopy: Record<string, { actor: EmailActor; headline?: string; paragrap
   confirmed: { actor: 'Seller' },
   packing: { actor: 'Seller' },
   ready_for_pickup: { actor: 'Hastabazaar' },
-  dispatched: { actor: 'Courier', headline: 'Your order is on the way', paragraph: 'The parcel has been handed to the courier.' },
-  delivered: { actor: 'Done', headline: 'Delivered. We hope you love it.' },
+  placed: { actor: 'Hastabazaar', subject: orderStatusMessages.placed.subject, headline: 'Thank you. Your order is placed.', paragraph: orderStatusMessages.placed.body },
+  dispatched: { actor: 'Courier', subject: orderStatusMessages.dispatched.subject, headline: 'Your order is on the way', paragraph: 'The parcel has been handed to the courier.' },
+  delivered: { actor: 'Done', subject: orderStatusMessages.delivered.subject, headline: 'Delivered. We hope you love it.' },
   cancelled: { actor: 'Done', headline: 'Your order was cancelled' },
 };
 const placedCopy = {
   actor: 'Seller' as const,
   headline: 'Thank you. Your order is placed.',
   paragraph: 'Sellers are preparing your items. Each seller sends their own parcel.',
-  subject: 'Order placed',
+  subject: orderStatusMessages.checkoutCod.subject,
 };
 
 export function buildOrderEmail(data: OrderEmailData, origin: string, options: { transport?: 'provider' | 'capture' } = {}) {

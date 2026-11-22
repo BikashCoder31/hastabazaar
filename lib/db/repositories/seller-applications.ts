@@ -1219,6 +1219,8 @@ export async function reviewSellerApplication(
     throw new SellerReviewConflictError('Managed Makers require approval for activation; Registered Seller approval cannot be used.');
   }
   const problems = approvingRegistered ? await readApplicationDocumentProblems(database, options.sellerId) : [];
+  const requestedFixes = options.action === 'request_changes'
+    ? await readApplicationDocumentProblems(database, options.sellerId) : problems;
   if (problems.some(problem => problem.neededBefore === 'approval')) {
     throw new SellerReviewConflictError('Resolve the documents needed before approval, or hold or reject the application.');
   }
@@ -1234,6 +1236,8 @@ export async function reviewSellerApplication(
   const prospectiveApprovalGuards: D1PreparedStatement[] = [
     ...intakeApprovalGuards,
     ...(approvingRegistered ? applicationDocumentProblemsGuard(database, options.sellerId, problems) : []),
+    ...(requestedFixes.length && !approvingRegistered
+      ? applicationDocumentProblemsGuard(database, options.sellerId, requestedFixes) : []),
     ...(approveWithFixes ? (await staffMutationGuard(database, options.actorId, 'seller.application.review', SellerReviewConflictError, 'super_admin')).statements : []),
   ];
   if (approvingRegistered && registrationIntake) {
@@ -1440,7 +1444,8 @@ export async function reviewSellerApplication(
     }
   }
   if(options.action!=='start_review')statements.push(...await businessNotificationStatements(database,{eventId:requestId,sourceType:'seller_application',sourceId:options.sellerId,status:transition.to,reviewRequestId:requestId,actorId:options.actorId,now:options.now,kind:'result',registrationIntake,
-    ...(approvingRegistered ? { registeredApproval: true, payoutFixes: problems.map(({ kind, note }) => ({ kind, note })) } : {}),
+    registeredApproval: approvingRegistered,
+    payoutFixes: requestedFixes.map(({ kind, note }) => ({ kind, note })),
   }));
   if (options.form) statements.push(buildFormAnswerInsert(database, {
     formId: 'staff.seller-review-action', requestId, versionId: options.form.versionId,

@@ -1,8 +1,10 @@
 import {independentProductStaffSql,independentProductIntakeStaffSql} from '../products/party-scope';
 import { isCourierNoticeTemplate, readCourierEmailNoticeSource } from './courier-email-notices';
+import { pairedMessageChannels, referralWalletMessage } from './message-event-catalog';
+import { isCurrentOrderAccountMessage, orderMessageStatus } from './order-message-statements';
 /** Source adapters keep their own transaction guards; this catalogue owns shared
  * channel identity and current-version suppression for implemented families. */
-export const operationalNotificationChannels = ['in_app', 'email'] as const;
+export const operationalNotificationChannels = pairedMessageChannels;
 export const catalogReviewEvents = {
   'business.product.submitted': { source: 'product', purpose: 'review' },
   'business.product.result': { source: 'product', purpose: 'outcome' },
@@ -61,6 +63,7 @@ const dynamicOperationalSources=new Set(['business.workflow.assignment','busines
 export const hasOperationalNoticeSource = (template: string) => Object.hasOwn(operationalSources, template)||dynamicOperationalSources.has(template)||isCourierNoticeTemplate(template);
 dynamicOperationalSources.add('business.seller.payout_fix_ready');
 dynamicOperationalSources.add('business.gift.issued');dynamicOperationalSources.add('business.gift.redeemed');
+dynamicOperationalSources.add(referralWalletMessage.key);
 
 export async function isCurrentCaseNotice(db: D1Database, notice: {
   template: string; relatedId: string | null; userId: string | null; audience: string; channel: string; requestId: string; requiredPermission?: string | null;
@@ -84,7 +87,10 @@ export async function operationalNotificationRequestId(template: string, eventId
 export async function isCurrentOperationalNotice(db: D1Database, notice: {
   template: string; relatedId: string | null; relatedType?: string | null; userId: string | null; audience: string; channel: string; requestId: string;
 },now=Date.now()): Promise<boolean> {
+  const orderStatus = orderMessageStatus(notice.template);
+  if (orderStatus && notice.channel === 'in_app') return isCurrentOrderAccountMessage(db, notice, orderStatus);
   if (isCourierNoticeTemplate(notice.template)) return Boolean(await readCourierEmailNoticeSource(db, notice, now));
+  if (notice.template === referralWalletMessage.key) return (await import('./wallet-notices')).isCurrentWalletNotice(db, notice);
   if(notice.template==='business.gift.issued'||notice.template==='business.gift.redeemed')return(await import('../gift-cards/notice-sources')).isCurrentGiftNotice(db,notice);
   if(notice.template==='business.workflow.assignment')return(await import('./review-task-assignment-notices')).isCurrentReviewAssignmentNotice(db,notice,now);
   if(notice.template==='business.team.governance'||notice.template==='business.team.handoff')return(await import('./team-notice-sources')).isCurrentTeamNotice(db,notice,now);

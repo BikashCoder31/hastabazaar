@@ -102,7 +102,7 @@ export async function submitSellerBankDetails(db: D1Database, input: { sellerId:
       ...(permission.sourceRequestId?[db.prepare("UPDATE seller_document_change_requests SET status='completed',replacement_document_id=?,active_permission_id=NULL WHERE id=?")
         .bind(doc.id,permission.sourceRequestId)]:[]),
       protectedChangeEvent(db,context,caseId,'replacement_submitted','Scoped private bank replacement submitted',{permissionId:permission.id,documentId:doc.id,details}),
-      ...await protectedChangeNotice(db,caseId,permission.sourceRequestId,eventId,context),
+      ...await protectedChangeNotice(db,caseId,permission.sourceRequestId,eventId,context,'replacement_submitted'),
     ],{caseId,documentId:doc.id});return;
   }
   const reference = PENDING_PAYOUT_PREFIX + JSON.stringify({ ...details, documentId: doc.id });
@@ -130,7 +130,7 @@ export async function submitSellerBankDetails(db: D1Database, input: { sellerId:
         .bind(crypto.randomUUID(),caseId,caseId,input.now,calculateServiceDueAt({startedAt:input.now,amount:1,unit:'service_day',calendarVersion:CONTINUOUS_CALENDAR_VERSION}),CONTINUOUS_CALENDAR_VERSION,input.now)]),
     ...protectedCaseHoldStatements(db,caseId,input.now),
     protectedChangeEvent(db,{actorId:input.actorId,requestId:input.commandId??eventId,now:input.now},caseId,'replacement_submitted','Initial or corrected private bank evidence submitted',{documentId:doc.id,details}),
-    ...await operationalBusinessNotificationStatements(db,{kind:'seller.protected_change',sourceId:caseId,eventId,actorId:input.actorId,now:input.now,status:'bank_review_submitted'}),
+    ...await operationalBusinessNotificationStatements(db,{kind:'seller.protected_change',sourceId:caseId,eventId,actorId:input.actorId,now:input.now,status:current.change?'replacement_submitted':'bank_review_submitted'}),
     db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,next_json,created_at)
       VALUES (?,?,'seller.bank_details.submitted','seller',?,'Private bank details submitted for independent review',?,?)`)
       .bind(crypto.randomUUID(), input.actorId, input.sellerId, JSON.stringify({ documentId: doc.id }), input.now),
@@ -182,7 +182,7 @@ export async function reviewSellerBankDetails(db: D1Database, input: { sellerId:
       WHERE case_id=? AND capability='payouts' AND released_at IS NULL`).bind(input.now,input.actorId,reason,eventId,current.change.id)]:[]),
     protectedChangeEvent(db,{actorId:input.actorId,requestId:input.commandId??eventId,now:input.now},current.change.id,'verified',reason,
       {beneficiaryVersionId:versionId,documentId:proposal.documentId,identityRevision:current.identityRevision,bankHoldReleased:input.releaseBankHold,verificationReference:reference}),
-    ...await protectedChangeNotice(db,current.change.id,current.change.sourceRequestId,eventId,{actorId:input.actorId,requestId:input.commandId??eventId,now:input.now}),
+    ...await protectedChangeNotice(db,current.change.id,current.change.sourceRequestId,eventId,{actorId:input.actorId,requestId:input.commandId??eventId,now:input.now},'bank_verified'),
     db.prepare(`INSERT INTO audit_logs(id,actor_id,action,subject_type,subject_id,reason,next_json,created_at) VALUES (?,?,'seller.bank_details.verified','seller',?,?,?,?)`)
       .bind(crypto.randomUUID(), input.actorId, input.sellerId,reason,JSON.stringify({documentId:proposal.documentId,beneficiaryVersionId:versionId,caseId:current.change.id,bankHoldReleased:input.releaseBankHold}),input.now),
   ],{caseId:current.change.id,beneficiaryVersionId:versionId},current.change.id);

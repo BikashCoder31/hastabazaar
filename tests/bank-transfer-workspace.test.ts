@@ -38,6 +38,12 @@ void test('guided match leaves a paid order ready for one reviewed release and s
       orderId: f.orderId, amountPaisa: f.order.grandTotalPaisa, paymentDate: new Date(f.now).toISOString().slice(0, 10),
       bankReference: 'FICT-CLAIM-REFERENCE', note: '', evidenceIds: [],
     });
+    const claimNotices = f.sqlite.prepare(`SELECT recipient_user_id,channel FROM notification_messages
+      WHERE template_key='business.payment.order' AND related_id=? AND subject_en='Check a bank transfer claim'
+      ORDER BY channel`).all(f.orderId);
+    assert.deepEqual(claimNotices.map(row => [row.recipient_user_id, row.channel]), [
+      ['reviewer', 'email'], ['reviewer', 'in_app'],
+    ]);
     let queue = await readBankTransferQueue(f.db, 'reviewer');
     assert.equal(queue.orders[0].claim?.id, claim.id);
     assert.equal(queue.counts.check, 1);
@@ -77,7 +83,12 @@ void test('guided match leaves a paid order ready for one reviewed release and s
     assert.equal(f.sqlite.prepare('SELECT status FROM orders WHERE id=?').get(f.orderId)?.status, 'confirmed');
     assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS count FROM order_response_milestones WHERE milestone='released'").get()?.count, 1);
     assert.equal(f.sqlite.prepare("SELECT reason FROM audit_logs WHERE request_id='guided-review-release'").get()?.reason, release.reason);
-    assert.equal(f.sqlite.prepare("SELECT COUNT(*) AS count FROM notification_messages WHERE related_id=? AND template_key='business.payment.order' AND channel='email' AND audience_role='customer' AND subject_en LIKE '%Payment received%'").get(f.orderId)?.count, 1);
+    const releasedNotices = f.sqlite.prepare(`SELECT recipient_user_id,channel FROM notification_messages
+      WHERE related_id=? AND template_key='business.payment.order' AND audience_role='customer'
+      AND subject_en='Payment received' ORDER BY channel`).all(f.orderId);
+    assert.deepEqual(releasedNotices.map(row => [row.recipient_user_id, row.channel]), [
+      ['customer', 'email'], ['customer', 'in_app'],
+    ]);
   } finally {
     f.dispose();
   }

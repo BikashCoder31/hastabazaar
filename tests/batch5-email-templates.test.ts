@@ -13,7 +13,7 @@ void test('the 17 preview templates use one escaped, bilingual-friendly email la
     for (const entry of group.entries) {
       const message = renderEmailPreview(entry, origin);
       const separators = Buffer.from(message.subject).toString('hex').match(/20c2b720/g) ?? [];
-      assert.equal(separators.length, 2, entry.id);
+      assert.equal(separators.length, entry.id === 'help' ? 3 : 2, entry.id);
       assert.ok(message.subject.startsWith('Hastabazaar · '), entry.id);
       assert.doesNotMatch(message.subject, /Â/);
       assert.equal((message.html.match(/<a href=/g) ?? []).length, 1, entry.id);

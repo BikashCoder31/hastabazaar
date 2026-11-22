@@ -8,6 +8,7 @@ export function notificationDestination(workspace:NotificationAudience,audience:
  if(type==='order_response_event'&&workspace===audience&&id&&/^[a-zA-Z0-9:_-]{1,240}$/.test(id))return '/'+(workspace==='staff'?'admin':workspace==='seller'?'seller':'account')+'/order-responses/'+encodeURIComponent(id);
  if(workspace!==audience||!id||!/^[a-zA-Z0-9_-]{1,160}$/.test(id))return null;
  if(type==='email_service_health')return workspace==='staff'?'/admin/system-health/incidents?incident='+encodeURIComponent(id):null;
+ if(type==='wallet')return workspace==='customer'?'/account/wallet':null;
  if(type==='team_governance_event'||type==='service_incident_event'||type==='review_task_assignment')return workspace==='staff'?'/admin/operational-notices/'+type+'/'+encodeURIComponent(id):null;
  if(type==='operational_reminder')return '/'+(workspace==='staff'?'admin':workspace==='customer'?'account':'seller')+'/reminders/'+encodeURIComponent(id);
  const financial=type?financialNotificationDestination(workspace,type,id):undefined;if(financial!==undefined)return financial;
@@ -32,7 +33,7 @@ export function notificationDestination(workspace:NotificationAudience,audience:
  if(type==='seller_document_change')return workspace==='staff'?'/admin/seller-document-change-requests/'+encodeURIComponent(id):workspace==='seller'?'/seller/registration#request-'+encodeURIComponent(id):null;
  if(type==='seller_protected_change')return workspace==='staff'?'/admin/seller-protected-changes/'+encodeURIComponent(id):workspace==='seller'?'/seller/requests/changes/'+encodeURIComponent(id):null;
  if(type==='seller_document')return workspace==='staff'?'/admin/seller-documents/'+encodeURIComponent(id)+'/review':workspace==='seller'?'/seller/registration#document-'+encodeURIComponent(id):null;
- if(type==='seller_bank_document')return workspace==='seller'?'/seller/finance#seller-bank-evidence':null;
+ if(type==='seller_bank_document')return workspace==='seller'?'/seller/finance#seller-bank-evidence':workspace==='staff'?'/admin/seller-documents/'+encodeURIComponent(id)+'/review':null;
  if(type==='seller_registered_payout_fixes')return workspace==='seller'?'/seller/registration#seller-payout-fixes':null;
  if(type==='seller_registered_application')return workspace==='seller'?'/seller/products/new':null;
  if(workspace==='customer'&&['rider_profile','rider_report','rider_assignment'].includes(type??''))return isRiderPortalEnabled() ? '/rider' : null;
@@ -62,7 +63,7 @@ export function canViewStaffNotification(staff:PermissionSubject,type:string|nul
  if(type==='receipt_return_bank_loss'||type==='receipt_return_bank_satisfaction')return (staff.role==='admin'||staff.role==='super_admin')&&can(staff,'refund.approve.standard');
  if(type==='seller_recovery'||type==='seller_recovery_claim')return (staff.role==='admin'||staff.role==='super_admin')&&can(staff,'payout.prepare');
  if(['company_payment_account','product_availability'].includes(type??'')&&staff.role!=='super_admin')return false;
- if(['seller_document','seller_document_change','seller_protected_change','seller_public_profile','seller_profile_correction'].includes(type??'') && staff.role!=='super_admin')return false;
+ if(['seller_document','seller_bank_document','seller_document_change','seller_protected_change','seller_public_profile','seller_profile_correction'].includes(type??'') && staff.role!=='super_admin')return false;
  if(['rider_profile','rider_report','rider_assignment'].includes(type??'') && staff.role!=='super_admin')return false;
 
  if(type==='exception_work'&&!can(staff,'order.manage'))return false;

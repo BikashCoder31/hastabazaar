@@ -8,6 +8,7 @@ import {checkoutCommitClock} from '../checkout/commit-policy-guards';
 import {responseScopeContains} from '../orders/response-sql';
 import {prepareOrderResponseRelease} from '../orders/response-workflow';
 import {prepareInitialResponseNotices} from '../orders/response-notifications';
+import { orderMessageStatements } from '../operations/order-message-statements';
 import {prepareOrderStockSettlement} from '../products/order-stock-settlement';
 
 import {prepareCancelledManualPayment} from '../payments/manual-payment-lifecycle';
@@ -852,6 +853,8 @@ export async function cancelSelectedParcels(
         o.now,
         p.order.id,
       ),
+    ...(status !== p.order.status && (status === 'dispatched' || status === 'delivered')
+      ? orderMessageStatements(db, { orderId: p.order.id, event: status, now: o.now }) : []),
     db
       .prepare(
         "UPDATE payments SET status=CASE WHEN ?='cancelled' THEN 'cancelled' ELSE 'pending' END,amount_paisa=?,updated_at=? WHERE order_id=? AND provider<>'manual_bank' AND status NOT IN('captured','paid','refunded')",

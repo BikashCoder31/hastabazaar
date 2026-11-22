@@ -722,7 +722,7 @@ export async function processPayoutRequest(
           options.requestId,
           options.now,
         ),
-        ...await operationalBusinessNotificationStatements(database,{kind:'payout.request.result',sourceId:options.id,eventId:options.requestId,actorId:options.actorId,now:options.now}),
+        ...await operationalBusinessNotificationStatements(database,{kind:'payout.request.result',sourceId:options.id,eventId:options.requestId,actorId:options.actorId,now:options.now,status:'rejected'}),
     ...(options.form?[buildFormAnswerInsert(database,{formId:'staff.payout-request-action',requestId:options.requestId,
       versionId:options.form.versionId,subjectType:'payout_request',subjectId:options.id,
       actorId:options.actorId,answers:options.form.answers,now:options.now})]:[]),
@@ -950,7 +950,7 @@ export async function prepareSellerPayout(
       .bind(crypto.randomUUID(),options.actorId,tail.id,tail.note,JSON.stringify({status:'submitted'}),
         JSON.stringify({status:'prepared',payoutId,catalogDigest:tail.formDigest}),tail.requestId,options.now));
     statements.push(...await operationalBusinessNotificationStatements(database,{kind:'payout.request.result',sourceId:tail.id,
-      eventId:tail.requestId,actorId:options.actorId,now:options.now}));
+      eventId:tail.requestId,actorId:options.actorId,now:options.now,status:'prepared'}));
     statements.push(buildFormAnswerInsert(database,{formId:'staff.payout-request-action',requestId:tail.requestId,
       versionId:tail.form.versionId,subjectType:'payout_request',subjectId:tail.id,actorId:options.actorId,
       answers:tail.form.answers,now:options.now}));

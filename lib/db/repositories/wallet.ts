@@ -1,5 +1,6 @@
 import { allocateCancellationItems } from '../../cancellation/accounting';
 import {recordedBenefitRefund} from '../../incentives/original-benefit-refunds';
+import { referralRewardNoticeStatements } from '../../operations/wallet-notices';
 export class WalletConflictError extends Error {}
 
 export interface ReferralCampaign {
@@ -58,8 +59,8 @@ export async function releaseReferralRewards(
   // Its unique reward/order key makes retrying only a rolled-back deadlock safe.
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      await db
-        .prepare(`INSERT OR IGNORE INTO wallet_entries
+      await db.batch([
+        db.prepare(`INSERT OR IGNORE INTO wallet_entries
     (id,user_id,order_id,amount_paisa,platform_amount_paisa,kind,created_at)
     SELECT 'reward:' || r.order_id, r.referrer_id, r.order_id, r.reward_paisa, -r.reward_paisa, 'referral_reward', ?
     FROM referral_redemptions r INNER JOIN orders o ON o.id = r.order_id
@@ -73,8 +74,9 @@ export async function releaseReferralRewards(
       AND NOT EXISTS (SELECT 1 FROM complaints c WHERE c.order_id = o.id AND c.status NOT IN ('resolved','closed'))
       AND NOT EXISTS (SELECT 1 FROM wallet_entries e WHERE e.id = 'reward:' || r.order_id)
     `)
-        .bind(now, userId, now)
-        .run();
+        .bind(now, userId, now),
+        ...referralRewardNoticeStatements(db, userId, now),
+      ]);
       return;
     } catch (error) {
       if (

@@ -13,6 +13,7 @@ import {
   CancellationConflictError,
 } from '../../cancellation/repository';
 import { operationalBusinessNotificationStatements } from '../../operations/business-notifications';
+import { orderMessageStatements } from '../../operations/order-message-statements';
 import { staffMutationGuard } from './staff-mutation-guard';
 import type { NepalAddress } from '@/lib/shipping/provider';
 import type { OrderStatus } from '@/lib/marketplace/types';
@@ -805,6 +806,7 @@ export async function transitionAdminFulfillment(
             .bind(`${options.requestId}:fulfilment-guard`),
         ]
       : []),
+    ...orderMessageStatements(database, { orderId: options.orderId, event: to, now: options.now }),
     database
       .prepare(
         `INSERT INTO order_status_events (

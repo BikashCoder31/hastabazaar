@@ -2,6 +2,7 @@ import { buildOrderEmail, type OrderEmailData } from './order-updates';
 import { buildBusinessEmail } from '../operations/business-notifications';
 import type { BusinessEmailData } from './business-message';
 import { courierBookedTemplate, missedDeliveryTemplate } from '../operations/courier-email-notices';
+import { caseMessageSubject, reviewMessages } from '../operations/message-event-catalog';
 
 const buyerEmail = 'buyer@local.hastabazaar.test';
 const sellerEmail = 'seller@local.hastabazaar.test';
@@ -68,7 +69,7 @@ export const emailPreviewGroups: readonly EmailPreviewGroup[] = [
   { label: 'Customer help & refunds', entries: [
     { id: 'help', label: 'Help request update', when: 'After a seller or Hastabazaar updates the help request.', next: 'The customer checks the saved update.',
       notice: { ...customerNotice, template: 'business.return_request.update', relatedType: 'return_request', relatedId: 'preview-return',
-        subject: 'Return request update available', body: 'Hastabazaar saved a decision on your request. Open the order to see it.' } },
+        subject: caseMessageSubject('return_request', 'approve'), body: 'Hastabazaar saved a decision on your request. Open the order to see it.' } },
     { id: 'refund', label: 'Refund sent', when: 'After the completed refund transfer is recorded.', next: 'The customer can review the refund.',
       notice: { ...customerNotice, template: 'business.finance.refund', relatedType: 'refund_obligation', relatedId: 'preview-refund',
         subject: 'Completed payment recorded', body: 'The transfer outcome was recorded.', amountPaisa: 64200, currentStatus: 'packet_paid' } },
@@ -76,7 +77,7 @@ export const emailPreviewGroups: readonly EmailPreviewGroup[] = [
   { label: 'Sellers', entries: [
     { id: 'neworder', label: 'New order to prepare', when: 'When your items become ready to prepare.', next: 'The seller prepares the items.',
       notice: { ...sellerNotice, template: 'business.order.response', relatedType: 'order_response_event', relatedId: 'preview-release',
-        subject: 'New preparation work', body: 'There are new items to prepare.', itemNames: 'Handwoven placemats × 2' } },
+        subject: reviewMessages.newSellerOrder, body: 'There are new items to prepare.', itemNames: 'Handwoven placemats × 2' } },
     { id: 'pickup', label: 'Courier booked', when: 'After Hastabazaar books pickup.', next: 'The courier collects the parcel.',
       notice: { ...sellerNotice, template: courierBookedTemplate, subject: 'Courier pickup booked',
         body: 'The courier pickup is booked.', courier } },
@@ -93,7 +94,8 @@ export const emailPreviewGroups: readonly EmailPreviewGroup[] = [
     { id: 'changes', label: 'Changes requested', when: 'After Hastabazaar requests changes on the application.', next: 'The seller updates the application.',
       notice: { ...sellerNotice, orderNumber: null, audience: 'customer', template: 'business.seller_application.result',
         relatedType: 'seller_application', relatedId: 'preview-application', reference: 'SA-DEMO-18',
-        subject: 'Seller application needs changes', body: 'Please review the saved application request.' } },
+        subject: 'Seller application needs changes',
+        body: 'Please review the saved application request.\nBank document: Upload a clear copy that shows the account holder name.' } },
   ] },
 ];
 

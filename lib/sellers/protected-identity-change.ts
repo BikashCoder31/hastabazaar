@@ -91,7 +91,7 @@ export async function submitProtectedIdentityChange(db:D1Database,input:Command&
       .bind(input.documents[0].id,permission.sourceRequestId)]:[]),
     ...(material?protectedCaseHoldStatements(db,input.caseId,input.now):[]),
     protectedChangeEvent(db,input,input.caseId,'identity_submitted','Permitted facts and evidence submitted for verification',proposal),
-    ...await protectedChangeNotice(db,input.caseId,permission.sourceRequestId,eventId,input),
+    ...await protectedChangeNotice(db,input.caseId,permission.sourceRequestId,eventId,input,'replacement_submitted'),
   ],input.caseId);
 }
 

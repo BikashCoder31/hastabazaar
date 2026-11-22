@@ -7,7 +7,8 @@ import { catalogNotificationRequestId, isCurrentCatalogNotice, operationalNotifi
 import { businessEmailLayout, type BusinessEmailData } from '../email/business-message';
 import { addBusinessEmailDetails } from '../email/business-message-details';
 import { marketplaceSubject, renderMarketplaceEmail } from '../email/message-layout';
-import { courierBookedTemplate, missedDeliveryTemplate } from './courier-email-notices';
+import { courierNoticeTemplates } from './courier-email-notices';
+import { caseMessageSubject, referralWalletMessage, reviewMessages } from './message-event-catalog';
 import { riderNotificationSourceSql } from './rider-notification-access';
 import {
   can,
@@ -161,10 +162,14 @@ export async function businessNotificationStatements(
     event.sourceType === 'product' ? 'seller' : 'customer',
     'owner',
     null,
-    label + ' ' + outcome,
+    event.sourceType === 'seller_application' && event.kind === 'submitted'
+      ? reviewMessages.applicantReceived : label + ' ' + outcome,
     registrationApproval
       ? (participationOutcome ? 'Your Managed Maker application was approved for activation.' : 'Your seller application was approved.') +
         ' You can submit products for review. Each listing requires separate approval before publication. From Application progress, open Registration & documents to check and complete any outstanding details. Use Finance to check bank and payout requirements.'
+      : event.sourceType === 'seller_application' && event.status === 'needs_changes' && fixes.length
+      ? ['Please fix the following items so we can continue reviewing your application.',
+        ...fixes.map(fix => `${payoutFixDocumentNames[fix.kind].en}: ${fix.note}`)].join('\n')
       : event.kind === 'submitted'
       ? label +
           ' submitted. We will notify you when review requires your attention.'
@@ -218,7 +223,9 @@ export async function businessNotificationStatements(
         'staff',
         candidate.id,
         event.kind === 'result' ? 'admin.invite' : permission,
-        event.kind === 'submitted' ? label + ' review needed' : label + ' ' + outcome,
+        event.kind === 'submitted'
+          ? event.sourceType === 'seller_application' ? reviewMessages.staffApplication : label + ' review needed'
+          : label + ' ' + outcome,
         event.kind === 'submitted' ? 'A ' +
           label.toLowerCase() +
           ' has been submitted. Review the authorized record and record your decision.' :
@@ -260,11 +267,14 @@ export function buildBusinessEmail(data: BusinessEmailData, origin: string,optio
   const layout = businessEmailLayout(data, link);
   return {
     to: data.email,
-    subject: marketplaceSubject(layout.subject, data.orderNumber ?? data.reference),
+    subject: marketplaceSubject(layout.subject, data.orderNumber ?? data.reference,
+      ['business.seller.document.review', 'business.seller.document.change'].includes(data.template ?? '') &&
+      layout.subject.startsWith('Please fix your ')),
     ...renderMarketplaceEmail(layout),
   };
 }
-const supportedTemplates = [
+export const supportedTemplates = [
+  referralWalletMessage.key,
   'business.gift.issued','business.gift.redeemed',
   'business.programme.updated',
   'business.finance.refund',
@@ -302,8 +312,7 @@ const supportedTemplates = [
   'business.payment.return_satisfied',
   'business.order.response',
   'business.order.preparation_update',
-  courierBookedTemplate,
-  missedDeliveryTemplate,
+  ...courierNoticeTemplates,
   'business.fee.policy',
   'business.fee.terms',
   'business.fee.followup',
@@ -928,9 +937,9 @@ export async function operationalBusinessNotificationStatements(
   }else if(e.kind==='order.preparation_update'){
     relatedType='order_response_event';subject='We are checking your order preparation';guard="EXISTS(SELECT 1 FROM order_response_events WHERE id=? AND kind='customer_update')";guardValues=[e.sourceId];ownerSql='SELECT o.customer_id FROM order_response_events e JOIN orders o ON o.id=e.order_id WHERE e.id=?';ownerValues=[e.sourceId];audience='customer';
   }else if(e.kind==='order.response'){
-    relatedType='order_response_event';subject=e.status?.startsWith('released')?'New preparation work':e.status?.startsWith('reminder')?'Preparation response needed':e.status?.startsWith('checkpoint')?'Aged order requires Super Admin follow-up':'Order preparation needs staff follow-up';
+    relatedType='order_response_event';subject=e.status==='released_seller'?reviewMessages.newSellerOrder:e.status?.startsWith('released')?'New preparation work':e.status?.startsWith('reminder')?'Preparation response needed':e.status?.startsWith('checkpoint')?'Aged order requires Super Admin follow-up':'Order preparation needs staff follow-up';
     guard='EXISTS(SELECT 1 FROM order_response_events WHERE id=?)';guardValues=[e.sourceId];
-    if(e.status?.endsWith('_seller')&&(e.status.startsWith('released')||e.status.startsWith('reminder')||e.status.startsWith('followup'))){ownerSql="SELECT s.user_id FROM order_response_events e JOIN order_response_portions p ON p.id=e.portion_id JOIN seller_profiles s ON s.id=p.seller_id WHERE e.id=? AND p.operator_mode='seller'";ownerValues=[e.sourceId];audience='seller';}
+    if(['released_seller','reminder_seller','followup_seller','escalation_seller'].includes(e.status??'')){ownerSql="SELECT s.user_id FROM order_response_events e JOIN order_response_portions p ON p.id=e.portion_id JOIN seller_profiles s ON s.id=p.seller_id WHERE e.id=? AND p.operator_mode='seller'";ownerValues=[e.sourceId];audience='seller';}
     staffPermission=e.status?.startsWith('checkpoint')||e.status?.endsWith('_company')?'admin.invite':['escalation','delay','followup'].some(kind=>e.status?.startsWith(kind))?'order.manage':null;
   }else if(e.kind==='payment.return_satisfied'){
     relatedType='receipt_return_bank_satisfaction';subject='Original return: bank return reconciled';audience='customer';staffPermission='refund.approve.standard';
@@ -989,14 +998,16 @@ export async function operationalBusinessNotificationStatements(
       `EXISTS(SELECT 1 FROM seller_public_profile_revisions c WHERE c.seller_id=? AND c.kind='normal' AND c.operation_request_id=? AND c.sequence=(SELECT MAX(latest.sequence) FROM seller_public_profile_revisions latest WHERE latest.seller_id=c.seller_id AND latest.kind='normal'))`;
     guardValues=[e.sourceId,e.eventId];ownerSql=correction?'SELECT s.user_id FROM seller_public_profile_corrections c JOIN seller_profiles s ON s.id=c.seller_id WHERE c.id=?':'SELECT user_id FROM seller_profiles WHERE id=?';ownerValues=[e.sourceId];audience='seller';
   }else if(e.kind==='seller.protected_change') {
-    relatedType='seller_protected_change';subject='Protected identity or bank review updated';
+    relatedType='seller_protected_change';subject=e.status==='replacement_submitted'?reviewMessages.sellerDocumentReplacement:'Identity or bank change: '+(e.status??'review available').replaceAll('_',' ');
     guard='EXISTS(SELECT 1 FROM seller_protected_change_cases WHERE id=? AND operation_request_id=?)';guardValues=[e.sourceId,e.eventId];
     ownerSql='SELECT s.user_id FROM seller_protected_change_cases c JOIN seller_profiles s ON s.id=c.seller_id WHERE c.id=?';ownerValues=[e.sourceId];audience='seller';
   } else if (e.kind === 'seller.document.change' || e.kind === 'seller.document.review') {
     const change = e.kind === 'seller.document.change';
     relatedType = change ? 'seller_document_change' : e.correctionDocument?.bank ? 'seller_bank_document' : 'seller_document';
     subject = e.correctionDocument ? 'Please fix your ' + e.correctionDocument.en
-      : change ? 'Document change request updated' : 'Document review updated';
+      : e.status === 'replacement_submitted' ? reviewMessages.sellerDocumentReplacement
+      : change ? `Document replacement ${e.status?.replaceAll('_', ' ') ?? 'decision available'}`
+      : e.status ? `Your ${e.status}` : 'A decision on your document is ready';
     guard = change ? 'EXISTS(SELECT 1 FROM seller_document_change_requests WHERE id=? AND operation_request_id=?)'
       : 'EXISTS(SELECT 1 FROM seller_documents WHERE id=? AND review_request_id=?)';
     guardValues = [e.sourceId, e.eventId];
@@ -1019,7 +1030,7 @@ export async function operationalBusinessNotificationStatements(
     subject =
       e.kind === 'payout.requested'
         ? 'Payout request received'
-        : 'Payout request update recorded';
+        : `Your payout request was ${e.status ?? 'reviewed'}`;
     const column =
       e.kind === 'payout.requested'
         ? 'created_request_id'
@@ -1037,8 +1048,7 @@ export async function operationalBusinessNotificationStatements(
     subject =
       e.kind === 'payout.prepared'
         ? e.status === 'approved' ? 'Payout approved; payment recording is available' : 'Payout prepared for Super Admin approval'
-        : 'Payout update recorded: ' +
-          (e.status ?? 'review available').replaceAll('_', ' ');
+        : 'Your payout was ' + (e.status ?? 'reviewed').replaceAll('_', ' ');
     const column =
       e.kind === 'payout.prepared'
         ? 'created_request_id'
@@ -1171,8 +1181,21 @@ export async function operationalBusinessNotificationStatements(
     const digest = Array.from(new Uint8Array(hash), (b) =>
       b.toString(16).padStart(2, '0'),
     ).join('');
-    const notificationSubject = role === 'staff' && e.kind === 'account.status' ? `Account status changed: ${e.status}` : subject;
-    const notificationBody = role === 'staff' && e.kind === 'account.status' ? 'An account status change was recorded. Open the authorized account workspace for the current state.' : body;
+    const sellerLate = role === 'seller' && e.kind === 'order.response' && e.status === 'escalation_seller';
+    let notificationSubject = subject;
+    if (role === 'staff') {
+      if (e.kind === 'account.status') notificationSubject = `Account status changed: ${e.status}`;
+      if (e.kind === 'payout.requested') notificationSubject = reviewMessages.staffPayoutRequest;
+      if (e.kind === 'payment.order' && ['claim_received', 'late_claim_received'].includes(e.status ?? '')) notificationSubject = reviewMessages.staffBankClaim;
+      if (['seller.document.review', 'seller.document.change', 'seller.protected_change'].includes(e.kind) && e.status === 'replacement_submitted') {
+        notificationSubject = reviewMessages.staffDocumentReplacement;
+      }
+    }
+    if (sellerLate) notificationSubject = reviewMessages.oldSellerOrder;
+    const notificationBody = sellerLate
+      ? 'Your order still needs a preparation response. Open the order to confirm progress or tell Hastabazaar about a delay.'
+      : role === 'staff' && e.kind === 'account.status'
+        ? 'An account status change was recorded. Open the authorized account workspace for the current state.' : body;
     const subjectNe = e.correctionDocument ? `आफ्नो ${e.correctionDocument.ne} सच्याउनुहोस्` : notificationSubject;
     const bodyNe = e.correctionDocument ? subjectNe + ': ' + e.correctionDocument.note : notificationBody;
     const ownerInAppHandled=role==='staff'&&permission==='admin.invite'&&supplementalOwnerEmail&&!!ownerSql;
@@ -1314,8 +1337,7 @@ export async function caseBusinessNotificationStatements(
     : 'COALESCE(c.escalated_to,c.assigned_to)';
   const guard = `EXISTS(SELECT 1 FROM ${table} WHERE id=? AND operation_request_id=?)`;
   const template = 'business.' + e.sourceType + '.update';
-  const subject =
-    (isReturn ? 'Return request' : 'Complaint') + ' update available';
+  const subject = caseMessageSubject(e.sourceType, e.action);
   const body =
     'An update was recorded for your case. Open the authorized record to review its status and any requested next action.';
   const result: D1PreparedStatement[] = [];
@@ -1342,6 +1364,8 @@ export async function caseBusinessNotificationStatements(
     extraValues: unknown[] = [],
   ) {
     const hash = await digest(key);
+    const recipientSubject = audience === 'seller' && e.action === 'created'
+      ? isReturn ? 'A customer needs your reply' : 'A customer opened a complaint' : subject;
     for (const channel of ['in_app', 'email'])
       result.push(
         db
@@ -1353,8 +1377,8 @@ export async function caseBusinessNotificationStatements(
             audience,
             channel,
             template,
-            subject,
-            subject,
+            recipientSubject,
+            recipientSubject,
             body,
             body,
             e.sourceType,

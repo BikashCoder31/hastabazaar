@@ -165,13 +165,25 @@ void test('optional applicant draft→seller approval→product review→verific
     assert.deepEqual(JSON.parse(String(event('reminder').scope_json)), [ids[1]]);
     advance(releasedAt + 12 * hour); assert.equal((await processOrderResponseFollowup(f.db)).escalations, 1); assert.equal((await processOrderResponseFollowup(f.db)).escalations, 0);
     for (const kind of ['released', 'reminder', 'escalation']) assert.deepEqual(f.sqlite.prepare("SELECT channel FROM notification_messages WHERE template_key='business.order.response' AND related_id=? AND recipient_user_id='reviewer' ORDER BY channel").all(String(event(kind).id)).map(row => row.channel), ['email', 'in_app']);
+    const lateOrderNotices = f.sqlite.prepare(`SELECT recipient_user_id AS userId,channel,subject_en FROM notification_messages
+      WHERE template_key='business.order.response' AND related_id=? AND audience_role='seller' ORDER BY channel`).all(String(event('escalation').id));
+    assert.deepEqual(lateOrderNotices.map(row => [row.userId, row.channel, row.subject_en]), [
+      [ownerId, 'email', 'Your order preparation is late'], [ownerId, 'in_app', 'Your order preparation is late'],
+    ]);
     await transitionSellerFulfillment(f.db, transition('start_packing', [ids[1]], 'journey-packing-second'));
-    await transitionSellerFulfillment(f.db, transition('ready_for_pickup', ids, 'journey-ready'));
+    await transitionSellerFulfillment(f.db, {...transition('ready_for_pickup', ids, 'journey-ready'), packedParcelWeightGrams: 500});
     assert.equal(await currentResponseNotice(f.db, String(event('reminder').id)), false); assert.equal(await currentResponseNotice(f.db, String(event('escalation').id)), false);
     await prepareSellerParcels(f.db, {orderId, actorId: 'reviewer', requestId: 'journey-parcel', now});
     for (const action of ['assign', 'dispatch', 'deliver']) { const parcel = (await listParcels(f.db, orderId))[0];
       await operateParcel(f.db, {jobId: parcel.id, actorId: 'reviewer', action, version: parcel.version, note: 'Record actual fictional original physical custody and progress.', requestId: 'journey-parcel-' + action, now,
         ...(action === 'assign' ? {method: 'courier', courierName: 'Fictional Journey Carrier', trackingCode: 'FICTIONAL-JOURNEY-DELIVERY'} : {})}); }
+    const stages = f.sqlite.prepare("SELECT order_status FROM order_email_jobs WHERE order_id=? AND order_status IN ('dispatched','delivered') ORDER BY order_status").all(orderId);
+    assert.deepEqual(stages.map(row => row.order_status), ['delivered', 'dispatched']);
+    const progress = f.sqlite.prepare(`SELECT recipient_user_id,template_key,channel FROM notification_messages
+      WHERE related_id=? AND template_key IN ('order.dispatched','order.delivered') ORDER BY template_key`).all(orderId);
+    assert.deepEqual(progress.map(row => [row.recipient_user_id, row.template_key, row.channel]), [
+      ['customer', 'order.delivered', 'in_app'], ['customer', 'order.dispatched', 'in_app'],
+    ]);
 
     // Advance through the original seven-day settlement hold; never alter its snapshot to accelerate payment.
     await accrueExistingDeliveredEarnings(f.db, {actorId: 'reviewer', requestId: 'journey-earnings-held', now});
