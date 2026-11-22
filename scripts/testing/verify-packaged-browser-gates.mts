@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 import type { Connection, Pool } from 'mysql2/promise';
 import type { ConfiguredField } from '../../lib/forms/types';
 import { assertRequiredNativeResults } from '../recovery/native-test-results.mjs';
@@ -599,6 +600,11 @@ async function main() {
       assert.equal(after.schemaSha256, before.schemaSha256);
       const appendTables = new Set(['users', 'user_roles', 'user_credentials', 'staff_permission_profiles', 'user_sessions', 'marketplace_settings', 'form_config_versions', 'audit_logs', 'traffic_sessions', 'traffic_events', 'form_health_observations', ...snapshotTables]);
       const protectedTables = before.tables.filter((table: { name: string }) => !appendTables.has(table.name));
+      const changedTables = protectedTables.flatMap(table => {
+        const current = after.tables.find(candidate => candidate.name === table.name);
+        return isDeepStrictEqual(table, current) ? [] : [`${table.name} (${table.rows} to ${current?.rows ?? 'missing'} rows)`];
+      });
+      if (changedTables.length) phase = 'protected inventory changed in ' + changedTables.join(', ');
       for (const table of protectedTables) assert.deepEqual(after.tables.find((candidate: { name: string }) => candidate.name === table.name), table, `Original table changed: ${table.name}`);
       for (const row of oldPrivate.results) {
         const [current] = await source.query('SELECT value,updated_at FROM marketplace_settings WHERE `key`=?', [row.key]);
