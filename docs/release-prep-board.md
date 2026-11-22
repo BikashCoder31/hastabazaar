@@ -5,8 +5,8 @@ Started on `admin-redesign` at `650b3aad` after the Seller tools completion mark
 | Task | Owner | Status | Commit | Checks |
 | --- | --- | --- | --- | --- |
 | R1 · Readiness branch reconciliation | Main | Done | `0df90d83` | All nine corrections are present. Typecheck and lint passed. Focused suite reported 50 passed and seven native-only skips. The Unicode filename and Vite pin checks passed. |
-| R2 · Release manifest and MariaDB rehearsal | Manifest and rehearsal helpers, main | Done | `Release prep: Release manifest and MariaDB rehearsal` | Regression test failed on the prior inventory and passes with all eight pairs. MariaDB 10.11.19 applied the full set. All existing counts matched. The old application started and served its storefront. |
-| R3 · Read-only production schema check | Main | In progress | | Verify the report against a disposable database. |
+| R2 · Release manifest and MariaDB rehearsal | Manifest and rehearsal helpers, main | Done | `df516ea6` | Regression test failed on the prior inventory and passes with all eight pairs. MariaDB 10.11.19 applied the full set. All existing counts matched. The old application started and served its storefront. |
+| R3 · Read-only production schema check | Main | Done | `Release prep: Read-only production schema check` | Generator tests passed. On MariaDB 10.11, all eight migrations changed from Missing to Present. A partially applied 0164 fixture reported Partial. With no database selected, the script reported that condition alone. |
 | R4 · Release notes and local final check | Main | Pending | | Release notes, full suite, local package and production guards. |
 
 ## R1 reconciliation
@@ -26,6 +26,23 @@ The old commit includes the application snapshot alongside the corrections. The 
 | Patched Vite and lockfile | Present | `package.json` and `package-lock.json` both pin `8.2.4`, the version in `5176420`. |
 
 ## For the owner
+
+### Read the production schema report
+
+Use the manifest from the verified release package. The checkout's default report is generated from its historical manifest. The rehearsed selected schema carries a newer notification check, so the historical report flags that one definition while the selected release report passes.
+
+```sh
+node scripts/generate-production-schema-check.mjs \
+  --manifest='<EXTRACTED_RELEASE>/deployment/babal/release-manifest.json' \
+  --output=/tmp/hastabazaar-check-selected-release.sql
+mariadb --host='<PRODUCTION_HOST>' --user='<PRODUCTION_REVIEW_USER>' --password \
+  --batch --database=hastabaz_marketplace < /tmp/hastabazaar-check-selected-release.sql
+```
+
+- Check the first row says `hastabaz_marketplace`. For staging, use the staging review credentials and `--database=hastabaz_staging`.
+- `PRESENT` means every listed requirement for that row is visible and matches the manifest. `MISSING` means none of an owner file's requirements matched. `PARTIAL` means some matched. The Core schema row covers the package's shared prerequisites and flags any missing or different metadata.
+- The detail rows name the table, column, trigger, check or index to investigate. Verify the review account can see the relevant metadata, including triggers. Limited visibility can look the same as a missing object.
+- The report reads only MariaDB's schema metadata. Check application health and the smoke list separately, including runtime security and settings.
 
 ### MariaDB review and apply commands
 
