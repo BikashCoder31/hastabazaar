@@ -231,7 +231,10 @@ async function main() {
           if(target.recovery)await withExternalPolicyTemporary(project,policyTempParent,async policyTemporary=>{
             await runChild('tests/hosted-security-native.test.ts',1,undefined,policyTemporary);
             await owned();
-            const browser=await withOwnedProcesses(owner=>cancellableChild(owner,process.execPath,['--import','tsx','scripts/testing/verify-packaged-browser-gates.mts'],{cwd:project,env},600000,cancel),45000);
+            // The browser runner creates its own private directory. Keep Chromium's
+            // Unix socket out of this deeply nested fixture path.
+            const browserEnv={...env,TEMP:policyTempParent,TMP:policyTempParent,TMPDIR:policyTempParent};
+            const browser=await withOwnedProcesses(owner=>cancellableChild(owner,process.execPath,['--import','tsx','scripts/testing/verify-packaged-browser-gates.mts'],{cwd:project,env:browserEnv},600000,cancel),45000);
             await writeFile(resolve(directory,'browser.log'),redact(browser.output),{flag:'wx'});
             assert.equal(browser.code,0,'All packaged browser gates are required before recovery');
             const registrationMediaManifestSha256=readRegistrationMediaHandoff(browser.output);

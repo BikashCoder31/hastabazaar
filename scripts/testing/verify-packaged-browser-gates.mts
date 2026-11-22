@@ -359,7 +359,7 @@ async function main() {
     const admitted = await verifyArtifactIdentity({ project, artifactDirectory: artifact });
     evidence = resolve(artifact, 'browser-evidence');
     await mkdir(evidence, { mode: 0o700 }); // Exclusive; a prior run is never overwritten.
-    root = await mkdtemp(resolve(tmpdir(), 'hastabazaar-native-browser-'));
+    root = await mkdtemp(resolve(tmpdir(), 'hb-browser-'));
     assert.ok(contained(await realpath(tmpdir()), await realpath(root)));
     const ownedRoot = root;
     const own = (path: string) => { const target = resolve(ownedRoot, path); assert.ok(contained(ownedRoot, target)); return target; };
@@ -369,7 +369,7 @@ async function main() {
     assert.ok((await lstat(archive)).isFile() && !(await lstat(archive)).isSymbolicLink());
     assert.equal(digest(await readFile(archive)), inventory.archiveSha256);
     const packageRoot = own('package'); await mkdir(packageRoot, { mode: 0o700 });
-    const childTemporary = own('temporary'); await mkdir(childTemporary, { mode: 0o700 });
+    const childTemporary = own('tmp'); await mkdir(childTemporary, { mode: 0o700 });
     const childEnv = { ...safeChildEnvironment(process.env), TEMP: childTemporary, TMP: childTemporary, TMPDIR: childTemporary };
     await withOwnedProcesses(async (owner) => {
       activeOwner = owner;
