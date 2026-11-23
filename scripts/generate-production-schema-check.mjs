@@ -8,6 +8,7 @@ const { values } = parseArgs({
   options: {
     manifest: { type: 'string', default: rootFile('../deployment/babal/release-manifest.json') },
     output: { type: 'string', default: rootFile('../deployment/babal/check-production-schema.sql') },
+    'metadata-only-stdout': { type: 'boolean' },
   },
 });
 const manifest = JSON.parse(await readFile(values.manifest, 'utf8'));
@@ -147,6 +148,17 @@ const fields = ['migration', 'kind', 'tableName', 'name', 'expected', 'event', '
 const rows = requirements.map((row) => fields.map((field) => row[field]));
 const chunks = Buffer.from(JSON.stringify(rows), 'utf8').toString('hex').match(/.{1,4096}/g);
 const inventory = '      ' + chunks.map((chunk) => '0x' + chunk).join(',\n      ');
+const metadataOnly = values['metadata-only-stdout'];
+const metadataReport = `
+SELECT COALESCE(NULLIF(migration, ''), 'core') AS scope, kind,
+       '' AS objectName, COUNT(*) AS requiredCount, SUM(found = 1) AS matchedCount,
+       SUM(found = 0) AS missingOrDifferentCount, SUM(found = -1) AS unverifiedCount
+FROM results GROUP BY migration, kind
+UNION ALL
+SELECT COALESCE(NULLIF(migration, ''), 'core'), kind,
+       CONCAT_WS('.', NULLIF(tableName, ''), NULLIF(name, '')), NULL, NULL, found = 0, found = -1
+FROM results WHERE found <> 1
+ORDER BY scope, kind, objectName;\n`;
 const report = `-- MariaDB 10.11. Select the intended database in the client before running this file.
 -- Read-only metadata. Missing visibility also appears as missing metadata.
 -- To regenerate against a specific package manifest, pass --manifest to
@@ -217,7 +229,7 @@ observed AS (
   FROM foreign_keys
 ),
 matches AS (
-  SELECT e.*, COALESCE(CASE
+  SELECT e.*, COALESCE(CASE${metadataOnly ? "\n    WHEN e.kind IN ('trigger', 'trigger-exact') AND o.objectValue IS NULL THEN -1" : ''}
     WHEN o.kind IS NULL THEN 0
     WHEN e.kind = 'collation' THEN o.collationName = e.expected
     WHEN e.kind = 'generated' THEN o.objectValue REGEXP e.expected
@@ -252,7 +264,7 @@ results AS (
   SELECT migration, kind, tableName, name, MIN(found) AS found
   FROM matches
   GROUP BY migration, kind, tableName, name
-),
+)${metadataOnly ? metadataReport : `,
 report AS (
   SELECT 0 AS sortOrder, 'Database' AS section, COALESCE(DATABASE(), '(none)') AS item,
          IF(DATABASE() IS NULL, 'SELECT A DATABASE', 'SELECTED') AS status,
@@ -274,5 +286,6 @@ report AS (
   FROM results WHERE found = 0
 )
 SELECT section, item, status, detail FROM report ORDER BY sortOrder, section, item;
-`;
-await writeFile(values.output, report);
+`}`;
+if (metadataOnly) process.stdout.write(report);
+else await writeFile(values.output, report);

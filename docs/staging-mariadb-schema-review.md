@@ -10,6 +10,94 @@ The verified release needs the older core schema from **manifest positions 59–
 - The scope comparison used exact object names from the candidate SQL and MariaDB catalogue metadata. The ordered list below identifies missing additions, intentional overlap with older definitions and replacement of an existing trigger body. Name checks alone cannot establish equivalence of every definition or detect historical data changes. Separately verified evidence and required checks for the ambiguous files are recorded below.
 - All positions 59–142 occur in the order shown in the pinned cumulative SQL after normalizing line endings and trailing spaces. A static pass through positions 59–136 found no forward foreign-key or ALTER-table dependency against the observed prior tables and earlier table creations. This verifies the source ordering. It does not certify execution against retained staging rows. [Pinned SQL selection](../scripts/prepare-release-schema-input.mjs) · [Cumulative source order](../scripts/generate-mariadb-schema.mjs)
 
+## First step · Read-only production comparison
+
+The owner observed `hastabazaar-release-ci-41031347464-1` on production's public `/health`. Staging ran the same release during the schema review. The application release ID cannot establish that the databases have the same objects or definitions.
+
+1. On a trusted operator machine that already has access, use Node.js 22 and the MariaDB 10.11 client. Extract the **verified** candidate from run 45059021181 to a private local directory. Use its generated manifest and the source checkout containing this runbook. The runner verifies the manifest against the SHA-256 above. Leave the hosted apps and release links alone.
+2. Use your existing production **read-only** MariaDB account. It needs read access across the application schema for complete table and column visibility. Save its connection options in an owned, regular mode-`0600` file outside the repository. Use a single `[client]` section with `user` and, if needed, `password`. On the database host, add `socket=/absolute/path/to/socket`. For remote TCP, use `host`, optional `port`, `ssl=1`, `ssl-ca=/absolute/path/to/trusted-ca.pem` and `ssl-verify-server-cert=1`. Use MariaDB option-file quoting for the password. Use your existing approved route to MariaDB and its real TLS hostname. [MariaDB client options](https://mariadb.com/docs/server/clients-and-utilities/mariadb-client/mariadb-command-line-client)
+3. From the source checkout, run only this command now. Replace the two paths with your own absolute paths.
+
+   ```sh
+   node scripts/deployment/mariadb-schema-upgrade.mjs report \
+     --target=production \
+     --credentials='/private/path/production-read-only.cnf' \
+     --package-root='/private/path/extracted-45059021181-1'
+   ```
+
+4. Send back the TSV output. It contains counts and schema object names, grouped by core and by 0164–0172. The core rows check tables, columns, trigger requirements, CHECK constraints, unique indexes, foreign keys, generated columns and collations against the same pinned target. The earlier staging gap count covered names only. The new report also checks shapes where the manifest specifies them, so compare individual categories and names. In particular, look for `complaints.clarification_at` and the other reported missing or different core objects. If visibility looks limited or the command fails, send the counts or terminal error code only. Production apply order is provisional until we review this output.
+
+The command selects only `hastabaz_marketplace`, checks the target, then reads metadata in a read-only transaction. It selects no business rows and prints no definitions, account details, values or credentials. An absent or hidden trigger body is **unverified**. The account's metadata visibility limits the result. MariaDB can hide trigger bodies even if it shows the name. Keep the account read-only. Definitive trigger evidence can come separately from an already-authorized schema inventory if needed. [MariaDB trigger metadata visibility](https://mariadb.com/docs/server/reference/system-tables/information-schema/information-schema-tables/information-schema-triggers-table)
+
+**Stop here for now.** The rest of this runbook documents separate rehearsal and maintenance steps. Wait for review of the production report before using them.
+
+## Disposable rehearsal and compatibility plan
+
+1. **Restore a verified staging backup on an isolated machine.** Record its cutoff, archive and SQL digests, MariaDB version and SQL mode. Restore into an owner-approved disposable MariaDB 10.11 instance matching staging (10.11.20), with no routes to hosted services. Use a database named `hb_schema_rehearsal_<suffix>`, the reviewed recovery procedure, and protected scratch storage. Keep a pristine copy A. Take independent clones B and C for the upgrade and tests. Preserve required triggers, database collation, immutable evidence, protected records and media references. Keep workers and outbound mail, payment, SMS and courier calls disabled. Do not use the active `.staging` data or the checked localhost preview for this rehearsal. [Native recovery procedure](native-recovery.md)
+2. **Capture baseline B.** Compare its restored data and schema to the backup receipt. Record per-table counts and a deterministic digest of retained rows, sorted by original primary key, over the original columns. For tables with no primary key, compare the sorted multiset of original row digests. Keep results private. Capture exact integer-paisa sums per currency or ledger type, as applicable, for orders and order items, payments, refunds, wallet balances and entries, seller ledger entries, courier cash/remittances, registered and managed payouts and settlement entries. Capture row counts and stable row digests for seller records, audit events, form submissions and `auth-private:` settings without sharing values. An example over columns present in the baseline is `SELECT currency, COUNT(*), COALESCE(SUM(grand_total_paisa),0) FROM orders GROUP BY currency`. Use exact SQL integer/decimal sums throughout. Compare both counts and row digests so equal totals alone cannot mask compensating changes.
+3. **Apply core on B with the runner below.** It runs 59–136, verifies 137 without applying it, then runs 138 and 140–142. Position 139 is for an empty database. The runner checks each of the nine data positions immediately and records zero mismatches before advancing. Review its journal and reconcile retained records against A. Position 137 must still match the five prerequisite column definitions and approved ledger index, with no duplicate non-null refund/type pair. Confirm 138 adds the missing guards and that 142 replaces the existing inventory trigger with the verified exact-offer definition.
+4. **Apply the separate owner phase on B.** After the core fingerprint and data checks pass, make a distinct receipt for the verified post-core recovery point. Use a separate approval and journal for 0164–0172. Keep writers paused, especially during the 0164 CHECK and trigger change. Re-run the row reconciliation against both the core checkpoint and original backup. Existing order, payment, refund, ledger, wallet and payout counts, amounts and historical values should be identical. Check 0164's default flag, existing first-COD rows and replacement guard. Check expected defaults and empty new records where the companions specify them. Record each planned control/backfill delta separately so no unexpected increase is accepted.
+5. **Compare retention and schema before any smoke writes.** After each phase, compare the original column values and keys against A. Explicitly account for allowed backfills in the table below and nullable/defaulted additions. For email queues and cleanup-related tables, compare while dispatch remains paused. Verify there are no new orphaned references, duplicate source records, unexpected policy or role changes, or secret value changes. A zero-source result proves only the empty case. Exercise the transformation again in a separate rehearsal clone with approved fictional data covering any important empty source, including pre-existing recovery and payment records where available.
+6. **Start the candidate against an independent fully upgraded clone.** Use the verified Linux package artifact and Node 22 in a local container or VM with loopback browser access. Use a separate test origin, test principals and an isolated media root. Confirm `/health/live` is HTTP 200, and confirm `/health` reports `hastabazaar-release-ci-45059021181-1`. The public endpoint intentionally omits failure details. For evidence of **zero schema or control-row failures**, run `inspectReadiness` from the matching source with the package manifest and the existing `nativeReadinessAdapter` pointed at the clone, as in the package test. In the run without hosted policy/key material, expect HTTP 503 from `/health` and confirm the separate packaged `hosted-security.mjs --check-readiness` returns its security reason, such as `SECURITY_STATE_UNAVAILABLE`. If valid disposable hosted security is separately prepared, require HTTP 200 and `marketplaceReady: true` as a second check. Use a local-only policy and key. Never bypass the readiness check to get HTTP 200. Smoke catalogue, admin, seller and order rendering, and exercise the candidate's delivery/payment/refund routes with fictional transactions on a separate clone. [Readiness assertion in the package test](../scripts/testing/verify-packaged-commerce-gates.mts) · [Deployment check](../lib/operations/deployment-readiness.ts) · [Health route](../app/health/route.ts)
+7. **Test the actual live binary on original and upgraded copies.** Retrieve the verified archive for `hastabazaar-release-ci-41031347464-1` from [run 41031347464](https://github.com/BikashCoder31/hastabazaar/actions/runs/41031347464) or the retained immutable staging release and verify its `SHA256SUMS` and inventory. A build from another commit is insufficient evidence. Run that binary first against a fresh clone of A, then against a fully upgraded clone of B, with the same disposable setup. Use C or re-clone for the write tests so the two runs start with equivalent data. Verify both health routes with valid rehearsal security, staff 2-step sign-in, storefront/cart, COD and bank transfer order placement, seller preparation and dispatch, customer cancellation or return, and the core admin, payment and payout read/write actions. Check order totals, stock/reservations, status transitions, audit entries, queue records and finance invariants, and compare database/HTTP errors across both runs. Use fictional operations and no external dispatch. Include old checkout's stock-reservation write against the new position-142 trigger and the old first-COD path against 0164. Record exact release IDs and results per journey. The earlier pre-NCM smoke was a different binary and does not answer this compatibility question.
+8. **Decision for production.** If the actual old binary passes, and the owner approves a production-specific baseline and rehearsal evidence, schedule the database work on an earlier quiet night. Pause writers while changing schema, verify the upgraded database, then resume the old release so the subsequent release evening can focus on the app switch and hosted security. Old-release compatibility afterwards does not make the DDL safe under ongoing writes. If any read/write check fails, the artifacts cannot be verified, or production's baseline differs, keep the scheduling decision open. Use the verified recovery point and separately approved rollback procedure if a maintenance attempt stops partway.
+
+### Data effects to reconcile
+
+| Position | Expected effect | Retained data |
+| ---: | --- | --- |
+| 63 | Exactly one protected revision row per existing seller, initialized to revision zero. | Seller IDs, documents and restriction history unchanged. |
+| 64 | One public state per seller with legacy provenance. Name, municipality/city, description, saved legacy sources and last saved event follow the companion's joins and fallbacks. | Existing profile values, audit history and media bytes/links unchanged. |
+| 65 | Public-profile-correction tasks get no deadline. One application task per seller and one document task per eligible identity/PAN document outside protected changes, allowing existing matching task keys. | Existing review task keys and their pre-existing values retained. No duplicate task sources. |
+| 66 | One NPR current-account pointer with no version and revision zero. | No account activated and no payment, fee policy or ledger changes. |
+| 69 | One default commission scan row with empty cursor and revision zero. | No new commission terms applied to an order, no policy or settings change, and no financial movement. |
+| 82 | Backfilled return-handling rows, complaint clocks and review tasks. Initial due times are one day from the original timestamps. First actions use the earliest eligible existing event. | Existing request/complaint counts, historical actions and refund amounts unchanged. Review task count grows only by missing source keys. |
+| 93 | One outgoing identity per paid, positive refund packet, with the source amount and transaction identity. Reconcile exact paisa sums and per-packet fields. | Existing refund packets, paid amounts and ledgers unchanged. No payment reissued. |
+| 115 | Historical pool per `kind,payout_id,scope_id`, with source maximum principal and summed use. Use cannot exceed principal. The temporary guard leaves no row behind. | Existing historical attribution, payout and ledger rows unchanged. |
+| 117 | Original-unpaid pool per `payout_model,seller_id,scope_id`, with used paisa equal to the grouped source sum. | Existing unpaid review rows and actual balances unchanged. |
+
+### Guarded runner for the rehearsal and eventual maintenance
+
+Use one command per phase. The commands below are **examples for the approved disposable copy later**, with the values deliberately unset. Obtain fingerprints from the exact MariaDB target through the local connection file. The fingerprint command is read-only. Its output stays private.
+
+```sh
+node scripts/deployment/mariadb-schema-upgrade.mjs fingerprint \
+  --target=rehearsal --database=hb_schema_rehearsal_copy_b \
+  --credentials='/private/path/rehearsal-maintenance.cnf'
+
+node scripts/deployment/mariadb-schema-upgrade.mjs apply \
+  --target=rehearsal --database=hb_schema_rehearsal_copy_b --phase=core \
+  --credentials='/private/path/rehearsal-maintenance.cnf' \
+  --package-root='/private/path/extracted-45059021181-1' \
+  --approval='/private/path/core-approved.json' \
+  --backup-receipt='/private/path/verified-restore-receipt.json' \
+  --journal='/private/path/new-core-run.jsonl'
+
+node scripts/deployment/mariadb-schema-upgrade.mjs apply \
+  --target=rehearsal --database=hb_schema_rehearsal_copy_b --phase=owner \
+  --credentials='/private/path/rehearsal-maintenance.cnf' \
+  --package-root='/private/path/extracted-45059021181-1' \
+  --owner-root='/private/path/reviewed-source-checkout' \
+  --approval='/private/path/owner-approved.json' \
+  --backup-receipt='/private/path/verified-post-core-restore-receipt.json' \
+  --core-journal='/private/path/new-core-run.jsonl' \
+  --journal='/private/path/new-owner-run.jsonl'
+```
+
+- The rehearsal account needs the schema visibility and DDL permissions used by the companions. Give it access only to the disposable instance. The separate production reporting account stays read-only. Use an explicit loopback address or socket for the rehearsal. Run the native client and exact package runtime using isolated resources under owner control.
+- Prepare the approval JSON with `release` equal to `hastabazaar-release-ci-45059021181-1`, `phase` set to `core` or `owner`, `environment` set to the named target, `target` equal to the verified target hash and `before` equal to the independently reviewed initial schema hash. Set `writersPaused` to `true` only after verifying the pause. Set `backupSha256` to the SHA-256 of the matching **verified backup or restore receipt file**. The operator reviews the actual backup and recoverability before approving the receipt. Use mode `0600` for the approval, receipt, connection file and journals. For the owner batch, the core journal's final hash must equal the initial approved hash for the separate owner phase.
+- The runner verifies the pinned manifest, every selected SQL file, the backup receipt, the target identity in the MariaDB session, and schema fingerprints before the first write and around each file. It performs the guarded 137 check and the named data checkpoint validations, stops on the first error or mismatch, and appends private per-file timing and results to a fresh journal. It uses the MariaDB batch client without continue-on-error or reconnect. A started entry with no finished entry may have partially committed DDL. Leave writers paused, reconcile the actual metadata and data, then agree on recovery. A completed receipt is required to advance. There is no automatic retry or resume. [MariaDB batch and option handling](https://mariadb.com/docs/server/clients-and-utilities/mariadb-client/mariadb-command-line-client)
+- For a later separately approved hosted run, choose `--target=staging` (only `hastabaz_staging`) or `--target=production` (only `hastabaz_marketplace`), omit `--database`, and use environment-specific connection files, approvals, verified backups and journals. Review the exact starting state and add an `after` object to each approval mapping every step ID to the expected fingerprint from its matched rehearsal journal, including 137 in the core batch. The schema fingerprint includes column and constraint metadata and visible trigger/view definitions. Instance identity is checked separately. Fingerprints are deliberately strict. If a production comparison, prerequisite, fingerprint or backfill differs, update and rehearse a production-specific plan before proceeding.
+
+### Timing estimate
+
+| Environment | Provisional database apply allowance | Window to reserve |
+| --- | --- | --- |
+| Staging | **20–45 minutes**, including both phases and in-run checks, if staging volumes match the retained backup. | **60–90 minutes** for backup verification, apply, reconciliation, old-app smoke and contingency. |
+| Production | **45–120 minutes** if rehearsal and production table sizes and storage throughput support it. | **2–3 hours** as a provisional working block. Approve the actual duration only after measuring the rehearsal and comparing production's largest affected tables, indexes and lock behavior. |
+
+These are scheduling allowances. There is no measured apply time yet. Sum the per-file elapsed times in both journals and add the measured backup, reconciliation and smoke durations separately. Compare data and index bytes internally for the tables that caused the slowest alterations. Account for metadata lock waits, index rebuild throughput, free disk and restore time. Keep hosted-security work and any app switch on their own clocks.
+
 ## Apply order for a separately approved maintenance window
 
 1. Take and verify a recoverable staging-only backup. Use that baseline to rehearse this order on a separately approved disposable copy with the same MariaDB version and SQL mode. In the actual maintenance window, pause staging writers and recheck the fingerprints before the first file. Keep the running application release and existing initialized security available for rollback.
@@ -20,10 +108,6 @@ The verified release needs the older core schema from **manifest positions 59–
 6. Verify the target MariaDB definitions and required control rows, preserve retained records and existing hosted security, and record the exact result before requesting any deployment. The existing staging release was healthy during diagnosis. This review made no database or application changes and did not retry deployment.
 
 Positions **1** and **139** are empty-database-only. The existing staging database stays on the additive path. Hold **0164–0172** for their separate owner review and verified backup.
-
-### Data effects to verify on the copy
-
-The source has top-level inserts, updates or guards at **63, 64, 65, 66, 69, 82, 93, 115 and 117**. These populate or backfill seller revisions, review tasks, payment and commission control records, aftercare records, payout bank identities and recovery pools. Capture the expected effects from each verified companion on the copy. Compare original rows and financial totals before advancing. These checks are part of verifying the apply order on a populated copy.
 
 ### Two intentional overlaps
 
