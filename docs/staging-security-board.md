@@ -5,7 +5,7 @@ Scope is the isolated staging app. The owner authorized one read-only cPanel dia
 | Task | Owner | Status | Evidence or next step |
 | --- | --- | --- | --- |
 | S1 · Confirm the cause | Codex and owner | Done | The verified package passed hosted security. The live staging database is missing older core schema required for the new release. |
-| S2 · Enroll staging | Owner | On hold for schema review | Staging already has initialized security and an enrolled active Super Admin. Preserve that state. Start a separate core-schema review before deployment. |
+| S2 · Enroll staging | Owner | On hold for a separately approved schema upgrade | Staging already has initialized security and an enrolled active Super Admin. The core-schema review records the ordered 82-file apply set. |
 | S3 · Plan production | Codex and owner | Written for review | The plan below is conditional on a read-only inventory and separate release approval. |
 
 ## S1 · Confirm the cause
@@ -58,7 +58,7 @@ Check 1 was reported by the owner. The remaining checks used read-only cPanel ac
 | 5 · Startup log | Staging Node app and archived HTTPS log | No accessible startup lines in the requested window. The retry-window log shows 30 health checks returning 503. | Done · Startup log unavailable |
 | 6 · Staff | Staging staff inventory and protected account status | `qa-staging+superadmin` is an active Super Admin with 2-step enrolled. `qa-staging+admin` is an active Admin without 2-step enrolment. `setup-provisioner` is an inactive Super Admin without a registered security record. | Done |
 
-Preserve the working release and initialized security. The next task requires a separately approved staging-only baseline schema reconciliation against a verified backup, followed by a rehearsal and the unchanged readiness checks. The nine owner files remain a separate decision.
+Preserve the working release and initialized security. The read-only baseline review compared all 142 package entries against staging and identified positions 59–136, 138 and 140–142 as the expected apply set. Position 137 is an existing prerequisite checkpoint, and position 139 is empty-database-only. A backed-up rehearsal and any live apply remain separate owner decisions. [Staging MariaDB schema review](staging-mariadb-schema-review.md)
 
 ## S2 · Owner-operated staging setup
 
