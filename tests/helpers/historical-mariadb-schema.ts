@@ -30,10 +30,10 @@ export async function readHistoricalMariaDbSchema(directory: string) {
 
   const v8 = Buffer.concat([candidate.subarray(0, appendOffset), foreignKeyFooter]);
   const accepted156 = candidate.subarray(0, appendOffset + historicalEnd.length);
-  // The V8 test and the T33 bootstrap plan recorded these hashes before the current generator output.
-  assertSha256(v8, '7827e2ab78c852a53d9fffa76aa7e91ca4530b88a0ea82378d9a3153a255be6e', 'V8 schema');
-  assertSha256(accepted156, 'eda83b438b617d1ef97e3d9fcbdf42bc30613995c0dd4adcc2e1f7905b618c52', 'Accepted 156 schema');
-  assertSha256(reset156, 'f71cbde53af46afe3156b2d4df3391c11a1c47590360c23faa41c0ea8b1ffdd3', 'Historical 156 reset source');
+  // Regenerated from the reviewed historical sources with only the position 64 index correction.
+  assertSha256(v8, 'd9983289f020a46be10e2297af1ea993a7c596a65d71a26b4a176015d4e64b3b', 'V8 schema');
+  assertSha256(accepted156, 'f12537f2e474be0847a41e95710277cd4aa178574193ea6e58b4ae2c57ebe788', 'Accepted 156 schema');
+  assertSha256(reset156, 'f575e17652a0299c38ee08f97af1c579b95caf53f223bf958eb384a52cf1a3ab', 'Historical 156 reset source');
 
   return { candidate, v8, accepted156, reset156 };
 }

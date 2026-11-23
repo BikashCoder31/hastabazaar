@@ -111,15 +111,15 @@ void test('release generators include category schema, hash inventory, checks an
       schema.includes(companion.trim()),
       'Bootstrap must embed maintained companion verbatim',
     );
-    // The reviewed migration 156 prefix and reset are preserved byte for byte.
-    const historicalSchema = Buffer.from(schema).subarray(0, 974_510);
+    // Pin the exact migration 156 prefix and reset with the position 64 index correction.
+    const historicalSchema = Buffer.from(schema).subarray(0, 974_587);
     assert.equal(
       createHash('sha256').update(historicalSchema).digest('hex'),
-      'eda83b438b617d1ef97e3d9fcbdf42bc30613995c0dd4adcc2e1f7905b618c52',
+      'f12537f2e474be0847a41e95710277cd4aa178574193ea6e58b4ae2c57ebe788',
     );
     assert.equal(
       createHash('sha256').update(recovery).digest('hex'),
-      'f71cbde53af46afe3156b2d4df3391c11a1c47590360c23faa41c0ea8b1ffdd3',
+      'f575e17652a0299c38ee08f97af1c579b95caf53f223bf958eb384a52cf1a3ab',
     );
     assert.ok(
       recovery.endsWith(historicalSchema.toString('utf8')),
@@ -130,6 +130,7 @@ void test('release generators include category schema, hash inventory, checks an
         'bootstrap-prerequisites',
         'bootstrap-completion',
         'fresh-bootstrap-defaults',
+        'retained-schema-convergence',
         'check-parity',
         'text-length-parity',
         'native-order-stock-governance',

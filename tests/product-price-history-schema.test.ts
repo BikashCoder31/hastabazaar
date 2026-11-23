@@ -55,7 +55,7 @@ void test('155 native append keeps all V8 schema bytes and old artifacts, with a
  const appendOffset=baseline.length-footer.length;
  const bootstrap=await read('deployment/babal/mariadb-bootstrap-prerequisites.sql');
  const completionTail='\n'+await read('deployment/babal/mariadb-bootstrap-completion.sql')+'\n'+await read('deployment/babal/mariadb-fresh-bootstrap-defaults.sql');
- const parityTail='\n'+await read('deployment/babal/mariadb-check-parity.sql')+'\n'+await read('deployment/babal/mariadb-text-length-parity.sql')+'\n'+await read('deployment/babal/mariadb-native-order-stock-governance.sql');
+ const parityTail='\n'+await read('deployment/babal/mariadb-retained-schema-convergence.sql')+'\n'+await read('deployment/babal/mariadb-check-parity.sql')+'\n'+await read('deployment/babal/mariadb-text-length-parity.sql')+'\n'+await read('deployment/babal/mariadb-native-order-stock-governance.sql');
  assert.equal(new TextDecoder().decode(candidate.subarray(appendOffset)),append.trim().replaceAll('\r\n','\n')+'\n'+native156.trim().replaceAll('\r\n','\n')+'\n'+footer+'\n'+bootstrap+completionTail+parityTail.replaceAll('\r\n','\n'));
  const recovery=new TextDecoder().decode(reset156);
  assert.ok(recovery.indexOf('DROP TABLE IF EXISTS `product_orderable_price_observations`')<recovery.indexOf('DROP TABLE IF EXISTS `product_offer_versions`'));
