@@ -4,7 +4,7 @@ Scope is the isolated staging app. The owner performs host steps in order and re
 
 | Task | Owner | Status | Evidence or next step |
 | --- | --- | --- | --- |
-| S1 · Confirm the cause | Codex and owner | Waiting for host check 1 | Reviewed the exact merged commit and the GitHub retry. The read-only deployment-readiness test passed. The host cause still needs evidence. |
+| S1 · Confirm the cause | Codex and owner | Waiting for host check 2 | The owner confirmed the key name is listed in the staging app. The gateway’s runtime file is next. |
 | S2 · Enroll staging | Owner | Waiting for S1 | Follow the restricted bootstrap in order after the host evidence is reviewed. |
 | S3 · Plan production | Codex and owner | Written for review | The plan below is conditional on a read-only inventory and separate release approval. |
 
@@ -40,12 +40,12 @@ The two data rows checked by schema readiness are `marketplace_fee_waiver_contro
 
 ### Host checklist
 
-Each row is a separate owner check. Advance only after recording the previous result. Check 1 is the only step currently open.
+Each row is a separate owner check. Advance only after recording the previous result. Check 2 is the only step currently open.
 
 | Check | Location | Safe result to report | Status |
 | --- | --- | --- | --- |
-| 1 · Staging app key name | cPanel → Setup Node.js App → `hastabazaar-staging-app` → Environment variables | Is `HASTABAZAAR_SECURITY_KEY` listed? Yes, no, or panel unavailable. | Ready |
-| 2 · Gateway key name | Owner maintenance access, private runtime settings in `/home2/hastabaz/.hastabazaar-deployment/` | Yes or no for the name `HASTABAZAAR_SECURITY_KEY` only. | Waiting |
+| 1 · Staging app key name | cPanel → Setup Node.js App → `hastabazaar-staging-app` → Environment variables | Owner reported `HASTABAZAAR_SECURITY_KEY` is listed. | Done · Yes |
+| 2 · Gateway key name | cPanel Terminal, `/home2/hastabaz/.hastabazaar-deployment/runtime.json` | Yes, no, or unavailable for the name `HASTABAZAAR_SECURITY_KEY` only. | Ready |
 | 3 · Policy directory | Staging File Manager or Terminal | Directory exists yes/no, contents by filename only, and private ownership and permissions yes/no. | Waiting |
 | 4 · Active release and HTTPS | Staging `current` link and authenticated staging `/health` | Link target’s release ID, HTTP status, and `release` field if present. | Waiting |
 | 5 · Startup log | Staging Node app log only | Relevant lines without secrets from 22 November 19:43–19:47 UTC, which was 23 November 01:28–01:32 in Kathmandu. | Waiting |
