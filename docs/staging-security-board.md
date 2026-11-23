@@ -7,10 +7,10 @@ Scope is the isolated staging app. The owner authorized one read-only cPanel dia
 | S1 · Confirm the cause | Codex and owner | Done | The verified package passed hosted security. The live staging database is missing older core schema required for the new release. |
 | S2 · Enroll staging | Owner | On hold for a separately approved schema upgrade | Staging already has initialized security and an enrolled active Super Admin. The core-schema review records the ordered 82-file apply set. |
 | S3 · Plan production | Codex and owner | Written for review | The plan below is conditional on a read-only inventory and separate release approval. |
-| S4 · Production schema report | Owner | Ready to run | Run only the [read-only production comparison](staging-mariadb-schema-review.md#first-step--read-only-production-comparison) and return the counts and object names. |
-| S5 · Disposable staging rehearsal | Codex and owner | Plan written · waiting for S4 | Restore a verified staging backup in isolation, then reconcile the 82 older files and the separate 0164–0172 phase. Keep per-file receipts and times. |
-| S6 · Exact old and new release checks | Codex and owner | Plan written · awaiting rehearsal | Check the candidate's database readiness, then compare run 41031347464 on original and fully upgraded copies, including writes. |
-| S7 · Schema maintenance | Owner | Awaiting results and separate approval | Use the guarded runner only with reviewed backup, target and schema fingerprints. No database apply or deployment retry is scheduled. |
+| S4 · Production schema report | Owner and Codex | Done | The production TSV and the restored staging backup have the same 2,616 comparable findings by scope, object kind and name. Production trigger visibility remains limited. |
+| S5 · Disposable staging rehearsal | Codex | Core blocked · separate owner tests passed | Pinned position 64 fails on a foreign-key index. A local revision reached 140, where the staging metadata failed seven checks. All nine owner companions passed separately. |
+| S6 · Exact old and new release checks | Codex | Tested · old release readiness failed on complete reference | Both releases started. The candidate matched all requirements on the fully upgraded reference. The old release requires a notification CHECK missing there. A fully upgraded retained-data copy is still blocked at 140. |
+| S7 · Schema maintenance | Owner | Blocked by the retained-schema rehearsal | Review and rehearse a corrected core release against the staging backup before approving either hosted upgrade. |
 
 ## S1 · Confirm the cause
 
@@ -82,11 +82,41 @@ The [restricted first-enrolment bootstrap](hosted-security-bootstrap.md) is reta
 
 ## For the owner
 
-### Next action
+### Production and staging comparison
 
-Run the read-only production report and share its counts and object names. The matching public release ID is owner-reported. Staging and production schema parity, exact old-release compatibility, and apply time all await evidence. Initial database-only allowances are 20–45 minutes on staging and 45–120 minutes on production. [Production report, rehearsal and guarded runner](staging-mariadb-schema-review.md#first-step--read-only-production-comparison)
+The production TSV was generated on 23 November against the pinned 45059021181-1 manifest with `SELECT` and `SHOW VIEW`. The temporary reporting user and its server workspace were removed after downloading the TSV. The same report was run against a local restore of the 23 November `hastabaz_staging` cPanel backup. The restore has 168 base tables, 187 triggers and one view, consistent with the earlier staging catalogue review. [Staging inventory and apply order](staging-mariadb-schema-review.md)
 
-Local verification passed typecheck, lint and 12 focused tests. All 82 core file hashes, the 137 prerequisite file hash and the nine owner companion hashes matched the pinned manifest. The report was exercised with a mocked MariaDB client. The owner report and native rehearsal are pending.
+| Core requirement | Production TSV | Restored staging TSV |
+| --- | --- | --- |
+| Tables | 168 of 363 matched | 168 of 363 matched. |
+| Columns | 2,004 missing, including `complaints.clarification_at` | 2,004 missing, including `complaints.clarification_at`. |
+| Foreign keys | 7 missing or different | The same 7 missing or different. |
+| CHECK constraints | 255 missing or different | The same 255 missing or different. The earlier staging catalogue review counted 254 absent by name. |
+| Trigger requirements | All 795 unverified under the read-only grant | 187 matched and 608 absent from the restored catalogue. |
+
+The **2,461 core and 155 owner-phase non-trigger findings match exactly** by scope, kind and object name. In 0164–0172, the production account leaves one trigger requirement unverified, and the restored staging catalogue shows its definition differs. Full schema parity is still open because production trigger definitions were withheld. Keep production's migration decision open until a production-specific baseline and recovery plan are reviewed.
+
+Local verification of the runner passed typecheck, lint and 12 focused tests. All 82 core file hashes, the 137 prerequisite file hash and the nine owner companion hashes matched the pinned manifest. The production report ran successfully on MariaDB. [Rehearsal and guarded runner](staging-mariadb-schema-review.md#disposable-rehearsal-and-compatibility-plan)
+
+### Disposable rehearsal results · 23 November
+
+- **Inputs.** Restored the cPanel backup for `hastabaz_staging` in a disposable Linux MariaDB 10.11.20 container on an internal Docker network with zero published ports. The two initial restores matched across 168 base tables, 187 triggers, one view and 750 original rows. The candidate ZIP and retained old CI archive each matched their checksums and every inventoried file. The old archive also matched the manifest and archive checksums observed on staging.
+- **Pinned core failed at 64.** Positions 59–63 passed. MariaDB error 1553 stopped `mariadb-public-profile-revisions.sql` at the drop of `idx_seller_profile_media_kind`, the only index supporting `seller_profile_media_seller_fk`. The replacement index is the following statement. Earlier DDL in position 64 had committed, so the next attempt used a fresh restore.
+- **Revised core stopped at 140.** On the fresh copy, a local-only variant moved `CREATE INDEX seller_profile_media_history` ahead of the old index drop. It completed 79 files through 138 plus the read-only 137 prerequisite. All nine data checkpoints at 63, 64, 65, 66, 69, 82, 93, 115 and 117 returned zero mismatches. All 750 original rows retained identical values over their original columns. The original integer-paisa totals matched. The completed runner steps took 28.1 seconds in the local lab.
+- **Position 140 diagnostics.** Error 1644 stopped before any position 140 DDL. A read-only run of the preflight found seven metadata differences and no failing retained-row predicate. The column order differs for `orders` and `return_requests`. `notification_messages` differs in column order, five column types and `chk_notification_guest_shape`. Trigger execution order differs for `orders` and `managed_payouts`. The body of `recovery_retirement_original_proof` also differs. Preserve these checks when reviewing how to bring the retained schema to the required definitions. Positions 141–142 remain untested on the staging-backed upgrade path.
+- **Separate owner phase.** All nine exact files, 0164–0172, passed independently on a clone of the staging-backed state through 138 and on a separate empty reference initialized from the pinned complete core SQL. Both retained the original rows and integer-paisa totals in all 363 existing tables. The staging-backed copy matched all 156 owner-phase requirements and still had the 249 core findings expected with positions 140–142 pending. The nine-file operation took 8.8 seconds on the staging-backed copy and 9.4 seconds on the reference, including fingerprint checks. These timings exclude backup, restore and row reconciliation. They do not replace the provisional hosted windows.
+
+| Exact compiled release tested | Local database | Database readiness from the packaged check |
+| --- | --- | --- |
+| `41031347464-1` | Original staging backup | Ready. Zero schema findings. |
+| `41031347464-1` | Staging-backed copy through 138 | Blocked by the intermediate `order_items_require_available_inventory` trigger. |
+| `41031347464-1` | Fully upgraded canonical reference with 0164–0172 | Blocked by the missing `notification_messages.chk_notification_guest_shape` required by that release. |
+| `45059021181-1` | Staging-backed copy through 138 plus 0164–0172 | Blocked by 249 core findings. |
+| `45059021181-1` | Fully upgraded canonical reference with 0164–0172 | Ready. All 5,267 core and 156 owner-phase report requirements matched. |
+
+Both exact Linux packages served HTTP 200 on `/health/live`, storefront, shop and sign-in on their tested copies. Signed-out protected routes redirected to sign-in. The complete reference had no hosted security policy, so the candidate's aggregate `/health` returned 503 with the independently confirmed `SECURITY_STATE_UNAVAILABLE` gate and zero database findings. Both packages persisted a fictional customer registration on separate staging-backed copies through 138. The old package added a fixture cart item, and the candidate returned HTTP 409 for the four retained product inputs tested. The fresh reference had no published registration form or products. Hosted MFA, authenticated staff journeys and full checkout remain unverified in this rehearsal.
+
+**Release decision.** The retained upgrade path currently stops at positions 64 and 140, and the old release fails its own check on the complete canonical reference. Keep the early database window on hold. Review an additive, order-safe correction for 64 and a retained-schema-aware correction for 140. Repeat the full sequence from a fresh staging restore and establish old-release readiness on the actual upgraded copy before approving a split database and app switch. The only hosted actions in this rehearsal were reading the staging backup and retained archive. All database changes took place in disposable local copies.
 
 ### Production release evening plan
 
