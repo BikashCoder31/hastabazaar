@@ -56,3 +56,17 @@ void test('production schema check refuses an owner entry without detectable pre
     await rm(folder, { recursive: true, force: true });
   }
 });
+
+void test('metadata report emits names and counts, and separates unverified triggers', () => {
+  const report = execFileSync(process.execPath, [generator, '--manifest', releaseManifest,
+    '--metadata-only-stdout'], {encoding: 'utf8'});
+  const statements = report.replace(/^--.*$/gm, '').trim();
+  assert.match(statements, /^WITH\b/);
+  assert.equal(statements.split(';').length, 2);
+  assert.match(report, /trigger-exact'\) AND o\.objectValue IS NULL THEN -1/);
+  const output = report.slice(report.indexOf('AS scope, kind'));
+  assert.match(output, /unverifiedCount/);
+  assert.match(output, /CONCAT_WS\('\.', NULLIF\(tableName, ''\), NULLIF\(name, ''\)\)/);
+  assert.doesNotMatch(output, /objectValue|ACTION_STATEMENT|expected|CURRENT_USER\(\)/);
+  assert.doesNotMatch(report, /\b(?:ALTER TABLE|CREATE TABLE|UPDATE\s+\w+\s+SET|INSERT INTO|DELETE FROM)\b/i);
+});

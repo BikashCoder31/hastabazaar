@@ -90,7 +90,7 @@ jobs:
       - name: Generate and verify explicitly selected reviewed NUL schema source
         # Generate from checked-out sources, never from ignored historical fixtures.
         # Any source/hash mismatch stops this job before compilation or packaging.
-        run: node scripts/prepare-release-schema-input.mjs --output-directory=".test-artifacts/t35/ci-schema-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --expected-sha256=aa248443d0f54096a83a11c74c6b3cda66774431417cd64be9cd127af98a3493
+        run: node scripts/prepare-release-schema-input.mjs --output-directory=".test-artifacts/t35/ci-schema-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --expected-sha256=b40c9fde31cad9f4dc05c64227c91ef473d10748b51716c7bfce75fcede11843
       - run: npm run build:babal -- --schema-input="$GITHUB_WORKSPACE/.test-artifacts/t35/ci-schema-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/mariadb-schema.sql"
       - run: npm run package:babal:ci -- "$HASTABAZAAR_RELEASE_ID"
       - name: Pull reviewed MariaDB image

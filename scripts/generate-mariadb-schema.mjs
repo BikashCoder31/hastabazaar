@@ -761,12 +761,14 @@ const completionSql=buildBootstrapCompletion({...completionContract,sourceTexts:
 const freshDefaultsSql=buildFreshBootstrapDefaults(completionContract);
 for(const [name,generated]of [['mariadb-bootstrap-completion.sql',completionSql],['mariadb-fresh-bootstrap-defaults.sql',freshDefaultsSql]])if((await readFile(resolve(projectRoot,'deployment/babal',name),'utf8')).replace(/\r\n/g,'\n')!==generated)throw new Error('Bootstrap completion differs from reviewed generation: '+name);
 const completePrefixSql=acceptedSchemaSql+'\n'+completionSql+'\n'+freshDefaultsSql;
+const convergenceSql=(await readFile(resolve(projectRoot,'deployment/babal/mariadb-retained-schema-convergence.sql'),'utf8')).replaceAll('\r\n','\n');
+const convergedPrefixSql=completePrefixSql+'\n'+convergenceSql;
 const checkContract=JSON.parse(await readFile(resolve(projectRoot,'lib/operations/check-parity-contract.json'),'utf8'));
-if(createHash('sha256').update(completePrefixSql).digest('hex')!==checkContract.prefixSha256)throw new Error('Review CHECK parity against changed complete prefix');
+if(createHash('sha256').update(convergedPrefixSql).digest('hex')!==checkContract.prefixSha256)throw new Error('Review CHECK parity against changed complete prefix');
 const checkSources=Object.fromEntries(await Promise.all(Object.keys(checkContract.sources).map(async path=>[path,await readFile(resolve(projectRoot,path),'utf8')])));
 const checkSql=buildCheckParity(checkContract,checkSources);
 if((await readFile(resolve(projectRoot,'deployment/babal/mariadb-check-parity.sql'),'utf8')).replace(/\r\n/g,'\n')!==checkSql)throw new Error('CHECK parity companion differs from reviewed generation');
-const checkParitySchemaSql=completePrefixSql+'\n'+checkSql;
+const checkParitySchemaSql=convergedPrefixSql+'\n'+checkSql;
 const textLengthContract=JSON.parse(await readFile(resolve(projectRoot,'lib/operations/text-length-parity-contract.json'),'utf8'));
 if(createHash('sha256').update(checkParitySchemaSql).digest('hex')!==textLengthContract.prefixSha256)throw new Error('Review text length parity against changed accepted CHECK prefix');
 const textLengthSources=Object.fromEntries(await Promise.all(Object.keys(textLengthContract.sources).map(async path=>[path,await readFile(resolve(projectRoot,path),'utf8')])));

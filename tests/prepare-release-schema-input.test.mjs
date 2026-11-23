@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const helper = resolve(root, 'scripts/prepare-release-schema-input.mjs');
-const reviewedHash = 'aa248443d0f54096a83a11c74c6b3cda66774431417cd64be9cd127af98a3493';
+const reviewedHash = 'b40c9fde31cad9f4dc05c64227c91ef473d10748b51716c7bfce75fcede11843';
 const destination = () => `.test-artifacts/t35/ci-schema-test-${randomUUID()}`;
 const run = args => spawnSync(process.execPath, [helper, ...args], { cwd: root, encoding: 'utf8' });
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');

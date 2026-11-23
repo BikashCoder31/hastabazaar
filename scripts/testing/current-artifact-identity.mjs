@@ -7,7 +7,7 @@ import { readReleaseAssets, releaseManifestPath, releaseSchemaPath } from '../re
 import { verifyRelease } from '../release-files.mjs';
 import { sameFeeSqlDefinition } from '../../lib/operations/fee-schema-readiness.mjs';
 
-export const selectedSchemaSha256 = 'aa248443d0f54096a83a11c74c6b3cda66774431417cd64be9cd127af98a3493';
+export const selectedSchemaSha256 = 'b40c9fde31cad9f4dc05c64227c91ef473d10748b51716c7bfce75fcede11843';
 export const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 export function reviewedIdentityEnvironment(env) {
   return Object.fromEntries(['SOURCE', 'ARCHIVE', 'SCHEMA', 'MANIFEST'].map(name => {
