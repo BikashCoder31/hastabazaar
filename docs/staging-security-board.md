@@ -1,18 +1,18 @@
 # Staging security setup
 
-Scope is the isolated staging app. The owner performs host steps in order and reports only names, yes/no answers, or checked output without secrets. Hosting and database state stay unchanged during S1. Release files 0164–0172 belong to the owner’s separate Stage 3. Normal gateway acceptance and its deadline stay in force.
+Scope is the isolated staging app. The owner authorized one read-only cPanel diagnostic session for S1. The owner performs any corrective host steps after separate review. Release files 0164–0172 belong to the owner’s separate Stage 3. Normal gateway acceptance and its deadline stay in force.
 
 | Task | Owner | Status | Evidence or next step |
 | --- | --- | --- | --- |
-| S1 · Confirm the cause | Codex and owner | Waiting for host check 2 | The owner confirmed the key name is listed in the staging app. The gateway’s runtime file is next. |
-| S2 · Enroll staging | Owner | Waiting for S1 | Follow the restricted bootstrap in order after the host evidence is reviewed. |
+| S1 · Confirm the cause | Codex and owner | Done | The verified package passed hosted security. The live staging database is missing older core schema required for the new release. |
+| S2 · Enroll staging | Owner | On hold for schema review | Staging already has initialized security and an enrolled active Super Admin. Preserve that state. Start a separate core-schema review before deployment. |
 | S3 · Plan production | Codex and owner | Written for review | The plan below is conditional on a read-only inventory and separate release approval. |
 
 ## S1 · Confirm the cause
 
 - Source commit `0fdc112bce598176c6cb7ec78a1fd1297e990592`. The verified Linux package is `hastabazaar-release-ci-45059021181-1` from [Verify and Package run 45059021181](https://github.com/BikashCoder31/hastabazaar/actions/runs/45059021181). Its [GitHub artifact ZIP](https://github.com/BikashCoder31/hastabazaar/actions/runs/45059021181/artifacts/14769627385) has SHA-256 `1e26ac7a9b25e8775788a6c6cbf84538e8c8b01712ff9c22556ea47dcfa58818`. In S2 validate the release archive against its own `SHA256SUMS` and `inventory.json` as well.
 - The first staging deployment hit the gateway deadline. The retry verified the archive, then reported “Staging HTTPS readiness or release identity failed.” The gateway uses its rollback path if it has switched the app. An anonymous HTTPS check returned 401 from Basic Auth. That check did not identify the active release. [Retry log](https://github.com/BikashCoder31/hastabazaar/actions/runs/45059021181/job/137330645886)
-- The reviewed gateway validates the runtime and compares it with the staging app’s actual selector settings before switching. That runtime validation includes a canonical `HASTABAZAAR_SECURITY_KEY` and the expected policy root. If the installed gateway has those same guards, reaching the HTTPS check makes a missing runtime key less likely. The directory, policy state, enrolment, actual database schema, and served release still need host evidence. The retry message alone does not distinguish them. [Gateway](../scripts/deployment/staging-gateway.mjs) · [Runtime guard](../scripts/deployment/staging-runtime.mjs) · [Selector guard](../scripts/deployment/staging-selector.mjs)
+- The reviewed gateway validates the runtime and compares it with the staging app’s actual selector settings before switching. The read-only host check found the key name and expected policy directory setting in the runtime file. The candidate’s security command verified the matching initialized policy and account records and reported exit 0, `ready: true`, one enrolled Super Admin, zero pending and no reason codes. [Gateway](../scripts/deployment/staging-gateway.mjs) · [Runtime guard](../scripts/deployment/staging-runtime.mjs) · [Selector guard](../scripts/deployment/staging-selector.mjs)
 
 ### What `/health` requires
 
@@ -24,7 +24,7 @@ Scope is the isolated staging app. The owner performs host steps in order and re
 
 ### Exact MariaDB requirements
 
-The manifest sections below are the complete schema inventory used by the code. Counts describe the entries in those sections and are separate from the native job’s count of exact assertions.
+The manifest sections below describe the checked-in schema inventory. The Linux build regenerates these sections from the selected cumulative SQL and compiles its generated manifest into the runtime. The installed candidate’s generated manifest is the source of truth for live diagnostics. [Build manifest selection](../scripts/build-babal.mjs) · [Manifest generator](../scripts/generate-release-manifest.mjs) · [Vite configuration](../vite.config.ts)
 
 | Manifest section | Required inventory |
 | --- | --- |
@@ -36,36 +36,43 @@ The manifest sections below are the complete schema inventory used by the code. 
 
 The two data rows checked by schema readiness are `marketplace_fee_waiver_control.default` and `customer_fee_waiver_control.default`. Each table must contain exactly one `id = 'default'` row with a nonnegative safe integer `revision`. The manifest requires the `hastabazaar_schema_versions.applied_at` and `version` columns. This health check does not query individual version rows. The protected manifest and staff records are checked separately by hosted security. [Schema readiness](../lib/operations/readiness.ts) · [Control row rules](../lib/operations/fee-schema-readiness.mjs)
 
-**Readiness does not require any of 0164–0172.** The [owner migration inventory](../deployment/babal/release-manifest.json#L1045) is separate from the base requirements. In particular, the required baseline `first_cod_review_immutable` trigger predates 0164. The 0164 replacement and its `hold_source` and customer flag columns belong to the owner-migration entry. The verified package’s native job initialized the selected pre-owner schema from its pinned SQL and passed the exact constraints and `inspectReadiness` on native MariaDB. The local database-free readiness test also passed and verified that pending or unavailable hosted security blocks an otherwise ready schema. This confirms the dependency order in code and leaves the live staging schema unverified. If staging is missing an older core prerequisite, report the exact finding and stop for separate review. [Native gate](../scripts/testing/verify-current-artifact-native.mjs) · [Readiness test](../tests/deployment-security-readiness.test.ts)
+**Readiness does not require any of 0164–0172.** The [owner migration inventory](../deployment/babal/release-manifest.json#L1045) is separate from the base requirements. In particular, the required baseline `first_cod_review_immutable` trigger predates 0164. The 0164 replacement and its `hold_source` and customer flag columns belong to the owner-migration entry. The verified package’s native job initialized the selected pre-owner schema from its pinned SQL and passed the exact constraints and `inspectReadiness` on native MariaDB. The local database-free readiness test also verified that pending or unavailable hosted security blocks an otherwise ready schema. [Native gate](../scripts/testing/verify-current-artifact-native.mjs) · [Readiness test](../tests/deployment-security-readiness.test.ts)
+
+### Confirmed blocker on 23 November
+
+- The candidate's generated manifest lists 4,869 required names across columns, triggers, unique indexes, foreign keys and checks. The staging app account’s MariaDB metadata did not contain 2,873 entries from this inventory, including 2,004 column entries, 608 triggers, 7 foreign keys and 254 checks. The comparison checked presence only. The metadata result can also reflect table visibility and grants, and it does not determine a migration sequence.
+- A separate direct, read-only query for `complaints.clarification_at` returned MariaDB error 1054, unknown column. That column is a required core prerequisite from `mariadb-aftercare-followups.sql`. Other unlisted objects included `audit_command_complete` and `core_form_receipt_no_update` from the older foundation and receipt-retention files. These precede the owner migrations. [Aftercare follow-ups](../deployment/babal/mariadb-aftercare-followups.sql#L12) · [Core version foundation](../deployment/babal/mariadb-complete-version-foundation.sql#L10) · [Core form receipt retention](../deployment/babal/mariadb-core-form-receipt-retention.sql#L3)
+- The archived staging HTTPS log recorded 30 HTTP 503 responses from `GET /health` during the retry. The staging app's accessible `stderr.log` was last updated 4 October, so it provided no startup lines from the retry. The combination of the missing required column and the passed security command identifies a current schema blocker. The first attempt’s timeout has no separate phase evidence.
+- No app restart, application file or setting change, database write, workflow retry or production access was performed in this diagnostic session.
 
 ### Host checklist
 
-Each row is a separate owner check. Advance only after recording the previous result. Check 2 is the only step currently open.
+Check 1 was reported by the owner. The remaining checks used read-only cPanel access.
 
 | Check | Location | Safe result to report | Status |
 | --- | --- | --- | --- |
 | 1 · Staging app key name | cPanel → Setup Node.js App → `hastabazaar-staging-app` → Environment variables | Owner reported `HASTABAZAAR_SECURITY_KEY` is listed. | Done · Yes |
-| 2 · Gateway key name | cPanel Terminal, `/home2/hastabaz/.hastabazaar-deployment/runtime.json` | Yes, no, or unavailable for the name `HASTABAZAAR_SECURITY_KEY` only. | Ready |
-| 3 · Policy directory | Staging File Manager or Terminal | Directory exists yes/no, contents by filename only, and private ownership and permissions yes/no. | Waiting |
-| 4 · Active release and HTTPS | Staging `current` link and authenticated staging `/health` | Link target’s release ID, HTTP status, and `release` field if present. | Waiting |
-| 5 · Startup log | Staging Node app log only | Relevant lines without secrets from 22 November 19:43–19:47 UTC, which was 23 November 01:28–01:32 in Kathmandu. | Waiting |
-| 6 · Staff | Existing staging staff inventory and each person’s security status | Role, email alias, active yes/no, and 2-step enrolment yes/no or unknown. | Waiting |
+| 2 · Gateway key name | cPanel Terminal, `/home2/hastabaz/.hastabazaar-deployment/runtime.json` | `HASTABAZAAR_SECURITY_KEY` present. The configured policy root matched the reviewed staging path. | Done |
+| 3 · Policy directory | cPanel Terminal | Private service-owned directory present. `policy.json` and `initialized.json` exist and the candidate verified them. | Done |
+| 4 · Active release and HTTPS | Staging `current` link and authenticated staging `/health` | Both identify `hastabazaar-release-ci-41031347464-1`. HTTP 200 and `marketplaceReady: true`. | Done |
+| 5 · Startup log | Staging Node app and archived HTTPS log | No accessible startup lines in the requested window. The retry-window log shows 30 health checks returning 503. | Done · Startup log unavailable |
+| 6 · Staff | Staging staff inventory and protected account status | `qa-staging+superadmin` is an active Super Admin with 2-step enrolled. `qa-staging+admin` is an active Admin without 2-step enrolment. `setup-provisioner` is an inactive Super Admin without a registered security record. | Done |
 
-The host failure is confirmed only when those results isolate a blocking prerequisite. A missing policy, pending Super Admin, MariaDB failure, or the wrong running release calls for a different next step. Keep the original error evidence and keep S2 on hold until S1 is reviewed.
+Preserve the working release and initialized security. The next task requires a separately approved staging-only baseline schema reconciliation against a verified backup, followed by a rehearsal and the unchanged readiness checks. The nine owner files remain a separate decision.
 
 ## S2 · Owner-operated staging setup
 
-Follow the [restricted hosted bootstrap](hosted-security-bootstrap.md). This checklist records milestones only. The owner gets the instructions and expected result for one action at a time after S1.
+The [restricted first-enrolment bootstrap](hosted-security-bootstrap.md) is retained for fresh hosts. Staging’s existing initialized policy and passed enrolment check make fresh provisioning inapplicable. Any later deployment uses the normal gateway and waits for the owner’s explicit direction after the schema review.
 
 | Step | Acceptance to record | Status |
 | --- | --- | --- |
 | 1 · Close access | Basic Auth covers every path. An IP allow-list or an owner-approved equivalent denies outside-network access even with credentials. A separate browser confirms both restrictions. If the host cannot provide the controls, stop for the owner’s choice. | Waiting |
 | 2 · Stop staging | Staging Node app stopped. GitHub staging deployments paused for the maintenance interval. | Waiting |
 | 3 · Place the verified package privately | Original target recorded. Exact package from run 45059021181 checked against digest, inventory, release manifest and file hashes. Only the staging `current` link is changed. | Waiting |
-| 4 · Configure the key if missing | Generate privately only for a reviewed first installation with no existing protected state. Owner configures the matching key in the app and gateway, without printing it. | Waiting |
-| 5 · Provision and check | Fresh provisioning is allowed only after confirming the directory is absent and the database has no protected security records. The read-only check reports pending and exit 2. Unavailable or conflicting state stops this path. | Waiting |
-| 6 · Start inside the access controls | `/health/live` succeeds. `/health` remains HTTP 503 while security is pending. | Waiting |
-| 7 · Enroll each active Super Admin | Each uses their own first factor and authenticator at `/account/security` and stores recovery codes privately. | Waiting |
+| 4 · Configure the key if missing | Generate privately only for a reviewed first installation with no existing protected state. Owner configures the matching key in the app and gateway, without printing it. | Existing key verified |
+| 5 · Provision and check | Fresh provisioning is allowed only after confirming the directory is absent and the database has no protected security records. The read-only check reports pending and exit 2. Unavailable or conflicting state stops this path. | Inapplicable · already initialized |
+| 6 · Start inside the access controls | `/health/live` succeeds. `/health` remains HTTP 503 while security is pending. | Inapplicable · no pending setup |
+| 7 · Enroll each active Super Admin | Each uses their own first factor and authenticator at `/account/security` and stores recovery codes privately. | Active Super Admin already enrolled |
 | 8 · Restart and verify | Read-only security check reports initialized, ready, exit 0, zero pending and no reason codes. HTTPS health returns 200 with `marketplaceReady: true` and `hastabazaar-release-ci-45059021181-1`. Fresh sign-in and access restrictions are verified. | Waiting |
 | 9 · Retry the failed staging deployment | Only after the owner reports setup complete. Retry only the failed staging job on run 45059021181, check its receipt and repeat the staging health check. The gateway receipt confirms whether production’s release stayed unchanged. | Waiting |
 
