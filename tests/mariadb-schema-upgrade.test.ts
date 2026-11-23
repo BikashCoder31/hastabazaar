@@ -65,6 +65,30 @@ void test('selection preserves 137 as a checkpoint, excludes 139, and keeps the 
   assert.throws(() => migrationSteps(manifest, 'owner'), /order/i);
 });
 
+void test('retained convergence runs before CHECK parity and keeps the reviewed position numbers', () => {
+  const original = Array.from({ length: 142 }, () => ({ usage: 'additive-maintenance', path: '' }));
+  original[139].path = 'deployment/babal/mariadb-check-parity.sql';
+  const convergence = { usage: 'additive-maintenance', path: 'deployment/babal/mariadb-retained-schema-convergence.sql' };
+  const revised = original.toSpliced(139, 0, convergence);
+  const core: MigrationStep[] = migrationSteps({ migrations: revised }, 'core');
+  assert.deepEqual(core.slice(-5).map(step => step.id), ['138', '139a', '140', '141', '142']);
+  assert.throws(() => migrationSteps({ migrations: original.toSpliced(138, 0, convergence) }, 'core'), /position/i);
+});
+
+void test('retained convergence checks its data before SQL and compares the original values afterward', () => {
+  const trace: unknown[] = [];
+  const step = { id: '139a' };
+  applySchema({
+    steps: [step], approval: { target: before.target, before: before.schema }, hosted: false,
+    inspect: () => before,
+    capture: (current: MigrationStep) => { trace.push('capture', current.id); return ['row digest']; },
+    execute: () => trace.push('apply'),
+    verify: (current: MigrationStep, previous: unknown) => { trace.push('verify', current.id, previous); },
+    record: () => {},
+  });
+  assert.deepEqual(trace, ['capture', '139a', 'apply', 'verify', '139a', ['row digest']]);
+});
+
 void test('companion bytes must match before use', () => {
   assert.throws(() => verifiedSql(Buffer.from('tampered'), digest('0'), '59'), /fingerprint/i);
 });

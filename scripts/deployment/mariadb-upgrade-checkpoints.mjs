@@ -1,5 +1,14 @@
 // Run immediately after the corresponding companion, with writers still paused.
 // Each query reports a single count of mismatches and only reads the copy.
+export const convergenceColumns = {
+  orders: ['cancellation_version', 'delivery_rate_snapshot_json'],
+  return_requests: ['original_seal_intact', 'recorded_at', 'intake_channel', 'intake_recorded_by',
+    'received_evidence_reference', 'delivered_at_snapshot'],
+  notification_messages: ['source_event_id', 'source_revision', 'delivery_transport', 'business_event_key',
+    'required_permission', 'delivery_attempts', 'delivery_next_attempt_at', 'delivery_lease_until',
+    'delivery_claim_token', 'guest_email', 'guest_order_id'],
+};
+
 export const upgradeCheckpoints = {
   63: `SELECT (SELECT COUNT(*) FROM seller_profiles s LEFT JOIN seller_protected_revisions r ON r.seller_id=s.id
     WHERE r.seller_id IS NULL OR r.identity_revision<>0 OR r.bank_revision<>0) + (SELECT COUNT(*) FROM seller_protected_revisions r

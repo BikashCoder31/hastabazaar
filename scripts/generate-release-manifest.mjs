@@ -275,6 +275,7 @@ const migrationNames = [
   'mariadb-bootstrap-prerequisites.sql',
   'mariadb-bootstrap-completion.sql',
   'mariadb-fresh-bootstrap-defaults.sql',
+  'mariadb-retained-schema-convergence.sql',
   'mariadb-check-parity.sql',
   'mariadb-text-length-parity.sql',
   'mariadb-native-order-stock-governance.sql',

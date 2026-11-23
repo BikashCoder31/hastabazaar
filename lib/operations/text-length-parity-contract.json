@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "prefixSha256": "c7f612da80213de31b621aa8cc8672a73a85b25df04a8b4a2d62d7350cff6d89",
+  "prefixSha256": "acc041cb2ada80a285583ef9a8a468a7ec14e033ff30945f900921a3e1155f5c",
   "metadataEvidence": {
     "path": ".test-artifacts/t33/current-schema-check-parity-astra-20261105/run-1793829163022/accepted-metadata.json",
     "sha256": "58dd4824b9df8617a5c2ac0861615513c11978e215fc578b7faa90c45d13de73"

@@ -4,11 +4,12 @@ import { closeSync, fsyncSync, lstatSync, openSync, readFileSync, writeSync } fr
 import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
-import { upgradeCheckpoints } from './mariadb-upgrade-checkpoints.mjs';
+import { convergenceColumns, upgradeCheckpoints } from './mariadb-upgrade-checkpoints.mjs';
 
-const release = 'hastabazaar-release-ci-45059021181-1';
-const manifestSha = 'ed82aaf857f26100233b83263f2814d11cf52f6a7c576954a8263530c28882cd';
+const historicalRelease = 'hastabazaar-release-ci-45059021181-1';
+const historicalManifestSha = 'ed82aaf857f26100233b83263f2814d11cf52f6a7c576954a8263530c28882cd';
 const manifestPath = 'deployment/babal/release-manifest.json';
+const convergencePath = 'deployment/babal/mariadb-retained-schema-convergence.sql';
 const hex = /^[a-f0-9]{64}$/;
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 
@@ -18,9 +19,16 @@ function requireThat(condition, message) {
 
 export function migrationSteps(manifest, phase) {
   if (phase === 'core') {
-    requireThat(manifest.migrations.length === 142, 'Unexpected core manifest length');
+    const revised = manifest.migrations.length === 143;
+    requireThat(revised || manifest.migrations.length === 142, 'Unexpected core manifest length');
+    if (revised) requireThat(manifest.migrations[139].path === convergencePath &&
+      manifest.migrations[140].path === 'deployment/babal/mariadb-check-parity.sql', 'Unexpected convergence position');
     return manifest.migrations.flatMap((entry, index) => {
-      const position = index + 1;
+      if (revised && index === 139) {
+        requireThat(entry.usage === 'additive-maintenance', 'Unexpected convergence migration usage');
+        return [{ ...entry, id: '139a', checkpoint: false }];
+      }
+      const position = index + (revised && index > 139 ? 0 : 1);
       if (position < 59 || position === 139) return [];
       requireThat(entry.usage === 'additive-maintenance', 'Unexpected core migration usage');
       return [{ ...entry, id: String(position), checkpoint: position === 137 }];
@@ -61,7 +69,12 @@ DELIMITER ;
 `;
 }
 
-export function applySchema({ steps, approval, hosted, inspect, execute, record, verify = () => {} }) {
+/** @type {(step: {id: string}) => unknown} */
+const skipCapture = () => undefined;
+/** @type {(step: {id: string}, values: unknown) => void} */
+const skipVerify = () => {};
+
+export function applySchema({ steps, approval, hosted, inspect, execute, record, capture = skipCapture, verify = skipVerify }) {
   requireThat(hex.test(approval.target) && hex.test(approval.before), 'Invalid approved fingerprint');
   if (hosted) {
     requireThat(Object.keys(approval.after ?? {}).length === steps.length &&
@@ -73,13 +86,14 @@ export function applySchema({ steps, approval, hosted, inspect, execute, record,
     requireThat(before.target === approval.target && before.schema === expected,
       'Target or before fingerprint differs at ' + step.id);
     const started = Date.now();
+    const originalValues = capture(step);
     record({ event: 'started', id: step.id, before: before.schema });
     execute(step, approval.target);
     const after = inspect();
     requireThat(after.target === approval.target &&
       (!hosted || after.schema === approval.after[step.id]) &&
       (!step.checkpoint || after.schema === before.schema), 'Target or after fingerprint differs at ' + step.id);
-    verify(step);
+    verify(step, originalValues);
     expected = after.schema;
     record({ event: 'finished', id: step.id, after: after.schema, elapsedMs: Date.now() - started });
   }
@@ -204,6 +218,18 @@ function readOnTarget(client, target, sql) {
   return output.slice(newline + 1);
 }
 
+function convergenceData(client, target) {
+  return Object.fromEntries(Object.entries(convergenceColumns).flatMap(([table, columns]) => {
+    const fields = columns.map(column => `SHA2(JSON_ARRAY(HEX(CAST(id AS BINARY)),HEX(CAST(\`${column}\` AS BINARY))),256)`);
+    const [count, ...rows] = readOnTarget(client, target, `SELECT COUNT(*) FROM \`${table}\`;
+      SELECT ${fields.join(',')} FROM \`${table}\` ORDER BY BINARY id;`).split('\n');
+    const cells = rows.map(row => row.split('\t'));
+    requireThat(count === String(cells.length) && cells.every(row => row.length === columns.length && row.every(value => hex.test(value))),
+      'Could not capture original column values for ' + table);
+    return columns.map((column, index) => [table + '.' + column, sha256(cells.map(row => row[index]).join('\n'))]);
+  }));
+}
+
 function guardSession(target) {
   return `DELIMITER $$
 BEGIN NOT ATOMIC
@@ -226,7 +252,7 @@ function reportSql(manifest) {
 function run() {
   const { values, positionals: [command, ...extra] } = parseArgs({
     allowPositionals: true,
-    options: Object.fromEntries(['target', 'database', 'credentials', 'package-root', 'owner-root', 'phase',
+    options: Object.fromEntries(['target', 'database', 'credentials', 'package-root', 'manifest-sha256', 'owner-root', 'phase',
       'approval', 'backup-receipt', 'journal', 'core-journal'].map(name => [name, { type: 'string' }])),
   });
   requireThat(!extra.length && ['report', 'fingerprint', 'apply'].includes(command),
@@ -244,8 +270,12 @@ function run() {
   const root = values['package-root'];
   requireThat(isAbsolute(root ?? ''), 'Use an absolute package root');
   const file = join(root, manifestPath);
-  const manifest = JSON.parse(verifiedSql(readFileSync(file), manifestSha, 'release manifest'));
-  requireThat(manifest.release === release, 'Unexpected release manifest');
+  const expectedManifest = values['manifest-sha256'] ?? historicalManifestSha;
+  requireThat(hex.test(expectedManifest), 'Use a reviewed SHA-256 for --manifest-sha256');
+  const manifest = JSON.parse(verifiedSql(readFileSync(file), expectedManifest, 'release manifest'));
+  const release = manifest.release;
+  requireThat(/^hastabazaar-release-[a-z0-9][a-z0-9-]*$/.test(release) &&
+    (expectedManifest !== historicalManifestSha || release === historicalRelease), 'Unexpected release manifest');
   if (command === 'report') {
     const client = makeClient(credentials, target, database);
     const approvedTarget = identity(client, database);
@@ -297,7 +327,15 @@ function run() {
         client(Buffer.concat([Buffer.from(start + guardSession(expectedTarget)), Buffer.from(step.sql),
           Buffer.from(end)]), step.id);
       },
-      verify: step => {
+      capture: step => step.id === '139a' ? convergenceData(client, approval.target) : undefined,
+      verify: (step, originalValues) => {
+        if (step.id === '139a') {
+          const current = convergenceData(client, approval.target);
+          for (const [column, original] of Object.entries(originalValues)) {
+            requireThat(current[column] === original, 'Original column values differ at ' + column);
+            record({ event: 'column-check', id: step.id, column, mismatches: 0 });
+          }
+        }
         const sql = upgradeCheckpoints[step.id];
         if (!sql) return;
         const mismatches = readOnTarget(client, approval.target, sql);

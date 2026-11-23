@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {buildCheckParity} from '../lib/operations/check-parity.mjs';
-import {readFile} from 'node:fs/promises';
+import {mkdtemp,readFile,rm} from 'node:fs/promises';
+import {execFileSync} from 'node:child_process';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import {sqlStatements} from '../scripts/testing/verify-current-native.mjs';
 import {splitFixtureSql} from '../scripts/portable-mariadb-fixture.mjs';
@@ -34,7 +38,18 @@ void test('reviewed full contract regenerates exactly and appends one compound b
  assert.ok(contract.checks.every(c=>c.nativeClause&&c.sources.length));
  const sources=Object.fromEntries(await Promise.all(Object.keys(contract.sources).map(async path=>[path,await readFile(new URL(path,root),'utf8')])));
  const sql=buildCheckParity(contract,sources);assert.equal(sql,await readFile(new URL('deployment/babal/mariadb-check-parity.sql',root),'utf8'));
- const prefix=await readFile(new URL('.test-artifacts/t35/complete-bootstrap-candidate-20261105-v2/mariadb-schema.sql',root),'utf8');
- assert.equal(createHash('sha256').update(prefix).digest('hex'),contract.prefixSha256);
- for(const parse of [sqlStatements,splitFixtureSql]){assert.equal(parse(sql).length,1);assert.equal(parse(prefix+'\n'+sql).length,1780);assert.deepEqual(parse(prefix+'\n'+sql).slice(0,-1),parse(prefix));}
+ const output=await mkdtemp(join(tmpdir(),'hb-check-parity-source-'));
+ try {
+  execFileSync(process.execPath,[fileURLToPath(new URL('scripts/generate-mariadb-schema.mjs',root)),'--output-directory='+output]);
+  const generated=await readFile(join(output,'mariadb-schema.sql'),'utf8');
+  const boundary=generated.indexOf('\n'+sql+'\n');
+  assert.ok(boundary>0);
+  const prefix=generated.slice(0,boundary);
+  assert.equal(createHash('sha256').update(prefix).digest('hex'),contract.prefixSha256);
+  for(const parse of [sqlStatements,splitFixtureSql]){
+   assert.equal(parse(sql).length,1);
+   assert.equal(parse(prefix+'\n'+sql).length,1781);
+   assert.deepEqual(parse(prefix+'\n'+sql).slice(0,-1),parse(prefix));
+  }
+ } finally {await rm(output,{recursive:true,force:true});}
 });
