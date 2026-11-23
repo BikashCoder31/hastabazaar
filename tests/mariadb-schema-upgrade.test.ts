@@ -14,6 +14,13 @@ const steps = [
 ];
 type MigrationStep = { id: string; checkpoint?: boolean };
 
+void test('profile media keeps its seller foreign-key index while the replacement is installed', () => {
+  const sql = readFileSync(new URL('../deployment/babal/mariadb-public-profile-revisions.sql', import.meta.url), 'utf8');
+  const replacement = sql.indexOf('CREATE INDEX seller_profile_media_history ON seller_profile_media(seller_id,kind,uploaded_at,id)');
+  const oldIndex = sql.indexOf('DROP INDEX idx_seller_profile_media_kind ON seller_profile_media');
+  assert.ok(replacement >= 0 && oldIndex > replacement, 'Create the seller_id index before dropping the old key');
+});
+
 function exercise(options: { fail?: boolean; mismatch?: boolean; failVerify?: boolean;
   expectedTarget?: string; hosted?: boolean } = {}) {
   const writes: string[] = [];

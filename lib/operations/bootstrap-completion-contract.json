@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "prefixSha256": "dd751ebe5fe7b0894a96c49646c7d8e413da31137add3dffea3c4461874a18b8",
+  "prefixSha256": "3baa8bc6291c93b2b224138a5d1ccb842430a14dcf43d416f3bc56ddc3219270",
   "reference": {
     "sources": {
       "deployment/babal/mariadb-referrals-wallet.sql": "fb5e1292ed5a9b8e999e47b3e9e028413b8be125f6e76b3ced7b857a239dcc50",

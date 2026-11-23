@@ -116,9 +116,10 @@ INSERT INTO seller_public_profile_states(seller_id,current_json,display_name,pub
 
 CREATE UNIQUE INDEX public_profile_revision_history ON seller_public_profile_revisions(seller_id,sequence);
 
-DROP INDEX idx_seller_profile_media_kind ON seller_profile_media;
-
+-- The retained seller foreign key uses the old index until this one exists.
 CREATE INDEX seller_profile_media_history ON seller_profile_media(seller_id,kind,uploaded_at,id);
+
+DROP INDEX idx_seller_profile_media_kind ON seller_profile_media;
 
 ALTER TABLE seller_public_profile_revisions ADD COLUMN active_normal_seller VARCHAR(191) GENERATED ALWAYS AS (CASE WHEN kind='normal' AND status IN ('submitted','approved') THEN seller_id ELSE NULL END) PERSISTENT,
  ADD UNIQUE KEY public_profile_one_normal_candidate(active_normal_seller);
