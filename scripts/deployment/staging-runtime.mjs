@@ -17,6 +17,7 @@ const qa = {
 };
 const recipients = ['qa-staging', 'qa-staging+buyer', 'qa-staging+seller', 'qa-staging+maker',
   'qa-staging+rider', 'qa-staging+admin', 'qa-staging+superadmin'].map((name) => `${name}@hastabazaar.com`);
+const senderBindings = ['ORDER_EMAIL_JOB_SECRET', 'EMAIL_AUTOMATION_EXPECTED_SINCE'];
 
 export function assertStagingRuntime(runtime) {
   for (const [key, value] of Object.entries(fixed)) assert.equal(runtime[key], value, `Invalid staging ${key}.`);
@@ -28,10 +29,17 @@ export function assertStagingRuntime(runtime) {
   assert.ok(['false', 'true'].includes(runtime.EMAIL_DELIVERY_CONFIGURED), 'Invalid staging email mode.');
   const enabled = runtime.EMAIL_DELIVERY_CONFIGURED === 'true';
   const allowed = new Set([...Object.keys(fixed), 'DB_PASSWORD', 'EMAIL_DELIVERY_CONFIGURED', 'HASTABAZAAR_SECURITY_KEY',
-    ...(enabled ? [...Object.keys(qa), 'SMTP_PASSWORD', 'SMTP_RECIPIENT_ALLOWLIST'] : [])]);
+    ...(enabled ? [...Object.keys(qa), 'SMTP_PASSWORD', 'SMTP_RECIPIENT_ALLOWLIST', ...senderBindings] : [])]);
   assert.ok(Object.keys(runtime).every((key) => allowed.has(key)), 'Unapproved staging runtime binding.');
   if (!enabled) return;
   for (const [key, value] of Object.entries(qa)) assert.equal(runtime[key], value, `Invalid QA ${key}.`);
   assert.ok(typeof runtime.SMTP_PASSWORD === 'string' && runtime.SMTP_PASSWORD.length >= 16, 'QA mailbox password is missing.');
   assert.deepEqual(JSON.parse(runtime.SMTP_RECIPIENT_ALLOWLIST), recipients, 'Staging email recipients must be exactly the approved QA addresses.');
+  if (!senderBindings.some(binding => Object.hasOwn(runtime, binding))) return;
+  assert.ok(senderBindings.every(binding => Object.hasOwn(runtime, binding)), 'Both staging email sender settings are required.');
+  const secret = runtime.ORDER_EMAIL_JOB_SECRET;
+  assert.ok(typeof secret === 'string' && /^[A-Za-z0-9_-]{32,512}$/.test(secret), 'Invalid staging email sender secret.');
+  const expectedSince = runtime.EMAIL_AUTOMATION_EXPECTED_SINCE;
+  const timestamp = typeof expectedSince === 'string' && /^\d+$/.test(expectedSince) ? Number(expectedSince) : NaN;
+  assert.ok(Number.isSafeInteger(timestamp) && timestamp > 0 && timestamp <= Date.now(), 'Invalid staging email sender enablement time.');
 }

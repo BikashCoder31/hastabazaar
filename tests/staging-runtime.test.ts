@@ -32,6 +32,38 @@ void test('staging deployment accepts disabled email or the complete fixed QA ma
   assert.doesNotThrow(() => validate(email));
 });
 
+const sender = {
+  ORDER_EMAIL_JOB_SECRET: Buffer.alloc(32, 37).toString('base64url'),
+  EMAIL_AUTOMATION_EXPECTED_SINCE: '1700000000000',
+};
+
+void test('staging deployment accepts the sender settings with the exact QA mail configuration', async () => {
+  const validate = await policy();
+  assert.doesNotThrow(() => validate({ ...email, ...sender }));
+  assert.throws(() => validate({ ...base, ...sender }), /Unapproved staging runtime binding/);
+  assert.throws(() => validate({ ...email, ...sender, EMAIL_WATCHDOG_SECRET: 'fictional-watchdog-secret' }),
+    /Unapproved staging runtime binding/);
+});
+
+void test('staging deployment requires both sender settings and safe formats without printing their values', async () => {
+  const validate = await policy();
+  assert.throws(() => validate({ ...email, ORDER_EMAIL_JOB_SECRET: sender.ORDER_EMAIL_JOB_SECRET }),
+    /Both staging email sender settings are required/);
+  assert.throws(() => validate({ ...email, EMAIL_AUTOMATION_EXPECTED_SINCE: sender.EMAIL_AUTOMATION_EXPECTED_SINCE }),
+    /Both staging email sender settings are required/);
+  for (const value of ['', 5, 'x'.repeat(31), 'x'.repeat(513), `${sender.ORDER_EMAIL_JOB_SECRET}\n`, 'fictional invalid secret with spaces']) {
+    assert.throws(() => validate({ ...email, ...sender, ORDER_EMAIL_JOB_SECRET: value }), error => {
+      assert.ok(error instanceof Error);
+      assert.equal(error.message, 'Invalid staging email sender secret.');
+      return true;
+    });
+  }
+  for (const value of ['', '0', '-1', '1e3', '2026-11-24', 1700000000000, '9007199254740992', String(Date.now() + 60_000)]) {
+    assert.throws(() => validate({ ...email, ...sender, EMAIL_AUTOMATION_EXPECTED_SINCE: value }),
+      { message: 'Invalid staging email sender enablement time.' });
+  }
+});
+
 void test('staging deployment rejects changed database, origin, media and local-testing bindings', async () => {
   const validate = await policy();
   for (const [key, value] of Object.entries({ DB_NAME: 'hastabaz_live', DB_USER: 'hastabaz_liveapp',

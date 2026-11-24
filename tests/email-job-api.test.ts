@@ -16,10 +16,14 @@ void test('actual scheduled endpoint runs both workers without a signed-in staff
   globalThis.emailJobBindings={DB:f.database,APP_ORIGIN:'http://localhost:3018',HASTABAZAAR_RUNTIME_ENV:'test',ORDER_EMAIL_JOB_SECRET:workerSecret,EMAIL_WATCHDOG_SECRET:watchdogSecret,EMAIL_AUTOMATION_EXPECTED_SINCE:String(realClock()-1000),EMAIL:{configured:true,transport:'capture',transportKey:'fictional-capture',configurationFingerprint:'fictional-configuration',handoffAware:true,send:async(_message:unknown,context:{beforeHandoff():Promise<void>})=>{await context.beforeHandoff();sends++;return {outcome:'captured',transport:'capture',receipt:'fictional-only'};},probe:async()=>{probes++;return {available:true,transport:'capture'};}}};
   const worker=await import('../app/api/jobs/order-emails/route'),watchdog=await import('../app/api/jobs/email-health/route');
   const request=(path:string,secret?:string)=>new Request('http://localhost:3018/api/jobs/'+path,{method:'POST',headers:secret?{authorization:'Bearer '+secret}:{}});
+  const missingCredential = await worker.POST(request('order-emails'));
+  assert.equal(missingCredential.status,401);
+  assert.deepEqual(await missingCredential.json(), {error:'Unauthorized'});
   assert.equal((await worker.POST(request('order-emails?secret='+workerSecret))).status,401);
   assert.equal((await worker.POST(request('order-emails',watchdogSecret))).status,401);
   assert.equal((await watchdog.POST(request('email-health',workerSecret))).status,401);
   assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM service_health_observations').get()!.n,0);
+  assert.equal(probes+sends,0);
   const response=await worker.POST(request('order-emails',workerSecret));
   assert.equal(response.status,200,await response.clone().text());
   const result=await response.json() as {environment:string;observedAt:number;healthRecorded:boolean;sender:{functionalVerified:boolean}};
