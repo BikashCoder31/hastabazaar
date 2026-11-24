@@ -169,10 +169,11 @@ void test('Linux CI packager remains unavailable on a non-Linux platform', { ski
   assert.match(result.stderr, /must be built on Linux x64/);
 });
 
-void test('hosted Vite config compiles readiness and form health from the selected manifest without rewriting public JSON', async () => {
+void test('hosted Vite config compiles readiness and health evidence from the selected manifest without rewriting public JSON', async () => {
   const root = await fixture();
   const previousTarget = process.env.DEPLOY_TARGET;
   const previousManifest = process.env.HASTABAZAAR_BUILD_RELEASE_MANIFEST;
+  const previousRelease = process.env.HASTABAZAAR_RELEASE_ID;
   try {
     const publicPath = join(repository, manifestPath);
     const historical = await readFile(publicPath, 'utf8');
@@ -185,7 +186,7 @@ void test('hosted Vite config compiles readiness and form health from the select
     process.env.DEPLOY_TARGET = 'babal';
     process.env.HASTABAZAAR_BUILD_RELEASE_MANIFEST = selectedPath;
     // Exercise the plugin selected by the actual hosted Vite configuration,
-    // but compile only these pure consumers. No vinext app build or server.
+    // but compile only the relevant modules. No vinext app build or server.
     const factory = (await import('../vite.config')).default;
     assert.equal(typeof factory, 'function');
     const configuration = await factory({ command: 'build', mode: 'production' });
@@ -196,8 +197,10 @@ void test('hosted Vite config compiles readiness and form health from the select
     await writeFile(entry, `
 import {releaseId} from ${JSON.stringify(join(repository, 'lib/operations/readiness.ts').replaceAll('\\', '/'))};
 import {formHealthRuntimeScope} from ${JSON.stringify(join(repository, 'lib/operations/form-health.ts').replaceAll('\\', '/'))};
+import {env} from ${JSON.stringify(join(repository, 'lib/runtime/node-bindings.ts').replaceAll('\\', '/'))};
 import manifest from ${JSON.stringify(publicPath.replaceAll('\\', '/'))};
 export const proof = {releaseId, formHealthRelease:formHealthRuntimeScope({},0).releaseId, schemaHash:manifest.migrations[0].sha256, tables:manifest.requiredTables};
+export const runtimeRelease = () => env.HASTABAZAAR_RELEASE_ID;
 `);
     await build({ configFile: false, envDir: false, root, publicDir: false, plugins, logLevel: 'silent', resolve: { alias: { '@': repository } },
       build: { ssr: entry, outDir: join(root, 'compiled'), minify: false,
@@ -206,12 +209,17 @@ export const proof = {releaseId, formHealthRelease:formHealthRuntimeScope({},0).
     const compiled = await import(pathToFileURL(join(root, 'compiled/proof.mjs')).href);
     assert.equal(compiled.proof.releaseId, release);
     assert.equal(compiled.proof.formHealthRelease, release);
+    delete process.env.HASTABAZAAR_RELEASE_ID;
+    assert.equal(compiled.runtimeRelease(), release);
+    process.env.HASTABAZAAR_RELEASE_ID = 'previous-hosted-release';
+    assert.equal(compiled.runtimeRelease(), release);
     assert.equal(compiled.proof.schemaHash, 'a'.repeat(64));
     assert.deepEqual(compiled.proof.tables, { selected_compiled_table: ['id', 'proof'] });
     assert.equal(await readFile(publicPath, 'utf8'), historical);
   } finally {
     if (previousTarget === undefined) delete process.env.DEPLOY_TARGET; else process.env.DEPLOY_TARGET = previousTarget;
     if (previousManifest === undefined) delete process.env.HASTABAZAAR_BUILD_RELEASE_MANIFEST; else process.env.HASTABAZAAR_BUILD_RELEASE_MANIFEST = previousManifest;
+    if (previousRelease === undefined) delete process.env.HASTABAZAAR_RELEASE_ID; else process.env.HASTABAZAAR_RELEASE_ID = previousRelease;
     await cleanup(root);
   }
 });

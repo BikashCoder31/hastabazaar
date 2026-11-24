@@ -7,6 +7,7 @@ import { Readable } from 'node:stream';
 import { connect as connectTls, type TLSSocket } from 'node:tls';
 import { createHostedSecurityPolicy } from '../security/hosted-policy';
 import { DeliveryObsolete, MailDeliveryError, type DeliveryContext, type MailDeliveryReceipt } from '../email/delivery-attempts';
+import releaseManifest from '../../deployment/babal/release-manifest.json';
 
 import mysql, {
   type Pool,
@@ -910,7 +911,8 @@ export const env = {
     return process.env.EMAIL_WATCHDOG_SECRET;
   },
   get HASTABAZAAR_RELEASE_ID() {
-    return process.env.HASTABAZAAR_RELEASE_ID;
+    // The hosted build selects the same manifest used by /health.
+    return releaseManifest.release;
   },
   get SYSTEM_HEALTH_JOB_SECRET() {
     return process.env.SYSTEM_HEALTH_JOB_SECRET;

@@ -18,8 +18,22 @@ export async function readCommercialOutcome(db:D1Database,actor:{id:string;authS
   if(row){if(row.actorId!==actor.id||row.authSubject!==actor.authSubject)throw new CommercialOutcomeError('This action belongs to its original actor.');if(row.requestId!==attempt)throw new CommercialOutcomeError('Use the exact original reference.',409);const result=JSON.parse(row.response) as {id?:unknown};if(typeof result.id!=='string'||!result.id||result.id.length>191||!await db.prepare('SELECT 1 FROM customer_fee_waiver_campaigns WHERE id=?').bind(result.id).first())throw new CommercialOutcomeError('The original source requires reconciliation.',409);outcome={sourceId:result.id,action:'customer.service-fee-waiver',recordedAt:row.recordedAt};}
  }else if(kind==='common-fee'){
   const rows=await db.prepare(`SELECT request_id AS requestId,actor_id AS actorId,action,created_at AS recordedAt,command_result_json AS response
-   FROM audit_logs WHERE request_id=? AND HEX(request_id)=HEX(?) AND command_key IS NOT NULL AND action IN('commission.common.published','commission.common.cancelled') LIMIT 2`).bind(attempt,attempt).all<{requestId:string;actorId:string;action:string;recordedAt:number;response:string}>();
-  if(rows.results.length){const row=rows.results[0];if(rows.results.length!==1||row.actorId!==actor.id)throw new CommercialOutcomeError('This action belongs to its original actor.');if(row.requestId!==attempt)throw new CommercialOutcomeError('Use the exact original reference.',409);const result=JSON.parse(row.response) as {id?:unknown};if(typeof result.id!=='string'||!result.id||result.id.length>191||!await db.prepare('SELECT 1 FROM commission_common_policies WHERE id=?').bind(result.id).first())throw new CommercialOutcomeError('The original common policy requires reconciliation.',409);outcome={sourceId:result.id,action:row.action,recordedAt:row.recordedAt};}
+   FROM audit_logs WHERE request_id=? AND HEX(request_id)=HEX(?) AND command_key IS NOT NULL AND action IN('commission.common.published','commission.common.cancelled','commission.common.initialized') LIMIT 2`).bind(attempt,attempt).all<{requestId:string;actorId:string;action:string;recordedAt:number;response:string}>();
+  if(rows.results.length){
+   const row=rows.results[0];
+   if(rows.results.length!==1||row.actorId!==actor.id)throw new CommercialOutcomeError('This action belongs to its original actor.');
+   if(row.requestId!==attempt)throw new CommercialOutcomeError('Use the exact original reference.',409);
+   const result=JSON.parse(row.response) as {id?:unknown;managedSettingId?:unknown};
+   if(typeof result.id!=='string'||!result.id||result.id.length>191)throw new CommercialOutcomeError('The original common policy requires reconciliation.',409);
+   const source=row.action==='commission.common.initialized'
+    ? typeof result.managedSettingId==='string'&&await db.prepare(`SELECT 1 FROM business_setting_versions registered JOIN business_setting_versions managed
+      ON managed.id=? AND managed.setting_key='managed_sale_linked_platform_retention_bps'
+      WHERE registered.id=? AND registered.setting_key='independent_seller_commission_bps'
+      AND registered.published_at=? AND managed.published_at=?`).bind(result.managedSettingId,result.id,row.recordedAt,row.recordedAt).first()
+    : await db.prepare('SELECT 1 FROM commission_common_policies WHERE id=?').bind(result.id).first();
+   if(!source)throw new CommercialOutcomeError('The original common policy requires reconciliation.',409);
+   outcome={sourceId:result.id,action:row.action,recordedAt:row.recordedAt};
+  }
  }else if(kind==='business-setting'){
   const rows=await db.prepare(`SELECT l.actor_id AS actorId,l.action,l.created_at AS recordedAt,l.subject_id AS sourceId,v.setting_key AS settingKey,
    a.actor_id AS answerActor,a.subject_id AS answerSource,a.form_id AS answerForm,a.subject_type AS answerType FROM audit_logs l LEFT JOIN business_setting_versions v ON v.id=l.subject_id

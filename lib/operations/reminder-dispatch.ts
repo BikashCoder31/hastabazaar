@@ -102,7 +102,7 @@ export async function processReminderDispatch(db:D1Database,options:ReminderDisp
     try{const access=await reconcileStaffAccessCoverage(db,{now,limit:1,deadlineMs:deadline});result.scanned+=access.scanned;if(access.failures)result.failures.push({family,sourceId:null,code:'coverage_reconciliation_failed'});if(!access.scanned||access.budgetExhausted)exhausted.add(family);}
     catch{result.failures.push({family,sourceId:null,code:'coverage_reconciliation_failed'});exhausted.add(family);}
    }else if(family==='terms'){
-    try{const terms=await processFeeTermsScan(db,now,1);result.scanned+=terms.scanned;result.cursor.terms=terms.cursor;for(const failure of terms.failures)result.failures.push({family,sourceId:failure.sellerId,code:'source_requires_review'});if(!terms.scanned||terms.cursor==='')exhausted.add(family);}
+    try{const terms=await processFeeTermsScan(db,now,1);result.scanned+=terms.scanned;result.cursor.terms=terms.cursor;for(const failure of terms.failures)result.failures.push({family,sourceId:failure.sellerId,code:failure.code});if(!terms.scanned||terms.cursor==='')exhausted.add(family);}
     catch{result.failures.push({family,sourceId:null,code:'source_scan_failed'});exhausted.add(family);}
    }else{
     await db.prepare('INSERT OR IGNORE INTO operational_reminder_cursors(family) VALUES(?)').bind(family).run();

@@ -50,3 +50,13 @@ Use the Messages M1 setup after the staging runtime and the exact email-job rout
 ```cron
 * * * * * /usr/bin/env PATH=/usr/local/bin:/usr/bin:/bin /ABSOLUTE/PATH/TO/NODE --env-file=/home2/hastabaz/hastabazaar-email/staging/sender.env /home2/hastabaz/hastabazaar-email/staging/run-email-automation.mjs --config /home2/hastabaz/hastabazaar-email/staging/sender.json --execute >> /home2/hastabaz/hastabazaar-email/staging/sender.jsonl 2>&1
 ```
+
+#### Staging sender test on 25 November 2026
+
+- Basic Auth was restored and verified with an unauthenticated `401`. The original staging cron remains installed. The authenticated `/health` check returned `200` for `hastabazaar-release-ci-45425030462-2`.
+- During the test window, the worker that retained its old environment lacked the sender settings. The refreshed worker loaded both. The hosted observations recorded two functional sender checks and two failed reminder checks. All four lacked a release ID. Inbox delivery has yet to be verified.
+- On a disposable copy of the verified staging backup, three reminder runs reproduced the failure in the seller fee scan. The backup had zero version rows for the independent seller commission and managed-maker retention settings. The scan failed when it needed the current independent seller rate. A fresh reviewed MariaDB fixture completed the scan successfully.
+- The local fix derives the runtime release ID from the packaged manifest and reports a missing commission rate as a configuration problem. The evaluator still reports failure while the rate is unavailable, and queued email retains its separate delivery outcome.
+- The read-only hosted check found zero saved versions for either selling rate and the marketplace fee. The fee therefore used its NPR 10 On default at the time of the check. The owner will save it as Off, keeping NPR 10 as the amount for later.
+- Once the combined release is live, open **Settings → Business settings → Seller commission** as Super Admin. Enter both matching percentages and a reason, review them, and publish. If prompted, verify the password and authenticator in a new tab and return to the reviewed rates. The first two versions go into effect together and the setup disappears. An existing publication blocks this action. Seller acceptance is still required, and later changes follow the normal notice period.
+- Before another QA window, confirm both current rates and the fee setting in staging, and verify that all staging workers have the same settings and release. Once the corrected release returns fresh sender and evaluator evidence, use one QA order to verify inbox delivery. Restore Basic Auth at the end of the window.

@@ -65,7 +65,9 @@ export function EmailDeliveryHealth({
                 {labels[service.state] ?? 'Unknown'}
               </p>
               <p className="mt-1 text-sm leading-6">
-                {reasons[service.reason] ?? 'Review the recorded observation.'}
+                {service.serviceKey === 'email.evaluator' && service.reason === 'configuration_correction'
+                  ? 'Seller fee reminders need an effective published commission rate. Review the selling fees in Business settings.'
+                  : reasons[service.reason] ?? 'Review the recorded observation.'}
               </p>
               <dl className="mt-3 space-y-2 text-sm">
                 <div>

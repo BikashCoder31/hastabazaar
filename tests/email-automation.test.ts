@@ -44,6 +44,24 @@ void test('scheduled tick sends saved work despite evaluator failure and records
   assert.equal((await readServiceHealth(f.db,{environment:'test',serviceKey:'email.evaluator',expectedSince:now-1000,now})).state,'degraded');
  }finally{f.sqlite.close();}
 });
+void test('scheduled tick reports missing commission as evaluator configuration while keeping sender evidence independent', async () => {
+ const f = serviceHealthFixture();
+ try {
+  const now = 1_800_000;
+  const result = await runEmailAutomation(f.db, { environment: 'test', expectedSince: now - 1000 }, {
+   clock: () => now,
+   evaluate: async () => ({ scanned: 1, created: 0, cancelled: 0, failures: [{ code: 'commission_rate_unavailable', sourceId: 'private-fixture-source' }] }),
+   send: async () => ({ ...empty, processed: 1, business: { accepted: 1, failed: 0, cancelled: 0 } }),
+   queueSnapshot: async () => ({ eligibleBacklog: 0, oldestEligibleAt: null, backoffCategory: null }),
+   transitions: async () => [],
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.reminders.failed, true);
+  assert.equal(result.sender.functionalVerified, true);
+  assert.doesNotMatch(JSON.stringify(result), /private-fixture-source/);
+  assert.equal(f.sqlite.prepare("SELECT failure_category FROM service_health_observations WHERE service_key='email.evaluator'").get()?.failure_category, 'configuration');
+ } finally { f.sqlite.close(); }
+});
 void test('empty ticks require a genuine transport probe and valid backoff prevents probing',async()=>{
  const f=serviceHealthFixture();try{
   let now=1_800_000,probes=0,blocked=false;
