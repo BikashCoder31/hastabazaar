@@ -83,6 +83,23 @@ void test('staging selector never accepts changed domain, startup or environment
   }
 });
 
+void test('staging selector matches the approved sender settings without exposing a mismatched value', async () => {
+  const validate = await validator();
+  const state = fixture();
+  const approved = {
+    ...runtime,
+    ORDER_EMAIL_JOB_SECRET: 'fictional-staging-email-secret-0123456789',
+    EMAIL_AUTOMATION_EXPECTED_SINCE: '1795000000000',
+  };
+  app(state).env_vars = { ...approved };
+  assert.equal(validate(state, '22.23.3', approved), app(state));
+  assert.throws(() => validate(state, '22.23.3', runtime), { message: 'Passenger environment differs from approved staging bindings.' });
+  environment(state).ORDER_EMAIL_JOB_SECRET = 'fictional-unapproved-secret-0123456789';
+  assert.throws(() => validate(state, '22.23.3', approved), { message: 'Passenger environment differs from approved staging bindings.' });
+  app(state).env_vars = { ...approved, EMAIL_AUTOMATION_EXPECTED_SINCE: '1795000000001' };
+  assert.throws(() => validate(state, '22.23.3', approved), { message: 'Passenger environment differs from approved staging bindings.' });
+});
+
 void test('staging selector rejects ambiguous staging applications across versions instead of selecting a first match', async () => {
   const validate = await validator();
   const state = fixture();
