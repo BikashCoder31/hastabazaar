@@ -8,12 +8,13 @@ import { promisify } from 'node:util';
 import { extractStagingArchive } from './staging-archive.mjs';
 import { assertStagingCommand, receiveStagingPayload } from './staging-protocol.mjs';
 import { verifyRelease } from '../release-files.mjs';
-import { guardedStagingSwitch } from './staging-switch.mjs';
+import { createStagingPhaseTimer, guardedStagingSwitch } from './staging-switch.mjs';
 import { captureStagingWorkers, stopCapturedStagingWorkers } from './staging-workers.mjs';
 import { assertStagingRuntime } from './staging-runtime.mjs';
 import { assertStagingSelectorConfiguration } from './staging-selector.mjs';
 
 const execute = promisify(execFile);
+const timePhase = createStagingPhaseTimer((entry) => console.error(JSON.stringify(entry)));
 const home = '/home2/hastabaz';
 const tools = `${home}/.hastabazaar-deployment`;
 const application = `${home}/hastabazaar-staging-app`;
@@ -71,36 +72,41 @@ async function health(release) {
 }
 
 try {
-  const runtime = JSON.parse(await readFile(`${tools}/runtime.json`, 'utf8'));
-  assertStagingRuntime(runtime);
-  const { stdout } = await execute('/usr/sbin/cloudlinux-selector', ['get', '--json', '--interpreter', 'nodejs'], { timeout: 30_000, signal });
-  assertStagingSelectorConfiguration(JSON.parse(stdout), process.versions.node, runtime);
-  const production = await fetch('https://hastabazaar.com/health', { signal: AbortSignal.timeout(10_000), redirect: 'error' }).then((response) => response.json());
-  assert.equal(production.marketplaceReady, true, 'Production must be healthy before staging deployment.');
+  const production = await timePhase('preflight', async () => {
+    const runtime = JSON.parse(await readFile(`${tools}/runtime.json`, 'utf8'));
+    assertStagingRuntime(runtime);
+    const { stdout } = await execute('/usr/sbin/cloudlinux-selector', ['get', '--json', '--interpreter', 'nodejs'], { timeout: 30_000, signal });
+    assertStagingSelectorConfiguration(JSON.parse(stdout), process.versions.node, runtime);
+    const health = await fetch('https://hastabazaar.com/health', { signal: AbortSignal.timeout(10_000), redirect: 'error' }).then((response) => response.json());
+    assert.equal(health.marketplaceReady, true, 'Production must be healthy before staging deployment.');
+    return health;
+  });
   signal.throwIfAborted();
   incoming = `${releases}/incoming-${randomUUID()}`;
   await mkdir(incoming, { mode: 0o700 });
   incomingOwned = true;
   const archive = `${incoming}/release.tar.gz`;
-  const identity = await receiveStagingPayload(process.stdin, archive, signal);
+  const identity = await timePhase('upload', () => receiveStagingPayload(process.stdin, archive, signal));
   const candidate = `${incoming}/application`;
   await mkdir(candidate, { mode: 0o700 });
-  await extractStagingArchive(archive, candidate, identity.files);
+  await timePhase('extract', () => extractStagingArchive(archive, candidate, identity.files));
   signal.throwIfAborted();
-  const manifest = JSON.parse(await readFile(`${candidate}/deployment/babal/release-manifest.json`, 'utf8'));
-  assert.equal(manifest.release, identity.release);
-  await verifyRelease(candidate, identity.files, manifest.migrations.map((migration) => migration.path));
   const target = `${releases}/${identity.release}`;
-  let exists = false;
-  try { await lstat(target); exists = true; } catch (error) { if (error.code !== 'ENOENT') throw error; }
-  if (exists) {
-    assert.equal(await realpath(target), target, 'Existing staging artifact must not redirect.');
-    await verifyRelease(target, identity.files, manifest.migrations.map((migration) => migration.path));
-  } else {
-    await rename(candidate, target);
-  }
-  await appendFile(`${tools}/history.jsonl`, JSON.stringify({ event: 'verified', release: identity.release, commit: identity.commit,
-    sha256: identity.archiveSha256, time: new Date().toISOString() }) + '\n', { mode: 0o600 });
+  await timePhase('verify_artifact', async () => {
+    const manifest = JSON.parse(await readFile(`${candidate}/deployment/babal/release-manifest.json`, 'utf8'));
+    assert.equal(manifest.release, identity.release);
+    await verifyRelease(candidate, identity.files, manifest.migrations.map((migration) => migration.path));
+    let exists = false;
+    try { await lstat(target); exists = true; } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    if (exists) {
+      assert.equal(await realpath(target), target, 'Existing staging artifact must not redirect.');
+      await verifyRelease(target, identity.files, manifest.migrations.map((migration) => migration.path));
+    } else {
+      await rename(candidate, target);
+    }
+    await appendFile(`${tools}/history.jsonl`, JSON.stringify({ event: 'verified', release: identity.release, commit: identity.commit,
+      sha256: identity.archiveSha256, time: new Date().toISOString() }) + '\n', { mode: 0o600 });
+  });
   try {
     const status = await lstat(current);
     assert.ok(status.isSymbolicLink(), 'Staging current target must be a link.');
@@ -110,15 +116,20 @@ try {
   } catch (error) { if (error.code !== 'ENOENT') throw error; }
   let after;
   await guardedStagingSwitch({
-    activate: () => activate(target),
+    activate: () => timePhase('activate', () => activate(target)),
     verify: async () => {
-      await restart(signal);
-      await health(identity.release);
-      after = await fetch('https://hastabazaar.com/health', { signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]), redirect: 'error' }).then((response) => response.json());
-      assert.equal(after.marketplaceReady, true);
-      assert.equal(after.release, production.release, 'Production release changed during staging deployment.');
+      await timePhase('restart', () => restart(signal));
+      await timePhase('readiness', () => health(identity.release));
+      await timePhase('production_release_check', async () => {
+        after = await fetch('https://hastabazaar.com/health', { signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]), redirect: 'error' }).then((response) => response.json());
+        assert.equal(after.marketplaceReady, true);
+        assert.equal(after.release, production.release, 'Production release changed during staging deployment.');
+      });
     },
-    rollback: async () => { if (previous) await activate(previous); else await unlink(current); await restart(); },
+    rollback: () => timePhase('rollback', async () => {
+      if (previous) await activate(previous); else await unlink(current);
+      await restart();
+    }),
   }, signal);
   await appendFile(`${tools}/history.jsonl`, JSON.stringify({ event: 'activated', release: identity.release, time: new Date().toISOString() }) + '\n');
   console.log(JSON.stringify({ staging: guard.origin, release: identity.release, commit: identity.commit,
@@ -131,7 +142,9 @@ try {
   process.removeListener('SIGTERM', terminate);
   process.removeListener('SIGINT', terminate);
   process.removeListener('SIGHUP', terminate);
-  try {
-    if (incomingOwned && await realpath(incoming) === incoming) await rm(incoming, { recursive: true });
-  } finally { await lock.close(); await unlink(lockPath); }
+  await timePhase('cleanup', async () => {
+    try {
+      if (incomingOwned && await realpath(incoming) === incoming) await rm(incoming, { recursive: true });
+    } finally { await lock.close(); await unlink(lockPath); }
+  });
 }
