@@ -5,7 +5,16 @@ import {staffMutationGuard} from '../db/repositories/staff-mutation-guard';
 import {commandReceipt,type CommandContext} from '../workflows/contracts';
 import {digestFormRequest} from '../forms/submission';
 import {operationalBusinessNotificationStatements} from '../operations/business-notifications';
+import {checkoutCommitClock} from '../checkout/commit-policy-guards';
+import {FRESH_PASSWORD_MS,type AccountSecurity,type SessionProof} from '../security/model';
+import type {SecuritySnapshot} from '../security/store';
 export const commonFeeKeys=['independent_seller_commission_bps','managed_sale_linked_platform_retention_bps'] as const;
+const initialFeeAction='commission.common.initialized';
+const noPriorPublication=`NOT EXISTS(SELECT 1 FROM business_setting_versions WHERE setting_key IN (?,?)
+  AND (status IN ('published','cancelled') OR published_at IS NOT NULL OR published_by IS NOT NULL))
+  AND NOT EXISTS(SELECT 1 FROM commission_rate_changes)
+  AND NOT EXISTS(SELECT 1 FROM commission_common_policies)
+  AND NOT EXISTS(SELECT 1 FROM audit_logs WHERE action IN ('commission.launch.initialized','${initialFeeAction}'))`;
 export class FeePolicyError extends Error{constructor(message:string,readonly status=409){super(message);}}
 class FeePermissionError extends FeePolicyError{constructor(message:string){super(message,403);}}
 type Source={id:string;key:string;version:number;value:string;revision:number;effectiveFrom:number;effectiveUntil:number|null;publishedAt:number|null};
@@ -23,8 +32,77 @@ export async function getCommonFeeState(db:D1Database,now:number){
  if(!registered||!managed)issues.push('Both actual current route settings are required; no rate is guessed.');if(registered&&managed&&(registered.value!==managed.value||registered.effectiveFrom!==managed.effectiveFrom))issues.push('The covered route rates or common start differ and require source reconciliation.');if(future.length>0&&(!upcoming||future.length!==2))issues.push('The future source versions do not form one reviewed common schedule.');if(upcoming&&future.some(row=>Number(row.value)!==upcoming.basisPoints||row.effectiveFrom!==upcoming.effectiveAt||row.publishedAt!==upcoming.publishedAt))issues.push('The future sources differ from the exact published common policy.');if(legacyFuture.length)issues.push('A separate legacy fee supplement requires reconciliation before a common publication.');
  const view=(row:Source|null)=>row?{versionId:row.id,basisPoints:Number(JSON.parse(row.value)),effectiveAt:row.effectiveFrom}:null;
  for(const row of rows)if(!/^\d+$/.test(row.value)||!Number.isInteger(Number(row.value))||Number(row.value)>10000)throw new FeePolicyError('A recorded fee value is invalid; staff must reconcile its source.',503);
- return {asOf:now,revision:control.revision,context:await digestFormRequest({rows,maximums,revision:control.revision,history,legacyFuture}),current:{registered:view(registered),managed:view(managed)},upcoming,issues,history,sources:rows,maximums,legacyFuture};
+ const initialPublicationAvailable=Boolean(await db.prepare('SELECT 1 WHERE '+noPriorPublication).bind(...commonFeeKeys).first());
+ return {asOf:now,revision:control.revision,context:await digestFormRequest({rows,maximums,revision:control.revision,history,legacyFuture,initialPublicationAvailable}),current:{registered:view(registered),managed:view(managed)},upcoming,issues,history,sources:rows,maximums,legacyFuture,initialPublicationAvailable};
 }
+
+type InitialFeeVerification={
+ authSubject:string;
+ sessionHash:string;
+ account:SecuritySnapshot<AccountSecurity>;
+ proof:SecuritySnapshot<SessionProof>;
+};
+
+/** Record the first effective pair using the ordinary version tables. Future schedules keep their own notice clock. */
+export async function publishInitialCommonFeePolicy(db:D1Database,ctx:CommandContext,input:{
+ expectedContext:string;registeredBasisPoints:number;managedBasisPoints:number;reason:string;
+},verification:InitialFeeVerification){
+ const authority=await staffMutationGuard(db,ctx.actorId,'commercial_policy.manage',FeePermissionError,'super_admin');
+ const reason=reasonText(input.reason);
+ const {registeredBasisPoints,managedBasisPoints}=input;
+ if(![registeredBasisPoints,managedBasisPoints].every(value=>Number.isInteger(value)&&value>=0&&value<=10000))
+  throw new FeePolicyError('Enter both rates from 0 to 100%, with up to two decimal places.',400);
+ if(registeredBasisPoints!==managedBasisPoints)
+  throw new FeePolicyError('Both routes use the same selling fee. Enter matching percentages.',400);
+
+ const source={action:initialFeeAction,subjectType:'commission_policy',subjectId:'initial',auditReason:reason};
+ const receipt=await commandReceipt(db,ctx,source,{...input,reason});
+ if(receipt.replayed)return receipt.result;
+ const state=await getCommonFeeState(db,ctx.now);
+ if(!state.initialPublicationAvailable)throw new FeePolicyError('Initial selling rates are already recorded or have a publication history.');
+ if(state.context!==input.expectedContext)throw new FeePolicyError('The policy sources changed. Review both rates again.');
+
+ const {authSubject,sessionHash,account,proof}=verification;
+ const clock=checkoutCommitClock(db);
+ const verifiedFrom=Math.max(proof.value.verifiedAt,proof.value.passwordVerifiedAt);
+ const verifiedUntil=Math.min(proof.value.verifiedAt,proof.value.passwordVerifiedAt)+FRESH_PASSWORD_MS;
+ const statements=[db.prepare("UPDATE commission_control SET revision=revision WHERE id='default'")];
+ if((db as D1Database&{dialect?:string}).dialect==='mariadb')statements.push(
+  db.prepare('SELECT id FROM users WHERE id=? FOR UPDATE').bind(ctx.actorId),
+  db.prepare('SELECT role FROM user_roles WHERE user_id=? FOR UPDATE').bind(ctx.actorId),
+  db.prepare('SELECT token_hash FROM user_sessions WHERE token_hash=? FOR UPDATE').bind(sessionHash),
+  db.prepare('SELECT `key` FROM marketplace_settings WHERE `key` IN (?,?) ORDER BY `key` FOR UPDATE').bind(account.key,proof.key),
+ );
+ statements.push(...authority.statements,...guard(db,`${noPriorPublication}
+  AND EXISTS(SELECT 1 FROM commission_control WHERE id='default' AND revision=?)
+  AND ${clock} BETWEEN ? AND ?
+  AND EXISTS(SELECT 1 FROM user_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND HEX(u.id)=HEX(?) AND HEX(u.auth_subject)=HEX(?) AND s.expires_at>${clock})
+  AND EXISTS(SELECT 1 FROM marketplace_settings WHERE \`key\`=? AND HEX(value)=HEX(?))
+  AND EXISTS(SELECT 1 FROM marketplace_settings WHERE \`key\`=? AND HEX(value)=HEX(?))`,
+ [...commonFeeKeys,state.revision,verifiedFrom,verifiedUntil,sessionHash,ctx.actorId,authSubject,account.key,account.raw,proof.key,proof.raw]));
+
+ const registeredSettingId=crypto.randomUUID(),managedSettingId=crypto.randomUUID();
+ for(const [index,key] of commonFeeKeys.entries()){
+  const version=(state.maximums.find(row=>row.key===key)?.version??0)+1;
+  statements.push(db.prepare(`INSERT INTO business_setting_versions(id,setting_key,version,value_json,status,revision,change_control,
+    effective_from,reason,created_by,created_at,published_by,published_at,last_request_id)
+    VALUES(?,?,?,?,'published',1,'controlled',?,?,?,?,?,?,?)`).bind(
+   index===0?registeredSettingId:managedSettingId,key,version,String(index===0?registeredBasisPoints:managedBasisPoints),
+   ctx.now,reason,ctx.actorId,ctx.now,ctx.actorId,ctx.now,ctx.requestId+':'+key,
+  ));
+ }
+ const result={id:registeredSettingId,registeredSettingId,managedSettingId,registeredBasisPoints,managedBasisPoints,effectiveAt:ctx.now};
+ statements.push(db.prepare("UPDATE commission_control SET revision=revision+1 WHERE id='default'"),receipt.insert(result));
+ try{await db.batch(statements);}catch(error){
+  const retry=await commandReceipt(db,ctx,source,{...input,reason});
+  if(retry.replayed)return retry.result;
+  if(/constraint|conflict|guard|duplicate/i.test(String(error)))
+   throw new FeePolicyError('Your verification or the fee history changed. Review the current settings and try again.');
+  throw new FeePolicyError('The outcome is uncertain. Retry the same reviewed publication.',503);
+ }
+ return result;
+}
+
 type FeeState=Awaited<ReturnType<typeof getCommonFeeState>>;
 function sourceGuards(db:D1Database,state:FeeState){const statements=[db.prepare("UPDATE commission_control SET revision=revision WHERE id='default'"),...guard(db,"EXISTS(SELECT 1 FROM commission_control WHERE id='default' AND revision=?) AND (SELECT COUNT(*) FROM business_setting_versions WHERE setting_key IN (?,?) AND status='published')=?",[state.revision,...commonFeeKeys,state.sources.length])];for(const row of state.sources)statements.push(db.prepare('UPDATE business_setting_versions SET revision=revision WHERE id=?').bind(row.id),...guard(db,"EXISTS(SELECT 1 FROM business_setting_versions WHERE id=? AND status='published' AND revision=? AND HEX(value_json)=HEX(?) AND effective_from=? AND (effective_until=? OR (effective_until IS NULL AND ? IS NULL)))",[row.id,row.revision,row.value,row.effectiveFrom,row.effectiveUntil,row.effectiveUntil]));return statements;}
 export async function publishCommonFeePolicy(db:D1Database,ctx:CommandContext,input:{expectedContext:string;basisPoints:number;effectiveAt:number;reason:string;replacesId:string|null}){

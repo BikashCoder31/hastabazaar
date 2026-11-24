@@ -3,6 +3,7 @@ import {readFile} from 'node:fs/promises';
 import test from 'node:test';
 import {historicalCommissionDatabase} from './helpers/commission-database';
 import {processFeeTermsScan} from '../lib/commission/terms-followup';
+import {getRegisteredSellerTerms} from '../lib/db/repositories/marketplace-settings';
 void test('fee scanner preserves its cursor across bounded pages using portable quoted SQL',async()=>{
  const f=await historicalCommissionDatabase(true);try{
  assert.ok(f.sqlite.prepare('PRAGMA database_list').all().every(row=>row.file===''));
@@ -15,4 +16,24 @@ void test('fee scanner preserves its cursor across bounded pages using portable 
  const exhausted=await processFeeTermsScan(db,now+2,1);assert.equal(exhausted.scanned,0);assert.equal(exhausted.cursor,'');assert.deepEqual(exhausted.failures,[]);
  const state=f.sqlite.prepare("SELECT `cursor`,revision FROM commission_terms_scan_state WHERE id='default'").get()!;assert.equal(state.cursor,'');assert.equal(state.revision,before+3);assert.equal(seen.length,6);
  }finally{await f.dispose();}
+});
+
+void test('fee scan identifies a missing published commission without creating consent or reminders', async () => {
+ const f = await historicalCommissionDatabase(true);
+ try {
+  const now = Date.UTC(2026, 10, 3);
+  const moveRate = f.sqlite.prepare("UPDATE business_setting_versions SET effective_from=? WHERE setting_key='independent_seller_commission_bps'");
+  moveRate.run(now + 86_400_000);
+  await assert.rejects(getRegisteredSellerTerms(f.database, now), /No effective published commission rate/);
+  const before = f.sqlite.prepare('SELECT COUNT(*) n FROM commission_terms_events').get();
+  const result = await processFeeTermsScan(f.database, now, 1);
+  assert.equal(result.scanned, 1);
+  assert.equal(result.failures.length, 1);
+  assert.equal(result.failures[0].code, 'commission_rate_unavailable');
+  assert.deepEqual(f.sqlite.prepare('SELECT COUNT(*) n FROM commission_terms_events').get(), before);
+  await assert.rejects(getRegisteredSellerTerms(f.database, now), /No effective published commission rate/);
+
+  moveRate.run(now);
+  assert.deepEqual((await processFeeTermsScan(f.database, now, 25)).failures, []);
+ } finally { await f.dispose(); }
 });

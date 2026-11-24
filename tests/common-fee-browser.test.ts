@@ -16,3 +16,81 @@ void test('real fee controls preserve an uncertain request and separate upcoming
   await page.getByRole('button',{name:'Switch fixture view',exact:true}).click();const future=page.locator('article').filter({has:page.getByRole('heading',{name:'Upcoming selling fee · 12%',exact:true})});await future.getByRole('checkbox').check();await future.getByRole('button',{name:'Accept upcoming terms',exact:true}).click();await future.getByText('Accepted for this version',{exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'Accept current terms',exact:true}).isVisible(),true);assert.equal(acceptances.length,1);assert.equal((acceptances[0] as {versionId:string}).versionId,'future');await page.setViewportSize({width:390,height:844});await page.screenshot({path:'output/complete-version/T14-fees-mobile.png',fullPage:true});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),true);assert.deepEqual(errors,[]);
  }finally{await browser.close();}
 });
+
+void test('initial fee editor starts blank, retains the reviewed values across verification and disappears after publication', async () => {
+  const state = feeView({ current: { registered: null, managed: null }, initialPublicationAvailable: true });
+  const savedState = feeView({ revision: 1, context: 'c'.repeat(64) });
+  const bundle = await build({
+    stdin: {
+      sourcefile: 'initial-fee-browser.tsx', resolveDir: process.cwd(), loader: 'tsx',
+      contents: `import React from 'react'; import {createRoot} from 'react-dom/client';
+        import {CommonFeePolicy} from './components/admin/common-fee-policy';
+        createRoot(document.getElementById('root')).render(
+          <main className="p-4"><CommonFeePolicy actorId="owner" embedded state={${JSON.stringify(state)}} /></main>);`,
+    },
+    bundle: true, write: false, platform: 'browser', format: 'iife', define: { 'process.env.NODE_ENV': '"production"' },
+    plugins: [{ name: 'initial-fee-router', setup(builder) {
+      stubFixtureLink(builder);
+      builder.onResolve({ filter: /^next\/navigation$/ }, args => ({ path: args.path, namespace: 'initial-fee-router' }));
+      builder.onLoad({ filter: /.*/, namespace: 'initial-fee-router' }, () => ({ loader: 'js', contents: 'export const useRouter=()=>({refresh(){}});' }));
+    } }],
+  });
+  const css = await postcss([tailwind()]).process(
+    (await readFile('app/globals.css', 'utf8')).replace("@import 'tailwindcss';",
+      "@import 'tailwindcss' source(none);\n@source '../components/admin/common-fee-policy.tsx';\n@source '../components/admin/commercial-recovery.tsx';\n@source '../components/ui';\n@source inline('p-4');"),
+    { from: 'app/globals.css' },
+  );
+  const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ?? 'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs');
+  const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
+  try {
+    let published = false;
+    const submissions: unknown[] = [], errors: string[] = [];
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    page.on('pageerror', (error: Error) => errors.push(error.message));
+    await page.route('https://fee-fixture.test/**', async (route: import('playwright').Route) => {
+      const request = route.request();
+      if (new URL(request.url()).pathname === '/editor')
+        return route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>Initial rates fixture</title><div id="root"></div>' });
+      if (request.method() === 'GET')
+        return route.fulfill({ json: published ? savedState : state });
+      submissions.push(request.postDataJSON());
+      if (submissions.length === 1) return route.fulfill({ status: 403, json: { code: 'MFA_REQUIRED' } });
+      published = true;
+      return route.fulfill({ status: 201, json: { id: 'recorded-rates' } });
+    });
+    await page.goto('https://fee-fixture.test/editor');
+    await page.addStyleTag({ content: css.css });
+    await page.addScriptTag({ content: bundle.outputFiles[0].text });
+    assert.equal(await page.title(), 'Initial rates fixture');
+    const registered = page.getByLabel('Independent seller commission (%)', { exact: true });
+    const managed = page.getByLabel('Managed Maker retention (%)', { exact: true });
+    assert.equal(await registered.inputValue(), '');
+    assert.equal(await managed.inputValue(), '');
+    const review = page.getByRole('button', { name: 'Review initial rates' });
+    for (const width of [390, 768, 1024, 1440]) {
+      await page.setViewportSize({ width, height: 844 });
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'Overflow at ' + width);
+      assert.ok((await review.boundingBox())!.height >= 44, 'Review tap target at ' + width);
+    }
+    await registered.fill('7.25');
+    await managed.fill('7.50');
+    await page.getByLabel('Reason for publishing').fill('Publish the initial rates for this isolated browser test.');
+    await review.click();
+    await page.getByText('Enter the same percentage for both routes.', { exact: true }).waitFor();
+    assert.equal(submissions.length, 0);
+    await managed.fill('7.25');
+    await review.click();
+    const publish = page.getByRole('button', { name: 'Publish initial rates', exact: true });
+    await publish.click();
+    const verify = page.getByRole('link', { name: 'Verify in a new tab' });
+    await verify.waitFor();
+    assert.equal(await verify.getAttribute('target'), '_blank');
+    assert.match(await verify.getAttribute('href') ?? '', /reauth=password/);
+    await publish.click();
+    await page.getByText('Both route versions were published with the same start.', { exact: true }).waitFor();
+    assert.equal(await managed.count(), 0);
+    assert.deepEqual(submissions[0], submissions[1]);
+    assert.equal((submissions[1] as { registeredBasisPoints: number }).registeredBasisPoints, 725);
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); }
+});

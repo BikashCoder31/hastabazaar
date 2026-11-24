@@ -1,4 +1,5 @@
 import {getRegisteredFeeOffers,FeePolicyError} from './coordinated-policy';
+import {CommissionRateUnavailableError} from '../db/repositories/business-settings';
 import {getManagedTermsOffers} from '../managed-commerce/accepted-terms';
 import {feeTermsCadence,routineFeeEmailReady,FEE_DAY_MS} from './terms-cadence';
 import {operationalBusinessNotificationStatements} from '../operations/business-notifications';
@@ -208,7 +209,14 @@ export async function finishFeeRoutineDelivery(db:D1Database,token:string,messag
 export async function processFeeTermsScan(db:D1Database,now:number,limit=25){
  if(!Number.isSafeInteger(now)||now<=0||!Number.isInteger(limit)||limit<1||limit>100)throw new FeePolicyError('Use a bounded authoritative terms scan.',400);
  const scan=await db.prepare("SELECT `cursor`,revision FROM commission_terms_scan_state WHERE id='default'").first<{cursor:string;revision:number}>();if(!scan)throw new FeePolicyError('Fee follow-up schema readiness is required.',503);
- const sellers=(await db.prepare("SELECT s.id FROM seller_profiles s JOIN users u ON u.id=s.user_id WHERE s.id>? AND u.status='active' AND s.status IN ('submitted','under_review','approved') ORDER BY s.id LIMIT ?").bind(scan.cursor,limit).all<{id:string}>()).results,failures:{sellerId:string;message:string}[]=[];
- for(const seller of sellers)try{await reconcileSellerFeeCases(db,seller.id,now);}catch(error){failures.push({sellerId:seller.id,message:error instanceof FeePolicyError?error.message:'The exact terms source or concurrent case outcome requires another scan.'});}
+ const sellers=(await db.prepare("SELECT s.id FROM seller_profiles s JOIN users u ON u.id=s.user_id WHERE s.id>? AND u.status='active' AND s.status IN ('submitted','under_review','approved') ORDER BY s.id LIMIT ?").bind(scan.cursor,limit).all<{id:string}>()).results;
+ const failures:{sellerId:string;code:'commission_rate_unavailable'|'source_requires_review';message:string}[]=[];
+ for(const seller of sellers){
+  try{await reconcileSellerFeeCases(db,seller.id,now);}
+  catch(error){
+   const missingRate=error instanceof CommissionRateUnavailableError;
+   failures.push({sellerId:seller.id,code:missingRate?'commission_rate_unavailable':'source_requires_review',message:missingRate||error instanceof FeePolicyError?error.message:'The exact terms source or concurrent case outcome requires another scan.'});
+  }
+ }
  const cursor=sellers.length===limit?sellers.at(-1)!.id:'';await db.prepare("UPDATE commission_terms_scan_state SET `cursor`=?,revision=revision+1 WHERE id='default' AND revision=?").bind(cursor,scan.revision).run();const holdBatch=await queueFeeHoldBatch(db,now);return {scanned:sellers.length,cursor,failures,holdBatch};
 }

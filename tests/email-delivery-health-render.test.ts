@@ -9,7 +9,7 @@ void test('delivery health UI distinguishes sender and evaluator evidence and ne
       stdin: {
         loader: 'tsx',
         resolveDir: process.cwd(),
-        contents: `import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';import {EmailDeliveryHealth} from './components/admin/email-delivery-health';export const html=renderToStaticMarkup(<EmailDeliveryHealth overview={{environment:'test',observedAt:2000000000000,expectedSince:null,independentContactConfigured:false,services:[{serviceKey:'email.sender',state:'unknown',reason:'no_observation',lastObservedAt:null,lastSuccessfulAt:null,eligibleBacklog:null,incident:null},{serviceKey:'email.evaluator',state:'degraded',reason:'recent_success',lastObservedAt:2000000000000,lastSuccessfulAt:2000000000000,eligibleBacklog:3,incident:{id:'case-one',episode:1,state:'monitoring',severity:'high',firstSeenAt:1999999900000,resolvedAt:null}}]}}/>);`,
+        contents: `import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';import {EmailDeliveryHealth} from './components/admin/email-delivery-health';export const html=renderToStaticMarkup(<EmailDeliveryHealth overview={{environment:'test',observedAt:2000000000000,expectedSince:null,independentContactConfigured:false,services:[{serviceKey:'email.sender',state:'unknown',reason:'no_observation',lastObservedAt:null,lastSuccessfulAt:null,eligibleBacklog:null,incident:null},{serviceKey:'email.evaluator',state:'action_needed',reason:'configuration_correction',lastObservedAt:2000000000000,lastSuccessfulAt:2000000000000,eligibleBacklog:3,incident:{id:'case-one',episode:1,state:'monitoring',severity:'high',firstSeenAt:1999999900000,resolvedAt:null}}]}}/>);`,
       },
       bundle: true,
       write: false,
@@ -27,6 +27,7 @@ void test('delivery health UI distinguishes sender and evaluator evidence and ne
   const html = loadedFixtureModule.exports.html;
   assert.match(html, /Automatic sender/);
   assert.match(html, /Due-reminder evaluator/);
+  assert.match(html, /Seller fee reminders need an effective published commission rate/);
   assert.match(html, /Unknown/);
   assert.match(html, /Monitoring recovery/);
   assert.match(html, /not verified/);

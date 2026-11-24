@@ -7,7 +7,7 @@ import {incidentHealthTransitionStatements} from '../operations/incident-review'
 import {readDatabaseHealthScope} from '../db/health-context';
 
 interface SenderResult {pending?:boolean;reason?:string;processed?:number;business?:{accepted:number;failed:number;cancelled:number};orders?:{sent:number;failed:number;cancelled:number}}
-interface ReminderResult {scanned:number;created:number;cancelled:number;failures:readonly unknown[];busy?:boolean;budgetExhausted?:boolean}
+interface ReminderResult {scanned:number;created:number;cancelled:number;failures:readonly {code:string}[];busy?:boolean;budgetExhausted?:boolean}
 interface QueueSnapshot {eligibleBacklog:number;oldestEligibleAt:number|null;backoffCategory:'provider'|'configuration'|null}
 interface AutomationDependencies {
  evaluate:(options:{now:number;deadlineMs:number})=>Promise<ReminderResult>;
@@ -42,9 +42,13 @@ export async function runEmailAutomation(db:D1Database,scope:{environment:Health
   }catch{healthRecorded=false;}
  };
  let reminderResult:ReminderResult={scanned:0,created:0,cancelled:0,failures:[]};
- let evaluatorFailed=false;
- try{reminderResult=await dependencies.evaluate({now:clock(),deadlineMs:Math.min(deadlineMs,startedAt+15_000)});evaluatorFailed=reminderResult.failures.length>0;}catch{evaluatorFailed=true;}
- if(!reminderResult.busy)await observe('email.evaluator',{successful:!evaluatorFailed,functionalSuccess:!evaluatorFailed&&!reminderResult.budgetExhausted,eligibleBacklog:0,oldestEligibleAt:null,progressCount:reminderResult.created+reminderResult.cancelled,failureCategory:evaluatorFailed?'worker':null});
+ let evaluatorFailure:'configuration'|'worker'|null=null;
+ try{
+  reminderResult=await dependencies.evaluate({now:clock(),deadlineMs:Math.min(deadlineMs,startedAt+15_000)});
+  if(reminderResult.failures.length)evaluatorFailure=reminderResult.failures.every(item=>item.code==='commission_rate_unavailable')?'configuration':'worker';
+ }catch{evaluatorFailure='worker';}
+ const evaluatorFailed=evaluatorFailure!==null;
+ if(!reminderResult.busy)await observe('email.evaluator',{successful:!evaluatorFailed,functionalSuccess:!evaluatorFailed&&!reminderResult.budgetExhausted,eligibleBacklog:0,oldestEligibleAt:null,progressCount:reminderResult.created+reminderResult.cancelled,failureCategory:evaluatorFailure});
  let sender:SenderResult={pending:true},failure:'provider'|'recipient'|'configuration'|'unknown'|'worker'|null=null,functionalSuccess=false;
  try{
   if(clock()>=deadlineMs)failure='worker';
