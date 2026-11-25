@@ -43,9 +43,11 @@ export async function readSellerOrderQueue(db: D1Database, sellerId: string) {
         EXISTS(SELECT 1 FROM order_fulfillment_holds h
           WHERE h.order_item_id=i.id AND h.prevents_preparation=1 AND h.ended_at IS NULL) AS held
       FROM order_items i
-      WHERE i.seller_id=? AND i.order_id IN (
+      INNER JOIN (
         SELECT o.id FROM orders o WHERE EXISTS(SELECT 1 FROM order_items recent WHERE recent.order_id=o.id AND recent.seller_id=?)
-        ORDER BY o.created_at DESC LIMIT 100)
+        ORDER BY o.created_at DESC LIMIT 100
+      ) recent_orders ON recent_orders.id=i.order_id
+      WHERE i.seller_id=?
       ORDER BY i.id
     `).bind(companyDetails.entityReference, sellerId, sellerId).all<QueueItem>(),
     db.prepare(`
