@@ -46,7 +46,7 @@ void test('rendered hero keeps each story control above the overlapping category
     }),
   );
   assert.match(html, /data-slider-dots/);
-  assert.match(html, /aria-label="Pause featured stories"/);
+  assert.doesNotMatch(html, /aria-label="(?:Play|Pause) featured stories"/);
   assert.equal((html.match(/aria-label="Show slide /g) ?? []).length, 3);
   const [homepageStyles, heroStyles] = await Promise.all([
     readFile(new URL('../components/homepage/homepage.module.css', import.meta.url), 'utf8'),

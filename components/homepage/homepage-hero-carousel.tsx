@@ -3,7 +3,7 @@
 import { ParallaxImage } from './parallax-image';
 
 import Link from 'next/link';
-import { Banknote, CircleHelp, Pause, Play, RotateCcw, ShieldCheck } from 'lucide-react';
+import { Banknote, CircleHelp, RotateCcw, ShieldCheck } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useSliderAutoplay } from '@/lib/homepage/slider-autoplay';
@@ -75,9 +75,7 @@ export function HomepageHeroCarousel({
     reset: resetAutoplay,
     selectionKind,
     paused,
-    pausedByUser,
     progress,
-    toggleUserPause,
     interactionProps,
   } = useSliderAutoplay(api, enabledSlides.length, playingVideo !== null, {
     delayMs: heroAdvanceDelayMs('image'),
@@ -311,15 +309,6 @@ export function HomepageHeroCarousel({
                   </button>
                 ))}
               </fieldset>
-              <button
-                type="button"
-                data-autoplay-toggle
-                aria-label={pausedByUser ? 'Play featured stories' : 'Pause featured stories'}
-                onClick={toggleUserPause}
-                className={styles.pause}
-              >
-                {pausedByUser ? <Play size={16} aria-hidden="true" /> : <Pause size={16} aria-hidden="true" />}
-              </button>
             </div>
           ) : null}
           <ul aria-label="Why shop with us" className={styles.benefits}>

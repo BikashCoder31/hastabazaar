@@ -55,7 +55,7 @@ void test('category overlap and established homepage anchors remain intact', asy
   assert.match(styles, /scroll-snap-type: x proximity/);
 });
 
-void test('hero media is full bleed and keeps captions, progress and a pause control', async () => {
+void test('hero media is full bleed and keeps captions and slide progress', async () => {
   const [carouselSource, styles, presentation] = await Promise.all([
     readFile(
       new URL(
@@ -87,7 +87,6 @@ void test('hero media is full bleed and keeps captions, progress and a pause con
   assert.doesNotMatch(carousel, /bg-\[#eee5d8\]\/85/);
   assert.equal((carousel.match(/homepage-hero-image-note/g) ?? []).length, 1);
   assert.match(carousel, /data-slider-dots/);
-  assert.match(carousel, /Pause featured stories/);
   assert.match(carousel, /animationDuration:/);
 });
 

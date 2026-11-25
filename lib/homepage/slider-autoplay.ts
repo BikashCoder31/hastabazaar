@@ -11,10 +11,6 @@ import {
 } from 'react';
 import type { CarouselApi } from '@/components/ui/carousel';
 
-function playbackControl(target: EventTarget) {
-  return target instanceof Element && target.closest('[data-autoplay-toggle]') !== null;
-}
-
 /** Rotates homepage stories with a separate hold after manual browsing. */
 export function createSliderAutoplay(
   advance: () => void,
@@ -75,16 +71,11 @@ export function useSliderAutoplay(
   const [focused, setFocused] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
-  const [pausedByUser, setPausedByUser] = useState(false);
   const [progress, setProgress] = useState({ cycle: 0, duration: delayMs });
   const timer = useRef<ReturnType<typeof createSliderAutoplay> | null>(null);
   const automaticSelection = useRef(true);
-  const paused = pausedByUser || hovered || focused || hidden || reducedMotion || videoPlaying;
+  const paused = hovered || focused || hidden || reducedMotion || videoPlaying;
   const pausedRef = useRef(paused);
-  const toggleUserPause = useCallback(() => {
-    setFocused(false);
-    setPausedByUser(value => !value);
-  }, []);
 
   const reset = useCallback(() => {
     automaticSelection.current = false;
@@ -144,31 +135,26 @@ export function useSliderAutoplay(
     };
   }, [api, count, delayMs, manualHoldMs, pauseOnPointerFocus, reset, trackProgress]);
 
-  const resetAfterBrowse = (event: { target: EventTarget }) => {
-    if (!playbackControl(event.target)) reset();
-  };
-  const pointerInteraction = (event: { target: EventTarget }) => {
+  const pointerInteraction = () => {
     setFocused(false);
-    resetAfterBrowse(event);
+    reset();
   };
 
   return {
     reset,
     selectionKind,
     paused,
-    pausedByUser,
     progress,
-    toggleUserPause,
     interactionProps: {
       onPointerEnter: (event: PointerEvent<HTMLElement>) => {
         if (event.pointerType !== 'touch') setHovered(true);
       },
       onPointerLeave: () => setHovered(false),
       onPointerDownCapture: pauseOnPointerFocus ? undefined : pointerInteraction,
-      onPointerUpCapture: pauseOnPointerFocus ? undefined : resetAfterBrowse,
+      onPointerUpCapture: pauseOnPointerFocus ? undefined : reset,
       onTouchStartCapture: pauseOnPointerFocus ? undefined : pointerInteraction,
-      onTouchEndCapture: pauseOnPointerFocus ? undefined : resetAfterBrowse,
-      onClickCapture: pauseOnPointerFocus ? undefined : resetAfterBrowse,
+      onTouchEndCapture: pauseOnPointerFocus ? undefined : reset,
+      onClickCapture: pauseOnPointerFocus ? undefined : reset,
       onKeyDownCapture: pauseOnPointerFocus ? undefined : (event: KeyboardEvent<HTMLElement>) => {
         if (event.currentTarget.contains(document.activeElement)) setFocused(true);
       },

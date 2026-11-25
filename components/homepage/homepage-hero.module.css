@@ -94,16 +94,10 @@
 
 .controls { padding: 1.5rem var(--hero-gutter) .75rem; }
 
-.picker {
-  display: flex;
-  align-items: center;
-  gap: .75rem;
-  max-width: 29rem;
-}
+.picker { max-width: 29rem; }
 
 .stories {
   display: flex;
-  flex: 1;
   gap: .6rem;
 }
 
@@ -156,19 +150,6 @@
   to { transform: scaleX(1); }
 }
 
-.pause {
-  display: grid;
-  width: 2.75rem;
-  height: 2.75rem;
-  flex: none;
-  place-items: center;
-  border: 1px solid #d4c1a6;
-  border-radius: 50%;
-  color: #46536f;
-}
-
-.pause:hover { background: #fff; }
-
 .benefits {
   display: flex;
   flex-wrap: wrap;
@@ -191,7 +172,7 @@
 .benefits a { display: inline-flex; min-height: 2.75rem; align-items: center; }
 .benefits a:hover { text-decoration: underline; }
 
-.story:focus-visible, .pause:focus-visible, .benefits a:focus-visible {
+.story:focus-visible, .benefits a:focus-visible {
   outline: 2px solid #14213d;
   outline-offset: 2px;
 }
