@@ -35,7 +35,8 @@ export async function getProductPublicationReview(db:D1Database,actorId:string,c
  if(candidate.ownerId===actorId)throw new PublicationPermissionError('An independent permitted member of staff must decide this product.');
  let canPublish=true;try{const publisher=await staffMutationGuard(db,actorId,'product.publish',PublicationPermissionError);if(!canReview)readGuards=publisher.statements;}catch(error){if(!(error instanceof PublicationPermissionError))throw error;canPublish=false;}
  if(!canReview&&!canPublish)throw new PublicationPermissionError('Current product review or publishing permission is required.');
- const head=(await publicationHead(db,candidate.productId))!,original=JSON.parse(candidate.snapshotJson) as IntakeSnapshot;
+ const head=(await publicationHead(db,candidate.productId))!,{removedMediaIds:privateRemovedUploads,...original}=JSON.parse(candidate.snapshotJson) as IntakeSnapshot;
+ void privateRemovedUploads;
  const current=head.currentPublicationId?await db.prepare('SELECT public_json AS snapshot FROM product_publication_decisions WHERE id=?').bind(head.currentPublicationId).first<{snapshot:string}>():null;
  const approval=await db.prepare("SELECT id,public_json AS snapshot FROM product_publication_decisions WHERE version_id=? AND action IN ('approve_only','approve_and_publish') ORDER BY created_at DESC,id DESC LIMIT 1").bind(candidate.versionId).first<{id:string;snapshot:string}>();
  const currentValue=current?JSON.parse(current.snapshot) as ProductPublication:null;

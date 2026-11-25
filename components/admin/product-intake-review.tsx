@@ -116,7 +116,7 @@ function ProductIntakeReviewBody({initial,category,categories,sellerName,onRecor
     <CatalogProductPhoto caseId={work.id} photoId={work.snapshot.mediaIds.find(id=>work.uploads.some(file=>file.id===id&&file.mimeType.startsWith('image/')))} large/>
     <div className="min-w-0 [overflow-wrap:anywhere]">
      <p className="text-sm text-[#46536F]">{sellerName}</p>
-     <h2 className="font-heading text-[24px] font-medium leading-[1.12]">{detailText(work.snapshot.answers,'nameEn')||detailText(work.snapshot.answers,'nameNe')||'Incomplete product information'}</h2>
+     <h2 className="font-heading text-[24px] font-medium leading-[1.12]">{detailText(work.snapshot.answers,'nameEn')||'Incomplete product information'}</h2>
     </div>
    </header>
    {preview}

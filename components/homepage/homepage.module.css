@@ -110,13 +110,6 @@
 
 .categoryName svg { flex: none; }
 
-.category small {
-  display: block;
-  margin-top: .2rem;
-  color: #675b4e;
-  font-size: .875rem;
-}
-
 @media (width >= 640px) {
   .categoryPanel nav {
     grid-auto-flow: row;

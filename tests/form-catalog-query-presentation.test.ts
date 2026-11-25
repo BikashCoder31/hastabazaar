@@ -208,8 +208,8 @@ void test('dual calendar controls default to AD and submit the same canonical AD
   const ad=renderToStaticMarkup(React.createElement(RecordedDateRangeFields,props));
   assert.match(ad,/value="ad" selected=""/);
   assert.match(ad,/<input[^>]*type="date"[^>]*name="from"[^>]*value="2026-09-15"/);
-  assert.match(ad,/३० भदौ २०८३ BS/);
-  assert.match(ad,/२८ असोज २०८३ BS/);
+  assert.match(ad,/30 Bhadau 2083 BS/);
+  assert.match(ad,/28 Ashoj 2083 BS/);
   assert.match(ad,/Reporting timezone: Nepal time/);
   assert.doesNotMatch(ad,/From date \(Nepal\)/);
   const bs=renderToStaticMarkup(React.createElement(RecordedDateRangeFields,{...props,initialCalendar:'bs'}));
@@ -228,6 +228,6 @@ void test('recorded timestamps label both calendars on the same Nepal local day'
   const html=renderToStaticMarkup(React.createElement(RecordedTime,{timestamp:Date.parse('2026-10-14T18:15:00Z')}));
   assert.match(html,/dateTime="2026-10-14T18:15:00.000Z"/);
   assert.match(html,/2026-10-15 AD/);
-  assert.match(html,/२९ असोज २०८३ BS/);
+  assert.match(html,/29 Ashoj 2083 BS/);
   assert.match(html,/Nepal time/);
 });

@@ -2,7 +2,6 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowRight, CalendarDays, Gift, Heart, Package, Sparkles } from 'lucide-react';
 import { categoryImage } from '@/lib/catalog/category-presentation';
-import { nepaliTaxonomyName } from '@/lib/catalog/taxonomy-names';
 import { queryFieldPresentation } from '@/lib/catalog/shop-query';
 import type { DiscoveryCategory, OccasionGroup } from '@/lib/catalog/taxonomy-discovery';
 import type { OccasionRow } from '@/lib/db/repositories/products';
@@ -32,7 +31,6 @@ function CategoryCards({ entries }: { entries: readonly DiscoveryCategory[] }) {
     <section aria-label="All categories" className={`grid auto-rows-[11.875rem] grid-cols-2 gap-3 md:auto-rows-[15rem] md:gap-[18px] lg:auto-rows-[18.75rem] ${largeGrid ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
       {entries.map((entry, index) => {
         const image = categoryImage(entry);
-        const nepali = nepaliTaxonomyName(entry);
         const wide = largeGrid && (index === 0 || index === 5 || index === 6);
         const tall = largeGrid && index === 0;
         return (
@@ -59,7 +57,6 @@ function CategoryCards({ entries }: { entries: readonly DiscoveryCategory[] }) {
             <div className="relative flex min-w-0 items-end justify-between gap-2 p-3.5 md:gap-3 md:p-[22px]">
               <div className="min-w-0 [overflow-wrap:anywhere]">
                 <h2 className="font-heading text-[clamp(1.375rem,2.6vw,2.125rem)] font-medium leading-[1.05]">{entry.nameEn}</h2>
-                {nepali ? <p lang="ne" className="mt-0.5 text-sm text-[#F3E6C9]">{nepali}</p> : null}
               </div>
               <span aria-hidden="true" className="grid size-[34px] shrink-0 place-items-center rounded-full bg-white text-[#14213D] md:size-11">
                 <ArrowRight className="size-4" />
@@ -125,7 +122,6 @@ function OccasionCards({ entries }: { entries: readonly OccasionRow[] }) {
     <div className="grid grid-cols-2 gap-2.5 md:gap-3.5 lg:grid-cols-4">
       {entries.map((entry, index) => {
         const { card, icon, Symbol } = occasionStyles[index % occasionStyles.length];
-        const nepali = nepaliTaxonomyName(entry);
         return (
           <Link key={entry.id} id={`occasion-${entry.slug}`} href={shopTaxonomyHref('occasion', entry.slug)} data-media-frame="cover"
             className={`relative isolate flex min-h-[140px] min-w-0 scroll-mt-44 flex-col gap-4 overflow-hidden rounded-[20px] p-4 md:min-h-[170px] md:gap-7 md:p-[22px] ${entry.imageId ? 'justify-end bg-[#14213D] text-white' : `justify-between ${card}`} ${focus}`}>
@@ -141,7 +137,6 @@ function OccasionCards({ entries }: { entries: readonly OccasionRow[] }) {
             <span className="relative grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-end gap-x-2">
               <span className="min-w-0 [overflow-wrap:anywhere]">
                 <span className="block font-heading text-[clamp(1.3125rem,2.1vw,1.625rem)] font-medium leading-[1.05]">{entry.nameEn}</span>
-                {nepali ? <span lang="ne" className="mt-0.5 block text-sm opacity-90">{nepali}</span> : null}
               </span>
               <ArrowRight aria-hidden="true" className="size-4" />
             </span>

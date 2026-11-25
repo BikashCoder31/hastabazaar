@@ -2,7 +2,7 @@ import { companyDetails, companyPanDisplay, companyPublicContacts } from '@/lib/
 
 export function CompanyDisclosure() {
   const details = [
-    ['Registered company', `${companyDetails.legalName} (${companyDetails.nepaliName})`],
+    ['Registered company', companyDetails.legalName],
     ['Company registration number', companyDetails.registrationNumber],
     ['Registering authority', companyDetails.registeringAuthority],
     ['Incorporated', companyDetails.incorporationDate],

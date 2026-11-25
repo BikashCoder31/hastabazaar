@@ -16,7 +16,7 @@ const time = (value: number) => new Intl.DateTimeFormat('en-GB', { timeZone: 'As
 function CompanyDetails({ company, historical = false }: { company: LegalCompany; historical?: boolean }) {
   return <section className="rounded-2xl border bg-card p-5 sm:p-6" aria-label={historical ? 'Company details in this version' : 'Recorded company details'}>
     <h2 className="font-heading text-2xl">{historical ? 'Company details in this version' : 'Recorded company details'}</h2>
-    <p className="mt-3 font-semibold">{company.legalName} <span className="font-normal text-muted-foreground">({company.nepaliName})</span></p>
+    <p className="mt-3 font-semibold">{company.legalName}</p>
     <dl className="mt-4 grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
       {[
         ['Brand', company.brandName], ['Company registration', company.registrationNumber],

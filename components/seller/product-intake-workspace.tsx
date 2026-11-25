@@ -1,5 +1,4 @@
 'use client';
-import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowLeft, Eye, Lightbulb, Minus, Plus, TriangleAlert, Upload } from 'lucide-react';
 import { StepLine } from '@/components/ui/step-line';
@@ -26,6 +25,7 @@ import {CategoryDetailGroups} from './category-detail-groups';
 import {VariantEditor} from './variant-editor';
 import {PriceProfitPreview} from './price-profit-preview';
 import {ProductIntakePreview} from './product-intake-preview';
+import {ProductIntakePhotoPreview} from './product-intake-photo-preview';
 import {ProductHelpRequest} from './product-help-request';
 import {useProductIntake,type ProductWorkspace} from './use-product-intake';
 import {detailText,productDetailGroups,type CategoryDetailModel,type ProductDetailKey} from '@/lib/products/category-fields';
@@ -33,11 +33,21 @@ import type {IntakeSnapshot} from '@/lib/products/intake-workspace';
 import {PackedProductWeightInput} from './packed-weight-input';
 
 type Choice={id:string;nameEn:string};
-type UploadJob={requestId:string;file:File;cover:boolean;draftId:string|null;state:'waiting'|'uploading'|'ready'|'failed';message:string};
+type UploadJob={requestId:string;file:File;cover:boolean;draftId:string|null;state:'waiting'|'uploading'|'ready'|'failed';message:string;mediaId?:string;replaces?:string};
 const inputClass='min-h-11 min-w-0 w-full rounded-lg border border-[#D7C4A9] bg-white px-3 py-2';
 const buttonClass='min-h-11 rounded-lg border border-[#D7C4A9] px-4 py-2 text-sm font-semibold disabled:opacity-50';
 const panelClass='min-w-0 space-y-4 rounded-[0.9rem] border border-[#E4DACA] bg-white p-4 sm:p-5';
 const isPhoto = (file: { mimeType: string }) => file.mimeType.startsWith('image/');
+function removeOrReplacePhoto(draft: IntakeSnapshot, id: string, replacement: string | null): IntakeSnapshot {
+  const attached = draft.mediaIds.includes(id);
+  return {
+    ...draft,
+    mediaIds: draft.mediaIds.flatMap(mediaId => mediaId === id ? replacement ? [replacement] : [] : [mediaId]),
+    removedMediaIds: [...new Set([...(draft.removedMediaIds ?? []), id])],
+    offers: { ...draft.offers, offers: draft.offers.offers.map(offer =>
+      offer.mediaId === id ? { ...offer, mediaId: attached ? replacement : null } : offer) },
+  };
+}
 function photoCount(snapshot: IntakeSnapshot, files: ProductWorkspace['uploads']) {
   return files.filter(file=>file.state==='ready'&&isPhoto(file)&&snapshot.mediaIds.includes(file.id)).length;
 }
@@ -61,11 +71,17 @@ function ProductIntakeWorkspaceBody({categories,occasions,materialSuggestions=[]
  const [furthest,setFurthest]=useState(step),[stepError,setStepError]=useState<string|null>(null);
  const guidedHeading=useRef<HTMLHeadingElement>(null);
  const guidedPhotoInput=useRef<HTMLInputElement>(null);
+ const replacementPhotoInput=useRef<HTMLInputElement>(null);
+ const replacementTarget=useRef<string|null>(null);
  const coverIntent=useRef<string|null>(null),uploading=useRef(new Set<string>()),actionFlight=useRef(false),helpSection=useRef<HTMLDivElement>(null),photosSection=useRef<HTMLElement>(null),offersSection=useRef<HTMLDivElement>(null);
  const draft=editor.draft,offer=draft.offers.offers.find(row=>row.id===selectedOffer)??draft.offers.offers.find(row=>row.included)??draft.offers.offers[0],serverUploads=editor.saved?.uploads??[];
  const categoryModel=category.categoryId===draft.categoryId?category:{...category,categoryId:draft.categoryId,status:'unknown' as const,contract:null,groups:productDetailGroups.map(group=>({...group,recommended:false}))};
  const checks=readinessChecks(draft,categoryModel,editor.saved,!editor.dirty);
  const photos=photoCount(draft,serverUploads);
+ const uploadingPhotos=uploads.some(job=>job.file.type.startsWith('image/')&&['waiting','uploading'].includes(job.state));
+ const removedPhotos=new Set(draft.removedMediaIds);
+ const photoFiles=new Map(uploads.flatMap(job=>job.mediaId&&job.state==='ready'?[[job.mediaId,job.file] as const]:[]));
+
  const stepIssues=guided?groupProductStepIssues(productReadinessIssues(draft,categoryModel,editor.saved,!editor.dirty),photos,offer?.stockIntent??''):[];
  const sellingPaisa=offer?offerMoney(offer.price):null;
  const estimate=sellingPaisa&&pricing?calculatePriceGuidance({sellingPaisa,scenario:pricing,costPaisa:null,targetPaisa:null,deductions:[]}):null;
@@ -173,21 +189,35 @@ function ProductIntakeWorkspaceBody({categories,occasions,materialSuggestions=[]
   if(uploading.current.has(job.requestId))return;uploading.current.add(job.requestId);setUploads(rows=>rows.map(row=>row.requestId===job.requestId?{...row,state:'uploading',message:'Uploading…'}:row));
   try{const work=job.draftId?editor.getCurrent().saved:await editor.flush();if(!work)throw new Error('Save the private draft first; the selected file is retained for retry.');const draftId=job.draftId??work.id;setUploads(rows=>rows.map(row=>row.requestId===job.requestId?{...row,draftId}:row));
    const body=new FormData();body.set('draftId',draftId);body.set('requestId',job.requestId);body.set('file',job.file);const response=await fetch('/api/seller/product-intakes/media',{method:'POST',body}),result=await response.json() as {id:string;error?:string};if(!response.ok){if([401,403].includes(response.status))editor.denyAccess();throw new Error(result.error??'Upload not confirmed. Retry the same selected file.');}
-   editor.change(old=>({...old,mediaIds:coverIntent.current===job.requestId?[result.id,...old.mediaIds.filter(id=>id!==result.id)]:[...old.mediaIds.filter(id=>id!==result.id),result.id]}));setUploads(rows=>rows.map(row=>row.requestId===job.requestId?{...row,state:'ready',message:'Uploaded; saving its draft attachment.'}:row));await editor.refresh();
+   editor.change(old=>job.replaces
+    ? removeOrReplacePhoto(old,job.replaces,result.id)
+    : {...old,mediaIds:coverIntent.current===job.requestId?[result.id,...old.mediaIds.filter(id=>id!==result.id)]:[...old.mediaIds.filter(id=>id!==result.id),result.id]});
+   await editor.refresh();
+   setUploads(rows=>rows.map(row=>row.requestId===job.requestId?{...row,mediaId:result.id,state:'ready',message:'Uploaded; saving its draft attachment.'}:row));
   }catch(error){setUploads(rows=>rows.map(row=>row.requestId===job.requestId?{...row,state:'failed',message:error instanceof Error?error.message:'Upload not confirmed. The selected file is retained.'}:row));}
   finally{uploading.current.delete(job.requestId);}
  }
  function selectFiles(files:FileList|null,cover:boolean,photosOnly=false){
-  if(!files?.length)return;
+  if(!files?.length||photosOnly&&uploadingPhotos)return;
   if(guided)setStepError(null);
   const selected=Array.from(files).filter(file=>!photosOnly||file.type.startsWith('image/'));
   const pendingPhotos=uploads.filter(job=>job.file.type.startsWith('image/')&&['waiting','uploading'].includes(job.state)).length;
   const remaining=guided?Math.max(0,8-photos-pendingPhotos):selected.length;
   const chosen=photosOnly?selected.slice(0,remaining):selected;
-  if(photosOnly&&chosen.length<selected.length)setStepError('You can attach up to 8 product photos.');
+  if(photosOnly&&chosen.length<selected.length)setStepError(remaining?'Only the first '+remaining+' selected photos will be added. You can attach up to 8.':'You have 8 photos. Replace or remove a photo to add another.');
   if(!chosen.length)return;
   const jobs=chosen.map((file,index):UploadJob=>({requestId:crypto.randomUUID(),file,cover:cover&&index===0,draftId:editor.saved?.id??null,state:'waiting',message:'Selected; not uploaded yet'}));
-  if(cover)coverIntent.current=jobs[0].requestId;setUploads(old=>[...old,...jobs]);for(const job of jobs)void upload(job);
+  if(cover)coverIntent.current=jobs[0].requestId;
+  setUploads(old=>[...old,...jobs]);
+  void (async()=>{for(const job of jobs)await upload(job);})();
+ }
+ function replacePhoto(id:string,file:File|undefined){
+  if(!file||!editor.saved)return;
+  if(guided)setStepError(null);
+  const job:UploadJob={requestId:crypto.randomUUID(),file,cover:false,draftId:editor.saved.id,
+    replaces:id,state:'waiting',message:'Selected; not uploaded yet'};
+  setUploads(rows=>[...rows,job]);
+  void upload(job);
  }
  async function backToStart() {
   const current=editor.getCurrent();
@@ -221,15 +251,16 @@ function ProductIntakeWorkspaceBody({categories,occasions,materialSuggestions=[]
  const completeSteps=stepIssues.filter(issues=>!issues.length).length;
  const occasionFields=<section className="space-y-3" aria-label="Gift occasions"><h2 className="font-semibold">Gift occasions</h2><p className="text-sm text-muted-foreground">Choose occasions only when they fit. None is fine.</p><div className="flex flex-wrap gap-x-4 gap-y-1">{occasions.map(item=>{const chosen=Array.isArray(draft.answers.occasionIds)?draft.answers.occasionIds:[];return <label key={item.id} className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={chosen.includes(item.id)} onChange={event=>updateAnswer('occasionIds',event.target.checked?[...chosen,item.id]:chosen.filter(id=>id!==item.id))}/>{item.nameEn}</label>;})}</div></section>;
  const offerEditor=<div ref={offersSection} className="scroll-mt-24"><VariantEditor value={draft.offers} onChange={value=>{if(value.offers.length>draft.offers.offers.length)setSelectedOffer(value.offers.at(-1)!.id);editor.change(old=>({...old,offers:value}));}} onHelp={()=>void openHelp()} onPhoto={showPhotos} studio={studio}/></div>;
- const files = guided ? [...serverUploads].sort((a,b)=>{
+ const visibleUploads=serverUploads.filter(file=>!removedPhotos.has(file.id));
+ const files = guided ? visibleUploads.sort((a,b)=>{
    const aOrder=draft.mediaIds.indexOf(a.id),bOrder=draft.mediaIds.indexOf(b.id);
    return (aOrder<0?Number.MAX_SAFE_INTEGER:aOrder)-(bOrder<0?Number.MAX_SAFE_INTEGER:bOrder);
- }) : serverUploads;
+ }) : visibleUploads;
  const attachedPhotos=draft.mediaIds.filter(id=>serverUploads.some(file=>file.id===id&&isPhoto(file)));
  const guidedPhotoControl=guided?<>
-   <button type="button" id="guided-add-photos" onClick={()=>guidedPhotoInput.current?.click()}
+   <button type="button" id="guided-add-photos" disabled={uploadingPhotos} onClick={()=>guidedPhotoInput.current?.click()}
     onDragOver={event=>event.preventDefault()} onDrop={event=>{event.preventDefault();selectFiles(event.dataTransfer.files,photos===0,true);}}
-    className="flex aspect-square min-h-28 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#D7C4A9] bg-[#FAF7F1] px-2 py-3 text-center text-sm font-semibold focus-visible:ring-2 focus-visible:ring-[#14213D]">
+    className="flex aspect-square min-h-28 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#D7C4A9] bg-[#FAF7F1] px-2 py-3 text-center text-sm font-semibold focus-visible:ring-2 focus-visible:ring-[#14213D] disabled:opacity-60">
     <Upload className="size-5 text-[#A8232E]" aria-hidden="true" /> Add photos
     <span className="text-xs font-normal text-[#46536F]">or drop them here</span>
    </button>
@@ -298,7 +329,8 @@ function ProductIntakeWorkspaceBody({categories,occasions,materialSuggestions=[]
     <span>You receive <strong className="text-[#236548]">{sellerMoney(estimate.afterFeePaisa)}</strong> per sale</span>
   </div>:null}
   </section>
-  <section hidden={guided?step!==0:!studio&&step!==1} ref={photosSection} className={panelClass+' order-1 scroll-mt-24'} aria-label="Product photos"><h2 ref={guided&&step===0?guidedHeading:undefined} tabIndex={guided?-1:undefined} className="text-lg font-bold">Photos</h2><p className="text-sm text-[#665B4C]">{guided?'Add 3 to 8 photos. The first one is the cover. You can take them with your phone.':'The first photo is the cover. Daylight and a plain background work best. JPG, PNG or WebP, up to 5 MB each.'}</p>
+  <section hidden={guided?step!==0:!studio&&step!==1} ref={photosSection} className={panelClass+' order-1 scroll-mt-24'} aria-label="Product photos"><h2 ref={guided&&step===0?guidedHeading:undefined} tabIndex={guided?-1:undefined} className="text-lg font-bold">Photos</h2><p className="text-sm text-[#665B4C]">{guided?'Add 3 to 8 photos. Select several at once or add them one at a time. The first photo is the cover.':'The first photo is the cover. Daylight and a plain background work best. JPG, PNG or WebP, up to 5 MB each.'}</p>
+  {guided?<p className="text-sm font-medium" aria-live="polite">{photos} of 8 photos attached</p>:null}
   {studio&&guided?null:studio?<div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3">
     <label className="flex min-h-24 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#D7C4A9] bg-[#FAF7F1] px-2 py-3 text-center text-sm font-semibold focus-within:ring-2 focus-within:ring-[#14213D]">
       <Upload className="size-5 text-[#A8232E]" aria-hidden="true" /> Add photos
@@ -313,8 +345,72 @@ function ProductIntakeWorkspaceBody({categories,occasions,materialSuggestions=[]
   <label className="grid gap-2 text-sm">Cover photo<input type="file" accept="image/jpeg,image/png,image/webp" className={inputClass} onChange={event=>{selectFiles(event.target.files,true);event.target.value='';}}/></label><label className="grid gap-2 text-sm">Additional product photos<input type="file" multiple accept="image/jpeg,image/png,image/webp" className={inputClass} onChange={event=>{selectFiles(event.target.files,false);event.target.value='';}}/></label><label className="grid gap-2 text-sm">Product video<input type="file" accept="video/mp4" className={inputClass} onChange={event=>{selectFiles(event.target.files,false);event.target.value='';}}/><span className="text-muted-foreground">One MP4, up to 20 MB and 60 seconds. Keep attached product media within 47 MB.</span></label>
   </>}
   {(uploads.some(job=>job.state==='waiting'||job.state==='uploading')||serverUploads.some(file=>file.state==='uploading'))&&<output className="block text-sm">Some uploads are not confirmed yet. Saved draft entries remain available; an upload must finish before its attachment can be saved.</output>}
-  {uploads.filter(job=>!guided||job.state!=='ready').map(job=><div key={job.requestId} className="rounded-lg border p-3 text-sm"><p className="break-all font-medium">{job.file.name}</p><p>{job.state==='ready'?'Upload completed. Its attachment is saved when the workspace status says Saved.':job.message}</p>{job.state==='failed'&&<div className="mt-2 space-y-2"><button type="button" className="min-h-11 underline" onClick={()=>void upload(job)}>Retry this file</button><label className="grid gap-2">Choose original file again<input type="file" accept="image/jpeg,image/png,image/webp,video/mp4" onChange={event=>{const file=event.target.files?.[0];if(!file)return;const retry={...job,file};setUploads(rows=>rows.map(row=>row.requestId===job.requestId?retry:row));void upload(retry);event.target.value='';}}/></label></div>}</div>)}
-  <div className={guided?'grid grid-cols-2 gap-2 xl:grid-cols-4':'grid gap-3 sm:grid-cols-2'}>{files.map(file=>{const attached=draft.mediaIds.includes(file.id),cover=attachedPhotos[0]===file.id,index=attachedPhotos.indexOf(file.id);return <div key={file.id} className={guided?'relative min-w-0 space-y-1.5 rounded-lg border border-[#EEE5D5] p-1.5 text-sm':'min-w-0 space-y-2 rounded-lg border p-3 text-sm'}>{file.state==='uploading'&&!uploads.some(job=>job.requestId===file.requestId)&&<label className="grid gap-2">Retry original file: {file.originalName}<input type="file" accept="image/jpeg,image/png,image/webp,video/mp4" onChange={event=>{const selected=event.target.files?.[0];if(!selected||!editor.saved)return;const job:UploadJob={requestId:file.requestId,file:selected,cover:false,draftId:editor.saved.id,state:'waiting',message:'Original file selected for recovery.'};setUploads(rows=>[...rows,job]);void upload(job);event.target.value='';}}/></label>}{file.state==='ready'&&file.mimeType.startsWith('image/')?<Image data-media-mode="contain" unoptimized width={640} height={480} src={'/api/seller/product-intakes/media/'+encodeURIComponent(file.id)} alt={file.originalName} className={guided?'aspect-square w-full rounded-lg border border-[#EEE5D5] object-contain':studio?'h-24 w-full rounded object-contain':'h-36 w-full rounded object-contain'}/>:null}{!guided||!attached?<><p className="break-all">{file.originalName}</p><p>{file.state==='ready'?attached?cover?'Cover photo · attached':'Attached to draft':'Uploaded · not attached to this version':'Upload not yet confirmed; retry the original file'}</p></>:null}{guided&&cover?<span className="absolute left-2 top-2 rounded-full bg-[#14213D] px-2 py-0.5 text-xs font-semibold text-white">Cover</span>:null}{file.state==='ready'&&<details open={!guided?true:undefined} className="min-w-0"><summary className={guided?'min-h-11 cursor-pointer rounded-md px-1 py-2.5 text-sm font-semibold text-[#46536F]':'hidden'}>Photo options</summary><div className="flex flex-wrap gap-x-3 gap-y-1">{attached?<button type="button" className="min-h-11 underline" onClick={()=>editor.change(old=>({...old,mediaIds:old.mediaIds.filter(id=>id!==file.id),offers:{...old.offers,offers:old.offers.offers.map(row=>row.mediaId===file.id?{...row,mediaId:null}:row)}}))}>Remove from this draft</button>:<button type="button" className="min-h-11 underline" onClick={()=>editor.change(old=>({...old,mediaIds:[...old.mediaIds,file.id]}))}>Add to this draft</button>}{file.mimeType.startsWith('image/')&&<button type="button" className="min-h-11 underline" onClick={()=>{coverIntent.current=null;editor.change(old=>({...old,mediaIds:[file.id,...old.mediaIds.filter(id=>id!==file.id)]}));}}>Use as cover</button>}{guided&&attached&&index>=0?<><button type="button" className={buttonClass+' px-2'} aria-label={'Move '+file.originalName+' earlier'} disabled={index===0} onClick={()=>movePhoto(file.id,-1)}>Earlier</button><button type="button" className={buttonClass+' px-2'} aria-label={'Move '+file.originalName+' later'} disabled={index===attachedPhotos.length-1} onClick={()=>movePhoto(file.id,1)}>Later</button></>:null}{photoOffer&&file.mimeType.startsWith('image/')&&<button type="button" className="min-h-11 underline" onClick={()=>{editor.change(old=>({...old,mediaIds:old.mediaIds.includes(file.id)?old.mediaIds:[...old.mediaIds,file.id],offers:{...old.offers,offers:old.offers.offers.map(row=>row.id===photoOffer?{...row,mediaId:file.id}:row)}}));setPhotoOffer(null);showOffers();}}>Use for selected offer</button>}</div></details>}</div>;})}{guidedPhotoControl}</div>
+  {uploads.filter(job=>(!guided||job.state!=='ready')&&(!job.replaces||!removedPhotos.has(job.replaces))&&!serverUploads.some(file=>file.requestId===job.requestId&&removedPhotos.has(file.id))).map(job=><div key={job.requestId} className="rounded-lg border p-3 text-sm"><p className="break-all font-medium">{job.file.name}</p><p>{job.state==='ready'?'Upload completed. Its attachment is saved when the workspace status says Saved.':job.message}</p>{job.state==='failed'&&<div className="mt-2 space-y-2"><button type="button" className="min-h-11 underline" onClick={()=>void upload(job)}>Retry this file</button><label className="grid gap-2">Choose original file again<input type="file" accept="image/jpeg,image/png,image/webp,video/mp4" onChange={event=>{const file=event.target.files?.[0];if(!file)return;const retry={...job,file};setUploads(rows=>rows.map(row=>row.requestId===job.requestId?retry:row));void upload(retry);event.target.value='';}}/></label></div>}</div>)}
+  <div className={guided?'grid grid-cols-2 gap-2 xl:grid-cols-4':'grid gap-3 sm:grid-cols-2'}>
+   {files.map(file=>{
+    const attached=draft.mediaIds.includes(file.id),cover=attachedPhotos[0]===file.id,index=attachedPhotos.indexOf(file.id);
+    const photo=isPhoto(file);
+    const replacing=uploads.some(job=>job.replaces===file.id&&['waiting','uploading'].includes(job.state));
+    const addingBlocked=guided&&photo&&!attached&&(photos>=8||uploadingPhotos);
+    const ready=file.state==='ready';
+    const editingBlocked=replacing||operating||!!pendingAction;
+    return <fieldset key={file.id} aria-label={(photo?'Photo: ':'Video: ')+file.originalName}
+      className={guided?'relative min-w-0 space-y-1.5 rounded-lg border border-[#EEE5D5] p-1.5 text-sm':'min-w-0 space-y-2 rounded-lg border p-3 text-sm'}>
+     {!ready&&!uploads.some(job=>job.requestId===file.requestId)&&<label className="grid gap-2">Retry original file: {file.originalName}
+       <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4" onChange={event=>{
+        const selected=event.target.files?.[0];
+        if(!selected||!editor.saved)return;
+        const job:UploadJob={requestId:file.requestId,file:selected,cover:false,draftId:editor.saved.id,state:'waiting',message:'Original file selected for recovery.'};
+        setUploads(rows=>[...rows,job]);void upload(job);event.target.value='';
+       }}/>
+      </label>}
+     {ready&&photo?<ProductIntakePhotoPreview id={file.id} alt={file.originalName} file={photoFiles.get(file.id)}
+       className={guided?'aspect-square w-full rounded-lg border border-[#EEE5D5]':studio?'h-24 w-full rounded':'h-36 w-full rounded'}/>:null}
+     {!guided||!attached?<><p className="break-all">{file.originalName}</p>
+       <p>{ready?attached?cover?'Cover photo · attached':'Attached to draft':'Uploaded · not attached to this version':'Upload not yet confirmed; retry the original file'}</p>
+      </>:null}
+     {guided&&cover?<span className="absolute left-2 top-2 rounded-full bg-[#14213D] px-2 py-0.5 text-xs font-semibold text-white">Cover</span>:null}
+     {ready&&photo?<div className="flex flex-wrap gap-1">
+       <button type="button" disabled={editingBlocked} aria-label={'Replace '+file.originalName}
+        className="min-h-11 rounded-md border px-2 text-xs font-semibold disabled:opacity-50"
+        onClick={()=>{replacementTarget.current=file.id;replacementPhotoInput.current?.click();}}>
+        {replacing?'Replacing…':'Replace'}
+       </button>
+       <button type="button" disabled={editingBlocked} className="min-h-11 rounded-md border px-2 text-xs font-semibold text-[#A8232E] disabled:opacity-50"
+        onClick={()=>{editor.change(old=>removeOrReplacePhoto(old,file.id,null));if(guided)setStepError(null);}}>Remove</button>
+      </div>:null}
+     {ready?<details open={!guided?true:undefined} className="min-w-0">
+      <summary className={guided?'min-h-11 cursor-pointer rounded-md px-1 py-2.5 text-sm font-semibold text-[#46536F]':'hidden'}>Photo options</summary>
+      <div className="flex flex-wrap gap-x-3 gap-y-1">
+       {attached?!photo?<button type="button" className="min-h-11 underline" onClick={()=>editor.change(old=>({
+         ...old,
+         mediaIds:old.mediaIds.filter(id=>id!==file.id),
+         offers:{...old.offers,offers:old.offers.offers.map(offer=>offer.mediaId===file.id?{...offer,mediaId:null}:offer)},
+        }))}>Remove from this draft</button>:null:
+        <button type="button" disabled={addingBlocked||editingBlocked} className="min-h-11 underline disabled:opacity-50" onClick={()=>editor.change(old=>({...old,mediaIds:[...old.mediaIds,file.id]}))}>Add to this draft</button>}
+       {photo&&!cover&&<button type="button" disabled={addingBlocked||editingBlocked} className="min-h-11 underline disabled:opacity-50" onClick={()=>{
+        coverIntent.current=null;editor.change(old=>({...old,mediaIds:[file.id,...old.mediaIds.filter(id=>id!==file.id)]}));
+       }}>Use as cover</button>}
+       {guided&&attached&&index>=0?<><button type="button" className={buttonClass+' px-2'} aria-label={'Move '+file.originalName+' earlier'} disabled={index===0||editingBlocked}
+        onClick={()=>movePhoto(file.id,-1)}>Earlier</button>
+        <button type="button" className={buttonClass+' px-2'} aria-label={'Move '+file.originalName+' later'} disabled={index===attachedPhotos.length-1||editingBlocked}
+         onClick={()=>movePhoto(file.id,1)}>Later</button></>:null}
+       {photoOffer&&photo&&<button type="button" disabled={addingBlocked||editingBlocked} className="min-h-11 underline disabled:opacity-50" onClick={()=>{
+        editor.change(old=>({...old,mediaIds:old.mediaIds.includes(file.id)?old.mediaIds:[...old.mediaIds,file.id],
+         offers:{...old.offers,offers:old.offers.offers.map(row=>row.id===photoOffer?{...row,mediaId:file.id}:row)}}));
+        setPhotoOffer(null);showOffers();
+       }}>Use for selected offer</button>}
+      </div>
+     </details>:null}
+    </fieldset>;
+   })}
+   {guidedPhotoControl}
+  </div>
+  <input ref={replacementPhotoInput} type="file" accept="image/jpeg,image/png,image/webp" hidden
+   aria-label="Replacement photo file" onChange={event=>{
+    const id=replacementTarget.current;replacementTarget.current=null;
+    if(id)replacePhoto(id,event.currentTarget.files?.[0]);event.currentTarget.value='';
+   }}/>
   {guided?<><div className="flex gap-2 rounded-xl bg-[#E2E8F4] p-3.5 text-sm text-[#284779]">
     <Lightbulb className="mt-0.5 size-4 shrink-0" aria-hidden="true" /><p><strong>Photos that sell:</strong> use daylight and a plain background. Include a close-up and a photo that shows the size. JPG, PNG or WebP up to 5 MB each.</p>
   </div><details className="rounded-xl border px-3"><summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold">Add a video</summary>
@@ -371,7 +467,7 @@ function ProductIntakeWorkspaceBody({categories,occasions,materialSuggestions=[]
   </div>
   {guided?<aside className="hidden min-w-0 space-y-4 xl:block" aria-label="Product preview and progress">
     <section className={panelClass} aria-labelledby="guided-preview-title"><h2 id="guided-preview-title" className="font-bold">How customers will see it</h2>
-      <ProductIntakePreview compact snapshot={draft} offer={offer} uploads={serverUploads} tradingName={tradingName} />
+      <ProductIntakePreview compact snapshot={draft} offer={offer} uploads={serverUploads} photoFiles={photoFiles} tradingName={tradingName} />
     </section><GuidedReadiness complete={completeSteps}/>
   </aside>:<aside className="min-w-0 space-y-4" hidden={!studio&&step!==2} aria-label="Review product information">
     <ProductReviewReadiness checks={checks} busy={editor.busy||operating||editor.pendingSave||!!pendingAction||!!editor.comparison} onFocus={showDetail} onReview={()=>void sendForReview()} />
@@ -386,7 +482,7 @@ function ProductIntakeWorkspaceBody({categories,occasions,materialSuggestions=[]
     </section>
     <section className={panelClass} aria-labelledby="customer-preview-heading">
       <h2 id="customer-preview-heading" className="font-bold">How customers will see it</h2>
-      <ProductIntakePreview snapshot={draft} offer={offer} uploads={serverUploads} tradingName={tradingName} compact={studio} showProposedPricing={!studio} />
+      <ProductIntakePreview snapshot={draft} offer={offer} uploads={serverUploads} photoFiles={photoFiles} tradingName={tradingName} compact={studio} showProposedPricing={!studio} />
     </section>
     {editor.saved?.guidance.ordering.length?<details className={panelClass}><summary className="min-h-11 cursor-pointer">Facts to establish before ordering</summary><ul className="space-y-2 text-sm">{editor.saved.guidance.ordering.map((issue,index)=><li key={issue.field+index}>{issue.reason} <button type="button" onClick={()=>showDetail(issue.field)} className="min-h-11 underline">Open the relevant detail</button></li>)}</ul></details>:null}
   </aside>}

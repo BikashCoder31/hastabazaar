@@ -31,7 +31,7 @@ void test('saved Gregorian queue bounds use AD by default and offer Bikram Samba
       assert.ok(input?.includes('type="date"'));
       assert.ok(input?.includes(`value="${date}"`));
     }
-    assert.ok(html.includes('२ मंसिर २०८३ BS'));
+    assert.ok(html.includes('2 Mangsir 2083 BS'));
     assert.match(html, /Nepal time \(UTC\+05:45\)/);
   } finally {
     hooks.deregister();

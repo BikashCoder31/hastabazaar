@@ -1005,7 +1005,7 @@ void test('mounted staff marketplace, parcel, and payout forms send published co
     const taxonomy = page.locator('form[data-form-id="staff.catalog"]');
     assert.equal(await taxonomy.count(), 1);
     await taxonomy.getByLabel('English name').fill('New Category');
-    await taxonomy.getByLabel('Nepali name (नेपाली नाम)').fill('नयाँ वर्ग');
+    await taxonomy.getByLabel('Nepali name (optional)', { exact: true }).fill('नयाँ वर्ग');
     await taxonomy.getByLabel('URL slug').fill('new-category');
     await taxonomy.getByLabel('Staff context').fill('Reviewed bilingual naming');
     const catalogResponse=page.waitForResponse('https://staff-catalog.test/api/admin/catalog');

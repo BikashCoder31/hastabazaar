@@ -20,7 +20,6 @@ import {
   bsMonths,
   bsFirstYear,
   bsLastYear,
-  nepaliDigits,
   formatBsDate,
   type DateCalendar,
 } from '@/lib/dates/nepal-calendar';
@@ -123,7 +122,7 @@ function CalendarDateField({
                   (_, index) => bsLastYear - index,
                 ).map((number) => (
                   <NativeSelectOption key={number} value={number}>
-                    {nepaliDigits(number)}
+                    {number}
                   </NativeSelectOption>
                 ))}
               </NativeSelect>
@@ -174,7 +173,7 @@ function CalendarDateField({
                 {Array.from({ length: days }, (_, index) => index + 1).map(
                   (number) => (
                     <NativeSelectOption key={number} value={number}>
-                      {nepaliDigits(number)}
+                      {number}
                     </NativeSelectOption>
                   ),
                 )}

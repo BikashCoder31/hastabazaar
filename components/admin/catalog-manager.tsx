@@ -300,7 +300,7 @@ function TaxonomySection({
               htmlFor={fieldId + '-nameNe'}
               className="grid gap-2 text-sm font-medium"
             >
-              Nepali name (नेपाली नाम)
+              Nepali name (optional)
               <Input
                 id={fieldId + '-nameNe'}
                 name="nameNe"
@@ -463,9 +463,7 @@ function TaxonomySection({
               >
                 <span className="min-w-0 [overflow-wrap:anywhere]">
                   <strong className="block text-sm">{row.nameEn}</strong>
-                  <span lang={nepali ? 'ne' : undefined} className="mt-1 block text-xs text-muted-foreground">
-                    {nepali ?? 'Nepali name not added'}
-                  </span>
+                  {!nepali ? <span className="mt-1 block text-xs text-muted-foreground">Nepali name not added</span> : null}
                   <span className="mt-1 block text-xs text-muted-foreground">
                     /{row.slug} · order {row.sortOrder}
                   </span>

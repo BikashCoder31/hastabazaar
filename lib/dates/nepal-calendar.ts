@@ -4,24 +4,22 @@ export type DateCalendar = 'ad' | 'bs';
 export const bsFirstYear = 1975,
   bsLastYear = 2099;
 export const bsMonths = [
-  'बैशाख',
-  'जेठ',
-  'असार',
-  'साउन',
-  'भदौ',
-  'असोज',
-  'कात्तिक',
-  'मंसिर',
-  'पुस',
-  'माघ',
-  'फागुन',
-  'चैत',
+  'Baishakh',
+  'Jestha',
+  'Asar',
+  'Saun',
+  'Bhadau',
+  'Ashoj',
+  'Kartik',
+  'Mangsir',
+  'Poush',
+  'Magh',
+  'Falgun',
+  'Chaitra',
 ] as const;
 const pad = (value: number) => String(value).padStart(2, '0');
 const iso = (value: { year: number; month: number; date: number }) =>
   `${value.year}-${pad(value.month)}-${pad(value.date)}`;
-export const nepaliDigits = (value: string | number) =>
-  String(value).replace(/\d/g, (digit) => '०१२३४५६७८९'[Number(digit)]);
 const englishDigits = (value: string) =>
   value.replace(/[०-९]/g, (digit) => String('०१२३४५६७८९'.indexOf(digit)));
 export const dateCalendar = (value: string | undefined): DateCalendar =>
@@ -69,7 +67,7 @@ export function formatBsDate(ad: string): string | null {
   const value = adToBs(ad);
   if (!value) return null;
   const [year, month, day] = value.split('-').map(Number);
-  return `${nepaliDigits(day)} ${bsMonths[month - 1]} ${nepaliDigits(year)} BS`;
+  return `${day} ${bsMonths[month - 1]} ${year} BS`;
 }
 const nepalDayFormatter = new Intl.DateTimeFormat('en-US', {
   timeZone: 'Asia/Kathmandu',

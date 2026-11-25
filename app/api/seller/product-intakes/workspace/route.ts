@@ -28,9 +28,9 @@ export async function POST(request:Request){
   return intakeReply(await copySellerIntakeProduct(db,ctx,owner.sellerId,body.productId));
  }
  if(body.action==='save'){
-  closedIntakeFields(body,['action','requestId','expectedRevision','draftId','categoryId','answers','offers','mediaIds','privateReview','formContext','packedWeightGrams']);
+  closedIntakeFields(body,['action','requestId','expectedRevision','draftId','categoryId','answers','offers','mediaIds','privateReview','formContext','packedWeightGrams','removedMediaIds']);
   if(!(body.draftId===null||intakeId(body.draftId))||!(body.categoryId===null||typeof body.categoryId==='string'&&body.categoryId.length<=160)||!Array.isArray(body.mediaIds))throw new CategoryContractError('Use the saved draft and supported category/media references.',400);
-  return intakeReply(await saveProductWorkspace(db,ctx,{draftId:body.draftId,sellerId:owner.sellerId,categoryId:body.categoryId,answers:body.answers,offers:body.offers,mediaIds:body.mediaIds as string[],privateReview:body.privateReview,...(body.formContext!==undefined?{formContext:body.formContext}:{}),...(body.packedWeightGrams!==undefined?{packedWeightGrams:body.packedWeightGrams}:{})}));
+  return intakeReply(await saveProductWorkspace(db,ctx,{draftId:body.draftId,sellerId:owner.sellerId,categoryId:body.categoryId,answers:body.answers,offers:body.offers,mediaIds:body.mediaIds as string[],privateReview:body.privateReview,...(body.removedMediaIds!==undefined?{removedMediaIds:body.removedMediaIds}:{}),...(body.formContext!==undefined?{formContext:body.formContext}:{}),...(body.packedWeightGrams!==undefined?{packedWeightGrams:body.packedWeightGrams}:{})}));
  }
  if(body.action==='send'){
   closedIntakeFields(body,['action','requestId','expectedRevision','draftId','versionId','intent','note','replaceVersionId','expectedCaseRevision','expectedCaseId']);

@@ -104,7 +104,7 @@ export async function readProductPreview(
   if (!row) return null;
   const snapshot = JSON.parse(row.snapshot) as IntakeSnapshot;
   const text = (key: ProductDetailKey) => detailText(snapshot.answers, key);
-  const name = text('nameEn') || text('nameNe') || 'Product name not provided';
+  const name = text('nameEn') || 'Product name not provided';
   const [media, category] = await Promise.all([
     attachedMedia(db, row.draftId, snapshot.mediaIds, name),
     snapshot.categoryId ? db.prepare('SELECT name_en AS name FROM categories WHERE id=?').bind(snapshot.categoryId).first<{ name: string }>() : null,
@@ -132,7 +132,7 @@ export async function readProductPreview(
   const preparationRecorded = /^\d+$/.test(preparation) && Number.isSafeInteger(Number(preparation));
   const product = publicProductDetails({
     id: row.draftId, sellerId: row.sellerId, slug: '', sku: '', media,
-    nameEn: name, nameNe: text('nameNe') || null, descriptionEn: text('descriptionEn') || text('descriptionNe'),
+    nameEn: name, nameNe: text('nameNe') || null, descriptionEn: text('descriptionEn'),
     pricePaisa: display.pricePaisa ?? (snapshot.offers.offers.length ? null : offerMoney(text('price'))),
     compareAtPricePaisa: null, inventoryQuantity: 0, purchasable: false,
     priceFrom: display.from, tradingName: row.sellerName, categoryName: category?.name ?? '',

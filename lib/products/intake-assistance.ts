@@ -80,7 +80,8 @@ export async function getProductIntakeReview(db:D1Database,actorId:string,caseId
  for(let start=0;start<snapshot.mediaIds.length;start+=90){const ids=snapshot.mediaIds.slice(start,start+90);uploads.push(...(await db.prepare(`SELECT id,mime_type AS mimeType,original_name AS originalName FROM product_intake_media WHERE draft_id=? AND state='ready' AND id IN (${ids.map(()=>'?').join(',')})`).bind(row.draftId,...ids).all<{id:string;mimeType:string;originalName:string}>()).results);}
  const categoryModel=await getCategoryDetailGroups(db,snapshot.categoryId);
  const {snapshot:unused,...facts}=row;void unused;
- const result={...facts,actorId,categoryModel,snapshot:{...snapshot,privateReview:authority.productReview?snapshot.privateReview:{}},uploads,canReviewProducts:authority.productReview,
+ const {removedMediaIds:privateRemovedUploads,...submittedSnapshot}=snapshot;void privateRemovedUploads;
+ const result={...facts,actorId,categoryModel,snapshot:{...submittedSnapshot,privateReview:authority.productReview?snapshot.privateReview:{}},uploads,canReviewProducts:authority.productReview,
   proposals:proposals.map(proposal=>({...proposal,patch:JSON.parse(proposal.patch) as ProposalPatch})),events:events.map(event=>({...event,detail:JSON.parse(event.detail) as Record<string,unknown>}))};
  try{await db.batch([...authority.statements,...offerGuard(db,'EXISTS(SELECT 1 FROM product_intake_cases WHERE id=? AND draft_id=? AND version_id=? AND revision=?)',[row.id,row.draftId,row.versionId,row.revision])]);}
  catch(error){

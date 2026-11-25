@@ -5,28 +5,24 @@ import { emailPreviewGroups, renderEmailPreview } from '../lib/email/preview-fix
 
 const origin = 'https://preview.example.test';
 
-void test('the 17 preview templates use one escaped, bilingual-friendly email layout', () => {
+void test('the 17 preview templates use one escaped, English email layout', () => {
   const entries = emailPreviewGroups.flatMap(group => group.entries);
   assert.equal(entries.length, 17);
   assert.equal(new Set(entries.map(entry => entry.id)).size, 17);
-  for (const [groupIndex, group] of emailPreviewGroups.entries()) {
-    for (const entry of group.entries) {
-      const message = renderEmailPreview(entry, origin);
-      const separators = Buffer.from(message.subject).toString('hex').match(/20c2b720/g) ?? [];
-      assert.equal(separators.length, entry.id === 'help' ? 3 : 2, entry.id);
-      assert.ok(message.subject.startsWith('Hastabazaar · '), entry.id);
-      assert.doesNotMatch(message.subject, /Â/);
-      assert.equal((message.html.match(/<a href=/g) ?? []).length, 1, entry.id);
-      assert.match(message.html, /<table role="presentation"/, entry.id);
-      assert.match(message.html, /<meta charset="UTF-8"/, entry.id);
-      assert.match(message.text, /https:\/\/preview\.example\.test\//, entry.id);
-      assert.match(message.text, /support@hastabazaar\.com/, entry.id);
-      assert.match(message.text, /Your turn|Seller|Courier|Hastabazaar|Done/, entry.id);
-      if (groupIndex === 2) {
-        assert.match(message.html, /lang="ne"/, entry.id);
-        assert.match(message.text, /[\u0900-\u097f]/, entry.id);
-      }
-    }
+  for (const entry of entries) {
+    const message = renderEmailPreview(entry, origin);
+    const separators = Buffer.from(message.subject).toString('hex').match(/20c2b720/g) ?? [];
+    assert.equal(separators.length, entry.id === 'help' ? 3 : 2, entry.id);
+    assert.ok(message.subject.startsWith('Hastabazaar · '), entry.id);
+    assert.doesNotMatch(message.subject, /Â/);
+    assert.equal((message.html.match(/<a href=/g) ?? []).length, 1, entry.id);
+    assert.match(message.html, /<table role="presentation"/, entry.id);
+    assert.match(message.html, /<meta charset="UTF-8"/, entry.id);
+    assert.match(message.text, /https:\/\/preview\.example\.test\//, entry.id);
+    assert.match(message.text, /support@hastabazaar\.com/, entry.id);
+    assert.match(message.text, /Your turn|Seller|Courier|Hastabazaar|Done/, entry.id);
+    assert.doesNotMatch(message.html, /\p{Script=Devanagari}|lang="ne"/u, entry.id);
+    assert.doesNotMatch(message.text, /\p{Script=Devanagari}/u, entry.id);
   }
 });
 
@@ -49,7 +45,7 @@ void test('bank email uses its saved deadline and describes only a released paym
   assert.match(released.text, /\/orders\/HB-STORED/);
 });
 
-void test('layout preserves saved Nepali text, escapes record fields and uses one exact case link', () => {
+void test('layout uses English copy when translations are saved and escapes exact case links', () => {
   const message = buildBusinessEmail({
     template: 'business.order.preparation_update', email: 'buyer@example.test', audience: 'customer',
     relatedType: 'order_response_event', relatedId: 'saved-event', orderNumber: 'HB-RECORD',
@@ -65,7 +61,9 @@ void test('layout preserves saved Nepali text, escapes record fields and uses on
     email: 'seller@example.test', audience: 'seller', relatedType: 'order', relatedId: 'saved-order',
     subject: 'Order status changed', subjectNe: 'अर्डर अपडेट', body: 'Review the order.', bodyNe: 'अर्डर हेर्नुहोस्।',
   }, origin);
-  assert.match(seller.html, /अर्डर हेर्नुहोस्।/);
-  assert.match(seller.text, /अर्डर हेर्नुहोस्।/);
+  assert.match(seller.html, /Review the order\./);
+  assert.match(seller.text, /Review the order\./);
+  assert.doesNotMatch(seller.html, /\p{Script=Devanagari}|lang="ne"/u);
+  assert.doesNotMatch(seller.text, /\p{Script=Devanagari}/u);
   assert.equal((seller.html.match(/<a href=/g) ?? []).length, 1);
 });
