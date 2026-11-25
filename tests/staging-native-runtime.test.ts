@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import {after,test} from 'node:test';
 import mysql,{type Pool,type Connection} from 'mysql2/promise';
-import {env} from '../lib/runtime/node-bindings';
+import {env, translateSqliteSql} from '../lib/runtime/node-bindings';
+import {nativeReadinessAdapter} from '../scripts/testing/current-artifact-identity.mjs';
+import {readSellerOrderQueue} from '../app/seller/orders/order-queue';
 import {stagingNativeFixture} from './helpers/staging-native-fixture';
 import {seedIncentiveCustomer,seedIncentiveInventory,incentiveOrder,incentiveItem} from './helpers/incentive-db';
 import {ctx,claim,TERMS,NOW,publishForm} from './helpers/loyalty-fixture';
@@ -155,4 +157,57 @@ void test('MariaDB allocation history permits re-reservation and blocks double r
   await assert.rejects(db.prepare("UPDATE managed_payout_allocations SET disposition='released',terminal_at=4 WHERE payout_id='payout-two'").run(),/immutable/);
   await assert.rejects(db.prepare("UPDATE managed_payouts SET status='paid',paid_at=3,provider_reference='SIMULATED' WHERE id='payout-one'").run(),/managed_payout_requires_actual_execution_packet/);
   await assert.rejects(db.prepare("UPDATE managed_payouts SET status='prepared' WHERE id='payout-two'").run(),/immutable/);
+});
+
+void test('MariaDB loads items for the seller’s latest 100 orders', { skip: !enabled }, async () => {
+  const queueConnection = await mysql.createConnection(await stagingNativeFixture());
+  try {
+    // Session-local tables let the same test run on an empty disposable server.
+    const tables = [
+      [`orders`, `id VARCHAR(40) PRIMARY KEY, order_number VARCHAR(40), status VARCHAR(24),
+        placed_at BIGINT, created_at BIGINT, payment_mode VARCHAR(24), shipping_address_json TEXT`],
+      [`order_items`, `id VARCHAR(40) PRIMARY KEY, order_id VARCHAR(40), seller_id VARCHAR(40),
+        product_id VARCHAR(40), fulfillment_status VARCHAR(24), product_name_snapshot VARCHAR(40),
+        quantity INT, line_total_paisa INT, commission_paisa INT`],
+      ['product_media', 'id VARCHAR(40), product_id VARCHAR(40), mime_type VARCHAR(40), sort_order INT'],
+      ['products', 'id VARCHAR(40), seller_id VARCHAR(40)'],
+      ['product_publication_heads', 'product_id VARCHAR(40), current_version_id VARCHAR(40)'],
+      ['product_publication_media', 'version_id VARCHAR(40), media_id VARCHAR(40), sort_order INT'],
+      ['managed_commercial_snapshots', 'order_item_id VARCHAR(40), seller_id VARCHAR(40), legal_seller_reference VARCHAR(40)'],
+      ['order_fulfillment_holds', 'order_item_id VARCHAR(40), prevents_preparation INT, ended_at BIGINT'],
+      ['first_cod_reviews', 'order_id VARCHAR(40), status VARCHAR(24)'],
+      ['shipping_jobs', 'id VARCHAR(40), order_id VARCHAR(40)'],
+      ['shipping_parcels', 'shipping_job_id VARCHAR(40)'],
+      ['manual_payment_windows', 'order_id VARCHAR(40), paid_at BIGINT, released_at BIGINT, closed_at BIGINT'],
+      ['seller_restrictions', 'seller_id VARCHAR(40), obligation_mode VARCHAR(24), mode VARCHAR(24), suspended_until BIGINT'],
+    ];
+    for (const [table, columns] of tables) {
+      await queueConnection.query(`CREATE TEMPORARY TABLE ${table} (${columns})`);
+    }
+
+    const numbers = Array.from({ length: 101 }, (_, index) => index + 1);
+    await queueConnection.query('INSERT INTO orders VALUES ?', [
+      [...numbers.map(number => [`order-${number}`, `HB-TEST-${number}`, 'confirmed', number, number, 'cod', '{}']),
+        ['other-order', 'HB-TEST-OTHER', 'confirmed', 102, 102, 'cod', '{}']],
+    ]);
+    await queueConnection.query('INSERT INTO order_items VALUES ?', [
+      [...numbers.map(number => [`item-${number}`, `order-${number}`, 'seller', 'product', 'confirmed', 'Test item', 1, 2500, 300]),
+        ['item-extra', 'order-101', 'seller', 'product', 'packing', 'Second test item', 1, 2500, 300],
+        ['item-other', 'order-101', 'other-seller', 'other-product', 'confirmed', 'Other seller item', 1, 2500, 300],
+        ['item-other-order', 'other-order', 'other-seller', 'other-product', 'confirmed', 'Other order', 1, 2500, 300]],
+    ]);
+
+    const queueDb = nativeReadinessAdapter({
+      query: (sql: string, values: string[]) => queueConnection.execute(translateSqliteSql(sql), values),
+    }) as unknown as D1Database;
+    const queue = await readSellerOrderQueue(queueDb, 'seller');
+
+    assert.equal(queue.length, 100);
+    assert.equal(queue[0].id, 'order-101');
+    assert.equal(queue.at(-1)?.id, 'order-2');
+    assert.deepEqual(queue[0].items.map(item => item.id), ['item-101', 'item-extra']);
+    assert.ok(queue.every(order => order.items.length > 0));
+  } finally {
+    await queueConnection.end();
+  }
 });
