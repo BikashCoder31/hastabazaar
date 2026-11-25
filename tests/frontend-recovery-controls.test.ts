@@ -32,7 +32,7 @@ for(const mode of ['hero','occasion'] as const)void test(`${mode} retains story 
   const flush=()=>f.page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
   const tick=()=>f.page.evaluate(milliseconds=> (window as unknown as {tick:(milliseconds:number)=>void}).tick(milliseconds),mode==='hero'?6_500:6_000);
   const advances=()=>f.page.evaluate(()=> (window as unknown as {advances:number}).advances);
-  await flush();assert.equal(await f.page.getByRole('button',{name:'Pause featured stories'}).count(),mode==='hero'?1:0);
+  await flush();assert.equal(await f.page.getByRole('button',{name:/^(play|pause) featured stories$/i}).count(),0);
   await tick();await f.page.waitForFunction(()=> (window as unknown as {advances:number}).advances===1);
   await f.page.getByRole('button',{name:/Show slide 2:/}).click();await f.page.locator('#outside').click();await flush();
   await tick();assert.equal(await advances(),1,'manual browsing holds beyond the first six seconds');

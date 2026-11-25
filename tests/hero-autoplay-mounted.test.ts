@@ -108,7 +108,7 @@ const interval = kind === 'hero' ? 6_500 : 6_000;
 void test(`${kind} renders its story controls and rotates at each configured boundary`, async () => {
   const h=await mounted(kind);
   try {
-    assert.equal(await h.page.getByRole('button',{name:'Pause featured stories'}).count(),kind==='hero'?1:0);
+    assert.equal(await h.page.getByRole('button',{name:/^(play|pause) featured stories$/i}).count(),0);
     assert.equal(await h.page.locator('[data-slider-dots] button').count(),4);
     await h.boundary(interval);
     await h.boundary(interval);
