@@ -20,7 +20,7 @@ function bundle() {
       contents: `
       import React from 'react';import {createRoot} from 'react-dom/client';
       import {AddToCart} from './components/commerce/add-to-cart';
-      createRoot(document.getElementById('root')).render(<AddToCart productId="product-fixture" available={5}/>);
+      createRoot(document.getElementById('root')).render(<AddToCart productId="product-fixture" available={5} productPage={location.search === "?product-page"}/>);
     `,
     },
     bundle: true,
@@ -51,7 +51,7 @@ function bundle() {
   }).then((result) => result.outputFiles[0].text));
 }
 
-async function fixture(kind: ResponseKind = 'accepted') {
+async function fixture(kind: ResponseKind = 'accepted', productPage = false) {
   const { chromium } = (await import(
     process.env.PLAYWRIGHT_MODULE ??
       'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs'
@@ -82,6 +82,12 @@ async function fixture(kind: ResponseKind = 'accepted') {
         contentType: 'text/html',
         body: '<div id="root"></div>',
       });
+    if (url.pathname === '/cart')
+      return route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: '<h1>Your bag</h1>',
+      });
     if (url.pathname !== '/api/cart') return route.abort();
     requests.push({
       method: request.method(),
@@ -111,7 +117,9 @@ async function fixture(kind: ResponseKind = 'accepted') {
       ),
     });
   });
-  await page.goto('https://buy-now.test/products/product-fixture');
+  await page.goto(
+    'https://buy-now.test/products/product-fixture' + (productPage ? '?product-page' : ''),
+  );
   await page.addScriptTag({ content: source });
   await page.getByRole('button', { name: 'Buy now', exact: true }).waitFor();
   return {
@@ -123,6 +131,26 @@ async function fixture(kind: ResponseKind = 'accepted') {
     },
   };
 }
+
+void test('adding from the product page makes View bag available in the mobile purchase row', async () => {
+  const h = await fixture('accepted', true);
+  try {
+    const purchaseRow = h.page.locator('[data-product-mobile-add]');
+    const viewBag = purchaseRow.getByRole('link', { name: 'View bag', exact: true });
+    assert.equal(await viewBag.count(), 0);
+    await purchaseRow.getByRole('button', { name: 'Add to bag', exact: true }).click();
+    await purchaseRow.getByRole('button', { name: 'Added to bag', exact: true }).waitFor();
+    assert.equal(await viewBag.isVisible(), true);
+    await viewBag.click();
+    await h.page.getByRole('heading', { name: 'Your bag' }).waitFor();
+    assert.equal(await h.page.evaluate(() => location.pathname), '/cart');
+    assert.deepEqual(h.requests, [
+      { method: 'POST', body: { productId: 'product-fixture', quantity: 1 } },
+    ]);
+  } finally {
+    await h.browser.close();
+  }
+});
 
 void test('Buy now submits the selected quantity and waits for cart acceptance before opening checkout', async () => {
   const h = await fixture('pending');

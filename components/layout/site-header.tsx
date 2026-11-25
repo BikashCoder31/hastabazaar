@@ -109,10 +109,12 @@ export async function SiteHeader() {
             )}
             <Link
               href="/cart"
-              aria-label="Shopping cart"
+              aria-label="Shopping bag"
+              title="Bag"
               className="header-action"
             >
-              <ShoppingBag className="size-5" />
+              <ShoppingBag className="size-5" aria-hidden="true" />
+              <span className="hidden lg:inline">Bag</span>
             </Link>
             {identity ? (
               <Link

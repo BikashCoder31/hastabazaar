@@ -5,8 +5,9 @@ import { Check, Minus, Plus, ShoppingBag, Zap } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { sendJson } from '@/lib/http/client-request';
+import { cn } from '@/lib/utils';
 
 export function AddToCart({
   productId,
@@ -96,24 +97,31 @@ export function AddToCart({
         </select>}
       </div>
       <div className="grid gap-3">
-        <div data-product-mobile-add={productPage ? '' : undefined}>
-        <Button
-          type="button"
-          onClick={() => void submit('add_to_cart')}
-          disabled={pendingAction !== null}
-          className={productPage ? 'min-h-11 w-full rounded-xl bg-[#a8232e] text-base text-white hover:bg-[#8c1c27] md:h-12' : 'h-12 w-full rounded-full text-base'}
+        <div
+          data-product-mobile-add={productPage ? '' : undefined}
+          className={productPage ? 'flex items-center gap-2' : undefined}
         >
-          {addedQuantity === quantity ? (
-            <>
-              <Check /> {productPage ? 'Added to bag' : 'Added to cart'}
-            </>
-          ) : (
-            <>
-              <ShoppingBag />{' '}
-              {pendingAction === 'add_to_cart' ? 'Adding…' : productPage ? 'Add to bag' : 'Add to cart'}
-            </>
-          )}
-        </Button>
+          <Button
+            type="button"
+            onClick={() => void submit('add_to_cart')}
+            disabled={pendingAction !== null}
+            className={productPage ? 'min-h-11 min-w-0 flex-1 rounded-xl bg-[#a8232e] text-base text-white hover:bg-[#8c1c27] md:h-12' : 'h-12 w-full rounded-full text-base'}
+          >
+            {addedQuantity === quantity ? (
+              <>
+                <Check /> {productPage ? 'Added to bag' : 'Added to cart'}
+              </>
+            ) : (
+              <>
+                <ShoppingBag />{' '}
+                {pendingAction === 'add_to_cart' ? 'Adding…' : productPage ? 'Add to bag' : 'Add to cart'}
+              </>
+            )}
+          </Button>
+          {productPage && addedQuantity === quantity ? <ProductBagLink /> : null}
+          {productPage ? (
+            <output className="sr-only">{addedQuantity === quantity ? 'Added to your bag.' : ''}</output>
+          ) : null}
         </div>
         <Button
           type="button"
@@ -126,7 +134,7 @@ export function AddToCart({
           {pendingAction === 'buy_now' ? 'Opening checkout…' : 'Buy now'}
         </Button>
       </div>
-      {addedQuantity === quantity ? (
+      {!productPage && addedQuantity === quantity ? (
         <div className="mt-4 rounded-xl bg-secondary p-4">
           <output className="block text-sm font-semibold text-primary">
             Your selection is in the cart.
@@ -145,6 +153,17 @@ export function AddToCart({
         </p>
       ) : null}
     </div>
+  );
+}
+
+export function ProductBagLink() {
+  return (
+    <Link
+      href="/cart"
+      className={cn(buttonVariants({ variant: 'outline' }), 'min-h-11 rounded-xl border-primary px-4 text-primary md:h-12')}
+    >
+      View bag
+    </Link>
   );
 }
 
