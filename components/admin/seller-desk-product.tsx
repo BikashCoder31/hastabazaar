@@ -35,13 +35,13 @@ export function SellerDeskProduct({ view, caseId, disabled, reason, setReason, s
     }}>{active?'Will ask to fix':'Ask to fix'}</button>;
   }
   const fullReview='/admin/products/publications/'+encodeURIComponent(caseId);
-  const title=detailText(candidate.answers,'nameEn')||detailText(candidate.answers,'nameNe');
+  const title=detailText(candidate.answers,'nameEn')||'Product name not provided';
   return <section aria-label="Product review" className="min-w-0 space-y-4 rounded-xl border border-[#E4DACA] bg-white p-4 md:p-5">
     <header className="flex items-center gap-3"><CatalogProductPhoto large caseId={caseId} photoId={candidate.mediaIds[0]}/><div className="min-w-0 break-words">
       <p className="text-sm text-muted-foreground">Product review</p><h2 className="font-heading text-2xl">{title}</h2>
       <p className="text-sm">{[view.category.name,typeof price==='number'?formatPaisaExact(price):null,detailText(candidate.answers,'materials')].filter(Boolean).join(' · ')}</p>
     </div></header>
-    <p className="whitespace-pre-line break-words text-sm">{detailText(candidate.answers,'descriptionEn')||detailText(candidate.answers,'descriptionNe')}</p>
+    <p className="whitespace-pre-line break-words text-sm">{detailText(candidate.answers,'descriptionEn')}</p>
     <Link className="inline-flex min-h-11 items-center text-sm font-semibold underline" href={fullReview}>Open full moderation review</Link>
     <fieldset disabled={disabled} className="min-w-0 space-y-3">
       <legend className="font-semibold">Checks</legend>

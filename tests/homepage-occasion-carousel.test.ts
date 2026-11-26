@@ -299,8 +299,7 @@ void test('public and Super Admin surfaces reuse the central setting and actual 
   assert.match(navigation, /occasions\.map/);
   assert.match(navigation, /encodeURIComponent\(occasion.slug\)/);
   assert.match(navigation, /occasion.nameEn/);
-  assert.match(navigation, /nepaliTaxonomyName\(occasion\)/);
-  assert.match(navigation, /nepali \? <span lang="ne">\{nepali\}<\/span> : null/);
+  assert.doesNotMatch(navigation, /lang="ne"|occasion\.nameNe/);
   assert.match(navigation, /\/occasions#occasion-/);
   assert.doesNotMatch(navigation, /<nav[^>]+(?:aria-hidden|inert)/);
   assert.match(adminPage, /<HomepageOccasionManager/);

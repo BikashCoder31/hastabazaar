@@ -3,7 +3,7 @@ import {useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState} from 'rea
 import type {getProductWorkspace,IntakeSnapshot} from '@/lib/products/intake-workspace';
 export type ProductWorkspace=Awaited<ReturnType<typeof getProductWorkspace>>;
 const endpoint='/api/seller/product-intakes/workspace';
-const snapshot=(work:ProductWorkspace):IntakeSnapshot=>({formContext:work.formContext??null,categoryId:work.categoryId,answers:work.answers,offers:work.offers,mediaIds:work.mediaIds,privateReview:work.privateReview,...(work.packedWeightGrams===undefined?{}:{packedWeightGrams:work.packedWeightGrams})});
+const snapshot=(work:ProductWorkspace):IntakeSnapshot=>({formContext:work.formContext??null,categoryId:work.categoryId,answers:work.answers,offers:work.offers,mediaIds:work.mediaIds,privateReview:work.privateReview,...(work.removedMediaIds?.length?{removedMediaIds:work.removedMediaIds}:{}),...(work.packedWeightGrams===undefined?{}:{packedWeightGrams:work.packedWeightGrams})});
 const blank=():IntakeSnapshot=>({formContext:null,categoryId:null,answers:{},offers:{axes:[],offers:[]},mediaIds:[],privateReview:{}});
 class ProductIntakeAccessError extends Error{}
 async function response<T>(request:Promise<Response>):Promise<T>{const result=await request,data=await result.json() as T&{error?:string};if(!result.ok){const message=data.error??'The outcome is unavailable. Keep your entries and retry.';throw [401,403].includes(result.status)?new ProductIntakeAccessError(message):new Error(message);}return data;}

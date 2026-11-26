@@ -112,8 +112,23 @@ void test('homepage exposes newly configured categories and occasions without a 
   const { html } = await homepage();
   assert.match(html, /href="\/shop\?category=food"/);
   assert.match(html, /href="\/occasions#occasion-birthday"/);
-  assert.match(html, /lang="ne">खाना</);
-  assert.match(html, /lang="ne">जन्मदिन</);
+  assert.match(html, />Food<\/strong>/);
+  assert.match(html, />Birthday<\/a>/);
+  assert.doesNotMatch(html, /\p{Script=Devanagari}|lang="ne"/u);
   assert.match(html, /href="\/categories"/);
   assert.match(html, /href="\/occasions"/);
+});
+
+void test('category and occasion cards use English names when translations are saved', async () => {
+  const { TaxonomyDirectory } = await import('../components/catalog/taxonomy-directory');
+  const fixtures = [
+    { kind: 'category', id: 'food', slug: 'food', nameEn: 'Food', nameNe: 'खाना' },
+    { kind: 'occasion', id: 'birthday', slug: 'birthday', nameEn: 'Birthday', nameNe: 'जन्मदिन' },
+  ] as const;
+  for (const { kind, ...entry } of fixtures) {
+    const html = renderToStaticMarkup(createElement(TaxonomyDirectory, { kind, entries: [entry] }));
+    assert.ok(html.includes('>' + entry.nameEn + '<'));
+    assert.ok(html.includes('/shop?' + kind + '=' + entry.slug));
+    assert.doesNotMatch(html, /\p{Script=Devanagari}|lang="ne"/u);
+  }
 });

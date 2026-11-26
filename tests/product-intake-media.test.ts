@@ -37,3 +37,28 @@ void test('a newly reviewed category can make the same frozen facts complete wit
   await triageProductIntake(f.db,{actorId:'delegate',requestId:'mapping-first-review',expectedRevision:String(sent.revision),now:f.now+6},{caseId:sent.caseId,versionId:sent.versionId,outcome:'reviewing',sellerMessage:'The actual supplied product facts are now in review.'});assert.equal((await listSellerReviewTasks(f.db,ctx.actorId)).find(row=>row.sourceType==='product_intake_help')?.status,'completed');
  }finally{f.dispose();}
 });
+
+void test('removing an unused upload persists while earlier attached versions keep their original photos',async()=>{
+ const m=await api(),f=await completeVersionFixture(),storage=objects();try{
+  const ctx={actorId:'registered-owner',requestId:'remove-draft',expectedRevision:null,now:f.now};
+  const input={draftId:null,sellerId:'registered',categoryId:null,answers:{},offers:{axes:[],offers:[]},mediaIds:[],privateReview:{}};
+  const first=await saveProductWorkspace(f.db,ctx,input);
+  const add=(requestId:string)=>photo().then(file=>m.uploadProductIntakeMedia(f.db,storage.bucket,{...ctx,requestId},{draftId:first.id,file}));
+  const cover=await add('remove-original-cover'),spare=await add('remove-spare-photo');
+  const attached=await saveProductWorkspace(f.db,{...ctx,requestId:'attach-original',expectedRevision:String(first.revision)},{...input,draftId:first.id,mediaIds:[cover.id]});
+  const remove={...input,draftId:first.id,mediaIds:[],removedMediaIds:[cover.id,spare.id]};
+  const request={...ctx,requestId:'remove-both-photos',expectedRevision:String(attached.revision)};
+  const removed=await saveProductWorkspace(f.db,request,remove);
+  assert.deepEqual(await saveProductWorkspace(f.db,request,remove),removed);
+  const unrelated=await saveProductWorkspace(f.db,{...ctx,requestId:'older-client-save',expectedRevision:String(removed.revision)},{...input,draftId:first.id});
+  assert.equal(unrelated.revision,removed.revision+1);
+  const reopened=await getProductWorkspace(f.db,ctx.actorId,first.id);
+  assert.deepEqual(reopened.mediaIds,[]);
+  assert.deepEqual(reopened.removedMediaIds,[cover.id,spare.id]);
+  const prior=f.sqlite.prepare('SELECT snapshot_json AS snapshot FROM product_intake_workspace_versions WHERE id=?').get(attached.versionId);
+  assert.deepEqual(JSON.parse(String(prior?.snapshot)).mediaIds,[cover.id]);
+  assert.equal((await m.readProductIntakeMedia(f.db,storage.bucket,ctx.actorId,spare.id,null)).mimeType,'image/png');
+  await assert.rejects(saveProductWorkspace(f.db,{...ctx,requestId:'dismiss-unowned-photo',expectedRevision:String(unrelated.revision)},
+   {...remove,removedMediaIds:['foreign-photo-id']}),/this private draft/);
+ }finally{f.dispose();}
+});

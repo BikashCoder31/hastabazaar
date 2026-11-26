@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { ShoppingBag } from 'lucide-react';
 import {Button} from '@/components/ui/button';
 import {useProductOfferSelection} from '@/components/catalog/product-offer-selection';
-import {AddToCart, ProductQuantity} from './add-to-cart';
+import {AddToCart, ProductBagLink, ProductQuantity} from './add-to-cart';
 import type {OfferCartChoice} from '@/lib/cart/offer-cart';
 type Pending=PendingOfferCartAction;
 type OfferAddProps={productId:string;available:number;purchasable?:boolean;productPage?:boolean};
@@ -34,19 +34,22 @@ const action=pending??(selected&&set?{input:{productId,offerId:selected.id,versi
   </div> : <label className="block text-sm font-medium">Quantity<input aria-label="Option quantity" type="number" min={1} max={Math.min(10,selected?.available??10)} value={quantity} onChange={event=>setQuantity(Number(event.target.value))} disabled={sending||Boolean(pending)} className="ml-3 w-20 rounded-lg border bg-background px-3 py-2"/></label>}
   {pending ? <>
     <p className="rounded-xl border bg-secondary/30 p-3 text-sm">Saved action: {pending.input.quantity} × {pending.label}. Its response may be unconfirmed.</p>
-    <div data-product-mobile-add={productPage ? '' : undefined}>
-      <Button className={productPage ? 'min-h-11 w-full bg-[#a8232e] text-white hover:bg-[#8c1c27]' : 'mt-2'} disabled={sending} onClick={()=>void submit(pending.buyNow)}>{sending?'Confirming…':'Retry exact cart action'}</Button>
+    <div data-product-mobile-add={productPage ? '' : undefined} className={productPage ? 'flex items-center gap-2' : undefined}>
+      <Button className={productPage ? 'min-h-11 min-w-0 flex-1 rounded-xl bg-[#a8232e] text-white whitespace-normal hover:bg-[#8c1c27] md:h-12' : 'mt-2'} disabled={sending} onClick={()=>void submit(pending.buyNow)}>{sending?'Confirming…':'Retry exact cart action'}</Button>
+      {productPage ? <ProductBagLink /> : null}
     </div>
   </> : <div className={productPage ? 'grid gap-3 md:flex md:flex-wrap' : 'flex flex-wrap gap-3'}>
-    <div data-product-mobile-add={productPage && purchasable ? '' : undefined} className={productPage ? 'md:min-w-40 md:flex-1' : undefined}>
-      <Button className={productPage ? 'min-h-11 w-full rounded-xl bg-[#a8232e] text-base text-white hover:bg-[#8c1c27] md:h-12' : undefined}
+    <div data-product-mobile-add={productPage && purchasable ? '' : undefined} className={productPage ? 'flex items-center gap-2 md:flex-1' : undefined}>
+      <Button className={productPage ? 'min-h-11 min-w-0 flex-1 rounded-xl bg-[#a8232e] text-base text-white hover:bg-[#8c1c27] md:h-12' : undefined}
         disabled={!enabled||sending} onClick={()=>void submit(false)}>
         {productPage ? <ShoppingBag className="size-4" aria-hidden="true" /> : null}{productPage ? 'Add to bag' : 'Add to cart'}
       </Button>
+      {productPage ? <ProductBagLink /> : null}
     </div>
     <Button variant="outline" className={productPage ? 'min-h-11 rounded-xl px-4 md:h-12' : undefined} disabled={!enabled||sending} onClick={()=>void submit(true)}>Buy now</Button>
   </div>}
   {!selected?<p className="text-sm text-muted-foreground">Choose the actual product option before adding it.</p>:quantity>selected.available?<p className="text-sm text-muted-foreground">The requested quantity is not currently available. Your quantity has been kept.</p>:null}
-  {message?<output className="block text-sm">{message}</output>:null}<Link href="/cart" className="inline-flex min-h-11 items-center text-sm font-semibold text-primary underline">{productPage ? 'View bag' : 'View cart'}</Link>
+  {message?<output className="block text-sm">{message}</output>:null}
+  {productPage ? null : <Link href="/cart" className="inline-flex min-h-11 items-center text-sm font-semibold text-primary underline">View cart</Link>}
  </div>;
 }

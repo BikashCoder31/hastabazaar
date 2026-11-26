@@ -25,7 +25,7 @@ void test('reporting calendar conversions match independently verified AD and BS
     assert.equal(m.bsToAd(bs), ad, bs);
   }
   assert.equal(m.bsToAd('२०८३-०६-२८'), '2026-10-14');
-  assert.equal(m.formatBsDate('2026-10-14'), '२८ असोज २०८३ BS');
+  assert.equal(m.formatBsDate('2026-10-14'), '28 Ashoj 2083 BS');
 });
 
 void test('calendar validation rejects non-existent dates without rolling them into another month', async () => {

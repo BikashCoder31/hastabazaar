@@ -13,7 +13,6 @@ export interface EmailLayout {
   action: { label: string; url: URL; tone?: 'navy' };
   help?: string;
   why: string;
-  nepali?: { headline: string; paragraph: string; action: string };
 }
 
 const ink = '#14213D';
@@ -54,15 +53,14 @@ export function marketplaceSubject(headline: string, reference?: string | null, 
 }
 
 export function renderMarketplaceEmail(layout: EmailLayout) {
-  const { actor, headline, paragraph, facts, action, help, why, nepali } = layout;
+  const { actor, headline, paragraph, facts, action, help, why } = layout;
   const preheader = layout.preheader ?? paragraph;
   const [pillColor, pillInk] = actorColors[actor];
   const logo = new URL('/brand/hastabazaar-mark-96.png', action.url);
   const text = [
     actor, headline, paragraph,
     ...(facts ?? []).map(([label, value]) => `${label}: ${value}`),
-    ...(nepali ? [nepali.headline, nepali.paragraph] : []),
-    `${action.label}${nepali ? ' / ' + nepali.action : ''}: ${action.url}`,
+    `${action.label}: ${action.url}`,
     help, why, support, identity,
   ].filter(Boolean).join('\n\n');
   const table = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;table-layout:fixed;background:${cream};color:${ink};font-family:Arial,Helvetica,sans-serif;overflow-wrap:break-word">
@@ -82,9 +80,8 @@ export function renderMarketplaceEmail(layout: EmailLayout) {
         const dividingRule = index > 0 ? `border-top:1px solid ${border};` : '';
         return `<tr><th scope="row" width="42%" style="${dividingRule}padding:10px 9px;text-align:left;font-weight:normal">${escape(label)}</th><td style="${dividingRule}padding:10px 9px;text-align:right;font-weight:bold">${escape(value)}</td></tr>`;
       }).join('')}</table>` : ''}
-      ${nepali ? `<div lang="ne" style="margin-bottom:15px;color:${copy};font-size:15px;line-height:1.55"><strong style="color:${ink}">${escape(nepali.headline)}</strong><p style="margin:5px 0 0">${escape(nepali.paragraph)}</p></div>` : ''}
       <table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="border-radius:9px;background:${action.tone === 'navy' ? ink : red}">
-        <a href="${escape(action.url.href)}" style="display:inline-block;border-radius:9px;color:${paper};font-size:14px;font-weight:bold;line-height:20px;padding:12px 17px;text-decoration:none">${escape(action.label)}${nepali ? ` <span lang="ne">/ ${escape(nepali.action)}</span>` : ''}</a>
+        <a href="${escape(action.url.href)}" style="display:inline-block;border-radius:9px;color:${paper};font-size:14px;font-weight:bold;line-height:20px;padding:12px 17px;text-decoration:none">${escape(action.label)}</a>
       </td></tr></table>
       ${help ? `<p style="color:${copy};font-size:14px;line-height:1.55;margin:13px 0 0">${escape(help)}</p>` : ''}
     </td></tr>
