@@ -17,6 +17,7 @@ const { values: options, tokens } = parseArgs({
     'asset-root': { type: 'string' },
     output: { type: 'string' },
     'include-order-refund-migrations': { type: 'boolean' },
+    'package-pricing-migrations': { type: 'boolean' },
   },
   tokens: true,
 });
@@ -28,8 +29,9 @@ const {
   'asset-root': assetRoot,
   output: explicitOutput,
   'include-order-refund-migrations': includeOrderRefund,
+  'package-pricing-migrations': packagePricingMigrations,
 } = options;
-const sourceRoot = includeOrderRefund ? fileURLToPath(new URL('../', import.meta.url)) : process.cwd();
+const sourceRoot = includeOrderRefund || packagePricingMigrations ? fileURLToPath(new URL('../', import.meta.url)) : process.cwd();
 const readSource = (path, options) => readFile(resolve(sourceRoot, path), options);
 // Guarded features have an owner-reviewed companion, outside automated maintenance.
 const ownerCompanions = [
@@ -128,6 +130,9 @@ if (options['refresh-owner-inventory']) {
 if (assetRoot && explicitOutput) throw new Error('--asset-root requires a new directory and cannot be combined with --output.');
 if (includeOrderRefund && (!explicitSchemaInput || !(assetRoot || explicitOutput))) {
   throw new Error('--include-order-refund-migrations requires --schema-input and --asset-root or --output for new scratch output.');
+}
+if (packagePricingMigrations && (!explicitSchemaInput || !assetRoot || includeOrderRefund)) {
+  throw new Error('--package-pricing-migrations requires the reviewed core --schema-input and a new --asset-root.');
 }
 if (!/^[a-z0-9][a-z0-9._-]{2,127}$/i.test(release))
   throw new Error(
@@ -290,7 +295,9 @@ const scratchAssetSources = new Map();
 let requiredViews;
 let scratchOutput;
 let selectedTextLengthContract;
-if (includeOrderRefund) {
+let pricingSchema;
+let pricingAssets = [];
+if (includeOrderRefund || packagePricingMigrations) {
   const orderRefund = await import('../lib/operations/order-refund-maria-migrations.mjs');
   scratchOutput = await orderRefund.resolveOrderRefundScratchOutput(sourceRoot, assetRoot ?? explicitOutput);
   const sources = await orderRefund.readOrderRefundMariaMigrations(sourceRoot);
@@ -299,12 +306,24 @@ if (includeOrderRefund) {
     scratchAssetSources.set(name, await readSource('deployment/babal/' + name));
   }
   selectedTextLengthContract = JSON.parse(await readSource('lib/operations/text-length-parity-contract.json', 'utf8'));
-  orderRefund.verifyOrderRefundMariaSchema(schemaSql, selectedTextLengthContract.prefixSha256, [...scratchAssetSources.values()], sources.suffix);
-  for (const [name, bytes] of sources.assets) {
-    migrationNames.push(name);
-    scratchAssetSources.set(name, bytes);
+  orderRefund.verifyOrderRefundMariaSchema(schemaSql, selectedTextLengthContract.prefixSha256,
+    [...scratchAssetSources.values()], includeOrderRefund ? sources.suffix : '');
+  if (includeOrderRefund) {
+    for (const [name, bytes] of sources.assets) {
+      migrationNames.push(name);
+      scratchAssetSources.set(name, bytes);
+    }
+    requiredViews = sources.requiredViews;
+  } else {
+    const { pricingMigrationEntries, pricingSchemaInventory } = await import('../lib/operations/pricing-schema-readiness.mjs');
+    pricingAssets = pricingMigrationEntries.map(entry => {
+      const bytes = sources.assets.get(entry.path.split('/').at(-1));
+      if (!bytes || sha256(bytes) !== entry.sha256) throw new Error('Review changed pricing migration: ' + entry.path);
+      return { entry, bytes };
+    });
+    if (pricingAssets.length !== sources.assets.size) throw new Error('Unexpected pricing migration count');
+    pricingSchema = pricingSchemaInventory(sources.assets);
   }
-  requiredViews = sources.requiredViews;
 }
 const bundleRoot = assetRoot && (scratchOutput ?? resolve(assetRoot));
 if (bundleRoot) await mkdir(bundleRoot); // Never overwrite a previously selected bundle.
@@ -550,6 +569,10 @@ for(const check of textLengthContract.checks){
 for (const [table, columns] of Object.entries(customerFeeRequiredTables)) {
   if (!columns.every(column => tables[table]?.includes(column))) throw new Error('Customer fee source is missing reviewed columns: ' + table);
 }
+for (const { entry, bytes } of pricingAssets) {
+  await writeFile(resolve(bundleRoot, entry.path), bytes, { flag: 'wx' });
+  migrations.push(entry);
+}
 // An unrecognized selected schema still needs the legacy runtime CHECK proof.
 if (Object.keys(selectedGuestShapeDefinitions).length) {
   delete requiredChecks['notification_messages.chk_notification_guest_shape'];
@@ -622,13 +645,14 @@ const manifest = {
   requiredNodeMajor: 22,
   migrations,
   ...(ownerAppliedMigrations.length ? { ownerAppliedMigrations } : {}),
+  ...(pricingSchema ? { pricingSchema } : {}),
   requiredTables: tables,
   requiredTriggers: { ...triggers, ...Object.fromEntries(Object.entries(customerFeeTriggerDefinitions).map(([name, shape]) => [name, ['signal sqlstate', '45000', shape.mariadb.match(/MESSAGE_TEXT='([^']+)'/)[1]]])) },
 };
 await writeFile(
   bundleRoot ? resolve(bundleRoot, 'deployment/babal/release-manifest.json') : scratchOutput ?? explicitOutput ?? 'deployment/babal/release-manifest.json',
   JSON.stringify(manifest, null, 2) + '\n',
-  includeOrderRefund ? { flag: 'wx' } : undefined,
+  includeOrderRefund || packagePricingMigrations ? { flag: 'wx' } : undefined,
 );
 console.log(
   `Manifest: ${Object.keys(tables).length} tables, ${Object.keys(triggers).length} triggers, ${migrations.length} migrations.`,

@@ -26,7 +26,7 @@ export function summarizePublicOffers(offers:readonly PublicOffer[]):PublicOffer
 }
 /** Explicit public allowlist. No private workspace, evidence reference, cost or stock intent is returned. */
 export async function getPublicOfferSet(db:D1Database,productId:string,now=Date.now(),expectedPublicVersionId?:string|null,orderingAllowed?:boolean):Promise<PublicOfferSet|null>{
- const pricingSource=variantPricingEnabled(db)?variantPricingPublishedOfferSql('p.id','h.current_version_id'):'0';
+ const pricingSource=await variantPricingEnabled(db)?variantPricingPublishedOfferSql('p.id','h.current_version_id'):'0';
  const head=await db.prepare(`SELECT p.seller_id AS sellerId,h.current_version_id AS versionId,pub.current_version_id AS publicVersionId,
  pub_dec.public_json AS publicJson,v.matrix_json AS matrix,p.return_eligible AS returnEligible,
  CASE WHEN ${pricingSource} THEN 1 ELSE 0 END AS pricingApproved,CASE WHEN ${publicProductEligibility('p',now)} THEN 1 ELSE 0 END AS eligible

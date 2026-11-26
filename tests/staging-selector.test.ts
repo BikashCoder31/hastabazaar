@@ -100,6 +100,20 @@ void test('staging selector matches the approved sender settings without exposin
   assert.throws(() => validate(state, '22.23.3', approved), { message: 'Passenger environment differs from approved staging bindings.' });
 });
 
+void test('staging selector compares the pricing setting with the exact approved string', async () => {
+  const validate = await validator();
+  const state = fixture();
+  const approved = { ...runtime, HASTABAZAAR_VARIANT_PRICING: 'on' };
+  environment(state).HASTABAZAAR_VARIANT_PRICING = { value: 'on' };
+  assert.equal(validate(state, '22.23.3', approved), app(state));
+  for (const value of ['off', 'ON', 'on ']) {
+    environment(state).HASTABAZAAR_VARIANT_PRICING = { value };
+    assert.throws(() => validate(state, '22.23.3', approved), /Passenger environment differs/);
+  }
+  delete environment(state).HASTABAZAAR_VARIANT_PRICING;
+  assert.throws(() => validate(state, '22.23.3', approved), /Passenger environment differs/);
+});
+
 void test('staging selector rejects ambiguous staging applications across versions instead of selecting a first match', async () => {
   const validate = await validator();
   const state = fixture();

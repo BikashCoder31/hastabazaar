@@ -2,6 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { customerFeeTriggerDefinitions } from '../lib/operations/fee-schema-readiness.mjs';
+import { pricingSchemaQuery, registeredPricingMigrations } from '../lib/operations/pricing-schema-readiness.mjs';
 
 const rootFile = (path) => fileURLToPath(new URL(path, import.meta.url));
 const { values } = parseArgs({
@@ -12,6 +13,9 @@ const { values } = parseArgs({
   },
 });
 const manifest = JSON.parse(await readFile(values.manifest, 'utf8'));
+const pricingMigrations = registeredPricingMigrations(manifest);
+const pricingQuery = pricingMigrations.length ? pricingSchemaQuery(manifest.pricingSchema) : null;
+const pricingResults = pricingQuery ? `,\n${pricingQuery.ctes},\npricing_results AS (${pricingQuery.select})` : '';
 const requirements = [];
 const add = (kind, tableName, name, expected = '', details = {}) => {
   requirements.push({ migration: '', kind, tableName, name, expected, ...details });
@@ -158,7 +162,11 @@ UNION ALL
 SELECT COALESCE(NULLIF(migration, ''), 'core'), kind,
        CONCAT_WS('.', NULLIF(tableName, ''), NULLIF(name, '')), NULL, NULL, found = 0, found = -1
 FROM results WHERE found <> 1
-ORDER BY scope, kind, objectName;\n`;
+${pricingResults ? `UNION ALL
+SELECT 'pricing', kind, '', COUNT(*), SUM(matched), SUM(matched=0), 0 FROM pricing_results GROUP BY kind
+UNION ALL
+SELECT 'pricing', kind, objectName, NULL, NULL, 1, 0 FROM pricing_results WHERE matched=0
+` : ''}ORDER BY scope, kind, objectName;\n`;
 const report = `-- MariaDB 10.11. Select the intended database in the client before running this file.
 -- Read-only metadata. Missing visibility also appears as missing metadata.
 -- To regenerate against a specific package manifest, pass --manifest to
@@ -264,7 +272,7 @@ results AS (
   SELECT migration, kind, tableName, name, MIN(found) AS found
   FROM matches
   GROUP BY migration, kind, tableName, name
-)${metadataOnly ? metadataReport : `,
+)${pricingResults}${metadataOnly ? metadataReport : `,
 report AS (
   SELECT 0 AS sortOrder, 'Database' AS section, COALESCE(DATABASE(), '(none)') AS item,
          IF(DATABASE() IS NULL, 'SELECT A DATABASE', 'SELECTED') AS status,
@@ -284,7 +292,13 @@ report AS (
          CONCAT(kind, ': ', CONCAT_WS('.', NULLIF(tableName, ''), NULLIF(name, ''))),
          'MISSING OR DIFFERENT', 'Check the selected manifest and database permissions.'
   FROM results WHERE found = 0
-)
+${pricingResults ? `  UNION ALL
+  SELECT 4, 'Pricing schema', 'Launch pricing', IF(COUNT(*)=SUM(matched), 'PRESENT', 'MISSING OR DIFFERENT'),
+         CONCAT(SUM(matched=0), ' of ', COUNT(*), ' metadata requirements missing or different') FROM pricing_results
+  UNION ALL
+  SELECT 5, 'Pricing schema detail', CONCAT(kind, ': ', objectName), 'MISSING OR DIFFERENT',
+         'Check the selected manifest and database permissions.' FROM pricing_results WHERE matched=0
+` : ''})
 SELECT section, item, status, detail FROM report ORDER BY sortOrder, section, item;
 `}`;
 if (metadataOnly) process.stdout.write(report);

@@ -325,7 +325,7 @@ async function createCodOrderAttempt(
   const cart = await getCart(database, tokenHash);
   if (cart.items.length === 0)
     throw new CheckoutConflictError('Your cart is empty.');
-  const pricingEnabled = variantPricingEnabled(database);
+  const pricingEnabled = await variantPricingEnabled(database);
   const previouslyPriced = input.reviewedQuote?.lines.some(line => line.pricingRuleVersion !== undefined);
   if (cart.hasUnavailableItems) {
     if ((pricingEnabled || previouslyPriced) && cart.items.some(line =>

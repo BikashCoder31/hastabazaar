@@ -8,6 +8,7 @@ import { requireDatabase } from '@/lib/db/d1';
 import { getOrderReceipt, type OrderReceipt } from '@/lib/db/repositories/orders';
 import { formatPaisaExact } from '@/lib/marketplace/money-display';
 import { getCustomerManualPayment, ManualPaymentError } from '@/lib/payments/manual-receipts';
+import { readStagingBankTransferQrs } from '@/lib/payments/staging-bank-transfer-qr';
 import './payment-page.css';
 
 export const dynamic = 'force-dynamic';
@@ -45,7 +46,8 @@ function PaymentOrderSummary({ receipt }: { receipt: OrderReceipt }) {
 export default async function PaymentPage({ params }: { params: Promise<{ orderId: string }> }) {
   const { orderId } = await params;
   const viewer = await requireCustomerPage('/account/payments/' + encodeURIComponent(orderId));
-  const database = requireDatabase(env as unknown as { DB?: D1Database });
+  const bindings = env as unknown as { DB?: D1Database; MEDIA?: R2Bucket; APP_ORIGIN?: string };
+  const database = requireDatabase(bindings);
   let payment;
   try {
     payment = await getCustomerManualPayment(database, viewer.userId, orderId);
@@ -54,12 +56,16 @@ export default async function PaymentPage({ params }: { params: Promise<{ orderI
     throw error;
   }
   if (!payment) notFound();
-  const receipt = await getOrderReceipt(database, payment.orderNumber, null, viewer.userId);
+  const [receipt, transferQrs] = await Promise.all([
+    getOrderReceipt(database, payment.orderNumber, null, viewer.userId),
+    readStagingBankTransferQrs(bindings.APP_ORIGIN, bindings.MEDIA, payment),
+  ]);
   return (
     <div data-bank-payment-page>
       <ManualPaymentClaim
         payment={payment}
         actorId={viewer.userId}
+        transferQrs={transferQrs}
         orderSummary={receipt ? <PaymentOrderSummary receipt={receipt} /> : undefined}
       />
     </div>

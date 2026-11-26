@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {registerHooks} from 'node:module';
 import {build} from 'esbuild';
+import {PNG} from 'pngjs';
 import {manualOrderFixture} from './helpers/manual-payment-fixture';
 import {getCustomerManualPayment} from '../lib/payments/manual-receipts';
 import {getManualPaymentWorkspace} from '../lib/payments/manual-payment-workspace';
@@ -14,6 +15,47 @@ registerHooks({resolve(specifier,context,next){
 }});
 const origin='https://payment-browser.test';
 async function bundle(contents:string){return (await build({stdin:{sourcefile:'payment-browser.tsx',resolveDir:process.cwd(),loader:'tsx',contents},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"production"'},plugins:[{name:'fixture-next',setup(builder){builder.onResolve({filter:/^next\/(navigation|link)$/},args=>({path:args.path,namespace:'fixture'}));builder.onLoad({filter:/.*/,namespace:'fixture'},args=>({contents:args.path==='next/link'?`import React from'react';export default function Link(props){return React.createElement('a',props)}`:`export function usePathname(){return location.pathname}export function useSearchParams(){return new URLSearchParams(location.search)}export function useRouter(){return{replace(url){history.replaceState(null,'',url)},refresh(){window.dispatchEvent(new Event('fixture-refresh'))}}}`,loader:'js',resolveDir:process.cwd()}));}}]})).outputFiles[0].text;}
+void test('payable customer instructions display and download both staging QR posters', async () => {
+  const now = Date.now();
+  const deadlineAt = now + 3_600_000;
+  const orderId = 'qa-qr-order';
+  const payment = {
+    orderId, orderNumber: 'QA-QR-ORDER', state:'awaiting_payment', claim:null,
+    now, issuedAt:now, deadlineAt, cutoffAt:deadlineAt, remainingPaisa:12_500, duePaisa:12_500, receivedPaisa:0,
+    instruction:{
+      requiresAccountReview:false, amountPaisa:12_500, reference:'QA-QR-ORDER',
+      account:{holder:'Fictional Bank Fixture', bank:'Fictional Bank', branch:'QA', accountNumber:'1234567890'},
+    },
+  };
+  const poster = Buffer.from(PNG.sync.write(new PNG({width:8,height:11})));
+  const src = 'data:image/png;base64,' + poster.toString('base64');
+  const transferQrs = ['Fonepay', 'Nabil NEPALPAY'].map(name => ({name, src, width:8, height:11}));
+  const code = await bundle(`import React from 'react';import {createRoot} from 'react-dom/client';
+    import {ManualPaymentClaim} from './components/commerce/manual-payment-claim';
+    const payment = ${JSON.stringify(payment)};
+    createRoot(document.getElementById('root')!).render(<ManualPaymentClaim payment={payment} actorId="customer"
+      transferQrs={${JSON.stringify(transferQrs)}}/>);`);
+  const {chromium} = await import(process.env.PLAYWRIGHT_MODULE??'file:///C:/Users/abinash/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs');
+  const browser = await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH??'C:/Program Files/Google/Chrome/Application/chrome.exe'});
+  try {
+    const page = await browser.newPage({ viewport: { width:390, height:844 } }) as import('playwright-core').Page;
+    await page.route(origin + '/**', route => route.fulfill({contentType:'text/html',body:'<div id="root"></div>'}));
+    await page.goto(origin + '/account/payments/' + orderId);
+    await page.addScriptTag({content:code});
+    for (const {name} of transferQrs) {
+      const poster = page.getByRole('img', {name: name + ' QR code for Hastabazaar'});
+      await poster.waitFor({timeout:7000});
+      assert.equal(await poster.evaluate(async image => {
+        const posterImage = image as HTMLImageElement;
+        await posterImage.decode();
+        return posterImage.naturalWidth;
+      }), 8);
+      assert.equal(await page.getByRole('link', {name: 'Save ' + name + ' QR'}).getAttribute('download'), name + ' QR.png');
+    }
+  } finally {
+    await browser.close();
+  }
+});
 void test('customer browser keeps the same optional claim after lost acknowledgement; one eligible Finance admin verifies and allocates real credit',async()=>{
  const f=await manualOrderFixture();try{
   globalThis.paymentBrowserDb=f.db;globalThis.paymentBrowserActor='customer';f.sqlite.prepare("UPDATE users SET auth_subject=id WHERE id IN('customer','reviewer')").run();const api=await import('../lib/payments/payment-http'),payment=await getCustomerManualPayment(f.db,'customer',f.orderId);

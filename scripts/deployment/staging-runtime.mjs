@@ -27,8 +27,12 @@ export function assertStagingRuntime(runtime) {
     Buffer.from(key, 'base64url').length === 32 && Buffer.from(key, 'base64url').toString('base64url') === key,
   'A canonical 32-byte hosted security key is required.');
   assert.ok(['false', 'true'].includes(runtime.EMAIL_DELIVERY_CONFIGURED), 'Invalid staging email mode.');
+  if (Object.hasOwn(runtime, 'HASTABAZAAR_VARIANT_PRICING')) {
+    assert.equal(typeof runtime.HASTABAZAAR_VARIANT_PRICING, 'string', 'Invalid staging HASTABAZAAR_VARIANT_PRICING.');
+  }
   const enabled = runtime.EMAIL_DELIVERY_CONFIGURED === 'true';
   const allowed = new Set([...Object.keys(fixed), 'DB_PASSWORD', 'EMAIL_DELIVERY_CONFIGURED', 'HASTABAZAAR_SECURITY_KEY',
+    'HASTABAZAAR_VARIANT_PRICING',
     ...(enabled ? [...Object.keys(qa), 'SMTP_PASSWORD', 'SMTP_RECIPIENT_ALLOWLIST', ...senderBindings] : [])]);
   assert.ok(Object.keys(runtime).every((key) => allowed.has(key)), 'Unapproved staging runtime binding.');
   if (!enabled) return;

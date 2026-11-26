@@ -2,7 +2,7 @@ import type { FulfillmentOrderDetail } from '@/lib/db/repositories/fulfillment';
 
 export async function readOrderProgress(
   db: D1Database,
-  order: FulfillmentOrderDetail,
+  order: Pick<FulfillmentOrderDetail, 'id' | 'status' | 'deliveredAt'>,
   isSuperAdmin: boolean,
   canViewPayouts: boolean,
 ) {
@@ -34,8 +34,8 @@ export async function readOrderProgress(
     db
       .prepare(`SELECT
       (SELECT MIN(CASE WHEN c.first_action_at IS NULL THEN c.first_due_at ELSE c.next_update_at END)
-       FROM order_response_cases c JOIN order_response_portions portion ON portion.id=c.portion_id
-       WHERE portion.order_id=? AND c.state<>'resolved') AS dueAt,
+       FROM order_response_cases c JOIN order_response_portions response_portion ON response_portion.id=c.portion_id
+       WHERE response_portion.order_id=? AND c.state<>'resolved') AS dueAt,
       (SELECT MIN(j.pickup_window_start) FROM shipping_jobs j WHERE j.order_id=? AND j.direction='outbound'
        AND j.status IN ('pickup_requested','pickup_scheduled')${publicParcel}) AS pickupAt,
       (SELECT MAX(e.created_at) FROM parcel_operation_events e

@@ -1,11 +1,35 @@
 export const VARIANT_PRICING_RULE_VERSION = 'variant-price-addition-v1';
 
-// A database binding must be opted in explicitly. The application does not opt in
-// its preview or hosted bindings. Isolated fixtures can attach the capability.
+// The hosted binding supplies a schema check when enabled. Isolated D1 fixtures
+// can supply true with their own verified schema.
 export const VARIANT_PRICING_CAPABILITY: unique symbol = Symbol('variant pricing');
 
-export function variantPricingEnabled(database: D1Database): boolean {
-  return (database as D1Database & { [VARIANT_PRICING_CAPABILITY]?: true })[VARIANT_PRICING_CAPABILITY] === true;
+type PricingReadiness = { ready: boolean; missing: string[] };
+type PricingCapability = boolean | (() => Promise<PricingReadiness>);
+
+function variantPricingCapability(database: D1Database): PricingCapability | undefined {
+  return (database as D1Database & { [VARIANT_PRICING_CAPABILITY]?: PricingCapability })[VARIANT_PRICING_CAPABILITY];
+}
+
+export class VariantPricingUnavailableError extends Error {
+  constructor() {
+    super('Variant pricing is temporarily unavailable.');
+  }
+}
+
+export async function variantPricingEnabled(database: D1Database): Promise<boolean> {
+  const capability = variantPricingCapability(database);
+  if (typeof capability !== 'function') return capability === true;
+  // A failing check must block pricing-dependent requests. Falling back here
+  // could silently change prices between catalogue, cart and checkout.
+  if (!(await capability()).ready) throw new VariantPricingUnavailableError();
+  return true;
+}
+
+export async function inspectVariantPricingReadiness(database: D1Database): Promise<PricingReadiness> {
+  const capability = variantPricingCapability(database);
+  if (typeof capability === 'function') return capability();
+  return { ready: true, missing: [] };
 }
 
 const PAISA_PER_RUPEE = 100;

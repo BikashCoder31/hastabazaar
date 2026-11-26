@@ -6,6 +6,8 @@ import { copyFile, mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, write
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import test from 'node:test';
 import { pathToFileURL } from 'node:url';
+import { readOrderRefundMariaMigrations } from '../lib/operations/order-refund-maria-migrations.mjs';
+import { pricingSchemaInventory } from '../lib/operations/pricing-schema-readiness.mjs';
 
 const repository = resolve(import.meta.dirname, '..');
 const fixtureParent = join(repository, '.test-artifacts/t35');
@@ -169,15 +171,19 @@ void test('Linux CI packager remains unavailable on a non-Linux platform', { ski
   assert.match(result.stderr, /must be built on Linux x64/);
 });
 
-void test('hosted Vite config compiles readiness and health evidence from the selected manifest without rewriting public JSON', async () => {
+void test('hosted Vite config compiles readiness and health evidence from the selected manifest without rewriting public JSON', async (t) => {
   const root = await fixture();
   const previousTarget = process.env.DEPLOY_TARGET;
   const previousManifest = process.env.HASTABAZAAR_BUILD_RELEASE_MANIFEST;
   const previousRelease = process.env.HASTABAZAAR_RELEASE_ID;
+  const previousPricing = process.env.HASTABAZAAR_VARIANT_PRICING;
   try {
     const publicPath = join(repository, manifestPath);
     const historical = await readFile(publicPath, 'utf8');
+    const { assets } = await readOrderRefundMariaMigrations(repository);
+    const pricingSchema = pricingSchemaInventory(assets);
     const selected = { ...JSON.parse(historical), release,
+      pricingSchema,
       requiredTables: { selected_compiled_table: ['id', 'proof'] },
       migrations: [{ path: schemaPath, sha256: 'a'.repeat(64), usage: 'empty-database-only' }],
     };
@@ -198,9 +204,12 @@ void test('hosted Vite config compiles readiness and health evidence from the se
 import {releaseId} from ${JSON.stringify(join(repository, 'lib/operations/readiness.ts').replaceAll('\\', '/'))};
 import {formHealthRuntimeScope} from ${JSON.stringify(join(repository, 'lib/operations/form-health.ts').replaceAll('\\', '/'))};
 import {env} from ${JSON.stringify(join(repository, 'lib/runtime/node-bindings.ts').replaceAll('\\', '/'))};
+import {variantPricingEnabled} from ${JSON.stringify(join(repository, 'lib/products/variant-pricing.ts').replaceAll('\\', '/'))};
 import manifest from ${JSON.stringify(publicPath.replaceAll('\\', '/'))};
 export const proof = {releaseId, formHealthRelease:formHealthRuntimeScope({},0).releaseId, schemaHash:manifest.migrations[0].sha256, tables:manifest.requiredTables};
 export const runtimeRelease = () => env.HASTABAZAAR_RELEASE_ID;
+export const runtimePricing = () => variantPricingEnabled(env.DB);
+export const database = env.DB;
 `);
     await build({ configFile: false, envDir: false, root, publicDir: false, plugins, logLevel: 'silent', resolve: { alias: { '@': repository } },
       build: { ssr: entry, outDir: join(root, 'compiled'), minify: false,
@@ -215,11 +224,32 @@ export const runtimeRelease = () => env.HASTABAZAAR_RELEASE_ID;
     assert.equal(compiled.runtimeRelease(), release);
     assert.equal(compiled.proof.schemaHash, 'a'.repeat(64));
     assert.deepEqual(compiled.proof.tables, { selected_compiled_table: ['id', 'proof'] });
+    const rows = [
+      ...Object.entries({ table: pricingSchema.tables, trigger: pricingSchema.triggers,
+        view: pricingSchema.views, 'trigger-set': pricingSchema.tableTriggers })
+        .flatMap(([kind, objects]) => Object.keys(objects).map(objectName => ({ kind, objectName, matched: 1 }))),
+      { kind: 'session', objectName: 'constraint_checks', matched: 1 },
+    ];
+    let metadata = rows.slice(1);
+    t.mock.method(compiled.database as D1Database, 'prepare', (sql: string) => {
+      assert.match(sql, /information_schema\.TRIGGERS/);
+      assert.match(sql, /refund_cost_original_capacity/);
+      return { all: async () => ({ results: metadata }) };
+    });
+    process.env.HASTABAZAAR_VARIANT_PRICING = 'on';
+    await assert.rejects(compiled.runtimePricing, /Variant pricing is temporarily unavailable/);
+    metadata = rows;
+    assert.equal(await compiled.runtimePricing(), true);
+    metadata = rows.map(row => row.objectName === 'refund_cost_original_capacity' ? { ...row, matched: 0 } : row);
+    await assert.rejects(compiled.runtimePricing, /Variant pricing is temporarily unavailable/);
+    process.env.HASTABAZAAR_VARIANT_PRICING = 'on ';
+    assert.equal(await compiled.runtimePricing(), false);
     assert.equal(await readFile(publicPath, 'utf8'), historical);
   } finally {
     if (previousTarget === undefined) delete process.env.DEPLOY_TARGET; else process.env.DEPLOY_TARGET = previousTarget;
     if (previousManifest === undefined) delete process.env.HASTABAZAAR_BUILD_RELEASE_MANIFEST; else process.env.HASTABAZAAR_BUILD_RELEASE_MANIFEST = previousManifest;
     if (previousRelease === undefined) delete process.env.HASTABAZAAR_RELEASE_ID; else process.env.HASTABAZAAR_RELEASE_ID = previousRelease;
+    if (previousPricing === undefined) delete process.env.HASTABAZAAR_VARIANT_PRICING; else process.env.HASTABAZAAR_VARIANT_PRICING = previousPricing;
     await cleanup(root);
   }
 });

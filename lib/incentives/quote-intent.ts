@@ -43,7 +43,7 @@ export async function promoQuoteIntent(
   });
 }
 async function cartPromoDiscountCap(db: D1Database, cartId: string, cart: CartView) {
-  if (!variantPricingEnabled(db)) return undefined;
+  if (!(await variantPricingEnabled(db))) return undefined;
   const pricedLines = cart.items.filter(
     item => item.selectedOffer?.pricingRuleVersion === VARIANT_PRICING_RULE_VERSION,
   );
