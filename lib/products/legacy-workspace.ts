@@ -20,8 +20,20 @@ export async function inspectLegacyProduct(db:D1Database,actorId:string,productI
  await offerAuthority(db,actorId,productId);return {productId,name:String(current.product.name_en),slug:String(current.product.slug),sku:String(current.product.sku),status:String(current.product.status),sourceFingerprint:await digestFormRequest(current),existingDraftId:existing?.draftId??null,observed:current.product,media:current.media.map(file=>({id:String(file.id),originalName:String(file.original_name??file.id),mimeType:String(file.mime_type??'')}))};
 }
 function rowGuards(db:D1Database,table:string,row:LegacyRow,identity:string){
- if(!/^[a-z_]+$/.test(table)||!/^[a-z_]+$/.test(identity))throw new Error('Invalid internal source table.');const entries=Object.entries(row);if(entries.some(([column])=>!/^[a-z_]+$/.test(column)))throw new Error('Invalid internal source field.');
- const statements:D1PreparedStatement[]=[];for(let start=0;start<entries.length;start+=30){const part=entries.slice(start,start+30);statements.push(...offerGuard(db,`EXISTS(SELECT 1 FROM ${table} WHERE ${identity}=? AND ${part.map(([column,value])=>typeof value==='string'?`HEX(${column})=HEX(?)`:`${column} IS ?`).join(' AND ')})`,[row[identity],...part.map(([,value])=>value)]));}return statements;
+ if(!/^[a-z_]+$/.test(table)||!/^[a-z_]+$/.test(identity))throw new Error('Invalid internal source table.');
+ const entries=Object.entries(row);
+ if(entries.some(([column])=>!/^[a-z_]+$/.test(column)))throw new Error('Invalid internal source field.');
+ const nullSafeEquality=(db as D1Database & { dialect?: string }).dialect==='mariadb'?'<=>':'IS';
+ const statements:D1PreparedStatement[]=[];
+ for(let start=0;start<entries.length;start+=30){
+  const part=entries.slice(start,start+30);
+  const comparisons=part.map(([column,value])=>typeof value==='string'
+   ? `HEX(${column})=HEX(?)`
+   : `${column} ${nullSafeEquality} ?`);
+  statements.push(...offerGuard(db,`EXISTS(SELECT 1 FROM ${table} WHERE ${identity}=? AND ${comparisons.join(' AND ')})`,
+   [row[identity],...part.map(([,value])=>value)]));
+ }
+ return statements;
 }
 function observedAnswers(value:LegacyObservation):ProductDetailAnswers{
  const p=value.product,answers:ProductDetailAnswers={};const text:Record<string,keyof ProductDetailAnswers>={name_en:'nameEn',name_ne:'nameNe',description_en:'descriptionEn',description_ne:'descriptionNe',producer:'producer',country_of_origin:'countryOfOrigin',materials:'materials',origin_story:'originStory',dimensions:'dimensions',size:'size',colour:'colour',variations:'variations',specifications:'specifications',care_instructions:'careInstructions',safety_information:'safetyInformation',return_conditions:'returnConditions',warranty:'warrantyTerms'};

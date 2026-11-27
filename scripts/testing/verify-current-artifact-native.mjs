@@ -31,6 +31,7 @@ export const artifactNativePlan = Object.freeze([
   { file:'tests/accounting-native-runtime.test.ts', expected:1 },
   { file:'tests/commerce-financial-native.test.ts', expected:8 },
   { file:'tests/billing-release-native.test.ts', expected:1 },
+  { file:'tests/product-legacy-workspace-native.test.ts', expected:1 },
   { file:'tests/fee-waiver-native.test.ts', expected:5 },
   ...['catchup','rollback','repair'].map(scenario => ({file:'tests/form-health-maria-native.test.ts', expected:1, scenario})),
   { file:'tests/customer-fee-native.test.ts', expected:29, recovery:true },
