@@ -67,7 +67,7 @@ export async function publicCatalogueQuery(db:D1Database,now=Date.now()){
  AND ((COALESCE(ready_route.participation_route,'registered_seller')='registered_seller' AND ready_seller.status='approved' AND ${setting?.versionId?`${literal(db,setting.versionId)}=(SELECT id FROM business_setting_versions WHERE setting_key='independent_seller_commission_bps' AND status='published' AND effective_from<=${now} AND (effective_until IS NULL OR effective_until>${now}) ORDER BY effective_from DESC,version DESC,id DESC LIMIT 1)`:'0'} AND (${registered.join(' OR ')||'0'}) AND ${supplements})
  OR (${managed.length?`(ready_seller.id IN (${managed.join(',')}) AND ${verifiedIdentitySql('ready_seller.id',now)})`:'0'})))`;
  const {offerPrice,source,stockCondition,mapped,stock}=publicCatalogueInventory(db);
- const pricingEnabled=variantPricingEnabled(db);
+ const pricingEnabled=await variantPricingEnabled(db);
  const dialect=(db as D1Database&{dialect?:string}).dialect==='mariadb'?'mariadb':'sqlite';
  const exactOfferPrice=pricingEnabled?exactOfferSellingPaisaSql('display_offer.offer_json',dialect):null;
  const orderable=(p:string)=>`(${publicProductEligibility(alias(p),now)}) AND EXISTS(SELECT 1 FROM public_ready_sellers WHERE id=${p}.seller_id)`;

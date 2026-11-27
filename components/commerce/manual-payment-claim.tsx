@@ -10,10 +10,11 @@ import { useBrowserReady } from '@/hooks/use-browser-ready';
 import { usePaymentAttempt } from '@/hooks/use-payment-attempt';
 import { formatPaisaExact } from '@/lib/marketplace/money-display';
 import type { getCustomerManualPayment } from '@/lib/payments/manual-receipts';
+import type { StagingTransferQr } from '@/lib/payments/staging-bank-transfer-qr';
 
 type Payment = NonNullable<Awaited<ReturnType<typeof getCustomerManualPayment>>>;
 type Draft = { amount: string; date: string; reference: string; note: string; files: { id: string; name: string }[] };
-type ClaimProps = { payment: Payment; actorId: string; orderSummary?: ReactNode };
+type ClaimProps = { payment: Payment; actorId: string; orderSummary?: ReactNode; transferQrs?: StagingTransferQr[] };
 
 const card = 'account-surface min-w-0 rounded-2xl border border-[#E3D6C3] bg-[#FDFAF5] p-6';
 const control = 'min-h-11 w-full min-w-0 rounded-xl border border-[#D6C3A6] bg-white px-3.5 py-2.5 text-base text-[#14213D] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#14213D]';
@@ -140,7 +141,7 @@ export function ManualPaymentClaim(props: ClaimProps) {
     : <output className="block py-6">Loading your payment…</output>;
 }
 
-function ManualPaymentClaimScope({ payment, actorId, orderSummary }: ClaimProps) {
+function ManualPaymentClaimScope({ payment, actorId, orderSummary, transferQrs = [] }: ClaimProps) {
   const router = useRouter();
   const key = `hastabazaar:payment-claim:${actorId}:${payment.orderId}`;
   const claim = usePaymentAttempt({ actorId, sourceId: payment.orderId, action: 'claim', storageKey: key, endpoint: `/api/account/payments/${payment.orderId}/claim` });
@@ -269,6 +270,24 @@ function ManualPaymentClaimScope({ payment, actorId, orderSummary }: ClaimProps)
             <h2 id="transfer-title" className="text-lg font-bold">1 · Transfer to Hastabazaar</h2>
             <p className="text-sm leading-relaxed text-[#465573]">Pay from your bank app or at the counter. Use the details saved for this order.</p>
             <BankInstructions payment={payment} active />
+            {transferQrs.length > 0 ? (
+              <div className="space-y-3 border-t border-[#E9DECE] pt-4">
+                <h3 className="font-semibold">Company bank QR codes</h3>
+                <p className="text-sm leading-relaxed text-[#465573]">For staging verification. Review the merchant name in your banking app without sending money for a QA order. Payment is confirmed only after Hastabazaar checks the bank credit.</p>
+                <div className="grid gap-4 xl:grid-cols-2">
+                  {transferQrs.map(({ name, src, width, height }) => (
+                    <figure key={name} className="min-w-0 space-y-2 rounded-xl border border-[#E9DECE] bg-white p-3">
+                      <figcaption className="font-semibold">{name}</figcaption>
+                      <div data-media-frame="contain" className="mx-auto aspect-[2/3] w-full max-w-[368px] overflow-hidden">
+                        {/* oxlint-disable-next-line next/no-img-element -- Use the exact private PNG bytes without sending them to an image optimizer. */}
+                        <img data-media-mode="contain" src={src} alt={name + ' QR code for Hastabazaar'} width={width} height={height} className="size-full object-contain" />
+                      </div>
+                      <a href={src} download={name + ' QR.png'} className={textLink}>Save {name} QR</a>
+                    </figure>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </section>
         ) : (
           <details className={card}>

@@ -18,7 +18,7 @@ export async function captureOrderablePriceObservation(db:D1Database,ctx:Command
  return executeOfferCommand(db,ctx,'observe_orderable_price',input.productId,input,async()=>{
   const reviewSource='EXISTS(SELECT 1 FROM product_publication_candidates pc JOIN product_intake_cases ic ON ic.id=pc.case_id JOIN product_publication_heads ph ON ph.product_id=pc.product_id WHERE pc.product_id=? AND pc.id=? AND pc.case_id=? AND ic.revision=? AND (ph.current_version_id=pc.id OR ph.pending_version_id=pc.id))',reviewValues=[input.productId,input.versionId,input.caseId,input.expectedCaseRevision];
   if(!await db.prepare('SELECT 1 WHERE '+reviewSource).bind(...reviewValues).first())throw new OfferError('Compare the exact current review case before retaining its observation.');
-  const pricingSource=variantPricingEnabled(db)?variantPricingPublishedOfferSql('p.id','c.version_id'):'0';
+  const pricingSource=await variantPricingEnabled(db)?variantPricingPublishedOfferSql('p.id','c.version_id'):'0';
   const source=await db.prepare(`SELECT p.seller_id AS sellerId,h.revision,h.current_version_id AS offerVersionId,ph.current_version_id AS publicVersionId,ph.current_publication_id AS publicationId,d.public_json AS publicJson,c.offer_json AS offerJson,s.revision AS stockRevision,s.available,s.confirmed_at AS confirmedAt,
    p.return_eligible AS returnEligible,CASE WHEN ${pricingSource} THEN 1 ELSE 0 END AS pricingApproved
    FROM products p JOIN product_offer_heads h ON h.product_id=p.id JOIN product_offer_current c ON c.product_id=p.id AND c.version_id=h.current_version_id

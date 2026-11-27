@@ -3,6 +3,7 @@ import test from 'node:test';
 import manifest from '../deployment/babal/release-manifest.json';
 import {inspectDeploymentReadiness} from '../lib/operations/deployment-readiness';
 import {inspectReadiness} from '../lib/operations/readiness';
+import {env} from '../lib/runtime/node-bindings';
 import nativeFeeMetadata from './helpers/mariadb-fee-readiness-metadata.json';
 
 const db={dialect:'mariadb',prepare(sql:string){return {async all(){
@@ -21,4 +22,19 @@ void test('a complete native schema cannot pass deployment readiness without ini
  assert.equal(checked,1);assert.equal(failed.ready,false);assert.deepEqual(failed.missing,['security:SECURITY_SETUP_PENDING']);
  const passed=await inspectDeploymentReadiness(db,{},async()=>({ready:true,reasonCodes:[]}));assert.equal(passed.ready,true);
  const unavailable=await inspectDeploymentReadiness(db,{},async()=>{throw Error('private diagnostic');});assert.deepEqual(unavailable,{ready:false,missing:['security:SECURITY_STATE_UNAVAILABLE']});
+});
+
+void test('deployment readiness stays healthy Off and fails closed for exact On without packaged pricing schema',async(t)=>{
+ const original=process.env.HASTABAZAAR_VARIANT_PRICING;
+ t.after(()=>{
+  if(original===undefined)delete process.env.HASTABAZAAR_VARIANT_PRICING;
+  else process.env.HASTABAZAAR_VARIANT_PRICING=original;
+ });
+ t.mock.method(env.DB,'prepare',(sql:string)=>db.prepare(sql));
+ const staffSecurityReady=async()=>({ready:true,reasonCodes:[]});
+ process.env.HASTABAZAAR_VARIANT_PRICING='ON';
+ assert.deepEqual(await inspectDeploymentReadiness(env.DB,{},staffSecurityReady),{ready:true,missing:[]});
+ process.env.HASTABAZAAR_VARIANT_PRICING='on';
+ assert.deepEqual(await inspectDeploymentReadiness(env.DB,{},staffSecurityReady),
+  {ready:false,missing:['pricing-schema:inventory']});
 });

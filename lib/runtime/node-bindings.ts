@@ -7,6 +7,8 @@ import { Readable } from 'node:stream';
 import { connect as connectTls, type TLSSocket } from 'node:tls';
 import { createHostedSecurityPolicy } from '../security/hosted-policy';
 import { DeliveryObsolete, MailDeliveryError, type DeliveryContext, type MailDeliveryReceipt } from '../email/delivery-attempts';
+import { inspectPricingSchema } from '../operations/pricing-schema-readiness.mjs';
+import { VARIANT_PRICING_CAPABILITY } from '../products/variant-pricing';
 import releaseManifest from '../../deployment/babal/release-manifest.json';
 
 import mysql, {
@@ -291,6 +293,17 @@ class MariaDbPreparedStatement {
 
 class MariaDbD1Database {
   readonly dialect = 'mariadb';
+  private pricingSchemaInspection?: ReturnType<typeof inspectPricingSchema>;
+
+  get [VARIANT_PRICING_CAPABILITY]() {
+    if (process.env.HASTABAZAAR_VARIANT_PRICING !== 'on') return undefined;
+    // Coalesce concurrent reads without reusing an earlier readiness result.
+    return () => this.pricingSchemaInspection ??= inspectPricingSchema(
+      this,
+      (releaseManifest as { pricingSchema?: unknown }).pricingSchema,
+    ).finally(() => { this.pricingSchemaInspection = undefined; });
+  }
+
   prepare(sql: string): MariaDbPreparedStatement {
     return new MariaDbPreparedStatement(sql);
   }

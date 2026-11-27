@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { copyFileSync } from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -12,6 +13,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const options = process.argv.slice(2);
 const schemaPrefix = '--schema-input=';
 const orderRefundOption = '--include-order-refund-migrations';
+const reviewedCoreSchema = 'b40c9fde31cad9f4dc05c64227c91ef473d10748b51716c7bfce75fcede11843';
 const schemaArgs = options.filter(option => option.startsWith(schemaPrefix));
 const orderRefundArgs = options.filter(option => option === orderRefundOption);
 if (schemaArgs.length !== 1 || !schemaArgs[0].slice(schemaPrefix.length) ||
@@ -21,9 +23,12 @@ if (schemaArgs.length !== 1 || !schemaArgs[0].slice(schemaPrefix.length) ||
 const schemaInput = resolve(schemaArgs[0].slice(schemaPrefix.length));
 // The local candidate runner supplies a single, independently hashed schema input.
 // The manifest generator still verifies the entire prospective schema before writing.
-if (!orderRefundArgs.length && (await readFile(schemaInput, 'utf8')).includes(orderRefundSchemaMarker)) {
+const schema = await readFile(schemaInput);
+if (!orderRefundArgs.length && schema.includes(orderRefundSchemaMarker)) {
   orderRefundArgs.push(orderRefundOption);
 }
+const pricingArgs = !orderRefundArgs.length && createHash('sha256').update(schema).digest('hex') === reviewedCoreSchema
+  ? ['--package-pricing-migrations'] : [];
 const temporary = await mkdtemp(join(tmpdir(), 'hastabazaar-build-schema-'));
 try {
   const bundle = join(temporary, 'assets');
@@ -33,7 +38,8 @@ try {
   );
   const manifestResult = spawnSync(process.execPath, [
     fileURLToPath(new URL('./generate-release-manifest.mjs', import.meta.url)),
-    `${schemaPrefix}${schemaInput}`, `--asset-root=${bundle}`, ...orderRefundArgs,
+    `${schemaPrefix}${schemaInput}`, `--asset-root=${bundle}`,
+    ...orderRefundArgs, ...pricingArgs,
   ], { cwd: root, stdio: 'inherit' });
   if (manifestResult.status !== 0) throw new Error('Release manifest generation failed.');
 

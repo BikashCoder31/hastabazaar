@@ -5,6 +5,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { convergenceColumns, upgradeCheckpoints } from './mariadb-upgrade-checkpoints.mjs';
+import { pricingSchemaFindings, pricingSchemaReportSql, pricingSchemaSql, registeredPricingMigrations } from '../../lib/operations/pricing-schema-readiness.mjs';
 
 const historicalRelease = 'hastabazaar-release-ci-45059021181-1';
 const historicalManifestSha = 'ed82aaf857f26100233b83263f2814d11cf52f6a7c576954a8263530c28882cd';
@@ -18,12 +19,18 @@ function requireThat(condition, message) {
 }
 
 export function migrationSteps(manifest, phase) {
+  const pricing = registeredPricingMigrations(manifest);
+  if (phase === 'pricing') {
+    requireThat(pricing.length > 0, 'This release has no verified pricing migration batch');
+    return pricing.map((entry, index) => ({ ...entry, id: 'pricing-' + (index + 1), checkpoint: false }));
+  }
   if (phase === 'core') {
-    const revised = manifest.migrations.length === 143;
-    requireThat(revised || manifest.migrations.length === 142, 'Unexpected core manifest length');
-    if (revised) requireThat(manifest.migrations[139].path === convergencePath &&
-      manifest.migrations[140].path === 'deployment/babal/mariadb-check-parity.sql', 'Unexpected convergence position');
-    return manifest.migrations.flatMap((entry, index) => {
+    const core = pricing.length ? manifest.migrations.slice(0, -pricing.length) : manifest.migrations;
+    const revised = core.length === 143;
+    requireThat(revised || core.length === 142, 'Unexpected core manifest length');
+    if (revised) requireThat(core[139].path === convergencePath &&
+      core[140].path === 'deployment/babal/mariadb-check-parity.sql', 'Unexpected convergence position');
+    return core.flatMap((entry, index) => {
       if (revised && index === 139) {
         requireThat(entry.usage === 'additive-maintenance', 'Unexpected convergence migration usage');
         return [{ ...entry, id: '139a', checkpoint: false }];
@@ -34,7 +41,7 @@ export function migrationSteps(manifest, phase) {
       return [{ ...entry, id: String(position), checkpoint: position === 137 }];
     });
   }
-  requireThat(phase === 'owner', 'Use core or owner for --phase');
+  requireThat(phase === 'owner', 'Use core, owner or pricing for --phase');
   requireThat(manifest.ownerAppliedMigrations.length === 9, 'Unexpected owner manifest length');
   return manifest.ownerAppliedMigrations.map((entry, index) => {
     const id = String(164 + index).padStart(4, '0');
@@ -249,6 +256,15 @@ function reportSql(manifest) {
   return result.stdout;
 }
 
+function verifyPricingSchema(client, target, inventory) {
+  const output = readOnTarget(client, target, pricingSchemaSql(inventory) + ';');
+  const findings = pricingSchemaFindings(output.split('\n').map(row => {
+    const [kind, objectName, matched] = row.split('\t');
+    return { kind, objectName, matched: Number(matched) };
+  }));
+  requireThat(findings.ready, 'Pricing metadata is missing or different. Review the private pricing schema report.');
+}
+
 function run() {
   const { values, positionals: [command, ...extra] } = parseArgs({
     allowPositionals: true,
@@ -270,6 +286,7 @@ function run() {
   const root = values['package-root'];
   requireThat(isAbsolute(root ?? ''), 'Use an absolute package root');
   const file = join(root, manifestPath);
+  requireThat(phase !== 'pricing' || values['manifest-sha256'], 'Pricing requires the exact reviewed --manifest-sha256');
   const expectedManifest = values['manifest-sha256'] ?? historicalManifestSha;
   requireThat(hex.test(expectedManifest), 'Use a reviewed SHA-256 for --manifest-sha256');
   const manifest = JSON.parse(verifiedSql(readFileSync(file), expectedManifest, 'release manifest'));
@@ -279,7 +296,9 @@ function run() {
   if (command === 'report') {
     const client = makeClient(credentials, target, database);
     const approvedTarget = identity(client, database);
-    const output = readOnTarget(client, approvedTarget, reportSql(file));
+    if (phase === 'pricing') migrationSteps(manifest, phase);
+    const sql = phase === 'pricing' ? pricingSchemaReportSql(manifest.pricingSchema) + ';' : reportSql(file);
+    const output = readOnTarget(client, approvedTarget, sql);
     requireThat(output.length > 0, 'MariaDB returned an empty metadata report');
     console.log('scope\tkind\tobjectName\trequiredCount\tmatchedCount\tmissingOrDifferentCount\tunverifiedCount');
     console.log(output);
@@ -343,6 +362,7 @@ function run() {
         record({ event: 'data-check', id: step.id, mismatches: 0 });
       },
     });
+    if (phase === 'pricing') verifyPricingSchema(client, approval.target, manifest.pricingSchema);
     record({ event: 'complete', after });
     console.log('Verified ' + phase + ' phase. Review the private journal before advancing.');
   } finally {

@@ -121,8 +121,8 @@ export async function readOrderQueue(
     : " AND w.kind<>'incorrect_cash'";
   const dueAt = `CASE WHEN orders.status NOT IN ('cancelled','delivered','returned','refund_processing','refunded') THEN (
     SELECT MIN(CASE WHEN c.first_action_at IS NULL THEN c.first_due_at ELSE c.next_update_at END)
-    FROM order_response_cases c JOIN order_response_portions portion ON portion.id=c.portion_id
-    WHERE portion.order_id=orders.id AND c.state<>'resolved'
+    FROM order_response_cases c JOIN order_response_portions response_portion ON response_portion.id=c.portion_id
+    WHERE response_portion.order_id=orders.id AND c.state<>'resolved'
   ) END`;
   const hasException = (
     kind = '',

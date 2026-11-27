@@ -4,6 +4,8 @@ import mysql,{type Pool,type Connection} from 'mysql2/promise';
 import {env, translateSqliteSql} from '../lib/runtime/node-bindings';
 import {nativeReadinessAdapter} from '../scripts/testing/current-artifact-identity.mjs';
 import {readSellerOrderQueue} from '../app/seller/orders/order-queue';
+import {readOrderQueue} from '../app/admin/orders/read-order-queue';
+import {readOrderProgress} from '../app/admin/orders/[id]/read-order-progress';
 import {stagingNativeFixture} from './helpers/staging-native-fixture';
 import {seedIncentiveCustomer,seedIncentiveInventory,incentiveOrder,incentiveItem} from './helpers/incentive-db';
 import {ctx,claim,TERMS,NOW,publishForm} from './helpers/loyalty-fixture';
@@ -210,4 +212,21 @@ void test('MariaDB loads items for the seller’s latest 100 orders', { skip: !e
   } finally {
     await queueConnection.end();
   }
+});
+
+void test('MariaDB loads the Super Admin Orders queue and order progress', { skip: !enabled }, async () => {
+  const orderId = 'native-super-admin-queue';
+  await incentiveOrder(db, orderId).run();
+  await incentiveItem(db, 'native-super-admin-queue-item', orderId).run();
+
+  const options = { now: Date.now(), isSuperAdmin: true, canViewFinanceFollowups: true };
+  const empty = await readOrderQueue(db, { q: 'absent-super-admin-order' }, options);
+  assert.equal(empty.total, 0);
+  const populated = await readOrderQueue(db, { q: 'FIX-' + orderId }, options);
+  assert.equal(populated.total, 1);
+  assert.equal(populated.orders[0]?.id, orderId);
+  assert.equal(populated.orders[0]?.itemCount, 1);
+
+  const progress = await readOrderProgress(db, { id: orderId, status: 'confirmed', deliveredAt: null }, true, true);
+  assert.deepEqual(progress, { dueAt: null, pickupAt: null, dispatchedAt: null, paidAt: null });
 });

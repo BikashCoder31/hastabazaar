@@ -32,6 +32,17 @@ void test('staging deployment accepts disabled email or the complete fixed QA ma
   assert.doesNotThrow(() => validate(email));
 });
 
+void test('staging accepts the owner’s optional pricing setting alongside either approved email mode', async () => {
+  const validate = await policy();
+  for (const runtime of [base, email]) {
+    for (const value of ['on', 'off', '', 'ON', 'on ']) {
+      assert.doesNotThrow(() => validate({ ...runtime, HASTABAZAAR_VARIANT_PRICING: value }));
+    }
+    assert.throws(() => validate({ ...runtime, HASTABAZAAR_VARIANT_PRICING: true }),
+      /Invalid staging HASTABAZAAR_VARIANT_PRICING/);
+  }
+});
+
 const sender = {
   ORDER_EMAIL_JOB_SECRET: Buffer.alloc(32, 37).toString('base64url'),
   EMAIL_AUTOMATION_EXPECTED_SINCE: '1700000000000',

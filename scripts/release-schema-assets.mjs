@@ -46,11 +46,16 @@ export async function readReleaseAssets(root, expectedRelease) {
   }
   const files = [];
   const names = new Set();
+  const hasPricing = Object.hasOwn(manifest, 'pricingSchema') ||
+    manifest.migrations.some(migration => migration.usage === 'pricing-maintenance');
+  const pricingPaths = new Set(hasPricing ?
+    (await import('../lib/operations/pricing-schema-readiness.mjs')).registeredPricingMigrations(manifest).map(migration => migration.path) : []);
   for (const migration of manifest.migrations) {
     assertReleasePath(migration.path);
     if (!/^deployment\/babal\/(?:migrations\/)?[a-z0-9._-]+\.sql$/.test(migration.path) ||
         names.has(migration.path) || !/^[a-f0-9]{64}$/.test(migration.sha256 ?? '') ||
-        migration.usage !== (emptyOnlyAssets.has(migration.path) ? 'empty-database-only' : 'additive-maintenance')) {
+        migration.usage !== (emptyOnlyAssets.has(migration.path) ? 'empty-database-only' :
+          pricingPaths.has(migration.path) ? 'pricing-maintenance' : 'additive-maintenance')) {
       throw new Error('Invalid migration entry.');
     }
     names.add(migration.path);

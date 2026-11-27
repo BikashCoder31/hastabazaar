@@ -48,7 +48,7 @@ export default async function CheckoutPage() {
           <CheckoutForm
             cartScope={cartHash??'no-cart'}
             paymentCapabilities={paymentCapabilities}
-            pricingRuleVersion={variantPricingEnabled(database) ? VARIANT_PRICING_RULE_VERSION : undefined}
+            pricingRuleVersion={await variantPricingEnabled(database) ? VARIANT_PRICING_RULE_VERSION : undefined}
             serviceFee={await getPlatformServiceFee(database)}
             policyContext={await getCheckoutPolicyContext()}
             deliveryRates={deliveryRates}
