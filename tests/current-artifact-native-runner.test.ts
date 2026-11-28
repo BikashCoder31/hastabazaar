@@ -111,7 +111,10 @@ void test('cached OCI index admission binds the tagged index to the reviewed x64
   assert.throws(() => assertReviewedImage(index, id, { ...x64, Descriptor: { ...descriptor, platform: { os: 'linux', architecture: 'arm64' } } }));
 });
 void test('every inspected native suite has exact required TAP count and only final fee fixture enters recovery',()=>{
-  assert.deepEqual(artifactNativePlan.map(item=>item.expected),[1,8,1,5,1,1,1,29]);
+  assert.deepEqual(artifactNativePlan.map(item=>item.expected),[1,8,1,1,5,1,1,1,29]);
+  assert.deepEqual(artifactNativePlan.find(item=>item.file==='tests/product-legacy-workspace-native.test.ts'),{
+    file:'tests/product-legacy-workspace-native.test.ts',expected:1,
+  });
   assert.equal(artifactNativePlan.filter(item=>'recovery' in item&&item.recovery).length,1);
   assert.equal(artifactNativePlan.at(-1)?.file,'tests/customer-fee-native.test.ts');
 });
